@@ -1,130 +1,130 @@
 ﻿feature,area,priority,original,clone,notes
-이메일·비밀번호 로그인/로그아웃,인증,must,yes,no,S01
+이메일·비밀번호 로그인/로그아웃,인증,must,yes,yes,S01 | 빌드: S01. 비밀번호 재설정은 준비 중
 사내 SSO(OIDC) 로그인,인증,should,yes,no,원본 관리 메뉴에 OpenID 공급자 있음. 사내 도구에 중요
 이메일로 사용자 초대(invited 상태),인증,should,yes,no,S23·S35
-사용자 잠금/활성 상태 관리,인증,must,yes,no,S35
+사용자 잠금/활성 상태 관리,인증,must,yes,partial,S35 | 빌드: 잠긴 계정은 로그인 거부. 관리 UI 없음
 계정 설정: 언어·시간대·테마,계정,should,yes,no,S37
-한국어 UI와 다국어(i18n) 구조,공통,must,yes,no,사내 기본 언어 ko. 번역 문자열은 새로 작성
+한국어 UI와 다국어(i18n) 구조,공통,must,yes,yes,"사내 기본 언어 ko. 번역 문자열은 새로 작성 | 빌드: react-i18next, 타입 검사되는 키. ko만"
 날짜·시간 형식과 주 시작 요일 설정,공통,should,yes,no,configuration API
-상단 헤더(모듈 메뉴·검색·빠른 생성·받은 편지함·아바타),공통,must,yes,no,공통 셸
-사이드바(프로젝트 선택기·모듈 메뉴·저장된 보기 하위 메뉴·접기),공통,must,yes,no,공통 셸
-반응형 모바일(목록이 카드로 전환),공통,should,yes,no,M1·M2
+상단 헤더(모듈 메뉴·검색·빠른 생성·받은 편지함·아바타),공통,must,yes,partial,공통 셸 | 빌드: 검색·빠른 생성·받은 편지함·도움말·계정. 모듈 그리드 메뉴 없음
+사이드바(프로젝트 선택기·모듈 메뉴·저장된 보기 하위 메뉴·접기),공통,must,yes,partial,공통 셸 | 빌드: 프로젝트 선택기·모듈 메뉴·저장된 보기·모바일 서랍. 데스크톱 접기 없음
+반응형 모바일(목록이 카드로 전환),공통,should,yes,yes,"M1·M2 | 빌드: 390px에서 목록→카드, 패널 전체 화면"
 키보드 단축키,공통,could,yes,no,사용자 설정에 끄기 옵션 있음
 다크 모드·고대비 테마,공통,could,yes,no,auto-theme-switcher 관찰
 저장 안 한 변경 이탈 경고,공통,should,yes,no,사용자 설정 warnOnLeavingUnsaved
-프로젝트 목록(활성·내 프로젝트·즐겨찾기·보관 필터),프로젝트,must,yes,no,S03
-프로젝트 목록 상태 필터(정상·위험·비정상),프로젝트,should,yes,no,S03
-빈 프로젝트 생성(이름·식별자·설명·공개 여부),프로젝트,must,yes,no,S04
+프로젝트 목록(활성·내 프로젝트·즐겨찾기·보관 필터),프로젝트,must,yes,yes,S03 | 빌드: S03
+프로젝트 목록 상태 필터(정상·위험·비정상),프로젝트,should,yes,yes,S03 | 빌드: S03
+빈 프로젝트 생성(이름·식별자·설명·공개 여부),프로젝트,must,yes,yes,S04 | 빌드: S04
 템플릿에서 프로젝트 생성,프로젝트,should,yes,no,S04·프로젝트 설정 템플릿
-하위 프로젝트 계층,프로젝트,should,yes,no,parent_id
-프로젝트 즐겨찾기,프로젝트,could,yes,no,S02·S03
-프로젝트 상태(정상·위험·비정상)와 상태 설명,프로젝트,should,yes,no,S05
-프로젝트 개요 위젯 대시보드,프로젝트,could,yes,no,S05
-프로젝트 모듈 켜기/끄기,프로젝트,should,yes,no,S24. 꺼진 모듈은 403
-프로젝트 보관·복원·삭제,프로젝트,should,yes,no,S03 보관된 프로젝트
+하위 프로젝트 계층,프로젝트,should,yes,partial,parent_id | 빌드: 목록 표시·하위 포함 조회만. 상위 지정 UI 없음
+프로젝트 즐겨찾기,프로젝트,could,yes,yes,S02·S03 | 빌드: S02·S03·S05
+프로젝트 상태(정상·위험·비정상)와 상태 설명,프로젝트,should,yes,partial,S05 | 빌드: 표시만. 수정 UI 없음
+프로젝트 개요 위젯 대시보드,프로젝트,could,yes,partial,S05 | 빌드: 고정 위젯(설명·현황·상태·멤버)
+프로젝트 모듈 켜기/끄기,프로젝트,should,yes,partial,S24. 꺼진 모듈은 403 | 빌드: 꺼진 모듈 안내 화면. 설정 UI 없음
+프로젝트 보관·복원·삭제,프로젝트,should,yes,partial,S03 보관된 프로젝트 | 빌드: 보관 필터·읽기 전용 적용. 보관/삭제 동작 UI 없음
 프로젝트 복사,프로젝트,could,yes,no,
-프로젝트 멤버 추가(사용자·그룹 + 역할),멤버·권한,must,yes,no,S23
-프로젝트 역할과 권한 세트,멤버·권한,must,yes,no,S31 멤버 86·참관자 32·관리자 137
-글로벌 역할(프로젝트 생성 권한 등),멤버·권한,should,yes,no,S31
-비멤버·익명 내장 역할,멤버·권한,could,yes,no,S31. 사내용이면 익명은 불필요할 수 있음
+프로젝트 멤버 추가(사용자·그룹 + 역할),멤버·권한,must,yes,partial,S23 | 빌드: S23 사용자+역할. 그룹 없음
+프로젝트 역할과 권한 세트,멤버·권한,must,yes,yes,S31 멤버 86·참관자 32·관리자 137 | 빌드: 역할별 권한 적용(가짜 계층)
+글로벌 역할(프로젝트 생성 권한 등),멤버·권한,should,yes,partial,S31 | 빌드: 프로젝트 생성 권한만
+비멤버·익명 내장 역할,멤버·권한,could,yes,yes,S31. 사내용이면 익명은 불필요할 수 있음 | 빌드: 공개 프로젝트 비멤버 열람
 그룹 관리와 그룹 단위 멤버십,멤버·권한,should,yes,no,S35
 권한 보고서(역할 × 권한 표),멤버·권한,could,yes,no,/admin/roles/report
-작업 패키지 생성(분할 패널 폼),작업 패키지,must,yes,no,S09 F01
-목록 하단 인라인 생성,작업 패키지,should,yes,no,S06 F01. 클릭 1회 목표
-헤더 + 빠른 생성 메뉴,작업 패키지,should,yes,no,S02 헤더
-유형별 작업 패키지(일감·마일스톤·요약 작업·기능·에픽·사용자 이야기·버그),작업 패키지,must,yes,no,S27 기본 7종
-제목과 리치 텍스트 설명(서식·코드 블록),작업 패키지,must,yes,no,S09
-상태·우선순위·담당자·담당(책임자)·작성자 속성,작업 패키지,must,yes,no,S07
-대상 버전·카테고리 속성,작업 패키지,should,yes,no,S07·S25
+작업 패키지 생성(분할 패널 폼),작업 패키지,must,yes,yes,S09 F01 | 빌드: S09
+목록 하단 인라인 생성,작업 패키지,should,yes,yes,S06 F01. 클릭 1회 목표 | 빌드: S06
+헤더 + 빠른 생성 메뉴,작업 패키지,should,yes,yes,S02 헤더 | 빌드: 헤더 + 메뉴
+유형별 작업 패키지(일감·마일스톤·요약 작업·기능·에픽·사용자 이야기·버그),작업 패키지,must,yes,yes,S27 기본 7종 | 빌드: seed 5종
+제목과 리치 텍스트 설명(서식·코드 블록),작업 패키지,must,yes,partial,S09 | 빌드: 평문→문단 HTML. 서식·코드 블록 편집기 없음
+상태·우선순위·담당자·담당(책임자)·작성자 속성,작업 패키지,must,yes,yes,S07 | 빌드: S07·S08
+대상 버전·카테고리 속성,작업 패키지,should,yes,partial,S07·S25 | 빌드: 버전만. 카테고리 없음
 사용자 정의 필드 값 입력(텍스트·숫자·목록·날짜·사용자·bool·링크),작업 패키지,should,yes,no,S25·S34
-필드 인라인 편집(목록 셀·상세),작업 패키지,must,yes,no,S06·S07
-분할 화면 상세 보기,작업 패키지,must,yes,no,S07
-전체 화면 상세 보기와 탭(활동·파일·관계·주시자),작업 패키지,must,yes,no,S08
-활동 스트림(변경 이력 저널),작업 패키지,must,yes,no,S08
-코멘트 작성·수정,작업 패키지,must,yes,no,S08 F08
-코멘트 @멘션,작업 패키지,must,yes,no,S08 F08
+필드 인라인 편집(목록 셀·상세),작업 패키지,must,yes,yes,S06·S07 | 빌드: 표: 상태·담당자·우선순위 / 상세: 전 필드
+분할 화면 상세 보기,작업 패키지,must,yes,yes,S07 | 빌드: S07
+전체 화면 상세 보기와 탭(활동·파일·관계·주시자),작업 패키지,must,yes,partial,S08 | 빌드: 활동·관계 탭. 파일·주시자 탭 없음
+활동 스트림(변경 이력 저널),작업 패키지,must,yes,yes,S08 | 빌드: 변경 내역·자동 조정 원인 표시
+코멘트 작성·수정,작업 패키지,must,yes,partial,S08 F08 | 빌드: 작성만. 수정 UI 없음(API는 있음)
+코멘트 @멘션,작업 패키지,must,yes,yes,S08 F08 | 빌드: @ 입력 시 멤버 선택
 활동 필터·정렬 순서,작업 패키지,could,yes,no,S08 모두 표시·오래된 순
 내부 코멘트(특정 역할만 보기),작업 패키지,could,yes,no,S25 내부 코멘트 탭
 첨부 파일 업로드(끌어놓기·최대 크기 설정),작업 패키지,should,yes,no,S08 파일 탭·5MB
-주시자 추가·해제,작업 패키지,should,yes,no,S07·S08
+주시자 추가·해제,작업 패키지,should,yes,partial,S07·S08 | 빌드: 본인 주시/해제만
 일괄 편집·이동·복사·삭제(우클릭 컨텍스트 메뉴),작업 패키지,should,yes,no,S06
 작업 패키지 복사·다른 프로젝트로 이동,작업 패키지,should,yes,no,
-작업 패키지 삭제(자식 처리 선택),작업 패키지,must,yes,no,홈의 새 기능 안내에 자식 유지 여부 선택 언급
-동시 편집 충돌 처리(lock version),작업 패키지,must,yes,no,데이터 무결성
-상세 하단 공유·알림·⋯ 액션,작업 패키지,could,yes,no,S07
+작업 패키지 삭제(자식 처리 선택),작업 패키지,must,yes,yes,홈의 새 기능 안내에 자식 유지 여부 선택 언급 | 빌드: 하위 작업 삭제 또는 위로 올리기
+동시 편집 충돌 처리(lock version),작업 패키지,must,yes,yes,데이터 무결성 | 빌드: 409 시 최신 값으로 교체 + 안내
+상세 하단 공유·알림·⋯ 액션,작업 패키지,could,yes,partial,S07 | 빌드: 주시·링크 복사·삭제
 작업 패키지를 사용자와 공유(멤버 아닌 사용자),작업 패키지,could,yes,no,원본은 Enterprise 전용. 사내용이면 우선순위 낮음
-목록 컬럼 선택·추가·재정렬,목록·쿼리,must,yes,no,S11
-"필터(속성 × 연산자 × 값, 약 30종)",목록·쿼리,must,yes,no,S06 필터 목록 관찰
-텍스트로 필터링,목록·쿼리,must,yes,no,S06
-정렬(다중 기준),목록·쿼리,must,yes,no,S11
+목록 컬럼 선택·추가·재정렬,목록·쿼리,must,yes,partial,S11 | 빌드: 열 표시/숨김. 순서 변경 없음
+"필터(속성 × 연산자 × 값, 약 30종)",목록·쿼리,must,yes,partial,S06 필터 목록 관찰 | 빌드: 8개 필드 × 연산자
+텍스트로 필터링,목록·쿼리,must,yes,yes,S06
+정렬(다중 기준),목록·쿼리,must,yes,partial,S11 | 빌드: 단일 기준
 그룹화와 그룹별 합계,목록·쿼리,should,yes,no,S11
 합계 행 표시,목록·쿼리,could,yes,no,S11 디스플레이 설정
-계층 표시 모드(트리 펼치기·접기),목록·쿼리,must,yes,no,S06
-기본 보기(모두 열림·최근 활동·최근에 만듦·기한 지남·요약·내가 만듦·내게 할당됨),목록·쿼리,must,yes,no,S06 사이드바
-보기 저장·이름 바꾸기·다른 이름으로 저장·삭제,목록·쿼리,must,yes,no,S06 ⋮ 메뉴 F03
-공개 보기와 비공개 보기,목록·쿼리,must,yes,no,S06 공개 섹션
-즐겨찾기 보기,목록·쿼리,should,yes,no,S13 사이드바 즐겨찾기
-하위 프로젝트 포함 토글,목록·쿼리,should,yes,no,S06 프로젝트 포함
-전역 작업 패키지 목록(모든 프로젝트),목록·쿼리,should,yes,no,/work_packages
-보기 상태를 URL로 직렬화해 링크 공유,목록·쿼리,should,yes,no,S13 query_props
-페이지네이션(페이지당 20·100),목록·쿼리,must,yes,no,configuration API
+계층 표시 모드(트리 펼치기·접기),목록·쿼리,must,yes,yes,S06 | 빌드: 맥락 행 포함
+기본 보기(모두 열림·최근 활동·최근에 만듦·기한 지남·요약·내가 만듦·내게 할당됨),목록·쿼리,must,yes,yes,S06 사이드바 | 빌드: 6종
+보기 저장·이름 바꾸기·다른 이름으로 저장·삭제,목록·쿼리,must,yes,partial,S06 ⋮ 메뉴 F03 | 빌드: 저장·다른 이름·삭제. 이름 바꾸기 없음
+공개 보기와 비공개 보기,목록·쿼리,must,yes,yes,S06 공개 섹션
+즐겨찾기 보기,목록·쿼리,should,yes,yes,S13 사이드바 즐겨찾기
+하위 프로젝트 포함 토글,목록·쿼리,should,yes,yes,S06 프로젝트 포함
+전역 작업 패키지 목록(모든 프로젝트),목록·쿼리,should,yes,yes,/work_packages | 빌드: /work-packages
+보기 상태를 URL로 직렬화해 링크 공유,목록·쿼리,should,yes,yes,S13 query_props | 빌드: ?view·?q
+페이지네이션(페이지당 20·100),목록·쿼리,must,yes,yes,configuration API | 빌드: 20·100
 기준선 비교(과거 시점 대비 변경 표시),목록·쿼리,could,yes,no,S06 기준선 버튼
 속성 강조 표시(행·셀 색상),목록·쿼리,could,yes,no,S11 강조 표시 탭
 CSV·XLS 내보내기,내보내기,should,yes,no,S12
 PDF 내보내기(테이블·보고서·Gantt),내보내기,could,yes,no,S12
-부모-자식 계층(WBS),관계·계층,must,yes,no,S08 F07
-새 자식 만들기·기존 항목을 자식으로 연결,관계·계층,must,yes,no,S08 관계 메뉴
-선행·후행 관계(precedes·follows),관계·계층,must,yes,no,S08 F05
-관련 항목 관계(relates),관계·계층,must,yes,no,S08
-기타 관계: 중복·차단·포함·필수(각 역방향 포함),관계·계층,should,yes,no,S08 기타 관계
-관계 탭 그룹별 카드 표시(유형·상태·날짜),관계·계층,must,yes,no,S08 07b
-순환 관계·자기 조상 관계 방지,관계·계층,must,yes,no,F05 edge
-시작일·완료일·기간 속성,일정,must,yes,no,S10
-날짜 선택 대화상자(2개월 달력·오늘·기간 자동 계산),일정,must,yes,no,S10
-근무일만 계산과 작업 패키지별 예외,일정,must,yes,no,S10 근무일만
-관리: 근무 요일·휴무일·일별 시간,일정,must,yes,no,S33
-수동·자동 스케줄링 모드,일정,must,yes,no,S10
-선행 항목 변경 시 후행 항목 자동 이동(lag 반영),일정,must,yes,no,F04 핵심 로직
-부모 날짜를 자식 날짜 범위로 파생,일정,must,yes,no,S10 정보 배너
+부모-자식 계층(WBS),관계·계층,must,yes,yes,S08 F07
+새 자식 만들기·기존 항목을 자식으로 연결,관계·계층,must,yes,partial,S08 관계 메뉴 | 빌드: 생성 시 상위 #번호 지정. 관계 탭에서 자식 추가 없음
+선행·후행 관계(precedes·follows),관계·계층,must,yes,yes,S08 F05
+관련 항목 관계(relates),관계·계층,must,yes,yes,S08
+기타 관계: 중복·차단·포함·필수(각 역방향 포함),관계·계층,should,yes,yes,S08 기타 관계
+관계 탭 그룹별 카드 표시(유형·상태·날짜),관계·계층,must,yes,yes,S08 07b
+순환 관계·자기 조상 관계 방지,관계·계층,must,yes,yes,F05 edge | 빌드: 가짜 계층에서 검사
+시작일·완료일·기간 속성,일정,must,yes,yes,S10
+날짜 선택 대화상자(2개월 달력·오늘·기간 자동 계산),일정,must,yes,partial,S10 | 빌드: 브라우저 날짜 입력 + 미리 보기. 2개월 달력 없음
+근무일만 계산과 작업 패키지별 예외,일정,must,yes,yes,S10 근무일만
+관리: 근무 요일·휴무일·일별 시간,일정,must,yes,partial,S33 | 빌드: seed 휴무일 + 달력 API. 관리 UI 없음
+수동·자동 스케줄링 모드,일정,must,yes,yes,S10
+선행 항목 변경 시 후행 항목 자동 이동(lag 반영),일정,must,yes,yes,F04 핵심 로직 | 빌드: lag 반영. lag 입력 UI 없음
+부모 날짜를 자식 날짜 범위로 파생,일정,must,yes,yes,S10 정보 배너
 날짜 대화상자의 선행·후속·하위 탭,일정,should,yes,no,S10
-마일스톤(날짜 1개),일정,must,yes,no,S13
+마일스톤(날짜 1개),일정,must,yes,yes,S13
 근무일 변경 시 전체 일정 재계산,일정,should,yes,no,S33 경고 문구
-작업·남은 작업·완료 % 속성,진행률,should,yes,no,S07
-진행률 계산 모드(작업 기반·상태 기반),진행률,should,yes,no,S32
+작업·남은 작업·완료 % 속성,진행률,should,yes,yes,S07
+진행률 계산 모드(작업 기반·상태 기반),진행률,should,yes,no,S32 | 빌드: 작업 기반 일부(남은 작업 자동 계산)만
 계층 합계(작업 가중·단순 평균),진행률,could,yes,no,S32
 닫힘 상태면 완료 100% 처리 옵션,진행률,could,yes,no,S32
-Gantt 타임라인(막대·연/월/주차 눈금·라벨),Gantt,must,yes,no,S13
-Gantt 의존선 표시,Gantt,must,yes,no,S13
-Gantt 오늘 선·기한 지남 빨간 날짜,Gantt,should,yes,no,S13
-Gantt 막대 드래그 이동·크기 조절,Gantt,must,yes,no,F04
+Gantt 타임라인(막대·연/월/주차 눈금·라벨),Gantt,must,yes,yes,S13 | 빌드: S13
+Gantt 의존선 표시,Gantt,must,yes,yes,S13
+Gantt 오늘 선·기한 지남 빨간 날짜,Gantt,should,yes,yes,S13
+Gantt 막대 드래그 이동·크기 조절,Gantt,must,yes,yes,F04 | 빌드: 전파 결과 즉시 반영
 Gantt 날짜 없는 항목에 막대 그려 날짜 지정,Gantt,should,yes,no,
-Gantt 줌 인·아웃·자동 줌,Gantt,must,yes,no,S13
+Gantt 줌 인·아웃·자동 줌,Gantt,must,yes,partial,S13 | 빌드: 일·주·월. 자동 없음
 Gantt 라벨 위치 설정(왼쪽·오른쪽·먼 오른쪽),Gantt,could,yes,no,query_props tll
 전역 Gantt(여러 프로젝트),Gantt,could,yes,no,전역 메뉴 Gantt 차트
-보드 목록·생성·삭제,보드,must,yes,no,S14·S16
-상태(칸반) 보드,보드,must,yes,no,S15
-카드 드래그로 속성 변경(워크플로 준수),보드,must,yes,no,F06
+보드 목록·생성·삭제,보드,must,yes,yes,S14·S16 | 빌드: S14·S16
+상태(칸반) 보드,보드,must,yes,yes,S15 | 빌드: S15
+카드 드래그로 속성 변경(워크플로 준수),보드,must,yes,yes,"F06 | 빌드: 마우스·키보드, 거부 시 원위치"
 기본 보드(수동 목록),보드,should,yes,no,S16
-담당자·버전·하위 프로젝트·부모-자식 보드,보드,should,yes,no,S16. 원본 Community에서 모두 사용 가능
-보드 컬럼에서 카드 생성·기존 항목 추가,보드,should,yes,no,S15 + 버튼
+담당자·버전·하위 프로젝트·부모-자식 보드,보드,should,yes,partial,S16. 원본 Community에서 모두 사용 가능 | 빌드: 담당자·버전 보드. 하위 프로젝트·상위-하위 없음
+보드 컬럼에서 카드 생성·기존 항목 추가,보드,should,yes,partial,S15 + 버튼 | 빌드: + 는 새 작업 폼으로 이동(상태 미리 지정 안 됨)
 보드 필터,보드,should,yes,no,S15
 보드에 목록(컬럼) 추가·순서 변경,보드,should,yes,no,S15
 "캘린더(월·주 보기, 드래그로 날짜 변경)",캘린더,should,yes,no,S17 이 인스턴스에서는 모듈 꺼짐
 "팀 플래너(사람별 1·2주 보기, 드래그로 배정·일정 변경)",팀 플래너,should,yes,no,원본은 Enterprise 전용(S18). 사내 클론에서는 구현 가능
-알림 센터 받은 편지함(읽지 않음·모두),알림,must,yes,no,S19
-헤더 읽지 않은 알림 수 배지,알림,must,yes,no,공통 셸
-알림 클릭 시 분할 패널로 해당 항목 열기,알림,must,yes,no,F09
-모두 읽은 상태로 표시,알림,must,yes,no,S19
-알림 이유별·프로젝트별 필터,알림,should,yes,no,S19
-알림 이유: 멘션·담당자·책임자·주시·공유,알림,must,yes,no,S20 참여
+알림 센터 받은 편지함(읽지 않음·모두),알림,must,yes,yes,S19 | 빌드: S19
+헤더 읽지 않은 알림 수 배지,알림,must,yes,yes,공통 셸 | 빌드: 60초 폴링
+알림 클릭 시 분할 패널로 해당 항목 열기,알림,must,yes,yes,F09
+모두 읽은 상태로 표시,알림,must,yes,yes,S19
+알림 이유별·프로젝트별 필터,알림,should,yes,no,S19 | 빌드: 읽지 않음/모두만
+알림 이유: 멘션·담당자·책임자·주시·공유,알림,must,yes,partial,S20 참여 | 빌드: 멘션·담당자·책임자·주시. 공유 없음
 비참여 이벤트 구독(새 항목·모든 코멘트·상태·우선순위·날짜 변경),알림,could,yes,no,S20
 날짜 알림(시작·완료 당일/1/3/7일 전·기한 지남),알림,should,yes,no,S20
 프로젝트별 알림 설정 재정의,알림,could,yes,no,S20
 이메일 알림: 멘션 즉시·일일 요약 시간,알림,should,yes,no,S20 이메일 미리 알림·configuration
-알림 빈 상태 화면,알림,must,yes,no,S19
-헤더 전역 검색(자동완성),검색,should,yes,no,공통 셸
+알림 빈 상태 화면,알림,must,yes,yes,S19
+헤더 전역 검색(자동완성),검색,should,yes,yes,공통 셸 | 빌드: #번호·제목·프로젝트
 검색 결과 페이지(범주 탭),검색,should,yes,no,S22
-홈 화면(환영·즐겨찾는 프로젝트·새 기능),홈,could,yes,no,S02
+홈 화면(환영·즐겨찾는 프로젝트·새 기능),홈,could,yes,yes,S02 | 빌드: S02
 내 페이지 위젯 대시보드,홈,could,yes,no,S21
 관리: 유형(색상·마일스톤 여부·새 프로젝트 기본 활성·순서),관리,must,yes,no,S27
 관리: 유형 양식 구성(특성 그룹 드래그),관리,could,yes,no,S28. 그룹 편집은 원본 EE
@@ -137,7 +137,7 @@ Gantt 라벨 위치 설정(왼쪽·오른쪽·먼 오른쪽),Gantt,could,yes,no,
 관리: 진행률 추적 설정,관리,should,yes,no,S32
 프로젝트 설정: 사용 유형·카테고리·사용자 정의 필드 활성화,관리,must,yes,no,S25
 프로젝트 설정: 버전 관리,관리,should,yes,no,S26
-REST API(사내 연동용),연동,could,yes,no,원본 API v3. 형태는 새로 설계
+REST API(사내 연동용),연동,could,yes,no,"원본 API v3. 형태는 새로 설계 | 빌드: HTTP 클라이언트만 준비, 백엔드 없음"
 웹훅,연동,could,yes,no,관리: API 및 webhook
 시간 추적·비용·예산,범위 밖,could,yes,skip,이번 범위 밖. 다음 단계 후보
 미팅,범위 밖,could,yes,skip,범위 밖
