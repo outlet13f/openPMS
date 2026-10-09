@@ -1,5 +1,7 @@
 import type {
   Attachment,
+  SearchResults,
+  SearchScope,
   ProfileInput,
   NotificationSetting,
   NotificationSettings,
@@ -257,6 +259,8 @@ export interface Api {
   search: {
     /** GET /search/suggest */
     suggest(q: string): Promise<SearchHit[]>;
+    /** GET /search?q&scope&page — S22: work packages by number, title, description or comment; projects by name or description */
+    results(q: string, scope: SearchScope, page: number): Promise<SearchResults>;
   };
 
   /** Everything under /admin (architecture.md §4.2 "관리"): administrators, users/groups also global.manage_users. */

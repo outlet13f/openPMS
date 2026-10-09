@@ -645,6 +645,33 @@ export interface SearchHit {
   href: string;
 }
 
+export type SearchScope = "all" | "work_packages" | "projects";
+
+/** S22: one result. `snippet` is plain text around the match (description or comment), or null. */
+export type SearchResult =
+  | {
+      kind: "work_package";
+      number: number;
+      subject: string;
+      type: TypeRef;
+      status: StatusRef;
+      project: ProjectRef;
+      matchedIn: "number" | "subject" | "description" | "comment";
+      snippet: string | null;
+      updatedAt: IsoDateTime;
+    }
+  | { kind: "project"; project: ProjectRef; snippet: string | null };
+
+export interface SearchResults {
+  q: string;
+  scope: SearchScope;
+  counts: { workPackages: number; projects: number };
+  items: SearchResult[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 /* ---------- custom fields (S34 관리, S25 프로젝트 설정) ---------- */
 
 export type CustomFieldFormat = "string" | "text" | "integer" | "float" | "list" | "date" | "bool" | "user" | "link";

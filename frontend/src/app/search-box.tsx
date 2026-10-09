@@ -29,6 +29,9 @@ export function SearchBox() {
   const hits = useQuery({ queryKey: ["suggest", q], queryFn: () => api.search.suggest(q), enabled: q.length > 0 });
   const items = hits.data ?? [];
   const show = open && q.length > 0;
+  // the last option opens the full results page (S22)
+  const allIndex = items.length;
+  const allHref = `/search?q=${encodeURIComponent(q)}`;
 
   const go = (href: string) => {
     setOpen(false);
@@ -52,7 +55,7 @@ export function SearchBox() {
         aria-expanded={show}
         aria-controls={`${id}-list`}
         aria-autocomplete="list"
-        aria-activedescendant={show && items[active] ? `${id}-opt-${active}` : undefined}
+        aria-activedescendant={show && active <= allIndex ? `${id}-opt-${active}` : undefined}
         placeholder={t("nav.searchPlaceholder")}
         value={text}
         onChange={(e) => {
@@ -65,13 +68,13 @@ export function SearchBox() {
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") {
             e.preventDefault();
-            setActive((a) => Math.min(items.length - 1, a + 1));
+            setActive((a) => Math.min(allIndex, a + 1));
           } else if (e.key === "ArrowUp") {
             e.preventDefault();
             setActive((a) => Math.max(0, a - 1));
-          } else if (e.key === "Enter" && items[active]) {
+          } else if (e.key === "Enter" && text.trim()) {
             e.preventDefault();
-            go(items[active].href);
+            go(show && items[active] ? items[active].href : `/search?q=${encodeURIComponent(text.trim())}`);
           } else if (e.key === "Escape") {
             if (open) setOpen(false);
             else setText("");
@@ -106,6 +109,18 @@ export function SearchBox() {
           </div>
         ))}
         {!hits.isFetching && hits.isSuccess && items.length === 0 && <p className="px-2 py-2 text-sm text-fg-muted">{t("nav.searchEmpty")}</p>}
+        <div
+          id={`${id}-opt-${allIndex}`}
+          role="option"
+          aria-selected={active === allIndex}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => go(allHref)}
+          onMouseEnter={() => setActive(allIndex)}
+          className={cn("mt-1 flex cursor-pointer items-center gap-2 rounded-sm border-t border-border-muted px-2 py-1.5 text-sm text-accent", active === allIndex && "bg-surface-hover")}
+        >
+          <Search className="size-4 shrink-0" aria-hidden="true" />
+          {t("search.seeAll", { q })}
+        </div>
       </div>
       <p className="sr-only" aria-live="polite">
         {show && hits.isSuccess ? `${items.length}` : ""}

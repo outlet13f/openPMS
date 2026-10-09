@@ -18,12 +18,14 @@ import type {
   WorkPackageInput,
   WorkPackagePatch,
   WorkPackageShare,
+  SearchResult,
+  SearchResults,
 } from "../types";
 import { ApiError } from "../errors";
 import { countWorkingDays, nowIso, todayIso } from "@/lib/dates";
 import { db, newId, persist, type DbBoard, type DbJournal, type DbProject, type DbUser, type DbWp } from "./db";
 import { allowedStatusIds, can, findProject, findWp, globalPermissions, memberRoleIds, projectUserIds, requirePerm, sessionUser, visibleProjects } from "./permissions";
-import { clone, statusRef, toJournal, toProject, toWp, typeRef, priorityRef, userRef, wpRef } from "./dto";
+import { clone, projectRef, statusRef, toJournal, toProject, toWp, typeRef, priorityRef, userRef, wpRef } from "./dto";
 import { propagate, resolveDates, wouldCycle, workCalendar } from "./scheduling";
 import { defaultSpec, runQuery } from "./query";
 import { DEFAULT_COLUMNS } from "./seed";
@@ -1110,8 +1112,58 @@ export const fakeApi: Api = {
           .map((p) => ({ kind: "project" as const, title: p.name, subtitle: p.identifier, href: `/projects/${p.identifier}` }));
         return [...wps, ...ps];
       }),
+    results: (q, scope, page) =>
+      run((): SearchResults => {
+        const user = sessionUser();
+        const pageSize = 20;
+        const needle = q.trim().toLowerCase();
+        const empty = { q, scope, counts: { workPackages: 0, projects: 0 }, items: [], total: 0, page: 1, pageSize };
+        if (!needle) return empty;
+        const numeric = needle.replace(/^#/, "");
+        const rank = { number: 0, subject: 1, description: 2, comment: 3 } as const;
+        const wps: (SearchResult & { kind: "work_package" })[] = [];
+        for (const w of db.workPackages) {
+          const project = projectOf(w);
+          if (project.archivedAt || !can(user, project, "wp.view", w)) continue;
+          let matchedIn: keyof typeof rank | null = null;
+          let snippet: string | null = null;
+          if (String(w.number) === numeric) matchedIn = "number";
+          else if (w.subject.toLowerCase().includes(needle)) matchedIn = "subject";
+          else if (plainText(w.descriptionHtml).toLowerCase().includes(needle)) (matchedIn = "description"), (snippet = snippetAround(plainText(w.descriptionHtml), needle));
+          else {
+            const hit = db.journals.find((j) => j.wpId === w.id && j.notesHtml && (!j.isInternal || can(user, project, "wp.view_internal_comments")) && plainText(j.notesHtml).toLowerCase().includes(needle));
+            if (hit) (matchedIn = "comment"), (snippet = snippetAround(plainText(hit.notesHtml), needle));
+          }
+          if (matchedIn)
+            wps.push({ kind: "work_package", number: w.number, subject: w.subject, type: typeRef(w.typeId), status: statusRef(w.statusId), project: projectRef(project), matchedIn, snippet, updatedAt: w.updatedAt });
+        }
+        wps.sort((a, b) => rank[a.matchedIn] - rank[b.matchedIn] || b.updatedAt.localeCompare(a.updatedAt));
+        const projects: SearchResult[] = visibleProjects(user)
+          .filter((p) => !p.archivedAt)
+          .flatMap((p): SearchResult[] => {
+            const desc = plainText(p.descriptionHtml);
+            if (p.name.toLowerCase().includes(needle) || p.identifier.toLowerCase().includes(needle)) return [{ kind: "project", project: projectRef(p), snippet: null }];
+            if (desc.toLowerCase().includes(needle)) return [{ kind: "project", project: projectRef(p), snippet: snippetAround(desc, needle) }];
+            return [];
+          })
+          .sort((a, b) => (a.kind === "project" && b.kind === "project" ? a.project.name.localeCompare(b.project.name, "ko") : 0));
+        const all = scope === "projects" ? projects : scope === "work_packages" ? wps : [...projects, ...wps];
+        const p = Math.max(1, page);
+        return clone({ q, scope, counts: { workPackages: wps.length, projects: projects.length }, items: all.slice((p - 1) * pageSize, p * pageSize), total: all.length, page: p, pageSize });
+      }),
   },
 };
+
+const plainText = (html: string) => html.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+
+/** About 50 characters either side of the first match, with … where text was cut. */
+function snippetAround(text: string, needle: string, radius = 50) {
+  const i = text.toLowerCase().indexOf(needle);
+  if (i < 0) return text.slice(0, radius * 2);
+  const start = Math.max(0, i - radius);
+  const end = Math.min(text.length, i + needle.length + radius);
+  return `${start > 0 ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`;
+}
 
 export { resetFakeDb } from "./db";
 export const fakeAccounts = () => db.users.map((u) => ({ email: u.email, name: u.name, password: u.password, status: u.status, isAdmin: u.isAdmin }));

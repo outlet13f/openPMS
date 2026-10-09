@@ -25,6 +25,7 @@ import { AdminHomePage } from "@/pages/admin";
 import { AdminTypesPage } from "@/pages/admin/types";
 import { NotificationSettingsPage } from "@/pages/notification-settings";
 import { AccountPage } from "@/pages/account";
+import { SearchPage } from "@/pages/search";
 import { AdminCustomFieldsPage } from "@/pages/admin/custom-fields";
 import { AdminPrioritiesPage, AdminStatusesPage } from "@/pages/admin/statuses";
 import { AdminWorkflowsPage } from "@/pages/admin/workflows";
@@ -81,7 +82,7 @@ export const router = createBrowserRouter([
         element: <NotificationsPage />,
         children: [{ path: "details/:number/:tab?", element: <NotificationDetailRoute /> }],
       },
-      { path: "search", element: <Stub id="S22" nameKey="stubs.search" /> },
+      { path: "search", element: <SearchPage /> },
       { path: "work-packages", element: <WorkPackagesPage /> },
       { path: "gantt", element: <Stub id="S13" nameKey="nav.gantt" /> },
       { path: "projects", element: <MeRoute render={(me) => <ProjectsPage me={me} />} /> },

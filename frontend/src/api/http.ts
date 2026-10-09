@@ -155,6 +155,7 @@ export const httpApi: Api = {
   },
   search: {
     suggest: (q) => get("/search/suggest", { q }),
+    results: (q, scope, page) => get("/search", { q, scope, page: String(page) }),
   },
   admin: {
     customFields: {

@@ -162,6 +162,17 @@ public final class Dto {
 
     public record SearchHit(String kind, String title, String subtitle, String href) {}
 
+    /** S22: kind "work_package"; matchedIn number, subject, description or comment; snippet: plain text around the match */
+    public record WorkPackageResult(String kind, long number, String subject, TypeRef type, StatusRef status, ProjectRef project, String matchedIn,
+                                    String snippet, OffsetDateTime updatedAt) {}
+
+    public record ProjectResult(String kind, ProjectRef project, String snippet) {}
+
+    public record SearchCounts(int workPackages, int projects) {}
+
+    /** items: WorkPackageResult and ProjectResult (projects first in "all") */
+    public record SearchResults(String q, String scope, SearchCounts counts, List<Object> items, int total, int page, int pageSize) {}
+
     public record NonWorkingDay(UUID id, LocalDate date, String name) {}
 
     public record CalendarDays(List<Integer> workingDays, List<NonWorkingDay> days) {}
