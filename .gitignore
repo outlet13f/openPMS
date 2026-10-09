@@ -1,0 +1,13 @@
+# dependencies and build output
+node_modules/
+dist/
+dist-check/
+backend/build/
+backend/.gradle/
+backend/src/main/resources/static/
+*.log
+.DS_Store
+
+# Screenshots of the original app are reference material only: never committed, never shipped.
+replica/screens/
+*.tsbuildinfo

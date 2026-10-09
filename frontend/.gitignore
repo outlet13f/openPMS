@@ -1,0 +1,8 @@
+node_modules/
+dist/
+dist-check/
+*.local
+# generated from replica/design/tokens.json by scripts/build-tokens.mjs (npm run tokens)
+src/styles/tokens.css
+src/styles/theme.css
+src/design/tokens.ts

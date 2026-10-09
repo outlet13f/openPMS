@@ -1,0 +1,54 @@
+  AAA   17.63:1  text                     on bg                   
+  AAA   16.45:1  text                     on surface              
+  AAA   15.45:1  text                     on surface-hover        
+  AAA   14.49:1  text                     on surface-selected     
+  AAA   15.85:1  text                     on surface-sunken       
+  AAA   15.45:1  text                     on accent-subtle        
+  AAA   15.55:1  text                     on danger-subtle        
+  AAA   15.69:1  text                     on success-subtle       
+  AAA   16.11:1  text                     on warning-subtle       
+  AAA   15.53:1  text                     on info-subtle          
+  AA     6.28:1  text-muted               on bg                   
+  AA     5.86:1  text-muted               on surface              
+  AA     5.50:1  text-muted               on surface-hover        
+  AA     5.16:1  text-muted               on surface-selected     
+  AA     5.65:1  text-muted               on surface-sunken       
+  AA     5.52:1  on-accent                on accent               
+  AAA    7.32:1  on-accent                on accent-hover         
+  AA     5.52:1  accent                   on bg                   
+  AA     5.15:1  accent                   on surface              
+  AA     4.53:1  accent                   on surface-selected     
+  AAA    7.22:1  accent-subtle-text       on accent-subtle        
+  AA     5.46:1  on-danger                on danger               
+  AAA    7.22:1  on-danger                on danger-hover         
+  AA     5.46:1  danger                   on bg                   
+  AA     5.09:1  danger                   on surface              
+  AA     4.81:1  danger                   on danger-subtle        
+  AA     5.33:1  success                  on bg                   
+  AA     4.74:1  success                  on success-subtle       
+  AA     6.33:1  warning                  on bg                   
+  AA     5.78:1  warning                  on warning-subtle       
+  AAA   15.90:1  header-fg                on header-bg            
+  AAA   12.45:1  header-fg                on header-hover         
+  AAA    9.46:1  header-fg-muted          on header-bg            
+  AA     6.01:1  data-blue                on bg                   
+  AA     5.50:1  data-teal                on bg                   
+  AA     5.36:1  data-green               on bg                   
+  AA     5.90:1  data-olive               on bg                   
+  AA     5.66:1  data-amber               on bg                   
+  AA     5.30:1  data-orange              on bg                   
+  AA     5.74:1  data-red                 on bg                   
+  AA     6.20:1  data-pink                on bg                   
+  AA     6.48:1  data-purple              on bg                   
+  AA     5.65:1  data-grey                on bg                   
+  PASS   3.73:1  border-input             on bg                   ui
+  PASS   3.48:1  border-input             on surface              ui
+  PASS   3.35:1  border-input             on surface-sunken       ui
+  PASS   5.52:1  focus-ring               on bg                   ui
+  PASS   5.15:1  focus-ring               on surface              ui
+  PASS   4.53:1  focus-ring               on surface-selected     ui
+  PASS   5.52:1  accent                   on bg                   ui
+  PASS   7.25:1  warning-strong           on header-bg            ui
+  PASS  15.90:1  header-fg                on header-bg            ui
+
+  52 pairs, 0 failing AA
