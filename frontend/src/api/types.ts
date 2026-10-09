@@ -379,6 +379,8 @@ export interface QuerySpec {
   includeSubprojects: boolean;
   /** Free text over subject and #number (the "텍스트로 필터링" box). */
   text?: string;
+  /** Gantt views: when visible, the result also carries the precedes relations between its rows. */
+  timeline?: { visible: boolean; zoom: "day" | "week" | "month" };
 }
 
 export interface QueryRow {
@@ -394,6 +396,8 @@ export interface QueryResult {
   total: number;
   page: number;
   pageSize: number;
+  /** Only with spec.timeline.visible: predecessor → successor links among the returned rows. */
+  relations?: { fromNumber: number; toNumber: number; lag: number }[];
 }
 
 export interface SavedQuery {

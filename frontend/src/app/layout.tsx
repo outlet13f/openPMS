@@ -118,7 +118,7 @@ function ProjectSidebar({ identifier, onNavigate }: { identifier: string; onNavi
   const { t } = useTranslation();
   const project = useProject(identifier);
   const inViews = useMatch("/projects/:p/work-packages/*");
-  const inGanttViews = useMatch("/projects/:p/gantt");
+  const inGanttViews = useMatch("/projects/:p/gantt/*");
   if (!project.data) return <Sidebar label={t("nav.projectMenu")} sections={[]} />;
   const p = project.data;
   const base = `/projects/${p.identifier}`;

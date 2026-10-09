@@ -204,6 +204,13 @@ export function runQuery(user: DbUser, spec: QuerySpec, opts: { projectId?: stri
       added.add(r.wp.id);
     }
   }
+  if (spec.timeline?.visible) {
+    const shown = new Map(rows.map((r) => [r.wp.id, r.wp.number]));
+    const relations = db.relations
+      .filter((r) => r.type === "precedes" && shown.has(r.fromId) && shown.has(r.toId))
+      .map((r) => ({ fromNumber: shown.get(r.fromId)!, toNumber: shown.get(r.toId)!, lag: r.lag }));
+    return { rows, total, page, pageSize, relations };
+  }
   return { rows, total, page, pageSize };
 }
 
