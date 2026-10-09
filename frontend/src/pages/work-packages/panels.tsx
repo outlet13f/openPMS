@@ -23,8 +23,8 @@ const asTab = (s: string | undefined, fallback: DetailTab): DetailTab => (TABS.i
 function useListSearch() {
   const [params] = useSearchParams();
   const p = new URLSearchParams(params);
-  p.delete("type");
-  p.delete("parent");
+  // prefill values for the new form (from "새 하위 작업", calendar or team planner) are not list state
+  for (const k of ["type", "parent", "startDate", "dueDate", "assignee"]) p.delete(k);
   const s = p.toString();
   return s ? `?${s}` : "";
 }
@@ -75,18 +75,25 @@ export function FullViewRoute() {
   );
 }
 
-export function NewPanelRoute() {
+/** S09 in the split panel. `base` is the page that hosts the panel (list, calendar, team planner). */
+export function NewPanelRoute({ base: hostBase }: { base?: string } = {}) {
   const { t } = useTranslation();
   const project = useCurrentProject();
   const navigate = useNavigate();
   const toast = useToast();
   const [params, setParams] = useSearchParams();
   const search = useListSearch();
-  const base = `/projects/${project.identifier}/work-packages`;
+  const base = hostBase ?? `/projects/${project.identifier}/work-packages`;
   const typeId = params.get("type") ?? undefined;
   const form = useWpForm(project.id, typeId);
   const create = useCreateWorkPackage(project.id);
-  const [v, setV] = useState<Partial<WorkPackageInput> & { description: string; parent: string }>({ description: "", parent: params.get("parent") ? `#${params.get("parent")}` : "" });
+  const [v, setV] = useState<Partial<WorkPackageInput> & { description: string; parent: string }>(() => ({
+    description: "",
+    parent: params.get("parent") ? `#${params.get("parent")}` : "",
+    startDate: params.get("startDate") ?? undefined,
+    dueDate: params.get("dueDate") ?? undefined,
+    assigneeId: params.get("assignee") ?? undefined,
+  }));
   useDocumentTitle(form.data ? t("wp.newTitle", { type: form.data.type.name }) : undefined);
 
   if (form.isPending)

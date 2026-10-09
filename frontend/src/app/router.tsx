@@ -1,6 +1,6 @@
 // Every screen in replica/recon.md gets a route (architecture.md §4.3). Screens not built yet render
 // a StubPage naming their S-ID; replica/build-log.md tracks which is which.
-import type { ReactElement } from "react";
+import { lazy, Suspense, type ReactElement } from "react";
 import { createBrowserRouter, Navigate, useParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import type { ParseKeys } from "i18next";
@@ -31,6 +31,13 @@ import { AdminCalendarPage } from "@/pages/admin/calendar";
 import { ProjectSettingsPage } from "@/pages/projects/settings";
 import { BoardsPage, NewBoardPage } from "@/pages/boards/list";
 import { BoardDetailRoute, BoardPage } from "@/pages/boards/board";
+import { PlanningListPage } from "@/pages/planning/list";
+import { PlanningDetailRoute, PlanningNewRoute } from "@/pages/planning/routes";
+import { TeamPlannerPage } from "@/pages/planning/team-planner";
+import { Skeleton } from "@/components/ui/spinner";
+
+// FullCalendar is only needed on S17, so the calendar page is its own chunk.
+const CalendarPage = lazy(() => import("@/pages/planning/calendar").then((m) => ({ default: m.CalendarPage })));
 
 function Stub({ id, nameKey }: { id: string; nameKey: ParseKeys }) {
   const { t } = useTranslation();
@@ -106,8 +113,30 @@ export const router = createBrowserRouter([
             element: <RequireModule module="boards"><BoardPage /></RequireModule>,
             children: [{ path: "details/:number/:tab?", element: <BoardDetailRoute /> }],
           },
-          { path: "calendar", element: <RequireModule module="calendar"><Stub id="S17" nameKey="nav.calendar" /></RequireModule> },
-          { path: "team-planner", element: <RequireModule module="team_planner"><Stub id="S18" nameKey="nav.teamPlanner" /></RequireModule> },
+          { path: "calendar", element: <RequireModule module="calendar"><PlanningListPage kind="calendar" /></RequireModule> },
+          {
+            path: "calendar/:id",
+            element: (
+              <RequireModule module="calendar">
+                <Suspense fallback={<Skeleton className="m-8 h-96" />}>
+                  <CalendarPage />
+                </Suspense>
+              </RequireModule>
+            ),
+            children: [
+              { path: "details/:number/:tab?", element: <PlanningDetailRoute kind="calendar" /> },
+              { path: "new", element: <PlanningNewRoute kind="calendar" /> },
+            ],
+          },
+          { path: "team-planner", element: <RequireModule module="team_planner"><PlanningListPage kind="team_planner" /></RequireModule> },
+          {
+            path: "team-planner/:id",
+            element: <RequireModule module="team_planner"><TeamPlannerPage /></RequireModule>,
+            children: [
+              { path: "details/:number/:tab?", element: <PlanningDetailRoute kind="team-planner" /> },
+              { path: "new", element: <PlanningNewRoute kind="team-planner" /> },
+            ],
+          },
           { path: "members", element: <MembersPage /> },
           { path: "settings", element: <ProjectSettingsPage /> },
           { path: "settings/:section", element: <ProjectSettingsPage /> },

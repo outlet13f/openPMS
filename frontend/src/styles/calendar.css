@@ -1,0 +1,122 @@
+/* FullCalendar (S17) mapped onto the design tokens. FullCalendar injects its own base CSS first; these
+   variables and rules only restyle it, so every colour still comes from tokens.json. */
+.pms-calendar {
+  --fc-border-color: var(--pms-color-border-muted);
+  --fc-page-bg-color: var(--pms-color-bg);
+  --fc-neutral-bg-color: var(--pms-color-surface);
+  --fc-neutral-text-color: var(--pms-color-text-muted);
+  --fc-today-bg-color: var(--pms-color-accent-subtle);
+  --fc-highlight-color: var(--pms-color-surface-selected);
+  --fc-event-bg-color: var(--pms-color-surface-selected);
+  --fc-event-border-color: var(--pms-color-border);
+  --fc-event-text-color: var(--pms-color-text);
+  --fc-event-selected-overlay-color: transparent;
+  --fc-more-link-bg-color: transparent;
+  --fc-more-link-text-color: var(--pms-color-text-muted);
+  --fc-small-font-size: var(--pms-text-xs);
+  font-size: var(--pms-text-sm);
+  color: var(--pms-color-text);
+}
+
+.pms-calendar .fc-scrollgrid {
+  border-radius: var(--pms-radius-md);
+  overflow: hidden;
+}
+
+.pms-calendar .fc-col-header-cell {
+  background: var(--pms-color-surface);
+}
+
+.pms-calendar .fc-col-header-cell-cushion {
+  padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 1);
+  color: var(--pms-color-text-muted);
+  font-size: var(--pms-text-xs);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.pms-calendar .fc-daygrid-day-top {
+  flex-direction: row;
+  align-items: baseline;
+  gap: calc(var(--spacing) * 1);
+  padding: calc(var(--spacing) * 0.5) calc(var(--spacing) * 1);
+}
+
+.pms-calendar .fc-daygrid-day-number {
+  padding: 0;
+  color: var(--pms-color-text);
+  font-size: var(--pms-text-xs);
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+}
+
+.pms-calendar .fc-day-other .fc-daygrid-day-number {
+  color: var(--pms-color-text-muted);
+}
+
+.pms-calendar .fc-day-today .fc-daygrid-day-number {
+  color: var(--pms-color-accent-subtle-text);
+  font-weight: 700;
+}
+
+.pms-calendar .pms-nonworking {
+  background: var(--pms-color-surface);
+}
+
+.pms-calendar .pms-holiday {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--pms-color-danger);
+  font-size: var(--pms-text-xs);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Work package events: neutral chip with the type colour as a left rule (text stays readable on any type colour). */
+.pms-calendar .fc-event.pms-event {
+  margin-top: calc(var(--spacing) * 0.5);
+  border-width: 0 0 0 3px;
+  border-style: solid;
+  border-radius: var(--pms-radius-sm);
+  background: var(--pms-color-surface-selected);
+  color: var(--pms-color-text);
+  cursor: pointer;
+}
+
+.pms-calendar .fc-event.pms-event.fc-event-draggable {
+  cursor: grab;
+}
+
+.pms-calendar .fc-event.pms-event:hover {
+  background: var(--pms-color-surface-hover);
+}
+
+.pms-calendar .fc-event.pms-event:focus-visible {
+  outline: 2px solid var(--pms-color-focus-ring);
+  outline-offset: 1px;
+}
+
+.pms-calendar .fc-event.pms-event.fc-event-dragging,
+.pms-calendar .fc-event.pms-event.fc-event-resizing {
+  box-shadow: var(--pms-shadow-drag);
+}
+
+.pms-calendar .pms-event-overdue .pms-event-dates {
+  color: var(--pms-color-danger);
+  font-weight: 600;
+}
+
+.pms-calendar .fc-daygrid-more-link {
+  font-size: var(--pms-text-xs);
+}
+
+.pms-calendar .fc-popover {
+  border-radius: var(--pms-radius-md);
+  box-shadow: var(--pms-shadow-pop);
+  background: var(--pms-color-bg);
+}
+
+.pms-calendar .fc-popover-header {
+  background: var(--pms-color-surface);
+  font-weight: 600;
+}
