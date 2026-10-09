@@ -2,23 +2,38 @@
 // partial: plain-text comment box with a mention picker instead of the Tiptap rich text editor.
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { MessageSquare, Send } from "lucide-react";
-import type { Journal, WorkPackage } from "@/api";
+import { MessageSquare, Pencil, Send } from "lucide-react";
+import type { Journal, UserRef, WorkPackage } from "@/api";
 import { isApiError } from "@/api";
-import { useActivities, useComment, useFilterOptions } from "@/api/hooks";
+import { useActivities, useComment, useEditComment, useFilterOptions } from "@/api/hooks";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/feedback";
 import { Skeleton } from "@/components/ui/spinner";
 import { RichText } from "@/components/domain/rich-text";
 import { formatDateTime, relativeTime } from "@/lib/dates";
-import { textToHtml } from "@/lib/text";
+import { htmlToText, textToHtml } from "@/lib/text";
+import { Textarea } from "@/components/ui/field";
 import { cn } from "@/lib/cn";
 import { ErrorState } from "@/app/page";
 
-function Entry({ j }: { j: Journal }) {
+function Entry({ j, wpNumber, people }: { j: Journal; wpNumber: number; people: UserRef[] }) {
   const { t } = useTranslation();
   const changes = j.details.filter((d) => d.field !== "_created");
+  const edit = useEditComment(wpNumber);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const saveEdit = async () => {
+    if (!draft.trim()) return setError(t("activity.commentEmpty"));
+    try {
+      await edit.mutateAsync({ journalId: j.id, bodyHtml: textToHtml(draft, people) });
+      setEditing(false);
+      setError(null);
+    } catch (e) {
+      setError(isApiError(e) ? e.message : t("app.errorBody"));
+    }
+  };
   return (
     <li className="flex gap-3 py-3">
       <Avatar id={j.user.id} name={j.user.name} size="sm" className="mt-0.5" />
@@ -29,6 +44,17 @@ function Entry({ j }: { j: Journal }) {
             {relativeTime(j.createdAt)}
           </time>
           {j.updatedAt !== j.createdAt && j.notesHtml && <span className="ml-1 text-xs text-fg-muted">· {t("activity.edited")}</span>}
+          {j.canEdit && !editing && (
+            <Button
+              variant="ghost"
+              size="sm"
+              iconOnly
+              className="ml-1 align-middle"
+              aria-label={t("activity.editComment")}
+              icon={<Pencil />}
+              onClick={() => (setDraft(htmlToText(j.notesHtml)), setEditing(true))}
+            />
+          )}
         </p>
         {j.cause && <p className="mt-0.5 text-xs text-fg-muted">{t(`activity.becauseOf.${j.cause.kind}`, { number: j.cause.workPackageNumber })}</p>}
         {j.details.some((d) => d.field === "_created") && <p className="mt-0.5 text-sm text-fg-muted">{t("activity.created")}</p>}
@@ -47,7 +73,35 @@ function Entry({ j }: { j: Journal }) {
             ))}
           </ul>
         )}
-        {j.notesHtml && <RichText html={j.notesHtml} className="mt-1.5 rounded-md bg-surface px-3 py-2" />}
+        {j.notesHtml && !editing && <RichText html={j.notesHtml} className="mt-1.5 rounded-md bg-surface px-3 py-2" />}
+        {editing && (
+          <div className="mt-1.5 flex flex-col gap-2">
+            <label htmlFor={`edit-${j.id}`} className="sr-only">
+              {t("activity.editComment")}
+            </label>
+            <Textarea
+              id={`edit-${j.id}`}
+              rows={3}
+              autoFocus
+              value={draft}
+              aria-invalid={!!error}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setEditing(false);
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void saveEdit();
+              }}
+            />
+            {error && <p className="text-xs text-danger">{error}</p>}
+            <div className="flex justify-end gap-2">
+              <Button size="sm" onClick={() => setEditing(false)}>
+                {t("app.cancel")}
+              </Button>
+              <Button size="sm" variant="primary" loading={edit.isPending} onClick={() => void saveEdit()}>
+                {t("app.save")}
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </li>
   );
@@ -167,6 +221,7 @@ function CommentBox({ wp }: { wp: WorkPackage }) {
 export function ActivityTab({ wp }: { wp: WorkPackage }) {
   const { t } = useTranslation();
   const activities = useActivities(wp.number);
+  const people = useFilterOptions(wp.project.id).data?.users ?? [];
   if (activities.isPending)
     return (
       <div className="flex flex-col gap-3 py-3">
@@ -183,7 +238,7 @@ export function ActivityTab({ wp }: { wp: WorkPackage }) {
       ) : (
         <ol className="divide-y divide-border-muted" aria-label={t("activity.title")}>
           {activities.data.map((j) => (
-            <Entry key={j.id} j={j} />
+            <Entry key={j.id} j={j} wpNumber={wp.number} people={people} />
           ))}
         </ol>
       )}

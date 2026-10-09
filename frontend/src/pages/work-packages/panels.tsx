@@ -24,6 +24,7 @@ function useListSearch() {
   const [params] = useSearchParams();
   const p = new URLSearchParams(params);
   p.delete("type");
+  p.delete("parent");
   const s = p.toString();
   return s ? `?${s}` : "";
 }
@@ -85,7 +86,7 @@ export function NewPanelRoute() {
   const typeId = params.get("type") ?? undefined;
   const form = useWpForm(project.id, typeId);
   const create = useCreateWorkPackage(project.id);
-  const [v, setV] = useState<Partial<WorkPackageInput> & { description: string; parent: string }>({ description: "", parent: "" });
+  const [v, setV] = useState<Partial<WorkPackageInput> & { description: string; parent: string }>({ description: "", parent: params.get("parent") ? `#${params.get("parent")}` : "" });
   useDocumentTitle(form.data ? t("wp.newTitle", { type: form.data.type.name }) : undefined);
 
   if (form.isPending)

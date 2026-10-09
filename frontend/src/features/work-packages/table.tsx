@@ -2,7 +2,8 @@
 import { useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Plus } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, ChevronRight, EyeOff, ListPlus, ListX, Plus } from "lucide-react";
+import { Menu, type MenuEntry } from "@/components/ui/overlay";
 import type { ColumnKey, FilterOptions, QueryRow, QuerySpec, WorkPackage } from "@/api";
 import { useCreateWorkPackage } from "@/api/hooks";
 import { Avatar, Principal } from "@/components/ui/avatar";
@@ -122,7 +123,33 @@ export function WorkPackageTable({
 
   const toggle = (id: string) => setCollapsed((s) => (s.has(id) ? (s.delete(id), new Set(s)) : new Set(s.add(id))));
   const sort = spec.sort[0];
-  const onSort = (c: ColumnKey) => onSpec({ ...spec, sort: [{ field: c, dir: sort?.field === c && sort.dir === "asc" ? "desc" : "asc" }] });
+  /** Header menu (sort, multi-sort up to 3 keys, move, hide), like the original's column menu. */
+  const headerMenu = (c: ColumnKey): MenuEntry[] => {
+    const idx = spec.columns.indexOf(c);
+    const inSort = spec.sort.findIndex((s) => s.field === c);
+    const items: MenuEntry[] = [];
+    if (SORTABLE.includes(c)) {
+      items.push(
+        { label: t("wp.header.sortAsc"), icon: <ArrowUp />, onSelect: () => onSpec({ ...spec, sort: [{ field: c, dir: "asc" }] }) },
+        { label: t("wp.header.sortDesc"), icon: <ArrowDown />, onSelect: () => onSpec({ ...spec, sort: [{ field: c, dir: "desc" }] }) },
+      );
+      if (inSort < 0 && spec.sort.length > 0 && spec.sort.length < 3)
+        items.push({ label: t("wp.header.addSort"), icon: <ListPlus />, onSelect: () => onSpec({ ...spec, sort: [...spec.sort, { field: c, dir: "asc" }] }) });
+      if (inSort > 0) items.push({ label: t("wp.header.removeSort"), icon: <ListX />, onSelect: () => onSpec({ ...spec, sort: spec.sort.filter((s) => s.field !== c) }) });
+      items.push({ kind: "separator" });
+    }
+    const move = (to: number) => {
+      const cols = spec.columns.filter((x) => x !== c);
+      cols.splice(to, 0, c);
+      onSpec({ ...spec, columns: cols });
+    };
+    items.push(
+      { label: t("wp.header.moveLeft"), icon: <ArrowLeft />, disabled: idx <= 0, onSelect: () => move(idx - 1) },
+      { label: t("wp.header.moveRight"), icon: <ArrowRight />, disabled: idx >= spec.columns.length - 1, onSelect: () => move(idx + 1) },
+    );
+    if (c !== "subject" && c !== "number") items.push({ label: t("wp.header.hide"), icon: <EyeOff />, onSelect: () => onSpec({ ...spec, columns: spec.columns.filter((x) => x !== c) }) });
+    return items;
+  };
 
   const openRow = (e: MouseEvent<HTMLTableRowElement>, wp: WorkPackage) => {
     if ((e.target as HTMLElement).closest("a,button,input,[role=menuitem],[role=menu]")) return;
@@ -138,16 +165,25 @@ export function WorkPackageTable({
             <tr className="h-row border-b border-border bg-surface text-left text-xs font-semibold text-fg-muted">
               {spec.columns.map((c) => {
                 const active = sort?.field === c;
+                const order = spec.sort.findIndex((s) => s.field === c);
+                const dir = order >= 0 ? spec.sort[order].dir : null;
                 return (
                   <th key={c} scope="col" aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined} className={cn("px-3 whitespace-nowrap", WIDTH[c])}>
-                    {SORTABLE.includes(c) ? (
-                      <button type="button" onClick={() => onSort(c)} className="-mx-1 inline-flex items-center gap-1 rounded-sm px-1 py-0.5 hover:bg-surface-hover hover:text-fg" aria-label={t("wp.sortBy", { column: t(`wp.columns.${c}`) })}>
-                        {t(`wp.columns.${c}`)}
-                        {active && (sort.dir === "asc" ? <ArrowUp className="size-3.5" aria-hidden="true" /> : <ArrowDown className="size-3.5" aria-hidden="true" />)}
-                      </button>
-                    ) : (
-                      t(`wp.columns.${c}`)
-                    )}
+                    <Menu
+                      width="w-56"
+                      trigger={
+                        <button
+                          type="button"
+                          className="-mx-1 inline-flex items-center gap-1 rounded-sm px-1 py-0.5 hover:bg-surface-hover hover:text-fg data-[state=open]:bg-surface-selected"
+                          aria-label={t("wp.header.menu", { column: t(`wp.columns.${c}`) })}
+                        >
+                          {t(`wp.columns.${c}`)}
+                          {dir && (dir === "asc" ? <ArrowUp className="size-3.5" aria-hidden="true" /> : <ArrowDown className="size-3.5" aria-hidden="true" />)}
+                          {dir && spec.sort.length > 1 && <span className="text-[10px] tabular-nums" aria-hidden="true">{order + 1}</span>}
+                        </button>
+                      }
+                      items={headerMenu(c)}
+                    />
                   </th>
                 );
               })}

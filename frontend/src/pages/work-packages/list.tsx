@@ -2,8 +2,8 @@
 import { useState } from "react";
 import { Outlet, useMatch, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { Columns3, Filter, FolderTree, ListTodo, MoreHorizontal, Plus, RotateCcw, Save, Star, Trash2 } from "lucide-react";
-import type { ColumnKey, Project, QuerySpec } from "@/api";
+import { Columns3, Filter, FolderTree, ListTodo, MoreHorizontal, Pencil, Plus, RotateCcw, Save, Star, Trash2 } from "lucide-react";
+import type { ColumnKey, Project, QuerySpec, SavedQuery } from "@/api";
 import { isApiError } from "@/api";
 import { useFilterOptions, useSavedQueryMutations, useWpForm, useWpQuery } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
@@ -61,6 +61,44 @@ function SaveViewDialog({ open, onOpenChange, spec, project, onSaved }: { open: 
   );
 }
 
+function RenameViewDialog({ view, projectId, onClose }: { view: SavedQuery; projectId?: string; onClose: () => void }) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const { update } = useSavedQueryMutations(projectId);
+  const [name, setName] = useState(view.name);
+  const err = isApiError(update.error) ? update.error.fieldErrors[0]?.message ?? update.error.message : undefined;
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="sm"
+      title={t("wp.renameView")}
+      footer={
+        <>
+          <Button onClick={onClose}>{t("app.cancel")}</Button>
+          <Button
+            variant="primary"
+            loading={update.isPending}
+            onClick={async () => {
+              const q = await update.mutateAsync({ id: view.id, patch: { name } }).catch(() => null);
+              if (q) {
+                toast({ tone: "success", title: t("wp.viewRenamed") });
+                onClose();
+              }
+            }}
+          >
+            {t("app.save")}
+          </Button>
+        </>
+      }
+    >
+      <Field label={t("wp.viewName")} required error={err}>
+        <Input data-autofocus value={name} maxLength={255} onChange={(e) => setName(e.target.value)} />
+      </Field>
+    </Dialog>
+  );
+}
+
 export function WorkPackagesPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -75,6 +113,7 @@ export function WorkPackagesPage() {
   const mutations = useSavedQueryMutations(project?.id);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [saveAs, setSaveAs] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const details = useMatch(`${base}/details/:number/*`);
   const creating = useMatch(`${base}/new`);
   const panelOpen = !!(details || creating);
@@ -108,7 +147,10 @@ export function WorkPackagesPage() {
               { kind: "separator" as const },
               { label: view.favorite ? t("wp.unfavoriteView") : t("wp.favoriteView"), icon: <Star />, onSelect: () => mutations.favorite.mutate({ id: view.id, favorite: !view.favorite }) },
               ...(view.canEdit
-                ? [{ label: t("wp.deleteView"), icon: <Trash2 />, danger: true, onSelect: () => mutations.remove.mutate(view.id, { onSuccess: () => navigate(base) }) }]
+                ? [
+                    { label: t("wp.renameView"), icon: <Pencil />, onSelect: () => setRenaming(true) },
+                    { label: t("wp.deleteView"), icon: <Trash2 />, danger: true, onSelect: () => mutations.remove.mutate(view.id, { onSuccess: () => navigate(base) }) },
+                  ]
                 : []),
             ]
           : []),
@@ -219,6 +261,7 @@ export function WorkPackagesPage() {
         )}
       </div>
       {panelOpen && panel}
+      {renaming && view && <RenameViewDialog view={view} projectId={project?.id} onClose={() => setRenaming(false)} />}
       {spec && (
         <SaveViewDialog
           open={saveAs}

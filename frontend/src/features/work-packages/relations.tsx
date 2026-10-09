@@ -1,11 +1,11 @@
 // Relations tab (S08): parent, children and typed relations, with add/remove.
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Network, Plus, Trash2 } from "lucide-react";
+import { ListPlus, Network, Plus, Trash2 } from "lucide-react";
 import { api, isApiError, type RelationType, type WorkPackage } from "@/api";
-import { useRelationMutations, useRelations } from "@/api/hooks";
+import { invalidateWorkPackages, qk, useRelationMutations, useRelations } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Counter, StatusPill, TypeLabel } from "@/components/ui/badges";
 import { EmptyState, useToast } from "@/components/ui/feedback";
@@ -48,12 +48,16 @@ function Group({ title, count, children }: { title: string; count: number; child
 }
 
 const ORDER: RelationType[] = ["follows", "precedes", "relates", "blocks", "blocked", "duplicates", "duplicated", "includes", "partof", "requires", "required"];
+/** Hierarchy is not a relation (it is the parent field), but users add it from the same place. */
+type AddKind = RelationType | "child" | "parent";
 
 function AddRelation({ wp, onDone }: { wp: WorkPackage; onDone: () => void }) {
   const { t } = useTranslation();
   const toast = useToast();
   const { add } = useRelationMutations(wp.number);
-  const [type, setType] = useState<RelationType>("follows");
+  const qc = useQueryClient();
+  const [type, setType] = useState<AddKind>("follows");
+  const [busy, setBusy] = useState(false);
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -64,19 +68,38 @@ function AddRelation({ wp, onDone }: { wp: WorkPackage; onDone: () => void }) {
       setError(t("relations.pick"));
       return;
     }
+    setBusy(true);
     try {
-      await add.mutateAsync({ type, toNumber: picked });
+      if (type === "child") {
+        const child = await api.workPackages.get(picked);
+        await api.workPackages.update(picked, { lockVersion: child.lockVersion, parentNumber: wp.number });
+      } else if (type === "parent") {
+        await api.workPackages.update(wp.number, { lockVersion: wp.lockVersion, parentNumber: picked });
+      } else {
+        await add.mutateAsync({ type, toNumber: picked });
+      }
+      qc.invalidateQueries({ queryKey: qk.wpRelations(wp.number) });
+      invalidateWorkPackages(qc);
       toast({ tone: "success", title: t("relations.added") });
       onDone();
     } catch (e) {
-      setError(isApiError(e) ? e.message : t("app.errorBody"));
+      setError(isApiError(e) ? (e.fieldErrors[0]?.message ?? e.message) : t("app.errorBody"));
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
     <div className="mb-4 flex flex-col gap-3 rounded-md border border-border bg-surface p-3">
       <Field label={t("relations.add")} hint={t(`relations.typeHints.${type}` as "relations.typeHints.relates", { defaultValue: "" }) || undefined}>
-        <Select value={type} onValueChange={(v) => setType(v as RelationType)} options={ORDER.map((r) => ({ value: r, label: t(`relations.types.${r}`) }))} />
+        <Select
+          value={type}
+          onValueChange={(v) => v && setType(v as AddKind)}
+          options={[
+            ...ORDER.map((r) => ({ value: r, label: t(`relations.types.${r}`) })),
+            ...(wp._meta.allowedActions.manageSubtasks ? [{ value: "child", label: t("relations.addChild") }, { value: "parent", label: t("relations.setParent") }] : []),
+          ]}
+        />
       </Field>
       <Field label={t("relations.pick")} error={error ?? undefined}>
         <Input
@@ -107,7 +130,7 @@ function AddRelation({ wp, onDone }: { wp: WorkPackage; onDone: () => void }) {
         <Button size="sm" onClick={onDone}>
           {t("app.cancel")}
         </Button>
-        <Button size="sm" variant="primary" loading={add.isPending} onClick={() => void submit()}>
+        <Button size="sm" variant="primary" loading={add.isPending || busy} onClick={() => void submit()}>
           {t("relations.add")}
         </Button>
       </div>
@@ -129,11 +152,18 @@ export function RelationsTab({ wp }: { wp: WorkPackage }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {canManage && !adding && (
-        <div>
-          <Button size="sm" icon={<Plus />} onClick={() => setAdding(true)}>
-            {t("relations.add")}
-          </Button>
+      {(canManage || wp._meta.allowedActions.manageSubtasks) && !adding && (
+        <div className="flex flex-wrap gap-2">
+          {canManage && (
+            <Button size="sm" icon={<Plus />} onClick={() => setAdding(true)}>
+              {t("relations.add")}
+            </Button>
+          )}
+          {wp._meta.allowedActions.manageSubtasks && (
+            <Button asChild size="sm" icon={<ListPlus />}>
+              <Link to={`/projects/${wp.project.identifier}/work-packages/new?parent=${wp.number}`}>{t("relations.newChild")}</Link>
+            </Button>
+          )}
         </div>
       )}
       {adding && <AddRelation wp={wp} onDone={() => setAdding(false)} />}
