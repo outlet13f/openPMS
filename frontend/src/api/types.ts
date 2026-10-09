@@ -161,6 +161,7 @@ export type WpField =
   | "assignee"
   | "responsible"
   | "version"
+  | "category"
   | "parent"
   | "dates"
   | "work"
@@ -189,6 +190,7 @@ export interface WorkPackage {
   assignee: UserRef | null;
   responsible: UserRef | null;
   version: VersionRef | null;
+  category: { id: Id; name: string } | null;
   parent: WorkPackageRef | null;
   childCount: number;
   startDate: IsoDate | null;
@@ -231,6 +233,7 @@ export interface WorkPackageInput {
   assigneeId?: Id | null;
   responsibleId?: Id | null;
   versionId?: Id | null;
+  categoryId?: Id | null;
   parentNumber?: number | null;
   startDate?: IsoDate | null;
   dueDate?: IsoDate | null;
@@ -256,6 +259,7 @@ export interface WorkPackageForm {
   priorities: PriorityRef[];
   assignees: UserRef[];
   versions: VersionRef[];
+  categories: { id: Id; name: string; defaultAssigneeId: Id | null }[];
   defaults: { statusId: Id; priorityId: Id; descriptionHtml: string };
   required: WpField[];
 }
@@ -418,6 +422,7 @@ export interface FilterOptions {
   priorities: PriorityRef[];
   users: UserRef[];
   versions: VersionRef[];
+  categories: { id: Id; name: string }[];
 }
 
 /* ---------- boards ---------- */
@@ -486,4 +491,103 @@ export interface SearchHit {
   title: string;
   subtitle: string;
   href: string;
+}
+
+/* ---------- administration (S27–S36) and project settings (S24–S26) ---------- */
+
+export interface AdminType extends WpType {
+  isInRoadmap: boolean;
+  workPackageCount: number;
+  projectCount: number;
+}
+export interface TypeInput {
+  name: string;
+  color: string;
+  isMilestone: boolean;
+  isDefault: boolean;
+  isInRoadmap: boolean;
+}
+
+export interface AdminStatus extends Status {
+  excludedFromTotals: boolean;
+  workPackageCount: number;
+}
+export interface StatusInput {
+  name: string;
+  color: string;
+  isDefault: boolean;
+  isClosed: boolean;
+  isReadonly: boolean;
+  defaultDoneRatio: number;
+  excludedFromTotals: boolean;
+}
+
+export interface AdminPriority extends Priority {
+  isActive: boolean;
+  workPackageCount: number;
+}
+export interface PriorityInput {
+  name: string;
+  color: string;
+  isDefault: boolean;
+  isActive: boolean;
+}
+
+/** One allowed transition: [from status id, to status id]. */
+export type Transition = [Id, Id];
+
+export interface AdminRole extends Role {
+  memberCount: number;
+}
+export interface RoleInput {
+  name: string;
+  scope: "project" | "global";
+  permissions: string[];
+}
+
+export interface AdminUser extends User {
+  lastLoginAt: IsoDateTime | null;
+  projectCount: number;
+  createdAt: IsoDateTime;
+}
+export interface UserInput {
+  name: string;
+  email: string;
+  isAdmin: boolean;
+}
+
+export interface AdminGroup {
+  id: Id;
+  name: string;
+  members: UserRef[];
+}
+
+export interface CalendarSettings {
+  workingDays: number[];
+  hoursPerDay: number;
+}
+
+export interface Category {
+  id: Id;
+  name: string;
+  defaultAssignee: UserRef | null;
+  workPackageCount: number;
+}
+
+export interface Version {
+  id: Id;
+  name: string;
+  description: string;
+  status: "open" | "locked" | "closed";
+  startDate: IsoDate | null;
+  endDate: IsoDate | null;
+  workPackageCount: number;
+  closedCount: number;
+}
+export interface VersionInput {
+  name: string;
+  description?: string;
+  status?: Version["status"];
+  startDate?: IsoDate | null;
+  endDate?: IsoDate | null;
 }

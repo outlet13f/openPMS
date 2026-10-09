@@ -27,17 +27,10 @@ import { clone, statusRef, toJournal, toProject, toWp, typeRef, priorityRef, use
 import { propagate, resolveDates, wouldCycle, workCalendar } from "./scheduling";
 import { defaultSpec, runQuery } from "./query";
 import { DEFAULT_COLUMNS } from "./seed";
+import { fieldError, run } from "./util";
+import { adminApi, categoriesApi, projectExtras, versionsApi } from "./admin";
 
 /* ---------- plumbing ---------- */
-
-const latency = () => new Promise((r) => setTimeout(r, 90 + Math.random() * 140));
-
-async function run<T>(fn: () => T): Promise<T> {
-  await latency();
-  const out = fn();
-  persist();
-  return out;
-}
 
 function normalizeOnce() {
   if (db.workPackages.some((w) => w.duration !== null)) return;
@@ -49,7 +42,6 @@ function normalizeOnce() {
 }
 normalizeOnce();
 
-const fieldError = (field: string, message: string) => new ApiError(422, "입력값을 확인하세요.", message, { fieldErrors: [{ field, message }] });
 
 function toMe(u: DbUser): Me {
   return clone({
@@ -180,6 +172,10 @@ function applyPatch(user: DbUser, number: number, patch: WorkPackagePatch): Work
     requirePerm(user, project, "wp.assign_versions");
     if (patch.versionId && db.versions.find((v) => v.id === patch.versionId)?.projectId !== project.id) throw fieldError("version", "이 프로젝트의 버전이 아닙니다.");
     set("versionId", patch.versionId);
+  }
+  if (patch.categoryId !== undefined) {
+    if (patch.categoryId && db.categories.find((c) => c.id === patch.categoryId)?.projectId !== project.id) throw fieldError("category", "이 프로젝트의 카테고리가 아닙니다.");
+    set("categoryId", patch.categoryId);
   }
   if (patch.parentNumber !== undefined) {
     requirePerm(user, project, "wp.manage_subtasks");
@@ -314,6 +310,7 @@ export const fakeApi: Api = {
         if (u?.status === "locked") throw new ApiError(423, "잠긴 계정입니다.", "관리자에게 계정 잠금 해제를 요청하세요.");
         if (!u || u.password !== password || u.status !== "active") throw new ApiError(401, "이메일 또는 비밀번호가 올바르지 않습니다.");
         db.sessionUserId = u.id;
+        u.lastLoginAt = nowIso();
         return toMe(u);
       }),
     logout: () =>
@@ -394,7 +391,12 @@ export const fakeApi: Api = {
           overdueCount: wps.filter((w) => w.dueDate && !statusOf(w).isClosed && w.dueDate < todayIso(tz)).length,
         });
       }),
+    ...projectExtras,
   },
+
+  categories: categoriesApi,
+  versions: versionsApi,
+  admin: adminApi,
 
   members: {
     list: (projectId) =>
@@ -476,9 +478,10 @@ export const fakeApi: Api = {
           type: typeRef(type.id),
           types: types.map((t) => typeRef(t.id)),
           statuses: db.statuses.filter((s) => s.id === def.id || next.includes(s.id)).sort((a, b) => a.position - b.position).map((s) => statusRef(s.id)),
-          priorities: db.priorities.sort((a, b) => a.position - b.position).map((x) => priorityRef(x.id)),
+          priorities: db.priorities.filter((x) => x.isActive).sort((a, b) => a.position - b.position).map((x) => priorityRef(x.id)),
           assignees: db.members.filter((m) => m.projectId === p.id).map((m) => userRef(m.userId)!),
           versions: db.versions.filter((v) => v.projectId === p.id && v.status === "open").map((v) => ({ id: v.id, name: v.name })),
+          categories: db.categories.filter((c) => c.projectId === p.id).map((c) => ({ id: c.id, name: c.name, defaultAssigneeId: c.defaultAssigneeId })),
           defaults: { statusId: def.id, priorityId: db.priorities.find((x) => x.isDefault)!.id, descriptionHtml: "" },
           required: ["subject"],
         });
@@ -495,6 +498,10 @@ export const fakeApi: Api = {
         if (input.assigneeId && !isMember(input.assigneeId, p.id)) throw fieldError("assignee", "프로젝트 멤버만 지정할 수 있습니다.");
         if (input.statusId !== undefined && !db.statuses.some((x) => x.id === input.statusId)) throw fieldError("status", "알 수 없는 상태입니다.");
         if (input.priorityId !== undefined && !db.priorities.some((x) => x.id === input.priorityId)) throw fieldError("priority", "알 수 없는 우선순위입니다.");
+        const category = input.categoryId ? db.categories.find((c) => c.id === input.categoryId) : null;
+        if (input.categoryId && category?.projectId !== p.id) throw fieldError("category", "이 프로젝트의 카테고리가 아닙니다.");
+        // a category's default assignee fills an empty assignee (settings S25)
+        const assigneeId = input.assigneeId ?? (category?.defaultAssigneeId && isMember(category.defaultAssigneeId, p.id) ? category.defaultAssigneeId : null);
         let parentId: string | null = null;
         if (input.parentNumber) {
           requirePerm(user, p, "wp.manage_subtasks");
@@ -508,8 +515,8 @@ export const fakeApi: Api = {
           id: newId("wp"), number: db.seq.wp, projectId: p.id, typeId: input.typeId,
           statusId: input.statusId ?? db.statuses.find((s) => s.isDefault)!.id,
           priorityId: input.priorityId ?? db.priorities.find((x) => x.isDefault)!.id,
-          subject, descriptionHtml: input.descriptionHtml ?? "", authorId: user.id, assigneeId: input.assigneeId ?? null,
-          responsibleId: input.responsibleId ?? null, versionId: input.versionId ?? null, parentId,
+          subject, descriptionHtml: input.descriptionHtml ?? "", authorId: user.id, assigneeId,
+          responsibleId: input.responsibleId ?? null, versionId: input.versionId ?? null, categoryId: category?.id ?? null, parentId,
           startDate: null, dueDate: null, duration: null, ignoreNonWorkingDays: false, scheduleManually: true,
           workHours: null, remainingHours: null, doneRatio: null, lockVersion: 0, createdAt: now, updatedAt: now,
         };
@@ -681,6 +688,7 @@ export const fakeApi: Api = {
           priorities: db.priorities.sort((a, b) => a.position - b.position).map((x) => priorityRef(x.id)),
           users: userIds.map((id) => userRef(id)!).sort((a, b) => a.name.localeCompare(b.name, "ko")),
           versions: db.versions.filter((v) => !p || v.projectId === p.id).map((v) => ({ id: v.id, name: v.name })),
+          categories: db.categories.filter((c) => !p || c.projectId === p.id).map((c) => ({ id: c.id, name: c.name })),
         });
       }),
   },

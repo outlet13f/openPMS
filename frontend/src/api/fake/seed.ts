@@ -38,7 +38,7 @@ export function buildSeed(schema: number): Db {
     { id: "u-doyoon", email: "doyoon.han@openpms.local", name: "한도윤", isAdmin: false },
     { id: "u-alex", email: "alex.kim@openpms.local", name: "Alex Kim", isAdmin: false },
     { id: "u-locked", email: "former.staff@openpms.local", name: "전 직원", isAdmin: false, status: "locked" as const },
-  ].map((u) => ({ password: "openpms!", status: "active" as const, locale: "ko" as const, timeZone: "Asia/Seoul", prefs: { ...prefs }, ...u }));
+  ].map((u) => ({ password: "openpms!", status: "active" as const, locale: "ko" as const, timeZone: "Asia/Seoul", prefs: { ...prefs }, createdAt: t0, lastLoginAt: null as string | null, ...u }));
 
   const roles = [
     { id: "r-manager", name: "프로젝트 관리자", scope: "project" as const, builtin: null, permissions: P_MANAGER },
@@ -49,25 +49,25 @@ export function buildSeed(schema: number): Db {
   ];
 
   const types = [
-    { id: "t-task", name: "작업", color: "#1f5fc4", position: 1, isMilestone: false, isDefault: true },
-    { id: "t-milestone", name: "마일스톤", color: "#277a32", position: 2, isMilestone: true, isDefault: true },
-    { id: "t-summary", name: "요약", color: "#b24d0c", position: 3, isMilestone: false, isDefault: true },
-    { id: "t-feature", name: "기능", color: "#7041c4", position: 4, isMilestone: false, isDefault: false },
-    { id: "t-bug", name: "버그", color: "#c02c39", position: 5, isMilestone: false, isDefault: false },
+    { id: "t-task", name: "작업", color: "#1f5fc4", position: 1, isMilestone: false, isDefault: true, isInRoadmap: true },
+    { id: "t-milestone", name: "마일스톤", color: "#277a32", position: 2, isMilestone: true, isDefault: true, isInRoadmap: true },
+    { id: "t-summary", name: "요약", color: "#b24d0c", position: 3, isMilestone: false, isDefault: true, isInRoadmap: true },
+    { id: "t-feature", name: "기능", color: "#7041c4", position: 4, isMilestone: false, isDefault: false, isInRoadmap: true },
+    { id: "t-bug", name: "버그", color: "#c02c39", position: 5, isMilestone: false, isDefault: false, isInRoadmap: false },
   ];
   const statuses = [
-    { id: "s-new", name: "신규", color: "#0b7575", position: 1, isDefault: true, isClosed: false, isReadonly: false, defaultDoneRatio: 0 },
-    { id: "s-progress", name: "진행 중", color: "#7041c4", position: 2, isDefault: false, isClosed: false, isReadonly: false, defaultDoneRatio: 50 },
-    { id: "s-review", name: "검토 중", color: "#975800", position: 3, isDefault: false, isClosed: false, isReadonly: false, defaultDoneRatio: 80 },
-    { id: "s-hold", name: "보류", color: "#5f6873", position: 4, isDefault: false, isClosed: false, isReadonly: false, defaultDoneRatio: 0 },
-    { id: "s-done", name: "완료", color: "#277a32", position: 5, isDefault: false, isClosed: true, isReadonly: false, defaultDoneRatio: 100 },
-    { id: "s-cancel", name: "취소", color: "#c02c39", position: 6, isDefault: false, isClosed: true, isReadonly: true, defaultDoneRatio: 0 },
+    { id: "s-new", name: "신규", color: "#0b7575", position: 1, isDefault: true, isClosed: false, isReadonly: false, defaultDoneRatio: 0, excludedFromTotals: false },
+    { id: "s-progress", name: "진행 중", color: "#7041c4", position: 2, isDefault: false, isClosed: false, isReadonly: false, defaultDoneRatio: 50, excludedFromTotals: false },
+    { id: "s-review", name: "검토 중", color: "#975800", position: 3, isDefault: false, isClosed: false, isReadonly: false, defaultDoneRatio: 80, excludedFromTotals: false },
+    { id: "s-hold", name: "보류", color: "#5f6873", position: 4, isDefault: false, isClosed: false, isReadonly: false, defaultDoneRatio: 0, excludedFromTotals: false },
+    { id: "s-done", name: "완료", color: "#277a32", position: 5, isDefault: false, isClosed: true, isReadonly: false, defaultDoneRatio: 100, excludedFromTotals: false },
+    { id: "s-cancel", name: "취소", color: "#c02c39", position: 6, isDefault: false, isClosed: true, isReadonly: true, defaultDoneRatio: 0, excludedFromTotals: true },
   ];
   const priorities = [
-    { id: "pr-low", name: "낮음", color: "#5f6873", position: 1, isDefault: false },
-    { id: "pr-normal", name: "보통", color: "#1f5fc4", position: 2, isDefault: true },
-    { id: "pr-high", name: "높음", color: "#975800", position: 3, isDefault: false },
-    { id: "pr-urgent", name: "긴급", color: "#c02c39", position: 4, isDefault: false },
+    { id: "pr-low", name: "낮음", color: "#5f6873", position: 1, isDefault: false, isActive: true },
+    { id: "pr-normal", name: "보통", color: "#1f5fc4", position: 2, isDefault: true, isActive: true },
+    { id: "pr-high", name: "높음", color: "#975800", position: 3, isDefault: false, isActive: true },
+    { id: "pr-urgent", name: "긴급", color: "#c02c39", position: 4, isDefault: false, isActive: true },
   ];
   const workflows = types.flatMap((t) =>
     ["r-manager", "r-member"].flatMap((roleId) =>
@@ -124,9 +124,9 @@ export function buildSeed(schema: number): Db {
   ];
 
   const versions = [
-    { id: "v-q3", projectId: "p-web", name: "2026 3분기", status: "open" as const, startDate: "2026-07-01", endDate: "2026-10-30" },
-    { id: "v-q4", projectId: "p-web", name: "2026 4분기", status: "open" as const, startDate: "2026-11-02", endDate: "2026-12-31" },
-    { id: "v-beta", projectId: "p-mobile", name: "2.0 베타", status: "open" as const, startDate: null, endDate: "2026-10-30" },
+    { id: "v-q3", projectId: "p-web", name: "2026 3분기", description: "고객 포털 1차 출시", status: "open" as const, startDate: "2026-07-01", endDate: "2026-10-30" },
+    { id: "v-q4", projectId: "p-web", name: "2026 4분기", description: "", status: "open" as const, startDate: "2026-11-02", endDate: "2026-12-31" },
+    { id: "v-beta", projectId: "p-mobile", name: "2.0 베타", description: "", status: "open" as const, startDate: null, endDate: "2026-10-30" },
   ];
 
   // number, project, type, status, priority, subject, author, assignee, parent#, start, due, opts
@@ -134,12 +134,12 @@ export function buildSeed(schema: number): Db {
   const rows: Row[] = [
     [1, "p-web", "t-summary", "s-progress", "pr-normal", "3분기 릴리스 준비", "u-seoyeon", "u-seoyeon", null, null, null, { scheduleManually: false, versionId: "v-q3" }],
     [2, "p-web", "t-task", "s-done", "pr-normal", "요구사항 정리", "u-seoyeon", "u-junho", 1, "2026-09-28", "2026-10-02", { versionId: "v-q3", workHours: 24, remainingHours: 0, doneRatio: 100 }],
-    [3, "p-web", "t-task", "s-progress", "pr-high", "화면 설계 검토", "u-seoyeon", "u-haneul", 1, "2026-10-05", "2026-10-08", { versionId: "v-q3", workHours: 16, remainingHours: 6, doneRatio: 60 }],
-    [4, "p-web", "t-task", "s-progress", "pr-normal", "결제 API 연동", "u-seoyeon", "u-junho", 1, "2026-10-05", "2026-10-16", { versionId: "v-q3", scheduleManually: false, workHours: 40, remainingHours: 28, doneRatio: 30 }],
+    [3, "p-web", "t-task", "s-progress", "pr-high", "화면 설계 검토", "u-seoyeon", "u-haneul", 1, "2026-10-05", "2026-10-08", { versionId: "v-q3", categoryId: "c-design", workHours: 16, remainingHours: 6, doneRatio: 60 }],
+    [4, "p-web", "t-task", "s-progress", "pr-normal", "결제 API 연동", "u-seoyeon", "u-junho", 1, "2026-10-05", "2026-10-16", { versionId: "v-q3", categoryId: "c-be", scheduleManually: false, workHours: 40, remainingHours: 28, doneRatio: 30 }],
     [5, "p-web", "t-task", "s-new", "pr-normal", "릴리스 노트 초안 작성", "u-seoyeon", "u-seoyeon", 1, "2026-10-19", "2026-10-21", { versionId: "v-q3", scheduleManually: false, workHours: 8 }],
     [6, "p-web", "t-milestone", "s-new", "pr-normal", "3분기 릴리스", "u-seoyeon", "u-seoyeon", 1, "2026-10-23", "2026-10-23", { versionId: "v-q3", scheduleManually: false }],
     [7, "p-web", "t-summary", "s-new", "pr-normal", "접근성 개선", "u-seoyeon", "u-alex", null, null, null, { scheduleManually: false, versionId: "v-q4" }],
-    [8, "p-web", "t-bug", "s-review", "pr-high", "로그인 화면 글자 대비 부족", "u-haneul", "u-alex", 7, "2026-10-07", "2026-10-12", {}],
+    [8, "p-web", "t-bug", "s-review", "pr-high", "로그인 화면 글자 대비 부족", "u-haneul", "u-alex", 7, "2026-10-07", "2026-10-12", { categoryId: "c-fe" }],
     [9, "p-web", "t-feature", "s-new", "pr-normal", "키보드만으로 보드 카드 옮기기", "u-alex", "u-haneul", 7, "2026-10-13", "2026-10-22", {}],
     [10, "p-web", "t-task", "s-hold", "pr-low", "스크린리더 점검 일정 잡기", "u-alex", null, 7, null, null, {}],
     [11, "p-web", "t-bug", "s-new", "pr-urgent", "검색 결과가 날짜순으로 정렬되지 않음", "u-minji", "u-junho", null, "2026-10-06", "2026-10-08", {}],
@@ -162,7 +162,7 @@ export function buildSeed(schema: number): Db {
     const created = iso(`2026-09-${String(14 + (n % 14)).padStart(2, "0")}T10:${String(n).padStart(2, "0")}:00+09:00`);
     return {
       id, number: n, projectId, typeId, statusId, priorityId, subject, descriptionHtml: "", authorId, assigneeId,
-      responsibleId: null, versionId: null, parentId: null, startDate: start, dueDate: due, duration: null,
+      responsibleId: null, versionId: null, categoryId: null, parentId: null, startDate: start, dueDate: due, duration: null,
       ignoreNonWorkingDays: false, scheduleManually: true, workHours: null, remainingHours: null, doneRatio: null,
       lockVersion: 0, createdAt: created, updatedAt: created, ...opts,
     };
@@ -229,6 +229,15 @@ export function buildSeed(schema: number): Db {
     priorities,
     workflows: wf,
     versions,
+    categories: [
+      { id: "c-fe", projectId: "p-web", name: "프론트엔드", defaultAssigneeId: "u-haneul" },
+      { id: "c-be", projectId: "p-web", name: "백엔드", defaultAssigneeId: "u-junho" },
+      { id: "c-design", projectId: "p-web", name: "디자인", defaultAssigneeId: null },
+    ],
+    groups: [
+      { id: "g-web", name: "웹 플랫폼 팀", memberIds: ["u-junho", "u-haneul", "u-alex"] },
+      { id: "g-infra", name: "인프라 담당", memberIds: ["u-haneul"] },
+    ],
     workPackages,
     relations,
     journals,
@@ -256,10 +265,10 @@ export function buildSeed(schema: number): Db {
     notifications,
     projectFavorites: [{ userId: "u-seoyeon", projectId: "p-web" }],
     nonWorkingDays: [
-      { date: "2026-10-03", name: "개천절" },
-      { date: "2026-10-09", name: "한글날" },
-      { date: "2026-12-25", name: "성탄절" },
+      { id: "nwd-1", date: "2026-10-03", name: "개천절" },
+      { id: "nwd-2", date: "2026-10-09", name: "한글날" },
+      { id: "nwd-3", date: "2026-12-25", name: "성탄절" },
     ],
-    settings: { workingDays: [1, 2, 3, 4, 5], journalAggregationMinutes: 5 },
+    settings: { workingDays: [1, 2, 3, 4, 5], hoursPerDay: 8, journalAggregationMinutes: 5 },
   };
 }

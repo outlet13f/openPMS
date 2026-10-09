@@ -68,6 +68,7 @@ export function toWp(w: DbWp, user: DbUser): WorkPackage {
   const parent = w.parentId ? db.workPackages.find((x) => x.id === w.parentId) : null;
   const status = db.statuses.find((x) => x.id === w.statusId)!;
   const version = w.versionId ? db.versions.find((v) => v.id === w.versionId) : null;
+  const category = w.categoryId ? db.categories.find((c) => c.id === w.categoryId) : null;
   const kids = children(w);
   const canEdit = can(user, project, "wp.edit");
 
@@ -78,7 +79,7 @@ export function toWp(w: DbWp, user: DbUser): WorkPackage {
   if (canEdit) {
     editable = status.isReadonly
       ? []
-      : ["subject", "description", "type", "priority", "assignee", "responsible", "dates", "work", "remainingWork", "doneRatio"];
+      : ["subject", "description", "type", "priority", "assignee", "responsible", "category", "dates", "work", "remainingWork", "doneRatio"];
     if (can(user, project, "wp.assign_versions") && !status.isReadonly) editable.push("version");
     if (can(user, project, "wp.manage_subtasks") && !status.isReadonly) editable.push("parent");
     editable = editable.filter((f) => !derived.includes(f));
@@ -98,6 +99,7 @@ export function toWp(w: DbWp, user: DbUser): WorkPackage {
     assignee: userRef(w.assigneeId),
     responsible: userRef(w.responsibleId),
     version: version ? { id: version.id, name: version.name } : null,
+    category: category ? { id: category.id, name: category.name } : null,
     parent: parent ? wpRef(parent) : null,
     childCount: kids.length,
     startDate: w.startDate,
@@ -140,6 +142,7 @@ const FIELD_LABEL: Record<string, string> = {
   assigneeId: "담당자",
   responsibleId: "책임자",
   versionId: "버전",
+  categoryId: "카테고리",
   parentId: "상위 작업",
   startDate: "시작일",
   dueDate: "완료일",
@@ -165,6 +168,8 @@ function display(field: string, v: unknown): string | null {
       return userRef(v as string)?.name ?? null;
     case "versionId":
       return db.versions.find((s) => s.id === v)?.name ?? null;
+    case "categoryId":
+      return db.categories.find((s) => s.id === v)?.name ?? null;
     case "parentId": {
       const p = db.workPackages.find((s) => s.id === v);
       return p ? `#${p.number} ${p.subject}` : null;

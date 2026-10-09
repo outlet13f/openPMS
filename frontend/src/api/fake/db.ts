@@ -15,6 +15,8 @@ export interface DbUser {
   locale: "ko" | "en";
   timeZone: string;
   prefs: Preferences;
+  createdAt: IsoDateTime;
+  lastLoginAt: IsoDateTime | null;
 }
 export interface DbRole { id: Id; name: string; scope: "project" | "global"; builtin: "non_member" | null; permissions: string[] }
 export interface DbProject {
@@ -35,11 +37,13 @@ export interface DbProject {
   latestActivityAt: IsoDateTime;
 }
 export interface DbMember { id: Id; projectId: Id; userId: Id; roleIds: Id[]; createdAt: IsoDateTime }
-export interface DbType { id: Id; name: string; color: string; position: number; isMilestone: boolean; isDefault: boolean }
-export interface DbStatus { id: Id; name: string; color: string; position: number; isDefault: boolean; isClosed: boolean; isReadonly: boolean; defaultDoneRatio: number }
-export interface DbPriority { id: Id; name: string; color: string; position: number; isDefault: boolean }
+export interface DbType { id: Id; name: string; color: string; position: number; isMilestone: boolean; isDefault: boolean; isInRoadmap: boolean }
+export interface DbStatus { id: Id; name: string; color: string; position: number; isDefault: boolean; isClosed: boolean; isReadonly: boolean; defaultDoneRatio: number; excludedFromTotals: boolean }
+export interface DbPriority { id: Id; name: string; color: string; position: number; isDefault: boolean; isActive: boolean }
 export interface DbWorkflow { typeId: Id; roleId: Id; from: Id; to: Id }
-export interface DbVersion { id: Id; projectId: Id; name: string; status: "open" | "locked" | "closed"; startDate: IsoDate | null; endDate: IsoDate | null }
+export interface DbVersion { id: Id; projectId: Id; name: string; description: string; status: "open" | "locked" | "closed"; startDate: IsoDate | null; endDate: IsoDate | null }
+export interface DbCategory { id: Id; projectId: Id; name: string; defaultAssigneeId: Id | null }
+export interface DbGroup { id: Id; name: string; memberIds: Id[] }
 export interface DbWp {
   id: Id;
   number: number;
@@ -53,6 +57,7 @@ export interface DbWp {
   assigneeId: Id | null;
   responsibleId: Id | null;
   versionId: Id | null;
+  categoryId: Id | null;
   parentId: Id | null;
   startDate: IsoDate | null;
   dueDate: IsoDate | null;
@@ -107,6 +112,8 @@ export interface Db {
   priorities: DbPriority[];
   workflows: DbWorkflow[];
   versions: DbVersion[];
+  categories: DbCategory[];
+  groups: DbGroup[];
   workPackages: DbWp[];
   relations: DbRelation[];
   journals: DbJournal[];
@@ -116,12 +123,12 @@ export interface Db {
   boards: DbBoard[];
   notifications: DbNotification[];
   projectFavorites: { userId: Id; projectId: Id }[];
-  nonWorkingDays: { date: IsoDate; name: string }[];
-  settings: { workingDays: number[]; journalAggregationMinutes: number };
+  nonWorkingDays: { id: Id; date: IsoDate; name: string }[];
+  settings: { workingDays: number[]; hoursPerDay: number; journalAggregationMinutes: number };
 }
 
 const KEY = "openpms.fakedb";
-const SCHEMA = 3;
+const SCHEMA = 5;
 
 function load(): Db {
   try {

@@ -173,3 +173,27 @@ export function refreshParent(parentId: string | null) {
   const firstKid = parent ? kids(parent)[0] : null;
   if (parent && firstKid) propagate([firstKid]);
 }
+
+/**
+ * S11: after working days or holidays change, keep each item's start and duration and recompute its
+ * finish date on the new calendar, then let successors and parents follow (architecture.md §3.3).
+ * Returns the changes so the caller can write journals with cause "calendar_changed".
+ */
+export function rescheduleAll(): ScheduleChange[] {
+  const cal = workCalendar();
+  const moved: ScheduleChange[] = [];
+  for (const w of db.workPackages) {
+    if (!w.startDate || !w.duration || isMilestone(w) || (!w.scheduleManually && kids(w).length)) continue;
+    const start = nextWorkingDay(w.startDate, cal, w.ignoreNonWorkingDays);
+    const due = dueFromDuration(start, w.duration, cal, w.ignoreNonWorkingDays);
+    if (start === w.startDate && due === w.dueDate) continue;
+    const changes: DbJournal["changes"] = {};
+    if (start !== w.startDate) changes.startDate = [w.startDate, start];
+    if (due !== w.dueDate) changes.dueDate = [w.dueDate, due];
+    w.startDate = start;
+    w.dueDate = due;
+    moved.push({ wp: w, changes, cause: { kind: "calendar_changed" } });
+  }
+  const follow = propagate(moved.map((m) => m.wp)).map((c) => ({ ...c, cause: { kind: "calendar_changed" as const } }));
+  return [...moved, ...follow];
+}

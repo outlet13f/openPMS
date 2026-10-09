@@ -29,6 +29,22 @@ import type {
   WorkPackagePatch,
   WorkPackageRef,
   IsoDate,
+  AdminGroup,
+  AdminPriority,
+  AdminRole,
+  AdminStatus,
+  AdminType,
+  AdminUser,
+  CalendarSettings,
+  Category,
+  PriorityInput,
+  RoleInput,
+  StatusInput,
+  Transition,
+  TypeInput,
+  UserInput,
+  Version,
+  VersionInput,
 } from "./types";
 
 /**
@@ -58,6 +74,32 @@ export interface Api {
     setFavorite(id: Id, favorite: boolean): Promise<void>;
     /** GET /projects/{project}/overview */
     overview(id: Id): Promise<ProjectOverview>;
+    /** PUT /projects/{project}/types */
+    setTypes(id: Id, typeIds: Id[]): Promise<Project>;
+    /** POST /projects/{project}/archive */
+    archive(id: Id): Promise<void>;
+  };
+
+  categories: {
+    /** GET /projects/{project}/categories */
+    list(projectId: Id): Promise<Category[]>;
+    /** POST /projects/{project}/categories */
+    create(projectId: Id, input: { name: string; defaultAssigneeId: Id | null }): Promise<Category>;
+    /** PATCH /categories/{id} */
+    update(id: Id, input: { name?: string; defaultAssigneeId?: Id | null }): Promise<Category>;
+    /** DELETE /categories/{id} */
+    remove(id: Id): Promise<void>;
+  };
+
+  versions: {
+    /** GET /projects/{project}/versions */
+    list(projectId: Id): Promise<Version[]>;
+    /** POST /projects/{project}/versions */
+    create(projectId: Id, input: VersionInput): Promise<Version>;
+    /** PATCH /versions/{id} */
+    update(id: Id, input: Partial<VersionInput>): Promise<Version>;
+    /** DELETE /versions/{id} */
+    remove(id: Id): Promise<void>;
   };
 
   members: {
@@ -158,5 +200,101 @@ export interface Api {
   search: {
     /** GET /search/suggest */
     suggest(q: string): Promise<SearchHit[]>;
+  };
+
+  /** Everything under /admin (architecture.md §4.2 "관리"): administrators, users/groups also global.manage_users. */
+  admin: {
+    types: {
+      /** GET /admin/types */
+      list(): Promise<AdminType[]>;
+      /** POST /admin/types */
+      create(input: TypeInput): Promise<AdminType>;
+      /** PATCH /admin/types/{id} */
+      update(id: Id, patch: Partial<TypeInput>): Promise<AdminType>;
+      /** DELETE /admin/types/{id} — 409 while work packages use it */
+      remove(id: Id): Promise<void>;
+      /** PUT /admin/types/order (added to the contract, like statuses and priorities) */
+      reorder(ids: Id[]): Promise<void>;
+    };
+    statuses: {
+      /** GET /admin/statuses */
+      list(): Promise<AdminStatus[]>;
+      /** POST /admin/statuses */
+      create(input: StatusInput): Promise<AdminStatus>;
+      /** PATCH /admin/statuses/{id} */
+      update(id: Id, patch: Partial<StatusInput>): Promise<AdminStatus>;
+      /** DELETE /admin/statuses/{id} */
+      remove(id: Id): Promise<void>;
+      /** PUT /admin/statuses/order */
+      reorder(ids: Id[]): Promise<void>;
+    };
+    priorities: {
+      /** GET /admin/priorities */
+      list(): Promise<AdminPriority[]>;
+      /** POST /admin/priorities */
+      create(input: PriorityInput): Promise<AdminPriority>;
+      /** PATCH /admin/priorities/{id} */
+      update(id: Id, patch: Partial<PriorityInput>): Promise<AdminPriority>;
+      /** DELETE /admin/priorities/{id} */
+      remove(id: Id): Promise<void>;
+      /** PUT /admin/priorities/order */
+      reorder(ids: Id[]): Promise<void>;
+    };
+    workflows: {
+      /** GET /admin/workflows?typeId&roleId */
+      get(typeId: Id, roleId: Id): Promise<Transition[]>;
+      /** PUT /admin/workflows — replaces the whole matrix for (type, role) */
+      save(typeId: Id, roleId: Id, transitions: Transition[]): Promise<void>;
+      /** POST /admin/workflows/copy */
+      copy(from: { typeId: Id; roleId: Id }, to: { typeIds: Id[]; roleIds: Id[] }): Promise<void>;
+    };
+    roles: {
+      /** GET /admin/roles */
+      list(): Promise<AdminRole[]>;
+      /** POST /admin/roles */
+      create(input: RoleInput): Promise<AdminRole>;
+      /** PATCH /admin/roles/{id} */
+      update(id: Id, patch: Partial<Omit<RoleInput, "scope">>): Promise<AdminRole>;
+      /** DELETE /admin/roles/{id} — 409 while members use it */
+      remove(id: Id): Promise<void>;
+      /** GET /admin/permissions */
+      permissions(): Promise<{ key: string; scope: "project" | "global"; group: string }[]>;
+    };
+    users: {
+      /** GET /admin/users */
+      list(params?: { q?: string; status?: AdminUser["status"] }): Promise<AdminUser[]>;
+      /** POST /admin/users — creates an invited user and sends the invitation */
+      create(input: UserInput): Promise<AdminUser>;
+      /** PATCH /admin/users/{id} (lock/unlock, admin flag, name) */
+      update(id: Id, patch: { name?: string; status?: "active" | "locked"; isAdmin?: boolean }): Promise<AdminUser>;
+      /** DELETE /admin/users/{id} — anonymises the account */
+      remove(id: Id): Promise<void>;
+      /** POST /admin/users/{id}/resend-invitation */
+      resendInvitation(id: Id): Promise<void>;
+    };
+    groups: {
+      /** GET /admin/groups */
+      list(): Promise<AdminGroup[]>;
+      /** POST /admin/groups */
+      create(name: string): Promise<AdminGroup>;
+      /** PATCH /admin/groups/{id} */
+      rename(id: Id, name: string): Promise<AdminGroup>;
+      /** DELETE /admin/groups/{id} */
+      remove(id: Id): Promise<void>;
+      /** PUT /admin/groups/{id}/members */
+      setMembers(id: Id, userIds: Id[]): Promise<AdminGroup>;
+    };
+    calendar: {
+      /** GET /admin/settings/calendar */
+      get(): Promise<CalendarSettings>;
+      /** PUT /admin/settings/calendar — schedules reschedule-all when working days change */
+      save(input: CalendarSettings): Promise<CalendarSettings>;
+      /** GET /admin/non-working-days?year */
+      nonWorkingDays(year: number): Promise<{ id: Id; date: IsoDate; name: string }[]>;
+      /** POST /admin/non-working-days */
+      addNonWorkingDay(date: IsoDate, name: string): Promise<void>;
+      /** DELETE /admin/non-working-days/{id} */
+      removeNonWorkingDay(id: Id): Promise<void>;
+    };
   };
 }

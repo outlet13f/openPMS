@@ -52,6 +52,20 @@ export const httpApi: Api = {
     update: (id, p) => patch(`/projects/${id}`, p),
     setFavorite: (id, fav) => (fav ? put(`/projects/${id}/favorite`) : del(`/projects/${id}/favorite`)),
     overview: (id) => get(`/projects/${id}/overview`),
+    setTypes: (id, typeIds) => put(`/projects/${id}/types`, { typeIds }),
+    archive: (id) => post(`/projects/${id}/archive`),
+  },
+  categories: {
+    list: (projectId) => get(`/projects/${projectId}/categories`),
+    create: (projectId, input) => post(`/projects/${projectId}/categories`, input),
+    update: (id, input) => patch(`/categories/${id}`, input),
+    remove: (id) => del(`/categories/${id}`),
+  },
+  versions: {
+    list: (projectId) => get(`/projects/${projectId}/versions`),
+    create: (projectId, input) => post(`/projects/${projectId}/versions`, input),
+    update: (id, input) => patch(`/versions/${id}`, input),
+    remove: (id) => del(`/versions/${id}`),
   },
   members: {
     list: (projectId) => get(`/projects/${projectId}/members`),
@@ -106,5 +120,61 @@ export const httpApi: Api = {
   },
   search: {
     suggest: (q) => get("/search/suggest", { q }),
+  },
+  admin: {
+    types: {
+      list: () => get("/admin/types"),
+      create: (input) => post("/admin/types", input),
+      update: (id, p) => patch(`/admin/types/${id}`, p),
+      remove: (id) => del(`/admin/types/${id}`),
+      reorder: (ids) => put("/admin/types/order", { ids }),
+    },
+    statuses: {
+      list: () => get("/admin/statuses"),
+      create: (input) => post("/admin/statuses", input),
+      update: (id, p) => patch(`/admin/statuses/${id}`, p),
+      remove: (id) => del(`/admin/statuses/${id}`),
+      reorder: (ids) => put("/admin/statuses/order", { ids }),
+    },
+    priorities: {
+      list: () => get("/admin/priorities"),
+      create: (input) => post("/admin/priorities", input),
+      update: (id, p) => patch(`/admin/priorities/${id}`, p),
+      remove: (id) => del(`/admin/priorities/${id}`),
+      reorder: (ids) => put("/admin/priorities/order", { ids }),
+    },
+    workflows: {
+      get: async (typeId, roleId) => (await get<{ transitions: [string, string][] }>("/admin/workflows", { typeId, roleId })).transitions,
+      save: (typeId, roleId, transitions) => put("/admin/workflows", { typeId, roleId, appliesTo: "always", transitions }),
+      copy: (from, to) => post("/admin/workflows/copy", { from, to }),
+    },
+    roles: {
+      list: () => get("/admin/roles"),
+      create: (input) => post("/admin/roles", input),
+      update: (id, p) => patch(`/admin/roles/${id}`, p),
+      remove: (id) => del(`/admin/roles/${id}`),
+      permissions: () => get("/admin/permissions"),
+    },
+    users: {
+      list: (params) => get("/admin/users", { ...params }),
+      create: (input) => post("/admin/users", input),
+      update: (id, p) => patch(`/admin/users/${id}`, p),
+      remove: (id) => del(`/admin/users/${id}`),
+      resendInvitation: (id) => post(`/admin/users/${id}/resend-invitation`),
+    },
+    groups: {
+      list: () => get("/admin/groups"),
+      create: (name) => post("/admin/groups", { name }),
+      rename: (id, name) => patch(`/admin/groups/${id}`, { name }),
+      remove: (id) => del(`/admin/groups/${id}`),
+      setMembers: (id, userIds) => put(`/admin/groups/${id}/members`, { userIds }),
+    },
+    calendar: {
+      get: () => get("/admin/settings/calendar"),
+      save: (input) => put("/admin/settings/calendar", input),
+      nonWorkingDays: (year) => get("/admin/non-working-days", { year }),
+      addNonWorkingDay: (date, name) => post("/admin/non-working-days", { date, name }),
+      removeNonWorkingDay: (id) => del(`/admin/non-working-days/${id}`),
+    },
   },
 };
