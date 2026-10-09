@@ -15,10 +15,14 @@ import { HomePage } from "@/pages/home";
 import { ProjectsPage } from "@/pages/projects/list";
 import { NewProjectPage } from "@/pages/projects/new";
 import { ProjectOverviewPage } from "@/pages/projects/overview";
+import { MembersPage } from "@/pages/projects/members";
 import { WorkPackagesPage } from "@/pages/work-packages/list";
 import { DetailsPanelRoute, FullViewRoute, NewPanelRoute } from "@/pages/work-packages/panels";
 import { NotificationDetailRoute, NotificationsPage } from "@/pages/notifications";
 import { DesignPage } from "@/pages/design-page";
+import { GanttDetailRoute, GanttPage } from "@/pages/gantt";
+import { BoardsPage, NewBoardPage } from "@/pages/boards/list";
+import { BoardDetailRoute, BoardPage } from "@/pages/boards/board";
 
 function Stub({ id, nameKey }: { id: string; nameKey: ParseKeys }) {
   const { t } = useTranslation();
@@ -82,13 +86,21 @@ export const router = createBrowserRouter([
             ],
           },
           { path: "work-packages/:number/:tab?", element: <FullViewRoute /> },
-          { path: "gantt", element: <RequireModule module="gantt"><Stub id="S13" nameKey="nav.gantt" /></RequireModule> },
-          { path: "boards", element: <RequireModule module="boards"><Stub id="S14" nameKey="nav.boards" /></RequireModule> },
-          { path: "boards/new", element: <RequireModule module="boards"><Stub id="S16" nameKey="stubs.newBoard" /></RequireModule> },
-          { path: "boards/:id", element: <RequireModule module="boards"><Stub id="S15" nameKey="nav.boards" /></RequireModule> },
+          {
+            path: "gantt",
+            element: <RequireModule module="gantt"><GanttPage /></RequireModule>,
+            children: [{ path: "details/:number/:tab?", element: <GanttDetailRoute /> }],
+          },
+          { path: "boards", element: <RequireModule module="boards"><BoardsPage /></RequireModule> },
+          { path: "boards/new", element: <RequireModule module="boards"><NewBoardPage /></RequireModule> },
+          {
+            path: "boards/:id",
+            element: <RequireModule module="boards"><BoardPage /></RequireModule>,
+            children: [{ path: "details/:number/:tab?", element: <BoardDetailRoute /> }],
+          },
           { path: "calendar", element: <RequireModule module="calendar"><Stub id="S17" nameKey="nav.calendar" /></RequireModule> },
           { path: "team-planner", element: <RequireModule module="team_planner"><Stub id="S18" nameKey="nav.teamPlanner" /></RequireModule> },
-          { path: "members", element: <Stub id="S23" nameKey="nav.members" /> },
+          { path: "members", element: <MembersPage /> },
           { path: "settings/:section", element: <Stub id="S24–S26" nameKey="nav.settings" /> },
           { path: "*", element: <NotFound /> },
         ],
