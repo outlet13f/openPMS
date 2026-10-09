@@ -62,7 +62,11 @@ function Entry({ j, wpNumber, people }: { j: Journal; wpNumber: number; people: 
           <ul className="mt-1 flex flex-col gap-0.5 text-sm text-fg-muted">
             {changes.map((d) => (
               <li key={d.field}>
-                {d.field === "descriptionHtml"
+                {d.field.startsWith("attachment")
+                  ? d.to
+                    ? t("activity.attached", { name: d.to })
+                    : t("activity.detached", { name: d.from })
+                  : d.field === "descriptionHtml"
                   ? t("activity.descriptionChanged")
                   : d.to === null
                     ? t("activity.cleared", { label: d.label })

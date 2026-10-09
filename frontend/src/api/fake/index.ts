@@ -58,6 +58,7 @@ function toMe(u: DbUser): Me {
 
 const statusOf = (w: DbWp) => db.statuses.find((s) => s.id === w.statusId)!;
 const projectOf = (w: DbWp) => db.projects.find((p) => p.id === w.projectId)!;
+const FAKE_MAX_BYTES = 1024 * 1024;
 const isMember = (userId: string, projectId: string) => memberRoleIds(userId, projectId).length > 0;
 
 /* ---------- journals and notifications (architecture.md §3.6) ---------- */
@@ -572,6 +573,7 @@ export const fakeApi: Api = {
           }
         } else db.workPackages.filter((w) => w.parentId === wp.id).forEach((w) => (w.parentId = wp.parentId));
         db.workPackages = db.workPackages.filter((w) => !doomed.has(w.id));
+        db.attachments = db.attachments.filter((a) => !doomed.has(a.wpId));
         db.relations = db.relations.filter((r) => !doomed.has(r.fromId) && !doomed.has(r.toId));
         db.journals = db.journals.filter((j) => !doomed.has(j.wpId));
         db.watchers = db.watchers.filter((x) => !doomed.has(x.wpId));
@@ -623,6 +625,47 @@ export const fakeApi: Api = {
         j.notesHtml = bodyHtml;
         j.updatedAt = nowIso();
         return toJournal(j, user);
+      }),
+    attachments: (number) =>
+      run(() => {
+        const user = sessionUser();
+        const { wp, project } = findWp(user, number);
+        const canDelete = can(user, project, "wp.attach");
+        return db.attachments
+          .filter((a) => a.wpId === wp.id)
+          .map((a) => ({ id: a.id, fileName: a.fileName, contentType: a.contentType, byteSize: a.byteSize, author: userRef(a.authorId)!, createdAt: a.createdAt, url: a.dataUrl, canDelete }));
+      }),
+    upload: async (number, file) => {
+      // the demo keeps bytes in localStorage, so it takes small files only (the real API takes 25MB)
+      if (file.size > FAKE_MAX_BYTES) throw new ApiError(413, "파일이 너무 큽니다.", "데모에서는 파일 하나를 1MB까지 올릴 수 있습니다.");
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(file);
+      });
+      return run(() => {
+        const user = sessionUser();
+        const { wp, project } = findWp(user, number);
+        requirePerm(user, project, "wp.attach", "파일을 첨부할 권한이 없습니다.");
+        if (!file.size) throw fieldError("file", "빈 파일은 올릴 수 없습니다.");
+        const a = { id: newId("att"), wpId: wp.id, fileName: file.name.split(/[\\/]/).pop() || "file", contentType: file.type || "application/octet-stream", byteSize: file.size, authorId: user.id, createdAt: nowIso(), dataUrl };
+        db.attachments.push(a);
+        const j = writeJournal(wp, user, { [`attachment:${a.id}`]: [null, a.fileName] });
+        fanOut(wp, j, user);
+        return { id: a.id, fileName: a.fileName, contentType: a.contentType, byteSize: a.byteSize, author: userRef(user.id)!, createdAt: a.createdAt, url: dataUrl, canDelete: true };
+      });
+    },
+    removeAttachment: (id) =>
+      run(() => {
+        const user = sessionUser();
+        const a = db.attachments.find((x) => x.id === id);
+        const wp = a && db.workPackages.find((w) => w.id === a.wpId);
+        if (!a || !wp) throw new ApiError(404, "파일을 찾을 수 없습니다.");
+        const { project } = findWp(user, wp.number);
+        requirePerm(user, project, "wp.attach", "파일을 지울 권한이 없습니다.");
+        db.attachments = db.attachments.filter((x) => x.id !== id);
+        writeJournal(wp, user, { [`attachment:${a.id}`]: [a.fileName, null] });
       }),
     setWatching: (number, watching) =>
       run(() => {

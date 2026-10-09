@@ -204,6 +204,7 @@ export interface WorkPackage {
   watching: boolean;
   watcherCount: number;
   relationCount: number;
+  attachmentCount: number;
   lockVersion: number;
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
@@ -216,6 +217,8 @@ export interface WorkPackage {
       manageRelations: boolean;
       manageSubtasks: boolean;
       watch: boolean;
+      /** upload and delete files (wp.attach) */
+      attach: boolean;
     };
     editableFields: WpField[];
     /** Fields whose value is computed (e.g. parent dates in automatic mode). */
@@ -282,6 +285,18 @@ export interface Journal {
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
   canEdit: boolean;
+}
+
+/** A file on a work package (S08 파일 탭). `url` downloads it (images open inline). */
+export interface Attachment {
+  id: Id;
+  fileName: string;
+  contentType: string;
+  byteSize: number;
+  author: UserRef;
+  createdAt: IsoDateTime;
+  url: string;
+  canDelete: boolean;
 }
 
 export type RelationType =

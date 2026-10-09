@@ -1,4 +1,5 @@
 import type {
+  Attachment,
   AdminGroup,
   AdminPriority,
   AdminRole,
@@ -144,6 +145,12 @@ export interface Api {
     editComment(journalId: Id, bodyHtml: string): Promise<Journal>;
     /** POST|DELETE /work-packages/{number}/watchers */
     setWatching(number: number, watching: boolean): Promise<void>;
+    /** GET /work-packages/{number}/attachments */
+    attachments(number: number): Promise<Attachment[]>;
+    /** POST /work-packages/{number}/attachments (multipart, field "file") — 413 when too large */
+    upload(number: number, file: File): Promise<Attachment>;
+    /** DELETE /attachments/{id} */
+    removeAttachment(id: Id): Promise<void>;
     /** GET /work-packages/{number}/relations */
     relations(number: number): Promise<RelationGroups>;
     /** POST /work-packages/{number}/relations */

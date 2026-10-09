@@ -26,6 +26,19 @@ async function call<T>(method: string, path: string, body?: unknown, query?: Rec
   return data as T;
 }
 
+/** Multipart upload: the browser sets the boundary, so no Content-Type header here. */
+async function upload<T>(path: string, file: File): Promise<T> {
+  const form = new FormData();
+  form.append("file", file);
+  const headers: Record<string, string> = { Accept: "application/json" };
+  const token = csrfToken();
+  if (token) headers["X-XSRF-TOKEN"] = token;
+  const res = await fetch(BASE + path, { method: "POST", headers, credentials: "same-origin", body: form });
+  const data = res.headers.get("content-type")?.includes("json") ? await res.json() : undefined;
+  if (!res.ok) throw new ApiError(res.status, data?.title ?? res.statusText, data?.detail, { fieldErrors: data?.errors });
+  return data as T;
+}
+
 const get = <T>(p: string, q?: Record<string, unknown>) => call<T>("GET", p, undefined, q);
 const post = <T>(p: string, b?: unknown) => call<T>("POST", p, b ?? {});
 const patch = <T>(p: string, b: unknown) => call<T>("PATCH", p, b);
@@ -89,6 +102,9 @@ export const httpApi: Api = {
     comment: (n, bodyHtml) => post(`/work-packages/${n}/comments`, { bodyHtml }),
     editComment: (id, bodyHtml) => patch(`/comments/${id}`, { bodyHtml }),
     setWatching: (n, watching) => (watching ? post(`/work-packages/${n}/watchers`, { self: true }) : del(`/work-packages/${n}/watchers/me`)),
+    attachments: (n) => get(`/work-packages/${n}/attachments`),
+    upload: (n, file) => upload(`/work-packages/${n}/attachments`, file),
+    removeAttachment: (id) => del(`/attachments/${id}`),
     relations: (n) => get(`/work-packages/${n}/relations`),
     addRelation: (n, input) => post(`/work-packages/${n}/relations`, input),
     removeRelation: (id) => del(`/relations/${id}`),

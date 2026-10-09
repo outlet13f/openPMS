@@ -104,7 +104,7 @@ export function GanttDetailRoute() {
   const project = useCurrentProject();
   const n = Number(number);
   const base = `/projects/${project.identifier}/gantt`;
-  const current = (["overview", "activity", "relations"].includes(tab ?? "") ? tab : "overview") as DetailTab;
+  const current = (["overview", "activity", "files", "relations"].includes(tab ?? "") ? tab : "overview") as DetailTab;
   return (
     <WorkPackageDetail
       key={n}

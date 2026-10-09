@@ -63,7 +63,7 @@ public final class Dto {
                                       LocalDate startDate, LocalDate dueDate) {}
 
     public record AllowedActions(boolean edit, boolean delete, boolean move, boolean comment, boolean manageRelations, boolean manageSubtasks,
-                                 boolean watch) {}
+                                 boolean watch, boolean attach) {}
 
     public record Meta(AllowedActions allowedActions, List<String> editableFields, List<String> derived, boolean overdue) {}
 
@@ -71,7 +71,7 @@ public final class Dto {
                               String descriptionHtml, UserRef author, UserRef assignee, UserRef responsible, IdName version, IdName category,
                               WorkPackageRef parent, int childCount, LocalDate startDate, LocalDate dueDate, Integer duration,
                               boolean ignoreNonWorkingDays, boolean scheduleManually, Double workHours, Double remainingHours, Integer doneRatio,
-                              boolean watching, int watcherCount, int relationCount, int lockVersion, OffsetDateTime createdAt,
+                              boolean watching, int watcherCount, int relationCount, int attachmentCount, int lockVersion, OffsetDateTime createdAt,
                               OffsetDateTime updatedAt, @JsonProperty("_meta") Meta meta) {}
 
     public record CategoryOption(UUID id, String name, UUID defaultAssigneeId) {}

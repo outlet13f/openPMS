@@ -13,7 +13,7 @@ export function PlanningDetailRoute({ kind }: { kind: "calendar" | "team-planner
   const st = usePlanningView(project.id, kind === "calendar" ? "calendar" : "team_planner", id);
   const n = Number(number);
   const base = `/projects/${project.identifier}/${kind}/${id}`;
-  const current = (["overview", "activity", "relations"].includes(tab ?? "") ? tab : "overview") as DetailTab;
+  const current = (["overview", "activity", "files", "relations"].includes(tab ?? "") ? tab : "overview") as DetailTab;
   return (
     <WorkPackageDetail
       key={n}

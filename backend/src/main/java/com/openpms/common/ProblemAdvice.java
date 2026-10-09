@@ -47,6 +47,11 @@ public class ProblemAdvice {
         return respond(400, "요청 형식이 올바르지 않습니다.", null, null, null);
     }
 
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<Object> tooLarge(Exception e) {
+        return respond(413, "파일이 너무 큽니다.", "파일 하나는 25MB까지 올릴 수 있습니다.", null, null);
+    }
+
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<Object> noResource(NoResourceFoundException e) {
         return respond(404, "찾을 수 없습니다.", null, null, null);

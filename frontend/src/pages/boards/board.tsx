@@ -306,7 +306,7 @@ export function BoardDetailRoute() {
   const project = useCurrentProject();
   const n = Number(number);
   const base = `/projects/${project.identifier}/boards/${id}`;
-  const current = (["overview", "activity", "relations"].includes(tab ?? "") ? tab : "overview") as DetailTab;
+  const current = (["overview", "activity", "files", "relations"].includes(tab ?? "") ? tab : "overview") as DetailTab;
   return (
     <WorkPackageDetail
       key={n}

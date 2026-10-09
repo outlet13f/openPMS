@@ -132,11 +132,18 @@ public class Journals {
             Map.entry("priorityId", "우선순위"), Map.entry("assigneeId", "담당자"), Map.entry("responsibleId", "책임자"), Map.entry("versionId", "버전"),
             Map.entry("categoryId", "카테고리"), Map.entry("parentId", "상위 작업"), Map.entry("startDate", "시작일"), Map.entry("dueDate", "완료일"),
             Map.entry("duration", "기간"), Map.entry("scheduleManually", "일정 방식"), Map.entry("ignoreNonWorkingDays", "근무일만 계산"),
-            Map.entry("workHours", "작업량"), Map.entry("remainingHours", "남은 작업"), Map.entry("doneRatio", "완료 %"));
+            Map.entry("workHours", "작업량"), Map.entry("remainingHours", "남은 작업"), Map.entry("doneRatio", "완료 %"),
+            Map.entry("attachment", "첨부 파일"));
 
     private static final List<String> ORDER = List.of("subject", "descriptionHtml", "typeId", "statusId", "priorityId", "assigneeId", "responsibleId",
             "versionId", "categoryId", "parentId", "startDate", "dueDate", "duration", "scheduleManually", "ignoreNonWorkingDays", "workHours",
-            "remainingHours", "doneRatio");
+            "remainingHours", "doneRatio", "attachment");
+
+    /** "attachment:<id>" → "attachment" (files are keyed one by one). */
+    private static String base(String field) {
+        int i = field.indexOf(':');
+        return i < 0 ? field : field.substring(0, i);
+    }
 
     private static UUID uuid(Object v) {
         try {
@@ -182,10 +189,10 @@ public class Journals {
         if (changes.containsKey(CREATED)) details.add(new Dto.JournalDetail(CREATED, "작업을 만들었습니다", null, null));
         // jsonb does not keep key order: show fields in the form's order (start before due …)
         changes.keySet().stream().filter(f -> !f.equals(CREATED) && !f.equals("lockVersion"))
-                .sorted(java.util.Comparator.comparingInt(f -> ORDER.indexOf(f) < 0 ? ORDER.size() : ORDER.indexOf(f)))
+                .sorted(java.util.Comparator.comparingInt(f -> ORDER.indexOf(base(f)) < 0 ? ORDER.size() : ORDER.indexOf(base(f))))
                 .forEach(field -> {
                     var v = changes.get(field);
-                    details.add(new Dto.JournalDetail(field, LABEL.getOrDefault(field, field), display(s, field, v.get(0)), display(s, field, v.size() > 1 ? v.get(1) : null)));
+                    details.add(new Dto.JournalDetail(field, LABEL.getOrDefault(base(field), field), display(s, base(field), v.get(0)), display(s, base(field), v.size() > 1 ? v.get(1) : null)));
                 });
         boolean canEdit = !j.getNotesHtml().isEmpty()
                 && ((j.getUserId().equals(ctx.userId()) && ctx.can(project, "wp.edit_own_comments")) || ctx.can(project, "wp.edit_comments"));

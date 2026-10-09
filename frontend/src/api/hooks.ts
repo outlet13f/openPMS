@@ -14,6 +14,7 @@ export const qk = {
   wp: (n: number) => ["wp", n] as const,
   wpActivities: (n: number) => ["wp", n, "activities"] as const,
   wpRelations: (n: number) => ["wp", n, "relations"] as const,
+  wpAttachments: (n: number) => ["wp", n, "attachments"] as const,
   wpStatuses: (n: number) => ["wp", n, "allowed-statuses"] as const,
   wpForm: (projectId: string, typeId?: string) => ["wp-form", projectId, typeId ?? ""] as const,
   query: (spec: QuerySpec, projectId?: string, page = 1, pageSize = 20) => ["wp-query", projectId ?? "", page, pageSize, spec] as const,
@@ -147,6 +148,22 @@ export function useComment(n: number) {
       qc.invalidateQueries({ queryKey: ["notifications"] });
     },
   });
+}
+
+export const useAttachments = (n: number) => useQuery({ queryKey: qk.wpAttachments(n), queryFn: () => api.workPackages.attachments(n) });
+
+/** Upload and delete; both refresh the list, the item (attachment count) and its activity. */
+export function useAttachmentMutations(n: number) {
+  const qc = useQueryClient();
+  const done = () => {
+    qc.invalidateQueries({ queryKey: qk.wpAttachments(n) });
+    qc.invalidateQueries({ queryKey: qk.wpActivities(n) });
+    invalidateWorkPackages(qc, n);
+  };
+  return {
+    upload: useMutation({ mutationFn: (file: File) => api.workPackages.upload(n, file), onSuccess: done }),
+    remove: useMutation({ mutationFn: (id: Id) => api.workPackages.removeAttachment(id), onSuccess: done }),
+  };
 }
 
 export function useEditComment(n: number) {

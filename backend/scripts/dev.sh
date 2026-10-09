@@ -35,6 +35,7 @@ ensure_infra() {
   podman volume exists openpms-db-data || podman volume create openpms-db-data >/dev/null
   podman volume exists openpms-gradle || podman volume create openpms-gradle >/dev/null
   podman volume exists openpms-build || podman volume create openpms-build >/dev/null
+  podman volume exists openpms-files || podman volume create openpms-files >/dev/null
   if ! podman container exists openpms-db; then
     podman run -d --name openpms-db --network "$NET" -p 127.0.0.1:55432:5432 \
       -e POSTGRES_DB=openpms -e POSTGRES_USER=openpms -e POSTGRES_PASSWORD="$OPENPMS_DB_PASSWORD" \
@@ -76,7 +77,7 @@ case "${1:-}" in
   run) ensure_infra; podman rm -f openpms-app >/dev/null 2>&1 || true
        jdk "" ./gradlew --no-daemon -q bootJar
        # run a copy of the jar, so the next build can replace it (and use the Gradle cache) while the app is up
-       jdk "-d --name openpms-app -p 127.0.0.1:8090:8090" sh -c 'cp build/libs/openpms-0.1.0.jar /tmp/app.jar && exec java -jar /tmp/app.jar --spring.profiles.active=dev' >/dev/null
+       jdk "-d --name openpms-app -p 127.0.0.1:8090:8090 -v openpms-files:/data/files" sh -c 'cp build/libs/openpms-0.1.0.jar /tmp/app.jar && exec java -jar /tmp/app.jar --spring.profiles.active=dev' >/dev/null
        for _ in $(seq 1 90); do
          podman logs openpms-app 2>&1 | grep -q "Started OpenPmsApplication" && { echo "app: http://127.0.0.1:8090"; exit 0; }
          podman logs openpms-app 2>&1 | grep -q "APPLICATION FAILED" && break

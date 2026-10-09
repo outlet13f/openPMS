@@ -1,5 +1,6 @@
 package com.openpms.wp;
 
+import static com.openpms.db.Tables.ATTACHMENTS;
 import static com.openpms.db.Tables.RELATIONS;
 import static com.openpms.db.Tables.WATCHERS;
 import static com.openpms.db.Tables.WORK_PACKAGES;
@@ -93,6 +94,9 @@ public class Assembler {
             relationCount.merge(r.value1(), 1, Integer::sum);
             relationCount.merge(r.value2(), 1, Integer::sum);
         });
+        Map<UUID, Integer> attachmentCount = new HashMap<>();
+        db.select(ATTACHMENTS.WORK_PACKAGE_ID, count()).from(ATTACHMENTS).where(ATTACHMENTS.WORK_PACKAGE_ID.in(ids)).groupBy(ATTACHMENTS.WORK_PACKAGE_ID)
+                .fetch().forEach(r -> attachmentCount.put(r.value1(), r.value2()));
         var parentIds = rows.stream().map(WorkPackagesRecord::getParentId).filter(x -> x != null).distinct().toList();
         Map<UUID, WorkPackagesRecord> parents = new HashMap<>();
         if (!parentIds.isEmpty()) db.selectFrom(WORK_PACKAGES).where(WORK_PACKAGES.ID.in(parentIds)).fetch().forEach(p -> parents.put(p.getId(), p));
@@ -120,7 +124,8 @@ public class Assembler {
             boolean overdue = w.getDueDate() != null && !status.isClosed() && w.getDueDate().isBefore(ctx.today());
             var meta = new Dto.Meta(
                     new Dto.AllowedActions(canEdit, ctx.can(project, "wp.delete"), ctx.can(project, "wp.move"), ctx.can(project, "wp.comment"),
-                            ctx.can(project, "wp.manage_relations"), ctx.can(project, "wp.manage_subtasks"), true),
+                            ctx.can(project, "wp.manage_relations"), ctx.can(project, "wp.manage_subtasks"), true,
+                            ctx.can(project, "wp.attach")),
                     editable, derived, overdue);
             out.add(new Dto.WorkPackage(w.getId(), w.getNumber(), Refs.project(project), Refs.type(s, w.getTypeId()), Refs.status(status),
                     Refs.priority(s, w.getPriorityId()), w.getSubject(), w.getDescriptionHtml(), Refs.user(s, w.getAuthorId()), Refs.user(s, w.getAssigneeId()),
@@ -128,7 +133,7 @@ public class Assembler {
                     parent == null ? null : ref(s, parent), kids, w.getStartDate(), w.getDueDate(), w.getDuration(), w.getIgnoreNonWorkingDays(),
                     w.getScheduleManually(), num(w.getWorkHours()), num(w.getRemainingHours()), w.getDoneRatio() == null ? null : w.getDoneRatio().intValue(),
                     watching.contains(w.getId()), watcherCount.getOrDefault(w.getId(), 0),
-                    relationCount.getOrDefault(w.getId(), 0) + kids + (parent != null ? 1 : 0), w.getLockVersion(), w.getCreatedAt(), w.getUpdatedAt(), meta));
+                    relationCount.getOrDefault(w.getId(), 0) + kids + (parent != null ? 1 : 0), attachmentCount.getOrDefault(w.getId(), 0), w.getLockVersion(), w.getCreatedAt(), w.getUpdatedAt(), meta));
         }
         return out;
     }

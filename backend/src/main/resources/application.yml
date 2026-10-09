@@ -40,6 +40,11 @@ spring:
       mail.smtp.starttls.enable: ${OPENPMS_SMTP_STARTTLS:false}
   jackson:
     default-property-inclusion: always
+  servlet:
+    multipart:
+      # a little above attachments.max_bytes (25MB); the exact limit is checked per upload
+      max-file-size: 30MB
+      max-request-size: 31MB
 
 management:
   endpoints:
@@ -55,6 +60,7 @@ openpms:
   base-url: ${OPENPMS_BASE_URL:http://localhost:8090}
   admin-email: ${OPENPMS_ADMIN_EMAIL:}
   mail-from: ${OPENPMS_MAIL_FROM:openPMS <no-reply@example.com>}
+  files-dir: ${OPENPMS_FILES_DIR:/data/files}
 
 ---
 # Development: dev data set (scripts/gen_dev_data.py), plain-http cookies.

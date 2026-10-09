@@ -16,7 +16,7 @@ import { ErrorState, NotFound, useDocumentTitle } from "@/app/page";
 import { useCurrentProject } from "@/app/project";
 import { WorkPackageDetail, type DetailTab } from "@/features/work-packages/detail";
 
-const TABS: DetailTab[] = ["overview", "activity", "relations"];
+const TABS: DetailTab[] = ["overview", "activity", "files", "relations"];
 const asTab = (s: string | undefined, fallback: DetailTab): DetailTab => (TABS.includes(s as DetailTab) ? (s as DetailTab) : fallback);
 
 /** Query string of the list (view, filters, page), kept while the panel opens and closes. */

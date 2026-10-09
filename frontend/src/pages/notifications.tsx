@@ -156,7 +156,7 @@ export function NotificationDetailRoute() {
       key={n}
       number={n}
       mode="panel"
-      tab={(["overview", "activity", "relations"].includes(tab ?? "") ? tab : "activity") as DetailTab}
+      tab={(["overview", "activity", "files", "relations"].includes(tab ?? "") ? tab : "activity") as DetailTab}
       tabHref={(t) => `/notifications/details/${n}/${t}${search}`}
       closeHref={`/notifications${search}`}
       afterDeleteHref={`/notifications${search}`}

@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/spinner";
 import { TypeLabel } from "@/components/ui/badges";
 import { Tabs } from "@/components/ui/tabs";
 import { RichText } from "@/components/domain/rich-text";
+import { FilesTab } from "./files";
 import { formatDate, relativeTime } from "@/lib/dates";
 import { htmlToText, textToHtml } from "@/lib/text";
 import { cn } from "@/lib/cn";
@@ -25,7 +26,7 @@ import { StatusMenu } from "./status-menu";
 import { InlineText } from "./inline-text";
 import { useSaveWorkPackage } from "./use-save";
 
-export type DetailTab = "overview" | "activity" | "relations";
+export type DetailTab = "overview" | "activity" | "files" | "relations";
 
 function Description({ wp }: { wp: WorkPackage }) {
   const { t } = useTranslation();
@@ -245,8 +246,8 @@ export function WorkPackageDetail({
       items={items.map((k) => ({
         value: k,
         label: t(`wp.tabs.${k}`),
-        count: k === "relations" ? wp.relationCount : undefined,
-        content: k === "overview" ? summary : k === "activity" ? <ActivityTab wp={wp} /> : <RelationsTab wp={wp} />,
+        count: k === "relations" ? wp.relationCount : k === "files" ? wp.attachmentCount : undefined,
+        content: k === "overview" ? summary : k === "activity" ? <ActivityTab wp={wp} /> : k === "files" ? <FilesTab wp={wp} /> : <RelationsTab wp={wp} />,
       }))}
     />
   );
@@ -255,11 +256,11 @@ export function WorkPackageDetail({
     <article ref={articleRef} tabIndex={-1} aria-label={`#${wp.number} ${wp.subject}`} className="flex min-h-0 flex-col outline-none">
       {header}
       {mode === "panel" ? (
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8">{tabs(["overview", "activity", "relations"])}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8">{tabs(["overview", "activity", "files", "relations"])}</div>
       ) : (
         <div className="grid grid-cols-1 gap-8 pb-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div className="pt-2">{summary}</div>
-          <div>{tabs(["activity", "relations"])}</div>
+          <div>{tabs(["activity", "files", "relations"])}</div>
         </div>
       )}
       <DeleteDialog

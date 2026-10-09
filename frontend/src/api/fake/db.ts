@@ -100,6 +100,9 @@ export interface DbBoard {
 }
 export interface DbNotification { id: Id; recipientId: Id; wpId: Id; journalId: Id | null; actorId: Id | null; reason: NotificationReason; readAt: IsoDateTime | null; createdAt: IsoDateTime }
 
+/** Demo only: bytes live in the browser as a data URL, so the fake layer keeps files small. */
+export interface DbAttachment { id: Id; wpId: Id; fileName: string; contentType: string; byteSize: number; authorId: Id; createdAt: IsoDateTime; dataUrl: string }
+
 export interface Db {
   schema: number;
   seq: { wp: number; id: number };
@@ -119,6 +122,7 @@ export interface Db {
   relations: DbRelation[];
   journals: DbJournal[];
   watchers: { wpId: Id; userId: Id }[];
+  attachments: DbAttachment[];
   queries: DbQuery[];
   queryFavorites: { userId: Id; queryId: Id }[];
   boards: DbBoard[];
@@ -129,7 +133,7 @@ export interface Db {
 }
 
 const KEY = "openpms.fakedb";
-const SCHEMA = 7;
+const SCHEMA = 8;
 
 function load(): Db {
   try {

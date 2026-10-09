@@ -113,6 +113,7 @@ export function toWp(w: DbWp, user: DbUser): WorkPackage {
     watching: db.watchers.some((x) => x.wpId === w.id && x.userId === user.id),
     watcherCount: db.watchers.filter((x) => x.wpId === w.id).length,
     relationCount: db.relations.filter((r) => r.fromId === w.id || r.toId === w.id).length + kids.length + (parent ? 1 : 0),
+    attachmentCount: db.attachments.filter((a) => a.wpId === w.id).length,
     lockVersion: w.lockVersion,
     createdAt: w.createdAt,
     updatedAt: w.updatedAt,
@@ -125,6 +126,7 @@ export function toWp(w: DbWp, user: DbUser): WorkPackage {
         manageRelations: can(user, project, "wp.manage_relations"),
         manageSubtasks: can(user, project, "wp.manage_subtasks"),
         watch: true,
+        attach: can(user, project, "wp.attach"),
       },
       editableFields: editable,
       derived,
@@ -152,6 +154,7 @@ const FIELD_LABEL: Record<string, string> = {
   workHours: "작업량",
   remainingHours: "남은 작업",
   doneRatio: "완료 %",
+  attachment: "첨부 파일",
 };
 
 function display(field: string, v: unknown): string | null {
@@ -198,7 +201,10 @@ function display(field: string, v: unknown): string | null {
 export function toJournal(j: DbJournal, user: DbUser): Journal {
   const details: JournalDetail[] = Object.entries(j.changes)
     .filter(([f]) => f !== "_created" && f !== "lockVersion")
-    .map(([field, [from, to]]) => ({ field, label: FIELD_LABEL[field] ?? field, from: display(field, from), to: display(field, to) }));
+    .map(([field, [from, to]]) => {
+      const base = field.split(":")[0]; // "attachment:<id>": one key per file
+      return { field, label: FIELD_LABEL[base] ?? field, from: display(base, from), to: display(base, to) };
+    });
   if (j.changes._created) details.unshift({ field: "_created", label: "작업을 만들었습니다", from: null, to: null });
   const wp = db.workPackages.find((w) => w.id === j.wpId)!;
   const project = db.projects.find((p) => p.id === wp.projectId)!;

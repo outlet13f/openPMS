@@ -274,6 +274,7 @@ export function buildSeed(schema: number): Db {
     ],
     notifications,
     projectFavorites: [{ userId: "u-seoyeon", projectId: "p-web" }],
+    attachments: [],
     nonWorkingDays: [
       { id: "nwd-1", date: "2026-10-03", name: "개천절" },
       { id: "nwd-2", date: "2026-10-09", name: "한글날" },
