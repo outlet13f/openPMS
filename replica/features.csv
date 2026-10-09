@@ -1,7 +1,7 @@
 ﻿feature,area,priority,original,clone,notes
-이메일·비밀번호 로그인/로그아웃,인증,must,yes,yes,S01 | 빌드: S01. 비밀번호 재설정은 준비 중
+이메일·비밀번호 로그인/로그아웃,인증,must,yes,yes,"S01 | 빌드: S01, 실제 API(세션·CSRF·실패 누적 잠금·요청 제한). 비밀번호 재설정은 API·메일까지, 화면은 준비 중"
 사내 SSO(OIDC) 로그인,인증,should,yes,no,원본 관리 메뉴에 OpenID 공급자 있음. 사내 도구에 중요
-이메일로 사용자 초대(invited 상태),인증,should,yes,partial,S23·S35 | 빌드: 관리에서 초대(invited 생성). 수락 화면·메일 발송은 없음
+이메일로 사용자 초대(invited 상태),인증,should,yes,partial,"S23·S35 | 빌드: 관리에서 초대 → 일회용 링크 메일 발송, 수락 API. 수락 화면은 준비 중"
 사용자 잠금/활성 상태 관리,인증,must,yes,yes,"S35 | 빌드: S35 잠금·해제, 잠긴 계정 로그인 거부"
 계정 설정: 언어·시간대·테마,계정,should,yes,no,S37
 한국어 UI와 다국어(i18n) 구조,공통,must,yes,yes,"사내 기본 언어 ko. 번역 문자열은 새로 작성 | 빌드: react-i18next, 타입 검사되는 키. ko만"
