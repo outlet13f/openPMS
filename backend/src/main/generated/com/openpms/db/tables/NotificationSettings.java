@@ -133,7 +133,7 @@ public class NotificationSettings extends TableImpl<NotificationSettingsRecord> 
     /**
      * The column <code>public.notification_settings.overdue_alert</code>.
      */
-    public final TableField<NotificationSettingsRecord, Boolean> OVERDUE_ALERT = createField(DSL.name("overdue_alert"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("true"), SQLDataType.BOOLEAN)), this, "");
+    public final TableField<NotificationSettingsRecord, Boolean> OVERDUE_ALERT = createField(DSL.name("overdue_alert"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
 
     /**
      * The column <code>public.notification_settings.created_at</code>.

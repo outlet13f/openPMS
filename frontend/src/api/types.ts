@@ -39,7 +39,12 @@ export interface Preferences {
   digestTimes: string[];
   /** no date alerts up to and including this day */
   remindersPausedUntil: IsoDate | null;
+  /** S21 내 페이지: the widgets shown, in order */
+  myPageWidgets: MyPageWidget[];
 }
+
+export const MY_PAGE_WIDGETS = ["assigned", "created", "watched", "responsible", "dueSoon", "recent"] as const;
+export type MyPageWidget = (typeof MY_PAGE_WIDGETS)[number];
 
 /* ---------- notification settings (S20) ---------- */
 

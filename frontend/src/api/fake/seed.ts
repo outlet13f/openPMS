@@ -2,7 +2,7 @@
 // original app's demo content. Roles, types, statuses and priorities match replica/seed.sql.
 
 import type { Db, DbJournal, DbWp } from "./db";
-import type { CustomField, QuerySpec } from "../types";
+import type { CustomField, MyPageWidget, QuerySpec } from "../types";
 
 const P_MANAGER = [
   "wp.share",
@@ -25,7 +25,7 @@ const P_NON_MEMBER = ["project.view", "wp.view", "board.view"];
 
 export const DEFAULT_COLUMNS: QuerySpec["columns"] = ["number", "subject", "type", "status", "assignee", "priority", "dueDate"];
 
-const prefs = { commentsNewestFirst: false, warnOnUnsaved: true, keyboardShortcuts: true, immediateOnMention: true, digestEnabled: true, digestTimes: ["08:00"], remindersPausedUntil: null as string | null };
+const prefs = { commentsNewestFirst: false, warnOnUnsaved: true, keyboardShortcuts: true, immediateOnMention: true, digestEnabled: true, digestTimes: ["08:00"], remindersPausedUntil: null as string | null, myPageWidgets: ["assigned", "created"] as MyPageWidget[] };
 
 export function buildSeed(schema: number): Db {
   const t0 = "2026-09-14T00:30:00Z";
@@ -39,7 +39,7 @@ export function buildSeed(schema: number): Db {
     { id: "u-doyoon", email: "doyoon.han@openpms.local", name: "한도윤", isAdmin: false },
     { id: "u-alex", email: "alex.kim@openpms.local", name: "Alex Kim", isAdmin: false },
     { id: "u-locked", email: "former.staff@openpms.local", name: "전 직원", isAdmin: false, status: "locked" as const },
-  ].map((u) => ({ password: "openpms!", status: "active" as const, locale: "ko" as const, timeZone: "Asia/Seoul", prefs: { ...prefs, digestTimes: [...prefs.digestTimes] }, createdAt: t0, lastLoginAt: null as string | null, ...u }));
+  ].map((u) => ({ password: "openpms!", status: "active" as const, locale: "ko" as const, timeZone: "Asia/Seoul", prefs: { ...prefs, digestTimes: [...prefs.digestTimes], myPageWidgets: [...prefs.myPageWidgets] }, createdAt: t0, lastLoginAt: null as string | null, ...u }));
 
   const roles = [
     { id: "r-manager", name: "프로젝트 관리자", scope: "project" as const, builtin: null, permissions: P_MANAGER },

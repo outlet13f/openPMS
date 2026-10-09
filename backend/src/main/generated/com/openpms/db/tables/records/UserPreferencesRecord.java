@@ -188,6 +188,21 @@ public class UserPreferencesRecord extends UpdatableRecordImpl<UserPreferencesRe
         return (OffsetDateTime) get(10);
     }
 
+    /**
+     * Setter for <code>public.user_preferences.my_page_widgets</code>.
+     */
+    public UserPreferencesRecord setMyPageWidgets(String[] value) {
+        set(11, value);
+        return this;
+    }
+
+    /**
+     * Getter for <code>public.user_preferences.my_page_widgets</code>.
+     */
+    public String[] getMyPageWidgets() {
+        return (String[]) get(11);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -211,7 +226,7 @@ public class UserPreferencesRecord extends UpdatableRecordImpl<UserPreferencesRe
     /**
      * Create a detached, initialised UserPreferencesRecord
      */
-    public UserPreferencesRecord(UUID userId, Boolean commentsNewestFirst, Boolean warnOnUnsaved, Boolean keyboardShortcuts, Boolean digestEnabled, LocalTime[] digestTimes, Boolean immediateOnMention, LocalDate remindersPausedUntil, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime lastDigestAt) {
+    public UserPreferencesRecord(UUID userId, Boolean commentsNewestFirst, Boolean warnOnUnsaved, Boolean keyboardShortcuts, Boolean digestEnabled, LocalTime[] digestTimes, Boolean immediateOnMention, LocalDate remindersPausedUntil, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime lastDigestAt, String[] myPageWidgets) {
         super(UserPreferences.USER_PREFERENCES);
 
         setUserId(userId);
@@ -225,6 +240,7 @@ public class UserPreferencesRecord extends UpdatableRecordImpl<UserPreferencesRe
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
         setLastDigestAt(lastDigestAt);
+        setMyPageWidgets(myPageWidgets);
         resetTouchedOnNotNull();
     }
 }

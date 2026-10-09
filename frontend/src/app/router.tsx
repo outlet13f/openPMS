@@ -26,6 +26,7 @@ import { AdminTypesPage } from "@/pages/admin/types";
 import { NotificationSettingsPage } from "@/pages/notification-settings";
 import { AccountPage } from "@/pages/account";
 import { SearchPage } from "@/pages/search";
+import { MyPage } from "@/pages/my-page";
 import { AdminCustomFieldsPage } from "@/pages/admin/custom-fields";
 import { AdminPrioritiesPage, AdminStatusesPage } from "@/pages/admin/statuses";
 import { AdminWorkflowsPage } from "@/pages/admin/workflows";
@@ -74,7 +75,7 @@ export const router = createBrowserRouter([
     element: <Authed />,
     children: [
       { index: true, element: <MeRoute render={(me) => <HomePage me={me} />} /> },
-      { path: "my/page", element: <Stub id="S21" nameKey="nav.myPage" /> },
+      { path: "my/page", element: <MyPage /> },
       { path: "my/account", element: <AccountPage /> },
       { path: "my/notifications", element: <NotificationSettingsPage /> },
       {

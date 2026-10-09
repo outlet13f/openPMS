@@ -117,6 +117,11 @@ public class UserPreferences extends TableImpl<UserPreferencesRecord> {
      */
     public final TableField<UserPreferencesRecord, OffsetDateTime> LAST_DIGEST_AT = createField(DSL.name("last_digest_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
 
+    /**
+     * The column <code>public.user_preferences.my_page_widgets</code>.
+     */
+    public final TableField<UserPreferencesRecord, String[]> MY_PAGE_WIDGETS = createField(DSL.name("my_page_widgets"), SQLDataType.CLOB.array().nullable(false).defaultValue(DSL.field(DSL.raw("'{assigned,created}'::text[]"), SQLDataType.CLOB.array())), this, "");
+
     private UserPreferences(Name alias, Table<UserPreferencesRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }

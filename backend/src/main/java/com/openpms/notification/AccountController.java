@@ -45,6 +45,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/me")
 public class AccountController {
+    /** S21 widget names (frontend: MY_PAGE_WIDGETS). */
+    private static final List<String> WIDGETS = List.of("assigned", "created", "watched", "responsible", "dueSoon", "recent");
     private static final Pattern TIME = Pattern.compile("^([01]\\d|2[0-3]):[0-5]\\d$");
 
     private static final List<String> THEMES = List.of("system", "light", "dark");
@@ -131,10 +133,10 @@ public class AccountController {
 
     /** Preferences as the API shows them; no row yet means the column defaults. */
     public static Dto.Preferences preferences(UserPreferencesRecord p) {
-        if (p == null) return new Dto.Preferences(false, true, true, true, true, List.of("08:00"), null);
+        if (p == null) return new Dto.Preferences(false, true, true, true, true, List.of("08:00"), null, List.of("assigned", "created"));
         return new Dto.Preferences(p.getCommentsNewestFirst(), p.getWarnOnUnsaved(), p.getKeyboardShortcuts(), p.getImmediateOnMention(),
                 p.getDigestEnabled(), Arrays.stream(p.getDigestTimes()).sorted().map(t -> t.toString().substring(0, 5)).toList(),
-                p.getRemindersPausedUntil());
+                p.getRemindersPausedUntil(), List.of(p.getMyPageWidgets()));
     }
 
     @PutMapping("/preferences")
@@ -168,6 +170,11 @@ public class AccountController {
             if (new HashSet<>(times).size() != times.size()) throw ApiException.field("digestTimes", "같은 시각이 두 번 있습니다.");
             times.sort(null);
             p.setDigestTimes(times.toArray(LocalTime[]::new));
+        }
+        if (In.has(body, "myPageWidgets")) {
+            if (!(body.get("myPageWidgets") instanceof Collection<?> c) || c.stream().anyMatch(x -> !WIDGETS.contains(x)) || new HashSet<>(c).size() != c.size())
+                throw ApiException.field("myPageWidgets", "알 수 없는 위젯이 있습니다.");
+            p.setMyPageWidgets(c.stream().map(String::valueOf).toArray(String[]::new));
         }
         if (In.has(body, "remindersPausedUntil")) {
             var v = body.get("remindersPausedUntil");

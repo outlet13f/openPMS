@@ -21,7 +21,7 @@ public final class Dto {
 
     /** digestTimes: "HH:MM" in the person's time zone; remindersPausedUntil: no date alerts up to that day */
     public record Preferences(boolean commentsNewestFirst, boolean warnOnUnsaved, boolean keyboardShortcuts, boolean immediateOnMention,
-                              boolean digestEnabled, List<String> digestTimes, LocalDate remindersPausedUntil) {}
+                              boolean digestEnabled, List<String> digestTimes, LocalDate remindersPausedUntil, List<String> myPageWidgets) {}
 
     /** S20: what a person is notified about (mentions and watched items always). Alert days: 0, 1, 3, 7 or null (off). */
     public record NotificationSetting(boolean assignee, boolean responsible, boolean shared, boolean workPackageCreated, boolean commented,
