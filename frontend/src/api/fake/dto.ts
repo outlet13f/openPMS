@@ -126,6 +126,8 @@ export function toWp(w: DbWp, user: DbUser): WorkPackage {
         manageRelations: can(user, project, "wp.manage_relations"),
         manageSubtasks: can(user, project, "wp.manage_subtasks"),
         watch: true,
+        viewWatchers: can(user, project, "wp.view_watchers"),
+        addWatchers: can(user, project, "wp.add_watchers"),
         attach: can(user, project, "wp.attach"),
       },
       editableFields: editable,

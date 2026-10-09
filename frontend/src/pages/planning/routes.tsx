@@ -2,7 +2,7 @@
 // Kept apart from calendar.tsx so the team planner does not pull in FullCalendar.
 import { useParams } from "react-router";
 import { useCurrentProject } from "@/app/project";
-import { WorkPackageDetail, type DetailTab } from "@/features/work-packages/detail";
+import { WorkPackageDetail, asDetailTab } from "@/features/work-packages/detail";
 import { usePlanningView } from "@/features/planning/use-planning-view";
 import { NewPanelRoute } from "@/pages/work-packages/panels";
 
@@ -13,7 +13,7 @@ export function PlanningDetailRoute({ kind }: { kind: "calendar" | "team-planner
   const st = usePlanningView(project.id, kind === "calendar" ? "calendar" : "team_planner", id);
   const n = Number(number);
   const base = `/projects/${project.identifier}/${kind}/${id}`;
-  const current = (["overview", "activity", "files", "relations"].includes(tab ?? "") ? tab : "overview") as DetailTab;
+  const current = asDetailTab(tab, "overview");
   return (
     <WorkPackageDetail
       key={n}

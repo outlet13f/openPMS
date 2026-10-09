@@ -217,6 +217,10 @@ export interface WorkPackage {
       manageRelations: boolean;
       manageSubtasks: boolean;
       watch: boolean;
+      /** see the watcher list (wp.view_watchers) */
+      viewWatchers: boolean;
+      /** add other people as watchers (wp.add_watchers) */
+      addWatchers: boolean;
       /** upload and delete files (wp.attach) */
       attach: boolean;
     };
@@ -297,6 +301,12 @@ export interface Attachment {
   createdAt: IsoDateTime;
   url: string;
   canDelete: boolean;
+}
+
+/** Someone watching a work package (S08 주시자 탭). Anyone can remove themselves; others need wp.delete_watchers. */
+export interface Watcher {
+  user: UserRef;
+  canRemove: boolean;
 }
 
 export type RelationType =

@@ -7,6 +7,8 @@ import { useTranslation } from "react-i18next";
 export interface SelectOption {
   value: string;
   label: ReactNode;
+  /** Text for type-ahead when the label is not plain text (e.g. avatar + name). */
+  textValue?: string;
   disabled?: boolean;
 }
 
@@ -62,6 +64,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
                 key={o.value}
                 value={o.value}
                 disabled={o.disabled}
+                textValue={o.textValue}
                 className={cn(
                   "relative flex h-8 cursor-default items-center rounded-sm pr-2 pl-7 text-sm text-fg outline-none select-none",
                   "data-highlighted:bg-surface-hover data-disabled:text-fg-disabled",

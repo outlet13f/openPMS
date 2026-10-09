@@ -1,5 +1,6 @@
 import type {
   Attachment,
+  Watcher,
   AdminGroup,
   AdminPriority,
   AdminRole,
@@ -145,6 +146,12 @@ export interface Api {
     editComment(journalId: Id, bodyHtml: string): Promise<Journal>;
     /** POST|DELETE /work-packages/{number}/watchers */
     setWatching(number: number, watching: boolean): Promise<void>;
+    /** GET /work-packages/{number}/watchers (wp.view_watchers) */
+    watchers(number: number): Promise<Watcher[]>;
+    /** POST /work-packages/{number}/watchers {userId} (wp.add_watchers; 422 when that person cannot see the item) */
+    addWatcher(number: number, userId: Id): Promise<void>;
+    /** DELETE /work-packages/{number}/watchers/{userId} (yourself always, others with wp.delete_watchers) */
+    removeWatcher(number: number, userId: Id): Promise<void>;
     /** GET /work-packages/{number}/attachments */
     attachments(number: number): Promise<Attachment[]>;
     /** POST /work-packages/{number}/attachments (multipart, field "file") — 413 when too large */

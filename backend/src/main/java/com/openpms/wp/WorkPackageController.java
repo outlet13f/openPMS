@@ -82,17 +82,31 @@ public class WorkPackageController {
         return service.editComment(current.ctx(), id, In.str(body, "bodyHtml"));
     }
 
+    @GetMapping("/work-packages/{number}/watchers")
+    public List<Dto.Watcher> watchers(@PathVariable long number) {
+        return service.watchers(current.ctx(), number);
+    }
+
+    /** {"userId": "…"} adds someone; {"self": true} (or no body) watches it yourself. */
     @PostMapping("/work-packages/{number}/watchers")
     public ResponseEntity<Void> watch(@PathVariable long number, @RequestBody(required = false) Map<String, Object> body) {
-        // only "watch it myself" for now; adding other people is wp.add_watchers (should-have, S07 주시자 탭)
-        if (body != null && In.has(body, "userId")) throw ApiException.unprocessable("지원하지 않는 요청입니다.", "다른 사람을 주시자로 추가하는 기능은 아직 없습니다.");
-        service.setWatching(current.ctx(), number, true);
+        var ctx = current.ctx();
+        var userId = body != null && In.has(body, "userId") ? In.uuid(body, "userId", "userId") : ctx.userId();
+        service.addWatcher(ctx, number, userId);
         return ResponseEntity.noContent().build();
     }
 
-    @DeleteMapping("/work-packages/{number}/watchers/me")
-    public ResponseEntity<Void> unwatch(@PathVariable long number) {
-        service.setWatching(current.ctx(), number, false);
+    /** "me" or a user id. */
+    @DeleteMapping("/work-packages/{number}/watchers/{userId}")
+    public ResponseEntity<Void> unwatch(@PathVariable long number, @PathVariable String userId) {
+        var ctx = current.ctx();
+        UUID id;
+        try {
+            id = "me".equals(userId) ? ctx.userId() : UUID.fromString(userId);
+        } catch (IllegalArgumentException e) {
+            throw ApiException.notFound("주시자를 찾을 수 없습니다.");
+        }
+        service.removeWatcher(ctx, number, id);
         return ResponseEntity.noContent().build();
     }
 

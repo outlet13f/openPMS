@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/spinner";
 import { cn } from "@/lib/cn";
 import { formatDateTime, relativeTime } from "@/lib/dates";
 import { ErrorState, PageHeader, useDocumentTitle } from "@/app/page";
-import { WorkPackageDetail, type DetailTab } from "@/features/work-packages/detail";
+import { WorkPackageDetail, asDetailTab } from "@/features/work-packages/detail";
 
 function GroupCard({ g, selected, href }: { g: NotificationGroup; selected: boolean; href: string }) {
   const { t } = useTranslation();
@@ -156,7 +156,7 @@ export function NotificationDetailRoute() {
       key={n}
       number={n}
       mode="panel"
-      tab={(["overview", "activity", "files", "relations"].includes(tab ?? "") ? tab : "activity") as DetailTab}
+      tab={asDetailTab(tab, "activity")}
       tabHref={(t) => `/notifications/details/${n}/${t}${search}`}
       closeHref={`/notifications${search}`}
       afterDeleteHref={`/notifications${search}`}

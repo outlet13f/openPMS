@@ -491,14 +491,33 @@ public class WorkPackageService {
         return journals.toDto(ctx, j, f.project());
     }
 
+    public List<Dto.Watcher> watchers(Ctx ctx, long number) {
+        var f = find(ctx, number);
+        ctx.require(f.project(), "wp.view_watchers", "주시자를 볼 권한이 없습니다.");
+        boolean canDelete = ctx.can(f.project(), "wp.delete_watchers");
+        var collator = java.text.Collator.getInstance(java.util.Locale.KOREAN);
+        return db.select(WATCHERS.USER_ID).from(WATCHERS).where(WATCHERS.WORK_PACKAGE_ID.eq(f.wp().getId())).fetch(WATCHERS.USER_ID).stream()
+                .map(id -> new Dto.Watcher(Refs.user(ctx.s(), id), canDelete || id.equals(ctx.userId())))
+                .sorted((a, b) -> collator.compare(a.user().name(), b.user().name()))
+                .toList();
+    }
+
+    /** Yourself with wp.view; someone else with wp.add_watchers, and only if they can see the item. */
     @Transactional
-    public void setWatching(Ctx ctx, long number, boolean watching) {
-        var wp = find(ctx, number).wp();
-        if (watching) {
-            db.insertInto(WATCHERS).set(WATCHERS.WORK_PACKAGE_ID, wp.getId()).set(WATCHERS.USER_ID, ctx.userId()).onConflictDoNothing().execute();
-        } else {
-            db.deleteFrom(WATCHERS).where(WATCHERS.WORK_PACKAGE_ID.eq(wp.getId()), WATCHERS.USER_ID.eq(ctx.userId())).execute();
-        }
+    public void addWatcher(Ctx ctx, long number, UUID userId) {
+        var f = find(ctx, number);
+        if (!userId.equals(ctx.userId())) ctx.require(f.project(), "wp.add_watchers", "주시자를 추가할 권한이 없습니다.");
+        var u = ctx.s().user(userId).filter(x -> "active".equals(x.status())).orElse(null);
+        if (u == null || !ctx.can(u, f.project(), "wp.view"))
+            throw ApiException.field("userId", "이 작업을 볼 수 없는 사람은 주시자로 추가할 수 없습니다.");
+        db.insertInto(WATCHERS).set(WATCHERS.WORK_PACKAGE_ID, f.wp().getId()).set(WATCHERS.USER_ID, userId).onConflictDoNothing().execute();
+    }
+
+    @Transactional
+    public void removeWatcher(Ctx ctx, long number, UUID userId) {
+        var f = find(ctx, number);
+        if (!userId.equals(ctx.userId())) ctx.require(f.project(), "wp.delete_watchers", "주시자를 뺄 권한이 없습니다.");
+        db.deleteFrom(WATCHERS).where(WATCHERS.WORK_PACKAGE_ID.eq(f.wp().getId()), WATCHERS.USER_ID.eq(userId)).execute();
     }
 
     /* ---------- relations ---------- */

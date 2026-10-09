@@ -667,6 +667,33 @@ export const fakeApi: Api = {
         db.attachments = db.attachments.filter((x) => x.id !== id);
         writeJournal(wp, user, { [`attachment:${a.id}`]: [a.fileName, null] });
       }),
+    watchers: (number) =>
+      run(() => {
+        const user = sessionUser();
+        const { wp, project } = findWp(user, number);
+        requirePerm(user, project, "wp.view_watchers", "주시자를 볼 권한이 없습니다.");
+        const canDelete = can(user, project, "wp.delete_watchers");
+        return db.watchers
+          .filter((x) => x.wpId === wp.id)
+          .map((x) => ({ user: userRef(x.userId)!, canRemove: canDelete || x.userId === user.id }))
+          .sort((a, b) => a.user.name.localeCompare(b.user.name, "ko"));
+      }),
+    addWatcher: (number, userId) =>
+      run(() => {
+        const user = sessionUser();
+        const { wp, project } = findWp(user, number);
+        if (userId !== user.id) requirePerm(user, project, "wp.add_watchers", "주시자를 추가할 권한이 없습니다.");
+        const target = db.users.find((u) => u.id === userId && u.status === "active");
+        if (!target || !can(target, project, "wp.view")) throw fieldError("userId", "이 작업을 볼 수 없는 사람은 주시자로 추가할 수 없습니다.");
+        if (!db.watchers.some((x) => x.wpId === wp.id && x.userId === userId)) db.watchers.push({ wpId: wp.id, userId });
+      }),
+    removeWatcher: (number, userId) =>
+      run(() => {
+        const user = sessionUser();
+        const { wp, project } = findWp(user, number);
+        if (userId !== user.id) requirePerm(user, project, "wp.delete_watchers", "주시자를 뺄 권한이 없습니다.");
+        db.watchers = db.watchers.filter((x) => !(x.wpId === wp.id && x.userId === userId));
+      }),
     setWatching: (number, watching) =>
       run(() => {
         const user = sessionUser();

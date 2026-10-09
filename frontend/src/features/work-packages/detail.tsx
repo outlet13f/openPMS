@@ -14,6 +14,7 @@ import { TypeLabel } from "@/components/ui/badges";
 import { Tabs } from "@/components/ui/tabs";
 import { RichText } from "@/components/domain/rich-text";
 import { FilesTab } from "./files";
+import { WatchersTab } from "./watchers";
 import { formatDate, relativeTime } from "@/lib/dates";
 import { RichTextEditor } from "@/components/domain/rich-text-editor";
 import { cn } from "@/lib/cn";
@@ -25,7 +26,10 @@ import { StatusMenu } from "./status-menu";
 import { InlineText } from "./inline-text";
 import { useSaveWorkPackage } from "./use-save";
 
-export type DetailTab = "overview" | "activity" | "files" | "relations";
+export const DETAIL_TABS = ["overview", "activity", "files", "relations", "watchers"] as const;
+export type DetailTab = (typeof DETAIL_TABS)[number];
+/** A route's ":tab" segment, or the fallback when it is missing or unknown. */
+export const asDetailTab = (s: string | undefined, fallback: DetailTab): DetailTab => (DETAIL_TABS.includes(s as DetailTab) ? (s as DetailTab) : fallback);
 
 function Description({ wp }: { wp: WorkPackage }) {
   const { t } = useTranslation();
@@ -242,29 +246,38 @@ export function WorkPackageDetail({
     </div>
   );
 
-  const tabs = (items: DetailTab[]) => (
-    <Tabs
-      aria-label={t("wp.listTitle")}
-      value={tab}
-      onValueChange={(v) => navigate(tabHref(v as DetailTab), { replace: true })}
-      items={items.map((k) => ({
-        value: k,
-        label: t(`wp.tabs.${k}`),
-        count: k === "relations" ? wp.relationCount : k === "files" ? wp.attachmentCount : undefined,
-        content: k === "overview" ? summary : k === "activity" ? <ActivityTab wp={wp} /> : k === "files" ? <FilesTab wp={wp} /> : <RelationsTab wp={wp} />,
-      }))}
-    />
-  );
+  const tabs = (all: DetailTab[]) => {
+    // the watcher list needs wp.view_watchers; a link to it falls back to the first tab
+    const items = all.filter((k) => k !== "watchers" || wp._meta.allowedActions.viewWatchers);
+    return (
+      <Tabs
+        aria-label={t("wp.listTitle")}
+        value={items.includes(tab) ? tab : items[0]}
+        onValueChange={(v) => navigate(tabHref(v as DetailTab), { replace: true })}
+        items={items.map((k) => ({
+          value: k,
+          label: t(`wp.tabs.${k}`),
+          count: k === "relations" ? wp.relationCount : k === "files" ? wp.attachmentCount : k === "watchers" ? wp.watcherCount : undefined,
+          content:
+            k === "overview" ? summary
+            : k === "activity" ? <ActivityTab wp={wp} />
+            : k === "files" ? <FilesTab wp={wp} />
+            : k === "watchers" ? <WatchersTab wp={wp} />
+            : <RelationsTab wp={wp} />,
+        }))}
+      />
+    );
+  };
 
   return (
     <article ref={articleRef} tabIndex={-1} aria-label={`#${wp.number} ${wp.subject}`} className="flex min-h-0 flex-col outline-none">
       {header}
       {mode === "panel" ? (
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8">{tabs(["overview", "activity", "files", "relations"])}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8">{tabs(["overview", "activity", "files", "relations", "watchers"])}</div>
       ) : (
         <div className="grid grid-cols-1 gap-8 pb-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div className="pt-2">{summary}</div>
-          <div>{tabs(["activity", "files", "relations"])}</div>
+          <div>{tabs(["activity", "files", "relations", "watchers"])}</div>
         </div>
       )}
       <DeleteDialog

@@ -63,7 +63,10 @@ public final class Dto {
                                       LocalDate startDate, LocalDate dueDate) {}
 
     public record AllowedActions(boolean edit, boolean delete, boolean move, boolean comment, boolean manageRelations, boolean manageSubtasks,
-                                 boolean watch, boolean attach) {}
+                                 boolean watch, boolean viewWatchers, boolean addWatchers, boolean attach) {}
+
+    /** S08 주시자 탭: anyone may remove themselves; removing others needs wp.delete_watchers. */
+    public record Watcher(UserRef user, boolean canRemove) {}
 
     public record Meta(AllowedActions allowedActions, List<String> editableFields, List<String> derived, boolean overdue) {}
 

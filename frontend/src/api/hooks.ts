@@ -15,6 +15,7 @@ export const qk = {
   wpActivities: (n: number) => ["wp", n, "activities"] as const,
   wpRelations: (n: number) => ["wp", n, "relations"] as const,
   wpAttachments: (n: number) => ["wp", n, "attachments"] as const,
+  wpWatchers: (n: number) => ["wp", n, "watchers"] as const,
   wpStatuses: (n: number) => ["wp", n, "allowed-statuses"] as const,
   wpForm: (projectId: string, typeId?: string) => ["wp-form", projectId, typeId ?? ""] as const,
   query: (spec: QuerySpec, projectId?: string, page = 1, pageSize = 20) => ["wp-query", projectId ?? "", page, pageSize, spec] as const,
@@ -174,9 +175,21 @@ export function useEditComment(n: number) {
   });
 }
 
+/** The header's "watch" toggle. Refreshes the item and with it the watcher list (["wp", n, …]). */
 export function useWatch(n: number) {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (watching: boolean) => api.workPackages.setWatching(n, watching), onSuccess: () => qc.invalidateQueries({ queryKey: qk.wp(n) }) });
+}
+
+export const useWatchers = (n: number, enabled = true) => useQuery({ queryKey: qk.wpWatchers(n), queryFn: () => api.workPackages.watchers(n), enabled });
+
+export function useWatcherMutations(n: number) {
+  const qc = useQueryClient();
+  const done = () => qc.invalidateQueries({ queryKey: qk.wp(n) });
+  return {
+    add: useMutation({ mutationFn: (userId: Id) => api.workPackages.addWatcher(n, userId), onSuccess: done }),
+    remove: useMutation({ mutationFn: (userId: Id) => api.workPackages.removeWatcher(n, userId), onSuccess: done }),
+  };
 }
 
 export function useRelationMutations(n: number) {

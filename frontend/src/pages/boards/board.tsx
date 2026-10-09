@@ -31,7 +31,7 @@ import { WorkPackageCard } from "@/components/domain/work-package-card";
 import { cn } from "@/lib/cn";
 import { ErrorState, PageHeader, useDocumentTitle } from "@/app/page";
 import { can, useCurrentProject } from "@/app/project";
-import { WorkPackageDetail, type DetailTab } from "@/features/work-packages/detail";
+import { WorkPackageDetail, asDetailTab } from "@/features/work-packages/detail";
 
 const cardId = (n: number) => `card-${n}`;
 
@@ -306,7 +306,7 @@ export function BoardDetailRoute() {
   const project = useCurrentProject();
   const n = Number(number);
   const base = `/projects/${project.identifier}/boards/${id}`;
-  const current = (["overview", "activity", "files", "relations"].includes(tab ?? "") ? tab : "overview") as DetailTab;
+  const current = asDetailTab(tab, "overview");
   return (
     <WorkPackageDetail
       key={n}

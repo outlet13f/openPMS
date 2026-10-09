@@ -14,10 +14,8 @@ import { TypeLabel } from "@/components/ui/badges";
 import { RichTextEditor } from "@/components/domain/rich-text-editor";
 import { ErrorState, NotFound, useDocumentTitle } from "@/app/page";
 import { useCurrentProject } from "@/app/project";
-import { WorkPackageDetail, type DetailTab } from "@/features/work-packages/detail";
+import { WorkPackageDetail, asDetailTab as asTab } from "@/features/work-packages/detail";
 
-const TABS: DetailTab[] = ["overview", "activity", "files", "relations"];
-const asTab = (s: string | undefined, fallback: DetailTab): DetailTab => (TABS.includes(s as DetailTab) ? (s as DetailTab) : fallback);
 
 /** Query string of the list (view, filters, page), kept while the panel opens and closes. */
 function useListSearch() {

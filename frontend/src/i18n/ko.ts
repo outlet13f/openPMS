@@ -702,6 +702,18 @@ const ko = {
     linkInvalid: "http://, https:// 또는 mailto:로 시작하는 주소를 입력하세요.",
     mentionList: "언급할 사람",
   },
+  watchers: {
+    person: "주시자로 추가할 사람",
+    choose: "사람 선택",
+    everyone: "추가할 수 있는 멤버가 모두 주시 중입니다",
+    add: "추가",
+    pickFirst: "추가할 사람을 고르세요.",
+    added: "{{name}}님을 주시자로 추가했습니다",
+    removed: "{{name}}님을 주시자에서 뺐습니다",
+    remove: "{{name}} 주시자에서 빼기",
+    empty: "아직 주시하는 사람이 없습니다",
+    emptyBody: "주시자는 이 작업이 바뀔 때마다 알림을 받습니다.",
+  },
   files: {
     dropHint: "파일을 여기에 끌어다 놓거나",
     pick: "파일 선택",

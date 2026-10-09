@@ -13,7 +13,7 @@ import { ErrorState, PageHeader, useDocumentTitle } from "@/app/page";
 import { useCurrentProject } from "@/app/project";
 import { FilterPanel } from "@/features/work-packages/filter-panel";
 import { useListState } from "@/features/work-packages/view-state";
-import { WorkPackageDetail, type DetailTab } from "@/features/work-packages/detail";
+import { WorkPackageDetail, asDetailTab } from "@/features/work-packages/detail";
 import { GanttChart, type Zoom } from "@/features/gantt/gantt-chart";
 
 export function GanttPage() {
@@ -104,7 +104,7 @@ export function GanttDetailRoute() {
   const project = useCurrentProject();
   const n = Number(number);
   const base = `/projects/${project.identifier}/gantt`;
-  const current = (["overview", "activity", "files", "relations"].includes(tab ?? "") ? tab : "overview") as DetailTab;
+  const current = asDetailTab(tab, "overview");
   return (
     <WorkPackageDetail
       key={n}
