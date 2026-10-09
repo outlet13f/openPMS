@@ -14,13 +14,19 @@
     "contrast": "python ../replica/design/contrast.py ../replica/design/tokens.json"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@tanstack/react-query": "^5.104.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "i18next": "^26.4.2",
     "lucide-react": "^1.54.0",
     "pretendard": "^1.3.9",
     "radix-ui": "^1.7.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "react-i18next": "^17.0.16",
     "react-router": "^8.4.0",
     "tailwind-merge": "^3.7.0"
   },

@@ -20,7 +20,7 @@ const control = [
   "read-only:bg-surface-sunken",
 ].join(" ");
 
-export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { size?: "sm" | "md" }>(
+export const Input = forwardRef<HTMLInputElement, Omit<InputHTMLAttributes<HTMLInputElement>, "size"> & { size?: "sm" | "md" }>(
   function Input({ className, size = "md", ...rest }, ref) {
     return (
       <input

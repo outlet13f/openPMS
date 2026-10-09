@@ -2,6 +2,7 @@ import { CalendarClock } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Avatar } from "@/components/ui/avatar";
 import { StatusPill, TypeLabel } from "@/components/ui/badges";
+import { useTranslation } from "react-i18next";
 
 export interface CardWorkPackage {
   number: number;
@@ -25,7 +26,8 @@ function fmt(d: string) {
  * Board card and mobile list card. The whole card is one link (opens split view);
  * on boards it is also the drag handle (dnd-kit: Space to lift, arrows to move, Space to drop).
  */
-export function WorkPackageCard({ wp, showStatus, dragging, className }: { wp: CardWorkPackage; showStatus?: boolean; dragging?: boolean; className?: string }) {
+export function WorkPackageCard({ wp, showStatus, dragging, className, href }: { wp: CardWorkPackage; showStatus?: boolean; dragging?: boolean; className?: string; href?: string }) {
+  const { t } = useTranslation();
   return (
     <article
       className={cn(
@@ -44,20 +46,20 @@ export function WorkPackageCard({ wp, showStatus, dragging, className }: { wp: C
         <span className="truncate">{wp.projectName}</span>
       </div>
       <h3 className="text-sm leading-5 text-fg">
-        <a href={`#wp-${wp.number}`} className="outline-none after:absolute after:inset-0">
+        <a href={href ?? `#wp-${wp.number}`} className="outline-none after:absolute after:inset-0">
           <TypeLabel name={wp.type.name} color={wp.type.color} className="mr-1.5" />
           {wp.subject}
         </a>
       </h3>
       <div className="mt-2 flex items-center justify-between gap-2">
-        {wp.assignee ? <Avatar id={wp.assignee.id} name={wp.assignee.name} size="xs" /> : <span className="text-xs text-fg-muted">담당자 없음</span>}
+        {wp.assignee ? <Avatar id={wp.assignee.id} name={wp.assignee.name} size="xs" /> : <span className="text-xs text-fg-muted">{t("wp.unassigned")}</span>}
         {(wp.startDate || wp.dueDate) && (
           <span className="inline-flex items-center gap-1 text-xs text-fg-muted tabular-nums">
-            {wp.autoScheduled && <CalendarClock className="size-3.5" aria-label="자동 일정" />}
+            {wp.autoScheduled && <CalendarClock className="size-3.5" aria-label={t("wp.autoScheduled")} />}
             {wp.startDate && fmt(wp.startDate)}
             {wp.startDate && wp.dueDate && " – "}
             {wp.dueDate && <span className={cn(wp.overdue && "font-semibold text-danger")}>{fmt(wp.dueDate)}</span>}
-            {wp.overdue && <span className="sr-only">(기한 지남)</span>}
+            {wp.overdue && <span className="sr-only">{t("wp.overdueSr")}</span>}
           </span>
         )}
       </div>

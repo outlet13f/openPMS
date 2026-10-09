@@ -111,33 +111,34 @@ export function DesignPage() {
       <div className="flex">
         <Sidebar
           className="sticky top-header hidden h-[calc(100dvh-var(--pms-layout-header-h))] lg:flex"
-          project="디자인 시스템"
+          label="디자인 시스템 목차"
+          header={<p className="px-2.5 text-sm font-semibold text-fg">디자인 시스템</p>}
           sections={[
             {
               items: [
-                { label: "토큰", href: "#tokens", icon: <Columns3 />, active: true },
-                { label: "타이포그래피", href: "#type", icon: <ListTodo /> },
-                { label: "버튼", href: "#buttons", icon: <Plus /> },
-                { label: "폼 컨트롤", href: "#forms", icon: <Settings /> },
-                { label: "표시 요소", href: "#display", icon: <Pin /> },
-                { label: "탐색", href: "#nav", icon: <Network /> },
-                { label: "피드백", href: "#feedback", icon: <Inbox /> },
-                { label: "오버레이", href: "#overlays", icon: <Link2 /> },
+                { label: "토큰", to: "#tokens", icon: <Columns3 />, active: true },
+                { label: "타이포그래피", to: "#type", icon: <ListTodo /> },
+                { label: "버튼", to: "#buttons", icon: <Plus /> },
+                { label: "폼 컨트롤", to: "#forms", icon: <Settings /> },
+                { label: "표시 요소", to: "#display", icon: <Pin /> },
+                { label: "탐색", to: "#nav", icon: <Network /> },
+                { label: "피드백", to: "#feedback", icon: <Inbox /> },
+                { label: "오버레이", to: "#overlays", icon: <Link2 /> },
               ],
             },
             {
               title: "도메인 구성 요소",
               items: [
-                { label: "작업 목록 행", href: "#table", icon: <ListTodo /> },
-                { label: "보드 카드", href: "#cards", icon: <KanbanSquare />, badge: <Counter>3</Counter> },
-                { label: "Gantt 요소", href: "#gantt", icon: <GanttChart /> },
+                { label: "작업 목록 행", to: "#table", icon: <ListTodo /> },
+                { label: "보드 카드", to: "#cards", icon: <KanbanSquare />, badge: <Counter>3</Counter> },
+                { label: "Gantt 요소", to: "#gantt", icon: <GanttChart /> },
               ],
             },
           ]}
         />
         <main id="main" className="min-w-0 flex-1 px-content pb-24 md:px-8">
           <div className="pt-4">
-            <Breadcrumbs items={[{ label: "openPMS", href: "#" }, { label: "개발 도구", href: "#" }, { label: "디자인 시스템" }]} />
+            <Breadcrumbs items={[{ label: "openPMS", href: "/" }, { label: "개발 도구" }, { label: "디자인 시스템" }]} />
             <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
               <h1 className="text-xl text-fg">디자인 시스템</h1>
               <div className="flex flex-wrap items-center gap-toolbar">

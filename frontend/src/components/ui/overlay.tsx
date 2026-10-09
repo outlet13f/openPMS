@@ -3,6 +3,7 @@ import { Dialog as D, DropdownMenu as M, Tooltip as Tip } from "radix-ui";
 import { Check, ChevronRight, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "./button";
+import { useTranslation } from "react-i18next";
 
 /* ---------- Dialog ---------- */
 
@@ -24,6 +25,7 @@ interface DialogProps {
 
 /** Modal dialog: focus is trapped, Esc and the close button dismiss, focus returns to the trigger. */
 export function Dialog({ open, defaultOpen, onOpenChange, trigger, title, description, banner, children, footer, size = "md" }: DialogProps) {
+  const { t } = useTranslation();
   return (
     <D.Root open={open} defaultOpen={defaultOpen} onOpenChange={onOpenChange}>
       {trigger && <D.Trigger asChild>{trigger}</D.Trigger>}
@@ -51,11 +53,11 @@ export function Dialog({ open, defaultOpen, onOpenChange, trigger, title, descri
               {description ? (
                 <D.Description className="mt-1 text-sm text-fg-muted">{description}</D.Description>
               ) : (
-                <D.Description className="sr-only">{typeof title === "string" ? title : "대화상자"}</D.Description>
+                <D.Description className="sr-only">{typeof title === "string" ? title : ""}</D.Description>
               )}
             </div>
             <D.Close asChild>
-              <Button variant="ghost" size="sm" iconOnly aria-label="닫기" icon={<X />} />
+              <Button variant="ghost" size="sm" iconOnly aria-label={t("app.close")} icon={<X />} />
             </D.Close>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">{children}</div>

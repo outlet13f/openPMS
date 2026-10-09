@@ -2,6 +2,7 @@ import { forwardRef, type ReactNode } from "react";
 import { Select as S } from "radix-ui";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useTranslation } from "react-i18next";
 
 export interface SelectOption {
   value: string;
@@ -25,9 +26,10 @@ interface SelectProps {
 }
 
 export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
-  { options, value, defaultValue, onValueChange, placeholder = "선택", disabled, size = "md", className, ...aria },
+  { options, value, defaultValue, onValueChange, placeholder, disabled, size = "md", className, ...aria },
   ref,
 ) {
+  const { t } = useTranslation();
   return (
     <S.Root value={value} defaultValue={defaultValue} onValueChange={onValueChange} disabled={disabled}>
       <S.Trigger
@@ -43,7 +45,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
           className,
         )}
       >
-        <S.Value placeholder={placeholder} />
+        <S.Value placeholder={placeholder ?? t("app.select")} />
         <S.Icon>
           <ChevronDown className="size-4 text-fg-muted" aria-hidden="true" />
         </S.Icon>

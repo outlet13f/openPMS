@@ -52,13 +52,21 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   { className, variant, size, loading, icon, iconOnly, asChild, children, disabled, type = "button", ...rest },
   ref,
 ) {
-  const Comp = asChild ? Slot.Root : "button";
+  if (asChild) {
+    // The child element (e.g. a router <Link>) becomes the root; the icon is rendered inside it.
+    return (
+      <Slot.Root ref={ref} className={cn(button({ variant, size, iconOnly }), className)} {...rest}>
+        {icon}
+        <Slot.Slottable>{children}</Slot.Slottable>
+      </Slot.Root>
+    );
+  }
   return (
-    <Comp
+    <button
       ref={ref}
-      type={asChild ? undefined : type}
+      type={type}
       className={cn(button({ variant, size, iconOnly }), className)}
-      disabled={asChild ? undefined : disabled || loading}
+      disabled={disabled || loading}
       aria-busy={loading || undefined}
       {...rest}
     >
@@ -78,7 +86,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
           {children}
         </>
       )}
-    </Comp>
+    </button>
   );
 });
 

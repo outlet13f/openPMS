@@ -2,6 +2,7 @@ import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { readableOn } from "@/lib/color";
+import { useTranslation } from "react-i18next";
 
 /* ---------- Counter: "필터 2", "관계 6", unread badge ---------- */
 
@@ -54,6 +55,7 @@ export const StatusPill = forwardRef<HTMLButtonElement, StatusPillProps>(functio
   { name, color, editable, size = "md", className, ...rest },
   ref,
 ) {
+  const { t } = useTranslation();
   const style = { backgroundColor: color, color: readableOn(color) };
   const cls = cn(
     "inline-flex max-w-full items-center gap-1 rounded-full font-medium whitespace-nowrap",
@@ -72,7 +74,7 @@ export const StatusPill = forwardRef<HTMLButtonElement, StatusPillProps>(functio
       ref={ref}
       type="button"
       aria-haspopup="menu"
-      aria-label={`상태: ${name}. 상태 바꾸기`}
+      aria-label={t("wp.statusPill", { name })}
       className={cn(cls, "hover:brightness-95 active:brightness-90")}
       style={style}
       {...rest}

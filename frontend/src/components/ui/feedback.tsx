@@ -3,6 +3,7 @@ import { Toast as T } from "radix-ui";
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "./button";
+import { useTranslation } from "react-i18next";
 
 /* ---------- Banner: inline message inside a page or dialog ---------- */
 
@@ -30,6 +31,7 @@ export function Banner({
   flush?: boolean;
 }) {
   const t = bannerTone[tone];
+  const { t: tr } = useTranslation();
   return (
     <div
       role={tone === "danger" || tone === "warning" ? "alert" : "status"}
@@ -41,7 +43,7 @@ export function Banner({
         {children && <div className={cn(title && "mt-0.5")}>{children}</div>}
       </div>
       {action}
-      {onDismiss && <Button variant="ghost" size="sm" iconOnly aria-label="알림 닫기" icon={<X />} onClick={onDismiss} />}
+      {onDismiss && <Button variant="ghost" size="sm" iconOnly aria-label={tr("app.dismiss")} icon={<X />} onClick={onDismiss} />}
     </div>
   );
 }
@@ -69,30 +71,31 @@ export const useToast = () => useContext(ToastCtx);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastMsg[]>([]);
+  const { t } = useTranslation();
   const push = useCallback((t: Omit<ToastMsg, "id">) => setItems((xs) => [...xs, { ...t, id: Date.now() + Math.random() }]), []);
   return (
     <ToastCtx.Provider value={push}>
-      <T.Provider swipeDirection="right" duration={5000} label="알림">
+      <T.Provider swipeDirection="right" duration={5000} label={t("nav.notifications")}>
         {children}
-        {items.map((t) => (
+        {items.map((msg) => (
           <T.Root
-            key={t.id}
-            type={t.tone === "danger" ? "foreground" : "background"}
-            onOpenChange={(open) => !open && setItems((xs) => xs.filter((x) => x.id !== t.id))}
+            key={msg.id}
+            type={msg.tone === "danger" ? "foreground" : "background"}
+            onOpenChange={(open) => !open && setItems((xs) => xs.filter((x) => x.id !== msg.id))}
             className="flex w-80 items-start gap-3 rounded-lg border border-border bg-bg p-3 shadow-pop [&>svg]:mt-0.5 [&>svg]:size-4 [&>svg]:shrink-0"
           >
-            {t.tone === "success" ? <CheckCircle2 className="text-success" /> : t.tone === "danger" ? <XCircle className="text-danger" /> : <Info className="text-accent" />}
+            {msg.tone === "success" ? <CheckCircle2 className="text-success" /> : msg.tone === "danger" ? <XCircle className="text-danger" /> : <Info className="text-accent" />}
             <div className="min-w-0 flex-1">
-              <T.Title className="text-sm font-semibold text-fg">{t.title}</T.Title>
-              {t.description && <T.Description className="mt-0.5 text-sm text-fg-muted">{t.description}</T.Description>}
+              <T.Title className="text-sm font-semibold text-fg">{msg.title}</T.Title>
+              {msg.description && <T.Description className="mt-0.5 text-sm text-fg-muted">{msg.description}</T.Description>}
             </div>
-            {t.action && (
-              <T.Action altText={t.action.label} asChild>
-                <Button variant="link" size="sm" onClick={t.action.onClick}>{t.action.label}</Button>
+            {msg.action && (
+              <T.Action altText={msg.action.label} asChild>
+                <Button variant="link" size="sm" onClick={msg.action.onClick}>{msg.action.label}</Button>
               </T.Action>
             )}
             <T.Close asChild>
-              <Button variant="ghost" size="sm" iconOnly aria-label="닫기" icon={<X />} />
+              <Button variant="ghost" size="sm" iconOnly aria-label={t("app.close")} icon={<X />} />
             </T.Close>
           </T.Root>
         ))}
