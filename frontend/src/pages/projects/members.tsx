@@ -1,4 +1,5 @@
-// S23 프로젝트 멤버: add people with roles, change roles, remove (the last manager is protected).
+// S23 프로젝트 멤버: add people or groups with roles, change roles, remove (the last manager is protected).
+// A group member gives every person in the group the group's roles in this project.
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -27,7 +28,7 @@ function AddMembersDialog({ open, onOpenChange, existing }: { open: boolean; onO
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [roleId, setRoleId] = useState("r-member");
-  const people = useQuery({ queryKey: ["principals", q], queryFn: () => api.principals.search(q), enabled: open });
+  const people = useQuery({ queryKey: ["principals", q, "withGroups"], queryFn: () => api.principals.search(q, undefined, true), enabled: open });
   const candidates = (people.data ?? []).filter((p) => !existing.has(p.id));
   const err = isApiError(add.error) ? add.error.message : undefined;
 
@@ -73,8 +74,9 @@ function AddMembersDialog({ open, onOpenChange, existing }: { open: boolean; onO
                   <Checkbox
                     label={
                       <span className="inline-flex items-center gap-2">
-                        <Avatar id={p.id} name={p.name} size="xs" />
+                        {p.kind === "group" ? <GroupBadge size="xs" /> : <Avatar id={p.id} name={p.name} size="xs" />}
                         {p.name}
+                        {p.kind === "group" && <span className="text-xs text-fg-muted">{t("members.group")}</span>}
                       </span>
                     }
                     checked={picked.has(p.id)}
@@ -97,6 +99,15 @@ function AddMembersDialog({ open, onOpenChange, existing }: { open: boolean; onO
         </Field>
       </div>
     </Dialog>
+  );
+}
+
+/** Groups have no avatar; a neutral people mark keeps them apart from users. */
+function GroupBadge({ size }: { size: "xs" | "sm" }) {
+  return (
+    <span aria-hidden="true" className={size === "xs" ? "inline-flex size-5 items-center justify-center rounded-full bg-surface-selected text-fg-muted" : "inline-flex size-6 items-center justify-center rounded-full bg-surface-selected text-fg-muted"}>
+      <Users className={size === "xs" ? "size-3" : "size-3.5"} />
+    </span>
   );
 }
 
@@ -152,9 +163,16 @@ export function MembersPage() {
               {members.data.map((m) => (
                 <tr key={m.id} className="h-row border-b border-border-muted last:border-b-0">
                   <td className="px-3">
-                    <Principal id={m.principal.id} name={m.principal.name} />
+                    {m.principal.kind === "group" ? (
+                      <span className="inline-flex min-w-0 items-center gap-2 text-sm text-fg">
+                        <GroupBadge size="sm" />
+                        <span className="truncate">{m.principal.name}</span>
+                      </span>
+                    ) : (
+                      <Principal id={m.principal.id} name={m.principal.name} />
+                    )}
                   </td>
-                  <td className="px-3 text-fg-muted">{m.principal.email}</td>
+                  <td className="px-3 text-fg-muted">{m.principal.kind === "group" ? t("members.group") : m.principal.email}</td>
                   <td className="px-3">
                     <InlinePick
                       value={m.roles[0]?.id ?? null}
@@ -184,7 +202,7 @@ export function MembersPage() {
         onOpenChange={(o) => !o && setRemoving(null)}
         size="sm"
         title={t("members.removeTitle")}
-        description={removing ? t("members.removeBody", { name: removing.principal.name }) : undefined}
+        description={removing ? t(removing.principal.kind === "group" ? "members.removeGroupBody" : "members.removeBody", { name: removing.principal.name }) : undefined}
         footer={
           <>
             <Button data-autofocus onClick={() => setRemoving(null)}>
