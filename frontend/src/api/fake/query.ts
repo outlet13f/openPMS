@@ -3,7 +3,7 @@ import type { ColumnKey, QueryFilter, QueryResult, QueryRow, QuerySpec } from ".
 import { ApiError } from "../errors";
 import { addDays, isoWeekday, todayIso } from "@/lib/dates";
 import { db, type DbProject, type DbUser, type DbWp } from "./db";
-import { can } from "./permissions";
+import { can, memberRoleIds } from "./permissions";
 import { toWp } from "./dto";
 
 function descendantsOf(projectId: string): string[] {
@@ -21,12 +21,34 @@ function resolveUser(v: string, user: DbUser) {
   return v === "me" ? user.id : v;
 }
 
+const plain = (html: string) => html.replace(/<[^>]*>/g, " ").toLowerCase();
+
+/** Which operators each field accepts (architecture.md §3.5); anything else is a 422, like the real API. */
+const OPS: Record<QueryFilter["field"], readonly QueryFilter["op"][]> = (() => {
+  const ref = ["eq", "neq", "any", "none"] as const;
+  const date = ["overdue", "today", "this_week", "next_days", "last_days", "on", "between", "any", "none"] as const;
+  const num = ["eq", "gte", "lte", "any", "none"] as const;
+  const text = ["contains", "not_contains"] as const;
+  return {
+    status: ["open", "closed", "eq", "neq"], type: ref, priority: ref, assignee: ref, responsible: ref, author: ref, version: ref,
+    category: ref, project: ref, watcher: ["eq", "neq"], assigneeGroup: ["eq", "neq"], assigneeRole: ["eq", "neq"],
+    number: ["eq", "neq"], parent: ["eq", "any", "none"], subject: text, description: text, comment: text,
+    startDate: date, dueDate: date, createdAt: date, updatedAt: date, dates: ["overlaps", "between", "any", "none"],
+    duration: num, doneRatio: num, work: num, remainingWork: num,
+    isMilestone: ["eq"], scheduleManually: ["eq"], blocked: ["eq"],
+  };
+})();
+
+const NEEDS_VALUE = new Set<QueryFilter["op"]>(["eq", "neq", "gte", "lte", "on", "between", "overlaps", "contains", "not_contains"]);
+
 function matches(w: DbWp, f: QueryFilter, user: DbUser): boolean {
+  if (!OPS[f.field]?.includes(f.op)) throw new ApiError(422, `연산자 ${f.op}는 ${f.field} 필드에 쓸 수 없습니다.`);
   // A filter whose value has not been picked yet does not narrow the list.
-  if ((f.op === "eq" || f.op === "neq") && !f.values?.length) return true;
+  const vals = (f.values ?? []).map((v) => resolveUser(v, user));
+  if (NEEDS_VALUE.has(f.op) && !vals.some((v) => v !== "")) return true;
   const today = todayIso(user.timeZone);
   const status = db.statuses.find((s) => s.id === w.statusId)!;
-  const vals = (f.values ?? []).map((v) => resolveUser(v, user));
+
   const ref = (value: string | null) => {
     switch (f.op) {
       case "eq":
@@ -35,13 +57,14 @@ function matches(w: DbWp, f: QueryFilter, user: DbUser): boolean {
         return !vals.includes(value ?? "none");
       case "any":
         return value !== null;
-      case "none":
-        return value === null;
       default:
-        throw new ApiError(422, `연산자 ${f.op}는 ${f.field} 필드에 쓸 수 없습니다.`);
+        return value === null; // none
     }
   };
+  /** eq/neq over a set of values the item has (watchers, groups, roles). */
+  const some = (have: string[]) => (f.op === "eq" ? have.some((x) => vals.includes(x)) : !have.some((x) => vals.includes(x)));
   const date = (value: string | null) => {
+    const n = Number(vals[0] ?? 7) || 7;
     switch (f.op) {
       case "any":
         return value !== null;
@@ -55,14 +78,35 @@ function matches(w: DbWp, f: QueryFilter, user: DbUser): boolean {
         const monday = addDays(today, 1 - isoWeekday(today));
         return !!value && value >= monday && value <= addDays(monday, 6);
       }
-      case "next_days": {
-        const n = Number(vals[0] ?? 7);
+      case "next_days":
         return !!value && value >= today && value <= addDays(today, n);
-      }
-      default:
-        throw new ApiError(422, `연산자 ${f.op}는 날짜 필드에 쓸 수 없습니다.`);
+      case "last_days":
+        return !!value && value <= today && value >= addDays(today, -n);
+      case "on":
+        return value === vals[0];
+      default: // between: either end may be open
+        return !!value && (!vals[0] || value >= vals[0]) && (!vals[1] || value <= vals[1]);
     }
   };
+  const num = (value: number | null) => {
+    const n = Number(vals[0]);
+    switch (f.op) {
+      case "any":
+        return value !== null;
+      case "none":
+        return value === null;
+      case "eq":
+        return Number.isNaN(n) || value === n;
+      case "gte":
+        return Number.isNaN(n) || (value !== null && value >= n);
+      default: // lte
+        return Number.isNaN(n) || (value !== null && value <= n);
+    }
+  };
+  const needle = (vals[0] ?? "").toLowerCase();
+  const text = (hay: string) => (f.op === "not_contains" ? !hay.includes(needle) : hay.includes(needle));
+  const bool = (value: boolean) => value === (vals[0] === "true");
+
   switch (f.field) {
     case "status":
       if (f.op === "open") return !status.isClosed;
@@ -80,24 +124,68 @@ function matches(w: DbWp, f: QueryFilter, user: DbUser): boolean {
       return ref(w.authorId);
     case "version":
       return ref(w.versionId);
-    case "isMilestone":
-      return (db.types.find((t) => t.id === w.typeId)?.isMilestone ?? false) === (vals[0] === "true");
-    case "subject": {
-      const hay = w.subject.toLowerCase();
-      const needle = (vals[0] ?? "").toLowerCase();
-      return f.op === "not_contains" ? !hay.includes(needle) : hay.includes(needle);
+    case "category":
+      return ref(w.categoryId);
+    case "project":
+      return ref(w.projectId);
+    case "watcher":
+      return some(db.watchers.filter((x) => x.wpId === w.id).map((x) => x.userId));
+    case "assigneeGroup":
+      return some(w.assigneeId ? db.groups.filter((g) => g.memberIds.includes(w.assigneeId!)).map((g) => g.id) : []);
+    case "assigneeRole":
+      return some(w.assigneeId ? memberRoleIds(w.assigneeId, w.projectId) : []);
+    case "number": {
+      const nums = vals.flatMap((v) => v.split(/[\s,]+/)).map((v) => Number(v.replace("#", ""))).filter((x) => Number.isInteger(x) && x > 0);
+      return f.op === "eq" ? nums.includes(w.number) : !nums.includes(w.number);
     }
+    case "parent": {
+      if (f.op === "any") return w.parentId !== null;
+      if (f.op === "none") return w.parentId === null;
+      const parent = db.workPackages.find((x) => x.number === Number(vals[0].replace("#", "")));
+      return !!parent && w.parentId === parent.id;
+    }
+    case "subject":
+      return text(w.subject.toLowerCase());
+    case "description":
+      return text(plain(w.descriptionHtml));
+    case "comment":
+      return text(db.journals.filter((j) => j.wpId === w.id && j.notesHtml).map((j) => plain(j.notesHtml)).join("\n"));
+    case "isMilestone":
+      return bool(db.types.find((t) => t.id === w.typeId)?.isMilestone ?? false);
+    case "scheduleManually":
+      return bool(w.scheduleManually);
+    case "blocked":
+      return bool(
+        db.relations.some((r) => {
+          if (r.type !== "blocks" || r.toId !== w.id) return false;
+          const blocker = db.workPackages.find((x) => x.id === r.fromId);
+          return !!blocker && !db.statuses.find((st) => st.id === blocker.statusId)?.isClosed;
+        }),
+      );
     case "dueDate":
       return date(w.dueDate);
     case "startDate":
       return date(w.startDate);
+    case "createdAt":
+      return date(w.createdAt.slice(0, 10));
     case "updatedAt":
       return date(w.updatedAt.slice(0, 10));
+    case "duration":
+      return num(w.duration);
+    case "doneRatio":
+      return num(w.doneRatio);
+    case "work":
+      return num(w.workHours);
+    case "remainingWork":
+      return num(w.remainingHours);
     case "dates": {
-      if (f.op !== "overlaps" || vals.length < 2) throw new ApiError(422, "날짜 범위 필터는 시작일과 종료일이 필요합니다.");
       const s = w.startDate ?? w.dueDate;
       const e = w.dueDate ?? w.startDate;
-      return !!s && !!e && s <= vals[1] && e >= vals[0];
+      if (f.op === "any") return !!s;
+      if (f.op === "none") return !s;
+      if (f.op === "overlaps" && vals.length < 2) throw new ApiError(422, "날짜 범위 필터는 시작일과 종료일이 필요합니다.");
+      // overlaps / between: the item's period touches the window (between allows an open end)
+      return !!s && !!e && (!vals[1] || s <= vals[1]) && (!vals[0] || e >= vals[0]);
     }
     default:
       return true;

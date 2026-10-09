@@ -334,6 +334,15 @@ export type FilterOp =
   | "today"
   | "this_week"
   | "next_days"
+  /** dates: within the last N days (values[0], default 7) */
+  | "last_days"
+  /** dates: exactly values[0] */
+  | "on"
+  /** dates: values[0]..values[1], either end may be empty */
+  | "between"
+  /** numbers: at least / at most values[0] */
+  | "gte"
+  | "lte"
   /** dates only: start..due (a single date counts as one day) overlaps values[0]..values[1] */
   | "overlaps";
 
@@ -350,6 +359,27 @@ export type FilterField =
   | "startDate"
   | "updatedAt"
   | "isMilestone"
+  | "number"
+  | "description"
+  /** any comment on the work package */
+  | "comment"
+  /** the assignee is in one of these groups */
+  | "assigneeGroup"
+  /** the assignee has one of these roles in the work package's project */
+  | "assigneeRole"
+  | "watcher"
+  | "category"
+  | "project"
+  /** values[0] = parent number */
+  | "parent"
+  | "createdAt"
+  | "duration"
+  | "doneRatio"
+  | "work"
+  | "remainingWork"
+  | "scheduleManually"
+  /** an open work package blocks this one */
+  | "blocked"
   /** The work package's whole date range; used by the calendar and team planner for the visible window. */
   | "dates";
 
@@ -430,6 +460,10 @@ export interface FilterOptions {
   users: UserRef[];
   versions: VersionRef[];
   categories: { id: Id; name: string }[];
+  groups: { id: Id; name: string }[];
+  roles: { id: Id; name: string }[];
+  /** the project and its subprojects (or every visible project for the global list) */
+  projects: { id: Id; name: string }[];
 }
 
 /* ---------- boards ---------- */

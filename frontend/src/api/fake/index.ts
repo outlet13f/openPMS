@@ -113,6 +113,11 @@ function fanOut(wp: DbWp, journal: DbJournal, actor: DbUser, mentioned: string[]
   }
 }
 
+const isDescendant = (id: string, ancestorId: string): boolean => {
+  const parent = db.projects.find((x) => x.id === id)?.parentId;
+  return !!parent && (parent === ancestorId || isDescendant(parent, ancestorId));
+};
+
 /** A member row's principal (user or group) for the API. */
 function principalOf(m: (typeof db.members)[number]): { id: string; name: string } {
   if (m.groupId) return { id: m.groupId, name: db.groups.find((g) => g.id === m.groupId)?.name ?? "삭제된 그룹" };
@@ -711,6 +716,11 @@ export const fakeApi: Api = {
           users: userIds.map((id) => userRef(id)!).sort((a, b) => a.name.localeCompare(b.name, "ko")),
           versions: db.versions.filter((v) => !p || v.projectId === p.id).map((v) => ({ id: v.id, name: v.name })),
           categories: db.categories.filter((c) => !p || c.projectId === p.id).map((c) => ({ id: c.id, name: c.name })),
+          groups: db.groups.map((g) => ({ id: g.id, name: g.name })),
+          roles: db.roles.filter((r) => r.scope === "project" && !r.builtin).map((r) => ({ id: r.id, name: r.name })),
+          projects: visibleProjects(user, "wp.view")
+            .filter((x) => !p || x.id === p.id || isDescendant(x.id, p.id))
+            .map((x) => ({ id: x.id, name: x.name })),
         });
       }),
   },
