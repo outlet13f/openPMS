@@ -12,8 +12,11 @@ import { addDays, diffDays, formatDate, formatDateRange, isoWeekday, todayIso } 
 import { useSaveWorkPackage } from "@/features/work-packages/use-save";
 import { DateDialog } from "@/features/work-packages/date-dialog";
 
-export type Zoom = "day" | "week" | "month";
-const DAY_W: Record<Zoom, number> = { day: 32, week: 14, month: 5 };
+export type Zoom = "day" | "week" | "month" | "auto";
+const DAY_W: Record<Exclude<Zoom, "auto">, number> = { day: 32, week: 14, month: 5 };
+
+/** "자동": pick the scale from how long the plan is (short plans by day, a quarter by week, longer by month). */
+const autoZoom = (days: number): Exclude<Zoom, "auto"> => (days <= 70 ? "day" : days <= 240 ? "week" : "month");
 const ROW_H = 40;
 const HEADER_H = 48;
 const BAR_H = 20;
@@ -50,9 +53,10 @@ function useRange(rows: QueryResult["rows"]) {
 
 export function GanttChart({ result, zoom, detailsHref }: { result: QueryResult; zoom: Zoom; detailsHref: (wp: WorkPackage) => string }) {
   const { t } = useTranslation();
-  const dayW = DAY_W[zoom];
   const LEFT_W = useLeftWidth();
   const { from, to, days, today } = useRange(result.rows);
+  const scale = zoom === "auto" ? autoZoom(days) : zoom;
+  const dayW = DAY_W[scale];
   const cal = useNonWorkingDays(from, to).data;
   const { save } = useSaveWorkPackage();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -67,7 +71,7 @@ export function GanttChart({ result, zoom, detailsHref }: { result: QueryResult;
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollLeft = Math.max(0, todayX - (el.clientWidth - LEFT_W) * 0.25);
-  }, [zoom, todayX, LEFT_W]);
+  }, [scale, todayX, LEFT_W]);
 
   const rows = useMemo(() => {
     const out: QueryResult["rows"] = [];
@@ -92,8 +96,8 @@ export function GanttChart({ result, zoom, detailsHref }: { result: QueryResult;
     const d = addDays(from, i);
     const [y, m, day] = d.split("-");
     if (i === 0 || day === "01") months.push({ label: `${y}년 ${Number(m)}월`, left: i * dayW, width: 0 });
-    if (zoom === "day") ticks.push({ label: String(Number(day)), left: i * dayW, width: dayW });
-    else if (isoWeekday(d) === 1) ticks.push({ label: zoom === "week" ? `${Number(m)}.${Number(day)}` : "", left: i * dayW, width: 7 * dayW });
+    if (scale === "day") ticks.push({ label: String(Number(day)), left: i * dayW, width: dayW });
+    else if (isoWeekday(d) === 1) ticks.push({ label: scale === "week" ? `${Number(m)}.${Number(day)}` : "", left: i * dayW, width: 7 * dayW });
     if (dayW >= 12 && (!working.includes(isoWeekday(d)) || holidays.has(d))) shade.push({ left: i * dayW, width: dayW, holiday: holidays.get(d) });
   }
   months.forEach((mo, i) => (mo.width = (months[i + 1]?.left ?? width) - mo.left));

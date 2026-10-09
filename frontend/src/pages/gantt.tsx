@@ -20,7 +20,7 @@ export function GanttPage() {
   const { t } = useTranslation();
   const project = useCurrentProject();
   const state = useListState(project.id);
-  const [zoom, setZoom] = useState<Zoom>("week");
+  const [zoom, setZoom] = useState<Zoom>("auto");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const spec = state.spec ? { ...state.spec, timeline: { visible: true, zoom } } : undefined;
   const result = useWpQuery(spec, project.id, 1, 200);
@@ -54,6 +54,7 @@ export function GanttPage() {
                 value={zoom}
                 onValueChange={(v) => setZoom(v as Zoom)}
                 options={[
+                  { value: "auto", label: t("gantt.zoomAuto") },
                   { value: "day", label: t("gantt.zoomDay") },
                   { value: "week", label: t("gantt.zoomWeek") },
                   { value: "month", label: t("gantt.zoomMonth") },
