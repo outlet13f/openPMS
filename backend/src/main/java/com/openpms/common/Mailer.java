@@ -28,7 +28,8 @@ public class Mailer {
         return baseUrl + path;
     }
 
-    public void send(String to, String subject, String body) {
+    /** @return false when the relay refused it (jobs then try again later). */
+    public boolean send(String to, String subject, String body) {
         try {
             var m = new SimpleMailMessage();
             m.setFrom(from);
@@ -36,9 +37,11 @@ public class Mailer {
             m.setSubject(subject);
             m.setText(body);
             sender.send(m);
+            return true;
         } catch (RuntimeException e) {
-            // never log the body: it may carry a one-time link
-            log.warn("could not send mail \"{}\": {}", subject, e.getMessage());
+            // no subject, address or body in the log: they carry names, titles and one-time links
+            log.warn("could not send mail: {}", e.getClass().getSimpleName());
+            return false;
         }
     }
 }

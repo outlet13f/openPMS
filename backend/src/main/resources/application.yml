@@ -61,6 +61,9 @@ openpms:
   admin-email: ${OPENPMS_ADMIN_EMAIL:}
   mail-from: ${OPENPMS_MAIL_FROM:openPMS <no-reply@example.com>}
   files-dir: ${OPENPMS_FILES_DIR:/data/files}
+  jobs:
+    # date alerts, notification mail, cleanup (jobs/Jobs.java); false for a web-only instance
+    enabled: ${OPENPMS_JOBS_ENABLED:true}
 
 ---
 # Development: dev data set (scripts/gen_dev_data.py), plain-http cookies.
@@ -70,9 +73,15 @@ spring:
       on-profile: dev
   flyway:
     locations: classpath:db/migration,classpath:db/dev
+    # dev data is V1000; schema migrations added later (V4…) still apply on an existing dev database
+    out-of-order: true
 openpms:
   # the browser checks sign in many times a minute
   logins-per-minute: 500
+  jobs:
+    # off by default so browser checks are not disturbed; run one with POST /api/v1/dev/jobs/{name},
+    # or start with OPENPMS_JOBS_ENABLED=true scripts/dev.sh run
+    enabled: ${OPENPMS_JOBS_ENABLED:false}
 server:
   servlet:
     session:

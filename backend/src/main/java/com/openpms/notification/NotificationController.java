@@ -12,7 +12,6 @@ import com.openpms.core.Refs;
 import com.openpms.db.tables.records.JournalsRecord;
 import com.openpms.db.tables.records.NotificationsRecord;
 import com.openpms.wp.Assembler;
-import com.openpms.wp.Journals;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -34,39 +33,14 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/notifications")
 public class NotificationController {
-    private static final Map<String, String> REASON_TEXT = Map.of(
-            "mentioned", "%s님이 코멘트에서 나를 언급했습니다",
-            "assigned", "%s님이 내가 담당한 작업을 바꿨습니다",
-            "responsible", "%s님이 내가 책임자인 작업을 바꿨습니다",
-            "watched", "%s님이 주시 중인 작업을 바꿨습니다",
-            "date_alert_due", "완료일이 다가옵니다",
-            "date_alert_start", "시작일이 다가옵니다",
-            "date_alert_overdue", "기한이 지났습니다");
-
     private final Current current;
     private final DSLContext db;
-    private final Journals journals;
+    private final NotificationTexts texts;
 
-    public NotificationController(Current current, DSLContext db, Journals journals) {
+    public NotificationController(Current current, DSLContext db, NotificationTexts texts) {
         this.current = current;
         this.db = db;
-        this.journals = journals;
-    }
-
-    private String summary(Ctx ctx, NotificationsRecord n, JournalsRecord j, com.openpms.core.Snapshot.ProjectRow project) {
-        var actor = n.getActorId() == null ? "누군가" : Refs.user(ctx.s(), n.getActorId()).name();
-        if (j != null && "assigned".equals(n.getReason())) {
-            var change = journals.changesOf(j).get("assigneeId");
-            if (change != null && change.size() > 1 && ctx.userId().toString().equals(String.valueOf(change.get(1)))) return actor + "님이 나를 담당자로 지정했습니다";
-        }
-        var text = String.format(REASON_TEXT.getOrDefault(n.getReason(), "작업이 바뀌었습니다"), actor);
-        if (j != null && !"mentioned".equals(n.getReason())) {
-            var dto = journals.toDto(ctx, j, project);
-            var d = dto.details().stream().filter(x -> !x.field().equals(Journals.CREATED)).findFirst().orElse(null);
-            if (d != null) text += " · " + d.label() + (d.to() != null ? ": " + (d.from() == null ? "없음" : d.from()) + " → " + d.to() : "");
-            else if (journals.changesOf(j).containsKey(Journals.CREATED)) text = actor + "님이 작업을 만들었습니다";
-        }
-        return text;
+        this.texts = texts;
     }
 
     @GetMapping
@@ -91,7 +65,7 @@ public class NotificationController {
             if (wp == null || project == null || !ctx.can(project, "wp.view")) continue;
             var g = groups.computeIfAbsent(wp.getId(), k -> new Group(Assembler.ref(s, wp), new ArrayList<>(), new int[] {0}, new OffsetDateTime[] {n.getCreatedAt()}));
             var j = n.getJournalId() == null ? null : js.get(n.getJournalId());
-            g.items().add(new Dto.NotificationItem(n.getId(), n.getReason(), n.getReadAt() != null, Refs.user(s, n.getActorId()), summary(ctx, n, j, project), n.getCreatedAt()));
+            g.items().add(new Dto.NotificationItem(n.getId(), n.getReason(), n.getReadAt() != null, Refs.user(s, n.getActorId()), texts.summary(ctx, n, j, project), n.getCreatedAt()));
             if (n.getReadAt() == null) g.unread()[0]++;
         }
         return groups.values().stream().map(g -> new Dto.NotificationGroup(g.wp(), g.items(), g.unread()[0], g.latest()[0])).toList();

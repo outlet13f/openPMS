@@ -123,17 +123,17 @@ public class NotificationSettings extends TableImpl<NotificationSettingsRecord> 
      * The column
      * <code>public.notification_settings.start_date_alert_days</code>.
      */
-    public final TableField<NotificationSettingsRecord, Short> START_DATE_ALERT_DAYS = createField(DSL.name("start_date_alert_days"), SQLDataType.SMALLINT, this, "");
+    public final TableField<NotificationSettingsRecord, Short> START_DATE_ALERT_DAYS = createField(DSL.name("start_date_alert_days"), SQLDataType.SMALLINT.defaultValue(DSL.field(DSL.raw("1"), SQLDataType.SMALLINT)), this, "");
 
     /**
      * The column <code>public.notification_settings.due_date_alert_days</code>.
      */
-    public final TableField<NotificationSettingsRecord, Short> DUE_DATE_ALERT_DAYS = createField(DSL.name("due_date_alert_days"), SQLDataType.SMALLINT, this, "");
+    public final TableField<NotificationSettingsRecord, Short> DUE_DATE_ALERT_DAYS = createField(DSL.name("due_date_alert_days"), SQLDataType.SMALLINT.defaultValue(DSL.field(DSL.raw("1"), SQLDataType.SMALLINT)), this, "");
 
     /**
      * The column <code>public.notification_settings.overdue_alert</code>.
      */
-    public final TableField<NotificationSettingsRecord, Boolean> OVERDUE_ALERT = createField(DSL.name("overdue_alert"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
+    public final TableField<NotificationSettingsRecord, Boolean> OVERDUE_ALERT = createField(DSL.name("overdue_alert"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("true"), SQLDataType.BOOLEAN)), this, "");
 
     /**
      * The column <code>public.notification_settings.created_at</code>.

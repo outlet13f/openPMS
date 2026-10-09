@@ -67,7 +67,7 @@ jdk() {
     -e OPENPMS_DB_USER=openpms \
     -e OPENPMS_DB_PASSWORD="$OPENPMS_DB_PASSWORD" \
     -e OPENPMS_SMTP_HOST=openpms-mail -e OPENPMS_SMTP_PORT=1025 \
-    -e OPENPMS_BASE_URL=http://localhost:5173 \
+    -e OPENPMS_BASE_URL=http://localhost:5173     ${OPENPMS_JOBS_ENABLED:+-e OPENPMS_JOBS_ENABLED=$OPENPMS_JOBS_ENABLED} \
     "$JDK_IMAGE" "$@"
 }
 

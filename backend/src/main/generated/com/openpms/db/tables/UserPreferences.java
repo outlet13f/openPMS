@@ -112,6 +112,11 @@ public class UserPreferences extends TableImpl<UserPreferencesRecord> {
      */
     public final TableField<UserPreferencesRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
 
+    /**
+     * The column <code>public.user_preferences.last_digest_at</code>.
+     */
+    public final TableField<UserPreferencesRecord, OffsetDateTime> LAST_DIGEST_AT = createField(DSL.name("last_digest_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
+
     private UserPreferences(Name alias, Table<UserPreferencesRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }

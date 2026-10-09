@@ -173,6 +173,21 @@ public class UserPreferencesRecord extends UpdatableRecordImpl<UserPreferencesRe
         return (OffsetDateTime) get(9);
     }
 
+    /**
+     * Setter for <code>public.user_preferences.last_digest_at</code>.
+     */
+    public UserPreferencesRecord setLastDigestAt(OffsetDateTime value) {
+        set(10, value);
+        return this;
+    }
+
+    /**
+     * Getter for <code>public.user_preferences.last_digest_at</code>.
+     */
+    public OffsetDateTime getLastDigestAt() {
+        return (OffsetDateTime) get(10);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -196,7 +211,7 @@ public class UserPreferencesRecord extends UpdatableRecordImpl<UserPreferencesRe
     /**
      * Create a detached, initialised UserPreferencesRecord
      */
-    public UserPreferencesRecord(UUID userId, Boolean commentsNewestFirst, Boolean warnOnUnsaved, Boolean keyboardShortcuts, Boolean digestEnabled, LocalTime[] digestTimes, Boolean immediateOnMention, LocalDate remindersPausedUntil, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
+    public UserPreferencesRecord(UUID userId, Boolean commentsNewestFirst, Boolean warnOnUnsaved, Boolean keyboardShortcuts, Boolean digestEnabled, LocalTime[] digestTimes, Boolean immediateOnMention, LocalDate remindersPausedUntil, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime lastDigestAt) {
         super(UserPreferences.USER_PREFERENCES);
 
         setUserId(userId);
@@ -209,6 +224,7 @@ public class UserPreferencesRecord extends UpdatableRecordImpl<UserPreferencesRe
         setRemindersPausedUntil(remindersPausedUntil);
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
+        setLastDigestAt(lastDigestAt);
         resetTouchedOnNotNull();
     }
 }

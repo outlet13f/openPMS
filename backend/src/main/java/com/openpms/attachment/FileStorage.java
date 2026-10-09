@@ -51,6 +51,29 @@ public class FileStorage {
         return Files.newInputStream(resolve(key));
     }
 
+    /**
+     * Deletes files no row points to (a delete whose file removal failed, or rows removed with their work package),
+     * plus abandoned temp files. Only files older than {@code before}, so an upload in progress is never touched.
+     * @return files deleted
+     */
+    public int sweep(java.util.Set<String> keep, java.time.Instant before) throws IOException {
+        if (!Files.isDirectory(root)) return 0;
+        int[] n = {0};
+        try (var files = Files.walk(root)) {
+            files.filter(Files::isRegularFile).forEach(f -> {
+                try {
+                    var key = root.relativize(f).toString().replace(java.io.File.separatorChar, '/');
+                    if (keep.contains(key) || !Files.getLastModifiedTime(f).toInstant().isBefore(before)) return;
+                    Files.delete(f);
+                    n[0]++;
+                } catch (IOException ignored) {
+                    // try again next week
+                }
+            });
+        }
+        return n[0];
+    }
+
     public void delete(String key) {
         try {
             Files.deleteIfExists(resolve(key));
