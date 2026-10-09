@@ -7,6 +7,7 @@
     "tokens": "node scripts/build-tokens.mjs",
     "predev": "npm run tokens",
     "dev": "vite",
+    "dev:api": "vite --mode api --port 5174",
     "prebuild": "npm run tokens",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --noEmit",

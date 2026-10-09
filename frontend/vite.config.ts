@@ -8,8 +8,8 @@ export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   server: {
     port: 5173,
-    // Spring Boot runs on 8080 in development; the SPA calls /api through this proxy.
-    proxy: { "/api": "http://localhost:8080" },
+    // With VITE_API=http the SPA calls /api through this proxy to the dev backend (backend/scripts/dev.sh run, port 8090).
+    proxy: { "/api": process.env.OPENPMS_API_URL ?? "http://localhost:8090" },
   },
   build: {
     // Spring Boot serves the built SPA as static resources.

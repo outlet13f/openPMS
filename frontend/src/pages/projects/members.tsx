@@ -27,7 +27,10 @@ function AddMembersDialog({ open, onOpenChange, existing }: { open: boolean; onO
   const { add } = useMemberMutations(project.id);
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [roleId, setRoleId] = useState("r-member");
+  // default: the usual working role (can edit, cannot manage members); the first role if none fits
+  const defaultRole = (roles.data ?? []).find((r) => r.permissions.includes("wp.edit") && !r.permissions.includes("project.manage_members")) ?? roles.data?.[0];
+  const [chosenRole, setRoleId] = useState<string | null>(null);
+  const roleId = chosenRole ?? defaultRole?.id ?? "";
   const people = useQuery({ queryKey: ["principals", q, "withGroups"], queryFn: () => api.principals.search(q, undefined, true), enabled: open });
   const candidates = (people.data ?? []).filter((p) => !existing.has(p.id));
   const err = isApiError(add.error) ? add.error.message : undefined;

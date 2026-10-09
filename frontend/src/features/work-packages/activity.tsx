@@ -1,6 +1,6 @@
 // Activity tab (components.md "ActivityStream"): journal entries and comments with @mentions.
 // partial: plain-text comment box with a mention picker instead of the Tiptap rich text editor.
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { MessageSquare, Pencil, Send } from "lucide-react";
 import type { Journal, UserRef, WorkPackage } from "@/api";
@@ -126,16 +126,24 @@ function CommentBox({ wp }: { wp: WorkPackage }) {
   }, [text, caret, dismissed]);
   const matches = query === null ? [] : people.filter((p) => p.name.toLowerCase().includes(query.toLowerCase())).slice(0, 6);
 
+  // Where the caret goes after a mention is inserted. Applied in a layout effect, i.e. in the same task as the
+  // click, so keys typed right after picking a name cannot land before the caret moves (they used to, a frame late).
+  const pendingCaret = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const at = pendingCaret.current;
+    if (at === null || !ref.current) return;
+    pendingCaret.current = null;
+    ref.current.focus();
+    ref.current.setSelectionRange(at, at);
+  }, [text]);
+
   const insert = (name: string) => {
     const before = text.slice(0, caret).replace(/@([^\s@]{0,20})$/, `@${name} `);
     const next = before + text.slice(caret);
+    pendingCaret.current = before.length;
     setText(next);
+    setCaret(before.length);
     setActive(0);
-    requestAnimationFrame(() => {
-      ref.current?.focus();
-      ref.current?.setSelectionRange(before.length, before.length);
-      setCaret(before.length);
-    });
   };
 
   const submit = async () => {
