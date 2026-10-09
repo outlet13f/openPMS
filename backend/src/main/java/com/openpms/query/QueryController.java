@@ -4,6 +4,7 @@ import static com.openpms.db.Tables.QUERIES;
 import static com.openpms.db.Tables.QUERY_FAVORITES;
 
 import com.openpms.api.Dto;
+import com.openpms.customfield.CustomFields;
 import com.openpms.common.ApiException;
 import com.openpms.common.In;
 import com.openpms.core.Ctx;
@@ -47,7 +48,10 @@ public class QueryController {
     private final DSLContext db;
     private final JsonMapper json;
 
-    public QueryController(Current current, QueryEngine engine, DSLContext db, JsonMapper json) {
+    private final CustomFields customFields;
+
+    public QueryController(Current current, QueryEngine engine, DSLContext db, JsonMapper json, CustomFields customFields) {
+        this.customFields = customFields;
         this.current = current;
         this.engine = engine;
         this.db = db;
@@ -89,6 +93,7 @@ public class QueryController {
         var ctx = current.ctx();
         var s = ctx.s();
         var p = projectId == null || projectId.isBlank() ? null : ctx.findProject(projectId);
+        var scope = ctx.visibleProjects("wp.view").stream().filter(x -> p == null || x.id().equals(p.id()) || s.isDescendant(x.id(), p.id())).toList();
         List<Dto.UserRef> users = (p != null ? s.projectUsers(p.id()) : s.users().values().stream().filter(u -> "active".equals(u.status()))
                 .sorted((a, b) -> com.openpms.core.Text.KOREAN.compare(a.name(), b.name())).toList())
                 .stream().map(u -> new Dto.UserRef(u.id(), u.name())).toList();
@@ -101,8 +106,9 @@ public class QueryController {
                 s.categories().stream().filter(c -> p == null || c.projectId().equals(p.id())).map(c -> new Dto.IdName(c.id(), c.name())).toList(),
                 s.groups().values().stream().map(g -> new Dto.IdName(g.id(), g.name())).toList(),
                 s.roles().stream().filter(r -> "project".equals(r.scope()) && r.builtin() == null).map(r -> new Dto.IdName(r.id(), r.name())).toList(),
-                ctx.visibleProjects("wp.view").stream().filter(x -> p == null || x.id().equals(p.id()) || s.isDescendant(x.id(), p.id()))
-                        .map(x -> new Dto.IdName(x.id(), x.name())).toList());
+                scope.stream().map(x -> new Dto.IdName(x.id(), x.name())).toList(),
+                // custom fields on in any project of the scope: column and filter choices
+                s.customFields().stream().filter(f -> scope.stream().anyMatch(x -> s.customFieldEnabledIn(f, x.id()))).map(customFields::dto).toList());
     }
 
     /* ---------- saved views ---------- */

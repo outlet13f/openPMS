@@ -23,6 +23,7 @@ import { DesignPage } from "@/pages/design-page";
 import { GanttDetailRoute, GanttPage } from "@/pages/gantt";
 import { AdminHomePage } from "@/pages/admin";
 import { AdminTypesPage } from "@/pages/admin/types";
+import { AdminCustomFieldsPage } from "@/pages/admin/custom-fields";
 import { AdminPrioritiesPage, AdminStatusesPage } from "@/pages/admin/statuses";
 import { AdminWorkflowsPage } from "@/pages/admin/workflows";
 import { AdminRoleEditPage, AdminRolesPage } from "@/pages/admin/roles";
@@ -145,6 +146,7 @@ export const router = createBrowserRouter([
       },
       { path: "admin", element: <AdminHomePage /> },
       { path: "admin/types", element: <AdminTypesPage /> },
+      { path: "admin/custom-fields", element: <AdminCustomFieldsPage /> },
       { path: "admin/statuses", element: <AdminStatusesPage /> },
       { path: "admin/workflows", element: <AdminWorkflowsPage /> },
       { path: "admin/priorities", element: <AdminPrioritiesPage /> },

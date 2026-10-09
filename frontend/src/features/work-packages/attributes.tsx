@@ -13,6 +13,7 @@ import { InlinePick } from "./inline-pick";
 import { InlineText } from "./inline-text";
 import { useSaveWorkPackage } from "./use-save";
 import { DateDialog } from "./date-dialog";
+import { CustomFieldInline } from "./custom-fields";
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -43,6 +44,10 @@ export function Attributes({ wp }: { wp: WorkPackage }) {
   const people = options?.users ?? [];
   const person = (u: WorkPackage["assignee"]) => (u ? <Principal id={u.id} name={u.name} size="xs" /> : <span className="text-fg-muted">-</span>);
   const ok = async (p: Parameters<typeof save>[1]) => !!(await save(wp, p));
+  // the server decides which custom fields this item has (project and type); definitions come with the options
+  const custom = Object.keys(wp.customValues)
+    .map((id) => options?.customFields.find((f) => f.id === id))
+    .filter((f) => f !== undefined);
 
   return (
     <div>
@@ -164,6 +169,16 @@ export function Attributes({ wp }: { wp: WorkPackage }) {
           )}
         </Row>
       </Group>
+
+      {custom.length > 0 && (
+        <Group title={t("customFields.group")}>
+          {custom.map((f) => (
+            <Row key={f.id} label={f.isRequired ? `${f.name} *` : f.name}>
+              <CustomFieldInline field={f} wp={wp} people={people} disabled={!wp._meta.allowedActions.edit || wp.status.isReadonly} save={(v) => ok({ customValues: { [f.id]: v } })} />
+            </Row>
+          ))}
+        </Group>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 // Administration (S27–S36) and project settings (S24–S26) for the fake data layer.
 import type { Api } from "../api";
-import type { AdminGroup, AdminPriority, AdminRole, AdminStatus, AdminType, AdminUser, Category, Version } from "../types";
+import type { AdminCustomField, CustomField, CustomFieldInput, CustomValue, ProjectCustomFields, AdminGroup, AdminPriority, AdminRole, AdminStatus, AdminType, AdminUser, Category, Version } from "../types";
 import { ApiError } from "../errors";
 import { nowIso } from "@/lib/dates";
 import { db, newId, type DbUser } from "./db";
@@ -8,6 +8,7 @@ import { findProject, globalPermissions, memberRoleIds, requirePerm, sessionUser
 import { clone, toProject, userRef } from "./dto";
 import { rescheduleAll } from "./scheduling";
 import { fieldError, HEX, run } from "./util";
+import { checkValue, toField } from "./custom-fields";
 
 /* ---------- guards ---------- */
 
@@ -82,7 +83,149 @@ const PERMISSIONS: { key: string; scope: "project" | "global"; group: string }[]
 
 /* ---------- project settings ---------- */
 
-export const projectExtras: Pick<Api["projects"], "setTypes" | "archive"> = {
+/* ---------- custom fields (S34, S25) ---------- */
+
+const FORMATS: CustomField["format"][] = ["string", "text", "integer", "float", "list", "date", "bool", "user", "link"];
+const toAdminField = (f: CustomField): AdminCustomField => ({ ...toField(f), projectCount: db.projectCustomFields.filter((x) => x.customFieldId === f.id).length });
+
+/**
+ * Checks a definition (create, or an update merged onto the stored one) and returns the field to store.
+ * New list options get ids; a list default may name an option by id or by its text (for options new in this request).
+ */
+function buildField(input: CustomFieldInput, existing?: CustomField): CustomField {
+  checkName(input.name);
+  if (db.customFields.some((x) => x.id !== existing?.id && x.name.trim() === input.name.trim())) throw fieldError("name", "같은 이름의 필드가 이미 있습니다.");
+  if (!FORMATS.includes(input.format)) throw fieldError("format", "형식을 고르세요.");
+  if (existing && existing.format !== input.format) throw fieldError("format", "만든 뒤에는 형식을 바꿀 수 없습니다.");
+  const refs = input.format === "list" || input.format === "user";
+  if (input.isMultiValue && !refs) throw fieldError("isMultiValue", "여러 값은 목록과 사용자 형식에서만 고를 수 있습니다.");
+  if (!input.typeIds.length) throw fieldError("typeIds", "이 필드를 쓸 유형을 하나 이상 고르세요.");
+  if (input.typeIds.some((id) => !db.types.some((t) => t.id === id))) throw fieldError("typeIds", "없는 유형입니다.");
+  const lengths = input.format === "string" || input.format === "text";
+  const min = lengths ? input.minLength : null;
+  const max = lengths ? input.maxLength : null;
+  if (min !== null && (!Number.isInteger(min) || min < 0)) throw fieldError("minLength", "최소 길이는 0 이상의 정수로 입력하세요.");
+  if (max !== null && (!Number.isInteger(max) || max < 1)) throw fieldError("maxLength", "최대 길이는 1 이상의 정수로 입력하세요.");
+  if (min !== null && max !== null && max < min) throw fieldError("maxLength", "최대 길이는 최소 길이보다 작을 수 없습니다.");
+  const regexp = lengths && input.regexp?.trim() ? input.regexp.trim() : null;
+  if (regexp) {
+    try {
+      new RegExp(regexp);
+    } catch {
+      throw fieldError("regexp", "정규식이 올바르지 않습니다.");
+    }
+  }
+  let options: CustomField["options"] = [];
+  if (input.format === "list") {
+    const values = input.options.map((o) => o.value.trim());
+    if (!values.length || values.some((v) => !v)) throw fieldError("options", "선택지를 하나 이상 입력하세요(빈 칸 없이).");
+    if (values.some((v) => v.length > 255)) throw fieldError("options", "선택지는 255자까지 입력할 수 있습니다.");
+    if (new Set(values).size !== values.length) throw fieldError("options", "같은 선택지가 두 번 있습니다.");
+    options = input.options.map((o, i) => ({ id: o.id && existing?.options.some((x) => x.id === o.id) ? o.id : newId("cfo"), value: values[i] }));
+  }
+  const draft: CustomField = {
+    id: existing?.id ?? newId("cf"), name: input.name.trim(), format: input.format, isRequired: input.isRequired, isForAll: input.isForAll,
+    isFilterable: input.isFilterable, isMultiValue: refs && input.isMultiValue, defaultValue: null, minLength: min, maxLength: max, regexp,
+    position: existing?.position ?? db.customFields.length + 1, options, typeIds: db.types.filter((t) => input.typeIds.includes(t.id)).map((t) => t.id),
+  };
+  // no default for people: who is a member differs per project
+  let def: CustomValue = input.format === "user" ? null : input.defaultValue;
+  if (input.format === "list" && def !== null) {
+    const pick = (x: string) => options.find((o) => o.id === x || o.value === x)?.id ?? x;
+    def = Array.isArray(def) ? def.map((x) => pick(String(x))) : pick(String(def));
+  }
+  try {
+    draft.defaultValue = checkValue(draft, def, null);
+  } catch {
+    throw fieldError("defaultValue", "기본값이 이 필드의 형식·조건에 맞지 않습니다.");
+  }
+  return draft;
+}
+
+/** Stored values follow a definition change: removed options go, single and multi convert. */
+function migrateValues(f: CustomField) {
+  for (const w of db.workPackages) {
+    const v = w.customValues?.[f.id];
+    if (v === undefined || v === null) continue;
+    let next: CustomValue = v;
+    if (f.format === "list") {
+      const ids = (Array.isArray(v) ? v : [v]).map(String).filter((id) => f.options.some((o) => o.id === id));
+      next = f.isMultiValue ? (ids.length ? ids : null) : (ids[0] ?? null);
+    } else if (f.format === "user") {
+      const ids = (Array.isArray(v) ? v : [v]).map(String);
+      next = f.isMultiValue ? ids : (ids[0] ?? null);
+    }
+    w.customValues = { ...w.customValues };
+    if (next === null) delete w.customValues[f.id];
+    else w.customValues[f.id] = next;
+  }
+}
+
+/** Saved views forget a deleted field: its column, sort and filter. */
+function forgetInQueries(id: string) {
+  const key = `cf:${id}`;
+  for (const q of db.queries) {
+    q.spec = { ...q.spec, columns: q.spec.columns.filter((c) => c !== key), sort: q.spec.sort.filter((s) => s.field !== key), filters: q.spec.filters.filter((x) => x.field !== key) };
+  }
+}
+
+export const customFieldsAdmin: Api["admin"]["customFields"] = {
+  list: () => run(() => (requireAdmin(sessionUser()), db.customFields.slice().sort((a, b) => a.position - b.position).map(toAdminField))),
+  create: (input) =>
+    run(() => {
+      requireAdmin(sessionUser());
+      const f = buildField(input);
+      db.customFields.push(f);
+      return toAdminField(f);
+    }),
+  update: (id, patch) =>
+    run(() => {
+      requireAdmin(sessionUser());
+      const f = db.customFields.find((x) => x.id === id);
+      if (!f) throw notFound("사용자 정의 필드");
+      const next = buildField({ ...f, ...patch }, f);
+      Object.assign(f, next);
+      migrateValues(f);
+      return toAdminField(f);
+    }),
+  remove: (id) =>
+    run(() => {
+      requireAdmin(sessionUser());
+      if (!db.customFields.some((x) => x.id === id)) throw notFound("사용자 정의 필드");
+      db.customFields = db.customFields.filter((x) => x.id !== id);
+      db.projectCustomFields = db.projectCustomFields.filter((x) => x.customFieldId !== id);
+      for (const w of db.workPackages) if (w.customValues && id in w.customValues) delete w.customValues[id];
+      forgetInQueries(id);
+      db.customFields.sort((a, b) => a.position - b.position).forEach((x, i) => (x.position = i + 1));
+    }),
+  reorder: (ids) => run(() => (requireAdmin(sessionUser()), reorderBy(db.customFields, ids))),
+};
+
+function projectFields(projectId: string): ProjectCustomFields {
+  return {
+    fields: db.customFields.slice().sort((a, b) => a.position - b.position).map(toField),
+    enabledIds: db.projectCustomFields.filter((x) => x.projectId === projectId).map((x) => x.customFieldId),
+  };
+}
+
+export const projectExtras: Pick<Api["projects"], "setTypes" | "archive" | "customFields" | "setCustomFields"> = {
+  customFields: (id) =>
+    run(() => {
+      const user = sessionUser();
+      const p = findProject(user, id);
+      requirePerm(user, p, "project.manage_custom_fields", "사용자 정의 필드를 관리할 권한이 없습니다.");
+      return projectFields(p.id);
+    }),
+  setCustomFields: (id, ids) =>
+    run(() => {
+      const user = sessionUser();
+      const p = findProject(user, id);
+      requirePerm(user, p, "project.manage_custom_fields", "사용자 정의 필드를 관리할 권한이 없습니다.");
+      if (ids.some((x) => !db.customFields.some((f) => f.id === x))) throw fieldError("customFieldIds", "없는 사용자 정의 필드입니다.");
+      const on = db.customFields.filter((f) => !f.isForAll && ids.includes(f.id));
+      db.projectCustomFields = [...db.projectCustomFields.filter((x) => x.projectId !== p.id), ...on.map((f) => ({ projectId: p.id, customFieldId: f.id }))];
+      return projectFields(p.id);
+    }),
   setTypes: (id, typeIds) =>
     run(() => {
       const user = sessionUser();
@@ -194,6 +337,7 @@ export const versionsApi: Api["versions"] = {
 /* ---------- administration ---------- */
 
 export const adminApi: Api["admin"] = {
+  customFields: customFieldsAdmin,
   types: {
     list: () => run(() => (requireAdmin(sessionUser()), db.types.slice().sort((a, b) => a.position - b.position).map(toType))),
     create: (input) =>

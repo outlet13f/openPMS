@@ -97,8 +97,8 @@
   --pms-layout-bp-xl: 1280px;
   --pms-z-header: 30;
   --pms-z-sidebar-overlay: 40;
-  --pms-z-dropdown: 50;
   --pms-z-modal: 60;
+  --pms-z-dropdown: 65;
   --pms-z-toast: 70;
   --pms-z-tooltip: 80;
 }

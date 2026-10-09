@@ -7,6 +7,7 @@ import static com.openpms.db.Tables.WORK_PACKAGES;
 import static org.jooq.impl.DSL.count;
 
 import com.openpms.api.Dto;
+import com.openpms.customfield.CustomFields;
 import com.openpms.core.Ctx;
 import com.openpms.core.Refs;
 import com.openpms.core.Snapshot;
@@ -30,9 +31,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class Assembler {
     private final DSLContext db;
+    private final CustomFields customFields;
 
-    public Assembler(DSLContext db) {
+    public Assembler(DSLContext db, CustomFields customFields) {
         this.db = db;
+        this.customFields = customFields;
     }
 
     /** Editable fields in the order dto.ts lists them. */
@@ -133,7 +136,8 @@ public class Assembler {
                     parent == null ? null : ref(s, parent), kids, w.getStartDate(), w.getDueDate(), w.getDuration(), w.getIgnoreNonWorkingDays(),
                     w.getScheduleManually(), num(w.getWorkHours()), num(w.getRemainingHours()), w.getDoneRatio() == null ? null : w.getDoneRatio().intValue(),
                     watching.contains(w.getId()), watcherCount.getOrDefault(w.getId(), 0),
-                    relationCount.getOrDefault(w.getId(), 0) + kids + (parent != null ? 1 : 0), attachmentCount.getOrDefault(w.getId(), 0), w.getLockVersion(), w.getCreatedAt(), w.getUpdatedAt(), meta));
+                    relationCount.getOrDefault(w.getId(), 0) + kids + (parent != null ? 1 : 0), attachmentCount.getOrDefault(w.getId(), 0),
+                    customFields.values(s, w), w.getLockVersion(), w.getCreatedAt(), w.getUpdatedAt(), meta));
         }
         return out;
     }

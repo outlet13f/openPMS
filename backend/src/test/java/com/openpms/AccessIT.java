@@ -74,9 +74,12 @@ class AccessIT {
     @Test
     void viewerCannotEdit() throws Exception {
         var s = login("minji.choi@openpms.local");
-        mvc.perform(get("/api/v1/work-packages/3").session(s)).andExpect(status().isOk()).andExpect(jsonPath("$._meta.allowedActions.edit").value(false));
+        var body = mvc.perform(get("/api/v1/work-packages/3").session(s)).andExpect(status().isOk())
+                .andExpect(jsonPath("$._meta.allowedActions.edit").value(false)).andReturn().getResponse().getContentAsString();
+        // the current lockVersion (other tests may have edited #3), so the answer is about permission, not a conflict
+        var lockVersion = com.jayway.jsonpath.JsonPath.read(body, "$.lockVersion");
         mvc.perform(patch("/api/v1/work-packages/3").session(s).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"lockVersion\":2,\"subject\":\"바꿔 보기\"}")).andExpect(status().isForbidden());
+                .content("{\"lockVersion\":" + lockVersion + ",\"subject\":\"바꿔 보기\"}")).andExpect(status().isForbidden());
     }
 
     @Test

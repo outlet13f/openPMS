@@ -1,12 +1,16 @@
 package com.openpms.core;
 
 import static com.openpms.db.Tables.CATEGORIES;
+import static com.openpms.db.Tables.CUSTOM_FIELDS;
+import static com.openpms.db.Tables.CUSTOM_FIELD_OPTIONS;
+import static com.openpms.db.Tables.CUSTOM_FIELD_TYPES;
 import static com.openpms.db.Tables.GLOBAL_ROLE_ASSIGNMENTS;
 import static com.openpms.db.Tables.MEMBERS;
 import static com.openpms.db.Tables.MEMBER_ROLES;
 import static com.openpms.db.Tables.NON_WORKING_DAYS;
 import static com.openpms.db.Tables.PRIORITIES;
 import static com.openpms.db.Tables.PROJECTS;
+import static com.openpms.db.Tables.PROJECT_CUSTOM_FIELDS;
 import static com.openpms.db.Tables.PROJECT_TYPES;
 import static com.openpms.db.Tables.ROLES;
 import static com.openpms.db.Tables.SETTINGS;
@@ -74,6 +78,13 @@ public final class Snapshot {
     public record CategoryRow(UUID id, UUID projectId, String name, UUID defaultAssigneeId) {}
 
     public record Settings(List<Integer> workingDays, int hoursPerDay, int journalAggregationMinutes) {}
+
+    public record OptionRow(UUID id, String value, int position) {}
+
+    /** A work package custom field (S34). defaultValue is the stored JSON value (String, Number, Boolean, List) or null. */
+    public record CustomFieldRow(UUID id, String name, String format, boolean isRequired, boolean isForAll, boolean isFilterable, boolean isMultiValue,
+                                 Object defaultValue, Integer minLength, Integer maxLength, String regexp, int position, List<OptionRow> options,
+                                 List<UUID> typeIds) {}
 
     // not final: the lazy loaders below are field initialisers that read these (set once, in the constructor)
     private DSLContext db;
@@ -178,9 +189,51 @@ public final class Snapshot {
         return out;
     });
 
+    private final Supplier<List<CustomFieldRow>> customFields = lazy(() -> {
+        var options = new HashMap<UUID, List<OptionRow>>();
+        this.db.selectFrom(CUSTOM_FIELD_OPTIONS).orderBy(CUSTOM_FIELD_OPTIONS.POSITION, CUSTOM_FIELD_OPTIONS.VALUE).fetch()
+                .forEach(r -> options.computeIfAbsent(r.getCustomFieldId(), k -> new ArrayList<>()).add(new OptionRow(r.getId(), r.getValue(), r.getPosition())));
+        var typeIds = new HashMap<UUID, List<UUID>>();
+        this.db.selectFrom(CUSTOM_FIELD_TYPES).fetch().forEach(r -> typeIds.computeIfAbsent(r.getCustomFieldId(), k -> new ArrayList<>()).add(r.getTypeId()));
+        return this.db.selectFrom(CUSTOM_FIELDS).where(CUSTOM_FIELDS.ENTITY.eq("work_package")).orderBy(CUSTOM_FIELDS.POSITION, CUSTOM_FIELDS.NAME).fetch().stream()
+                .map(r -> new CustomFieldRow(r.getId(), r.getName(), r.getFormat(), r.getIsRequired(), r.getIsForAll(), r.getIsFilterable(), r.getIsMultiValue(),
+                        r.getDefaultValue() == null ? null : this.json.readValue(r.getDefaultValue().data(), Object.class), r.getMinLength(), r.getMaxLength(),
+                        r.getRegexp(), r.getPosition(), options.getOrDefault(r.getId(), List.of()), typeIds.getOrDefault(r.getId(), List.of())))
+                .toList();
+    });
+
+    private final Supplier<Map<UUID, Set<UUID>>> projectCustomFields = lazy(() -> {
+        var out = new HashMap<UUID, Set<UUID>>();
+        this.db.selectFrom(PROJECT_CUSTOM_FIELDS).fetch().forEach(r -> out.computeIfAbsent(r.getProjectId(), k -> new HashSet<>()).add(r.getCustomFieldId()));
+        return out;
+    });
+
     private final Supplier<Set<LocalDate>> holidays = lazy(() -> new HashSet<>(this.db.select(NON_WORKING_DAYS.DAY).from(NON_WORKING_DAYS).fetch(NON_WORKING_DAYS.DAY)));
 
     /* ---------- accessors ---------- */
+
+    /** Work package custom fields, in order. */
+    public List<CustomFieldRow> customFields() {
+        return customFields.get();
+    }
+
+    public Optional<CustomFieldRow> customField(UUID id) {
+        return customFields.get().stream().filter(f -> f.id().equals(id)).findFirst();
+    }
+
+    /** Fields turned on for a project (isForAll ones are on everywhere and not listed). */
+    public Set<UUID> projectCustomFieldIds(UUID projectId) {
+        return projectCustomFields.get().getOrDefault(projectId, Set.of());
+    }
+
+    public boolean customFieldEnabledIn(CustomFieldRow f, UUID projectId) {
+        return f.isForAll() || projectCustomFieldIds(projectId).contains(f.id());
+    }
+
+    /** The fields an item of this project and type has, in order. */
+    public List<CustomFieldRow> activeCustomFields(UUID projectId, UUID typeId) {
+        return customFields().stream().filter(f -> f.typeIds().contains(typeId) && customFieldEnabledIn(f, projectId)).toList();
+    }
 
     public Map<UUID, UserRow> users() {
         return users.get();

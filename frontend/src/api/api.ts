@@ -1,5 +1,8 @@
 import type {
   Attachment,
+  AdminCustomField,
+  CustomFieldInput,
+  ProjectCustomFields,
   Watcher,
   AdminGroup,
   AdminPriority,
@@ -79,6 +82,10 @@ export interface Api {
     overview(id: Id): Promise<ProjectOverview>;
     /** PUT /projects/{project}/types */
     setTypes(id: Id, typeIds: Id[]): Promise<Project>;
+    /** GET /projects/{project}/custom-fields (project.manage_custom_fields) */
+    customFields(id: Id): Promise<ProjectCustomFields>;
+    /** PUT /projects/{project}/custom-fields — the fields turned on here (isForAll ones need not be listed) */
+    setCustomFields(id: Id, customFieldIds: Id[]): Promise<ProjectCustomFields>;
     /** POST /projects/{project}/archive */
     archive(id: Id): Promise<void>;
   };
@@ -219,6 +226,18 @@ export interface Api {
 
   /** Everything under /admin (architecture.md §4.2 "관리"): administrators, users/groups also global.manage_users. */
   admin: {
+    customFields: {
+      /** GET /admin/custom-fields */
+      list(): Promise<AdminCustomField[]>;
+      /** POST /admin/custom-fields */
+      create(input: CustomFieldInput): Promise<AdminCustomField>;
+      /** PATCH /admin/custom-fields/{id} — the format cannot change */
+      update(id: Id, patch: Partial<CustomFieldInput>): Promise<AdminCustomField>;
+      /** DELETE /admin/custom-fields/{id} — also clears its values from every work package */
+      remove(id: Id): Promise<void>;
+      /** PUT /admin/custom-fields/order */
+      reorder(ids: Id[]): Promise<void>;
+    };
     types: {
       /** GET /admin/types */
       list(): Promise<AdminType[]>;

@@ -2,7 +2,7 @@
 // original app's demo content. Roles, types, statuses and priorities match replica/seed.sql.
 
 import type { Db, DbJournal, DbWp } from "./db";
-import type { QuerySpec } from "../types";
+import type { CustomField, QuerySpec } from "../types";
 
 const P_MANAGER = [
   "project.view", "project.edit", "project.archive", "project.manage_modules", "project.manage_members",
@@ -177,6 +177,28 @@ export function buildSeed(schema: number): Db {
   workPackages.find((w) => w.number === 11)!.descriptionHtml =
     "<p>검색 결과에서 정렬을 <strong>최신순</strong>으로 바꿔도 순서가 그대로입니다. 재현: 검색창에 \"정산\" 입력 → 정렬 변경.</p>";
 
+  const cf = (id: string, name: string, format: CustomField["format"], position: number, typeIds: string[], more: Partial<CustomField> = {}): CustomField => ({
+    id, name, format, isRequired: false, isForAll: false, isFilterable: true, isMultiValue: false, defaultValue: null, minLength: null, maxLength: null,
+    regexp: null, position, options: [], typeIds, ...more,
+  });
+  const customFields: CustomField[] = [
+    cf("cf-client", "고객사", "list", 1, ["t-task", "t-feature", "t-bug"], {
+      options: [{ id: "cfo-internal", value: "사내" }, { id: "cfo-hanbit", value: "한빛은행" }, { id: "cfo-mirae", value: "미래상사" }, { id: "cfo-daon", value: "다온커머스" }],
+    }),
+    cf("cf-reviewer", "검토자", "user", 2, ["t-task", "t-feature", "t-bug"], { isForAll: true }),
+    cf("cf-points", "스토리 포인트", "integer", 3, ["t-task", "t-feature"]),
+    cf("cf-relnote", "릴리스 노트 필요", "bool", 4, ["t-feature", "t-bug"], { isForAll: true }),
+    cf("cf-link", "참고 링크", "link", 5, ["t-task", "t-milestone", "t-summary", "t-feature", "t-bug"], { isForAll: true, isFilterable: false }),
+  ];
+  const values: Record<number, DbWp["customValues"]> = {
+    3: { "cf-client": "cfo-hanbit", "cf-reviewer": "u-junho" },
+    4: { "cf-client": "cfo-hanbit", "cf-points": 8 },
+    8: { "cf-relnote": false, "cf-link": "https://example.com/a11y-report" },
+    9: { "cf-points": 5, "cf-relnote": true },
+    11: { "cf-client": "cfo-mirae" },
+  };
+  for (const [n, v] of Object.entries(values)) workPackages.find((w) => w.number === Number(n))!.customValues = v;
+
   const relations = [
     { id: "rel-1", fromId: "wp-2", toId: "wp-4", type: "precedes" as const, lag: 0, description: "" },
     { id: "rel-2", fromId: "wp-4", toId: "wp-5", type: "precedes" as const, lag: 0, description: "" },
@@ -275,6 +297,11 @@ export function buildSeed(schema: number): Db {
     notifications,
     projectFavorites: [{ userId: "u-seoyeon", projectId: "p-web" }],
     attachments: [],
+    customFields,
+    projectCustomFields: [
+      { projectId: "p-web", customFieldId: "cf-client" },
+      { projectId: "p-web", customFieldId: "cf-points" },
+    ],
     nonWorkingDays: [
       { id: "nwd-1", date: "2026-10-03", name: "개천절" },
       { id: "nwd-2", date: "2026-10-09", name: "한글날" },

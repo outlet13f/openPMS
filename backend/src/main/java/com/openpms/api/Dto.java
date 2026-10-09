@@ -74,15 +74,33 @@ public final class Dto {
                               String descriptionHtml, UserRef author, UserRef assignee, UserRef responsible, IdName version, IdName category,
                               WorkPackageRef parent, int childCount, LocalDate startDate, LocalDate dueDate, Integer duration,
                               boolean ignoreNonWorkingDays, boolean scheduleManually, Double workHours, Double remainingHours, Integer doneRatio,
-                              boolean watching, int watcherCount, int relationCount, int attachmentCount, int lockVersion, OffsetDateTime createdAt,
-                              OffsetDateTime updatedAt, @JsonProperty("_meta") Meta meta) {}
+                              boolean watching, int watcherCount, int relationCount, int attachmentCount, Map<String, CustomValue> customValues,
+                              int lockVersion, OffsetDateTime createdAt, OffsetDateTime updatedAt, @JsonProperty("_meta") Meta meta) {}
+
+    /* ---------- custom fields (S34, S25) ---------- */
+
+    /** value as stored (option/user ids, ISO date, number, boolean, text); text for display */
+    public record CustomValue(Object value, String text) {}
+
+    public record CustomFieldOption(UUID id, String value) {}
+
+    public record CustomField(UUID id, String name, String format, boolean isRequired, boolean isForAll, boolean isFilterable, boolean isMultiValue,
+                              Object defaultValue, Integer minLength, Integer maxLength, String regexp, int position, List<CustomFieldOption> options,
+                              List<UUID> typeIds) {}
+
+    public record AdminCustomField(UUID id, String name, String format, boolean isRequired, boolean isForAll, boolean isFilterable, boolean isMultiValue,
+                                   Object defaultValue, Integer minLength, Integer maxLength, String regexp, int position, List<CustomFieldOption> options,
+                                   List<UUID> typeIds, int projectCount) {}
+
+    public record ProjectCustomFields(List<CustomField> fields, List<UUID> enabledIds) {}
 
     public record CategoryOption(UUID id, String name, UUID defaultAssigneeId) {}
 
     public record FormDefaults(UUID statusId, UUID priorityId, String descriptionHtml) {}
 
     public record WorkPackageForm(TypeRef type, List<TypeRef> types, List<StatusRef> statuses, List<PriorityRef> priorities, List<UserRef> assignees,
-                                  List<IdName> versions, List<CategoryOption> categories, FormDefaults defaults, List<String> required) {}
+                                  List<IdName> versions, List<CategoryOption> categories, FormDefaults defaults, List<String> required,
+                                  List<CustomField> customFields) {}
 
     public record JournalDetail(String field, String label, String from, String to) {}
 
@@ -108,7 +126,8 @@ public final class Dto {
     public record SavedQuery(String id, String name, String kind, String view, Object spec, boolean favorite, UUID projectId, boolean canEdit) {}
 
     public record FilterOptions(List<StatusRef> statuses, List<TypeRef> types, List<PriorityRef> priorities, List<UserRef> users,
-                                List<IdName> versions, List<IdName> categories, List<IdName> groups, List<IdName> roles, List<IdName> projects) {}
+                                List<IdName> versions, List<IdName> categories, List<IdName> groups, List<IdName> roles, List<IdName> projects,
+                                List<CustomField> customFields) {}
 
     /* ---------- boards ---------- */
 

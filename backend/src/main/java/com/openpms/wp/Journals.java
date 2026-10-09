@@ -6,6 +6,7 @@ import static com.openpms.db.Tables.WATCHERS;
 import static com.openpms.db.Tables.WORK_PACKAGES;
 
 import com.openpms.api.Dto;
+import com.openpms.customfield.CustomFields;
 import com.openpms.common.Dates;
 import com.openpms.common.Html;
 import com.openpms.core.Ctx;
@@ -39,10 +40,12 @@ public class Journals {
 
     private final DSLContext db;
     private final JsonMapper json;
+    private final CustomFields customFields;
 
-    public Journals(DSLContext db, JsonMapper json) {
+    public Journals(DSLContext db, JsonMapper json, CustomFields customFields) {
         this.db = db;
         this.json = json;
+        this.customFields = customFields;
     }
 
     public Map<String, List<Object>> changesOf(JournalsRecord j) {
@@ -182,17 +185,35 @@ public class Journals {
         };
     }
 
+    private static String blankToNull(String s) {
+        return s == null || s.isEmpty() ? null : s;
+    }
+
     public Dto.Journal toDto(Ctx ctx, JournalsRecord j, Snapshot.ProjectRow project) {
         var s = ctx.s();
         var changes = changesOf(j);
         var details = new ArrayList<Dto.JournalDetail>();
         if (changes.containsKey(CREATED)) details.add(new Dto.JournalDetail(CREATED, "작업을 만들었습니다", null, null));
-        // jsonb does not keep key order: show fields in the form's order (start before due …)
+        // jsonb does not keep key order: show fields in the form's order (start before due …), custom fields after, in field order
+        java.util.function.ToIntFunction<String> rank = f -> {
+            var cf = CustomFields.idOf(f);
+            if (cf != null) return ORDER.size() + 1 + s.customField(cf).map(Snapshot.CustomFieldRow::position).orElse(0);
+            return ORDER.indexOf(base(f)) < 0 ? ORDER.size() : ORDER.indexOf(base(f));
+        };
         changes.keySet().stream().filter(f -> !f.equals(CREATED) && !f.equals("lockVersion"))
-                .sorted(java.util.Comparator.comparingInt(f -> ORDER.indexOf(base(f)) < 0 ? ORDER.size() : ORDER.indexOf(base(f))))
+                .sorted(java.util.Comparator.comparingInt(rank))
                 .forEach(field -> {
                     var v = changes.get(field);
-                    details.add(new Dto.JournalDetail(field, LABEL.getOrDefault(base(field), field), display(s, base(field), v.get(0)), display(s, base(field), v.size() > 1 ? v.get(1) : null)));
+                    var from = v.get(0);
+                    var to = v.size() > 1 ? v.get(1) : null;
+                    var cfId = CustomFields.idOf(field);
+                    if (cfId != null) {
+                        // a custom field: its current name and display form; a deleted field's history is not shown
+                        s.customField(cfId).ifPresent(f -> details.add(new Dto.JournalDetail(field, f.name(), blankToNull(customFields.text(s, f, from)),
+                                blankToNull(customFields.text(s, f, to)))));
+                        return;
+                    }
+                    details.add(new Dto.JournalDetail(field, LABEL.getOrDefault(base(field), field), display(s, base(field), from), display(s, base(field), to)));
                 });
         boolean canEdit = !j.getNotesHtml().isEmpty()
                 && ((j.getUserId().equals(ctx.userId()) && ctx.can(project, "wp.edit_own_comments")) || ctx.can(project, "wp.edit_comments"));

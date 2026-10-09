@@ -5,6 +5,7 @@ import { addDays, isoWeekday, todayIso } from "@/lib/dates";
 import { db, type DbProject, type DbUser, type DbWp } from "./db";
 import { can, memberRoleIds } from "./permissions";
 import { toWp } from "./dto";
+import { cfText, findField, opsFor, sortKey, valueOn } from "./custom-fields";
 
 function descendantsOf(projectId: string): string[] {
   const out = [projectId];
@@ -42,7 +43,9 @@ const OPS: Record<QueryFilter["field"], readonly QueryFilter["op"][]> = (() => {
 const NEEDS_VALUE = new Set<QueryFilter["op"]>(["eq", "neq", "gte", "lte", "on", "between", "overlaps", "contains", "not_contains"]);
 
 function matches(w: DbWp, f: QueryFilter, user: DbUser): boolean {
-  if (!OPS[f.field]?.includes(f.op)) throw new ApiError(422, `연산자 ${f.op}는 ${f.field} 필드에 쓸 수 없습니다.`);
+  const custom = f.field.startsWith("cf:") ? findField(f.field) : null;
+  const allowed = custom ? opsFor(custom) : OPS[f.field as keyof typeof OPS];
+  if (!allowed?.includes(f.op)) throw new ApiError(422, `연산자 ${f.op}는 ${custom?.name ?? f.field} 필드에 쓸 수 없습니다.`);
   // A filter whose value has not been picked yet does not narrow the list.
   const vals = (f.values ?? []).map((v) => resolveUser(v, user));
   if (NEEDS_VALUE.has(f.op) && !vals.some((v) => v !== "")) return true;
@@ -106,6 +109,32 @@ function matches(w: DbWp, f: QueryFilter, user: DbUser): boolean {
   const needle = (vals[0] ?? "").toLowerCase();
   const text = (hay: string) => (f.op === "not_contains" ? !hay.includes(needle) : hay.includes(needle));
   const bool = (value: boolean) => value === (vals[0] === "true");
+
+  if (custom) {
+    // an item without the field (other type or project) counts as empty
+    const v = valueOn(w, custom);
+    const isEmpty = v === null || (Array.isArray(v) && !v.length);
+    switch (custom.format) {
+      case "list":
+      case "user": {
+        const have = isEmpty ? [] : (Array.isArray(v) ? v : [v]).map(String);
+        if (f.op === "any") return have.length > 0;
+        if (f.op === "none") return have.length === 0;
+        return some(have);
+      }
+      case "integer":
+      case "float":
+        return num(isEmpty ? null : Number(v));
+      case "date":
+        return date(isEmpty ? null : String(v));
+      case "bool":
+        return !isEmpty && bool(Boolean(v));
+      default:
+        if (f.op === "any") return !isEmpty;
+        if (f.op === "none") return isEmpty;
+        return text(cfText(custom, v).toLowerCase());
+    }
+  }
 
   switch (f.field) {
     case "status":
@@ -220,6 +249,10 @@ function sortValue(w: DbWp, field: ColumnKey): string | number {
     case "project":
       return db.projects.find((p) => p.id === w.projectId)?.name ?? "";
     default:
+      if (field.startsWith("cf:")) {
+        const f = db.customFields.find((x) => `cf:${x.id}` === field);
+        if (f) return sortKey(w, f);
+      }
       return w.number;
   }
 }

@@ -21,7 +21,7 @@ export function InlineText({
   disabled?: boolean;
   label: string;
   required?: boolean;
-  type?: "text" | "number";
+  type?: "text" | "number" | "date" | "url";
   className?: string;
   inputClassName?: string;
   display?: ReactNode;

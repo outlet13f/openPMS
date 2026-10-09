@@ -2,9 +2,9 @@
 import { useState, type ReactNode } from "react";
 import { Navigate, NavLink, useNavigate, useParams } from "react-router";
 import { useTranslation } from "react-i18next";
-import { Archive, MoreHorizontal, Pencil, Plus, Save, Tag, Trash2 } from "lucide-react";
+import { Archive, ListPlus, MoreHorizontal, Pencil, Plus, Save, Tag, Trash2 } from "lucide-react";
 import type { ModuleKey, ProjectStatus, Version, VersionInput } from "@/api";
-import { useCategories, useCategoryMutations, useProjectSettingsMutations, useVersionMutations, useVersions } from "@/api/admin-hooks";
+import { useCategories, useCategoryMutations, useProjectCustomFields, useProjectSettingsMutations, useSetProjectCustomFields, useVersionMutations, useVersions } from "@/api/admin-hooks";
 import { useFilterOptions } from "@/api/hooks";
 import { Badge, TypeLabel } from "@/components/ui/badges";
 import { Button } from "@/components/ui/button";
@@ -309,6 +309,7 @@ function WorkPackagesSection() {
           </AdminTable>
         )}
       </Section>
+      {can(project, "project.manage_custom_fields") && <CustomFieldsSection />}
       {dialog && <CategoryDialog projectId={project.id} editing={dialog.editing} onClose={() => setDialog(null)} />}
       <ConfirmDialog
         open={!!removing}
@@ -323,6 +324,63 @@ function WorkPackagesSection() {
         }}
       />
     </div>
+  );
+}
+
+/* ---------- 사용자 정의 필드 (S25) ---------- */
+
+function CustomFieldsSection() {
+  const { t } = useTranslation();
+  const project = useCurrentProject();
+  const q = useProjectCustomFields(project.id);
+  const save = useSetProjectCustomFields(project.id);
+  const types = useTypesForProject(project.id);
+  const runToast = useRunWithToast();
+  const [enabled, setEnabled] = useState<string[] | null>(null);
+  const current = enabled ?? q.data?.enabledIds ?? [];
+  const typeName = (id: string) => types.all.find((x) => x.id === id)?.name;
+  return (
+    <Section title={t("customFields.project.title")} hint={t("customFields.project.hint")}>
+      {q.isPending ? (
+        <Skeleton className="h-24 w-full" />
+      ) : q.isError ? (
+        <ErrorState error={q.error} onRetry={() => q.refetch()} />
+      ) : q.data.fields.length === 0 ? (
+        <div className="rounded-md border border-border">
+          <EmptyState compact icon={<ListPlus />} title={t("customFields.project.empty")} />
+        </div>
+      ) : (
+        <>
+          <fieldset className="flex flex-col gap-3">
+            <legend className="sr-only">{t("customFields.project.title")}</legend>
+            {q.data.fields.map((f) => (
+              <Checkbox
+                key={f.id}
+                label={
+                  <span>
+                    {f.name}
+                    {f.isForAll && (
+                      <Badge tone="neutral" className="ml-2">
+                        {t("customFields.project.forAll")}
+                      </Badge>
+                    )}
+                  </span>
+                }
+                description={t("customFields.project.detail", { format: t(`customFields.formats.${f.format}`), types: f.typeIds.map(typeName).filter(Boolean).join(", ") })}
+                checked={f.isForAll || current.includes(f.id)}
+                disabled={f.isForAll}
+                onCheckedChange={(c) => setEnabled(c === true ? [...new Set([...current, f.id])] : current.filter((x) => x !== f.id))}
+              />
+            ))}
+          </fieldset>
+          <div>
+            <Button variant="primary" icon={<Save />} disabled={!enabled} loading={save.isPending} onClick={async () => (await runToast(save.mutateAsync(current), t("app.saved"))) && setEnabled(null)}>
+              {t("app.save")}
+            </Button>
+          </div>
+        </>
+      )}
+    </Section>
   );
 }
 
@@ -473,7 +531,7 @@ export function ProjectSettingsPage() {
   useDocumentTitle(`${t("nav.settings")} · ${project.name}`);
   const base = `/projects/${project.identifier}/settings`;
   if (!SECTIONS.includes(section as Section)) return <Navigate to={`${base}/general`} replace />;
-  if (!can(project, "project.edit") && !can(project, "project.manage_versions") && !can(project, "project.manage_types"))
+  if (!can(project, "project.edit") && !can(project, "project.manage_versions") && !can(project, "project.manage_types") && !can(project, "project.manage_custom_fields"))
     return (
       <PageBody>
         <PageHeader title={t("nav.settings")} />

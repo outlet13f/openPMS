@@ -16,7 +16,7 @@ type ValueKind = "multi" | "text" | "number" | "days" | "date" | "range" | "bool
 type OpDef = { op: FilterOp; label: string; input?: ValueKind };
 type Def = { label: string; ops: OpDef[]; values?: (o: FilterOptions) => SelectOption[] };
 
-function useDefs(): Record<FilterField, Def> {
+function useDefs(options?: FilterOptions): Record<FilterField, Def> {
   const { t } = useTranslation();
   const f = (k: string) => t(`filters.${k}` as "filters.is");
   const col = (k: string) => t(`filters.fields.${k}` as "filters.fields.status");
@@ -95,6 +95,29 @@ function useDefs(): Record<FilterField, Def> {
     },
     isMilestone: { label: col("isMilestone"), ops: bool, values: yesNo },
     blocked: { label: col("blocked"), ops: bool, values: yesNo },
+    // custom fields on in this scope that the administrator made filterable
+    ...Object.fromEntries(
+      (options?.customFields ?? [])
+        .filter((cf) => cf.isFilterable)
+        .map((cf): [FilterField, Def] => {
+          const key: FilterField = `cf:${cf.id}`;
+          switch (cf.format) {
+            case "list":
+              return [key, { label: cf.name, ops: ref, values: () => cf.options.map((o) => ({ value: o.id, label: o.value })) }];
+            case "user":
+              return [key, { label: cf.name, ops: ref, values: people }];
+            case "integer":
+            case "float":
+              return [key, { label: cf.name, ops: num }];
+            case "date":
+              return [key, { label: cf.name, ops: date(false) }];
+            case "bool":
+              return [key, { label: cf.name, ops: bool, values: yesNo }];
+            default:
+              return [key, { label: cf.name, ops: [...text, any, none] }];
+          }
+        }),
+    ),
   };
 }
 
@@ -151,7 +174,7 @@ function ValueInput({ def, op, filter, options, onValues }: { def: Def; op: OpDe
 
 export function FilterPanel({ spec, onSpec, options }: { spec: QuerySpec; onSpec: (s: QuerySpec) => void; options?: FilterOptions }) {
   const { t } = useTranslation();
-  const defs = useDefs();
+  const defs = useDefs(options);
   // The spec as last sent, ahead of its round trip through the URL: two quick edits (removing two filters,
   // say) must build on each other, not on the same stale props.
   const { latest, send } = useLatestSent(spec, (s) => JSON.stringify(s));

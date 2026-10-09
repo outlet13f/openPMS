@@ -205,6 +205,11 @@ export interface WorkPackage {
   watcherCount: number;
   relationCount: number;
   attachmentCount: number;
+  /**
+   * Custom fields active for this item (its project and type), in field order. Empty fields are present with
+   * value null. `text` is the display form (option and user names, formatted dates).
+   */
+  customValues: Record<Id, { value: CustomValue; text: string }>;
   lockVersion: number;
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
@@ -244,6 +249,8 @@ export interface WorkPackageInput {
   parentNumber?: number | null;
   startDate?: IsoDate | null;
   dueDate?: IsoDate | null;
+  /** Only the fields to set; null clears one. */
+  customValues?: Record<Id, CustomValue>;
 }
 
 export interface WorkPackagePatch extends Partial<Omit<WorkPackageInput, "typeId">> {
@@ -269,6 +276,8 @@ export interface WorkPackageForm {
   categories: { id: Id; name: string; defaultAssigneeId: Id | null }[];
   defaults: { statusId: Id; priorityId: Id; descriptionHtml: string };
   required: WpField[];
+  /** Custom fields active for this project and type */
+  customFields: CustomField[];
 }
 
 export interface JournalDetail {
@@ -406,7 +415,9 @@ export type FilterField =
   /** an open work package blocks this one */
   | "blocked"
   /** The work package's whole date range; used by the calendar and team planner for the visible window. */
-  | "dates";
+  | "dates"
+  /** a custom field, by id */
+  | `cf:${string}`;
 
 export interface QueryFilter {
   field: FilterField;
@@ -429,7 +440,8 @@ export type ColumnKey =
   | "duration"
   | "doneRatio"
   | "updatedAt"
-  | "project";
+  | "project"
+  | `cf:${string}`;
 
 export interface QuerySpec {
   v: 1;
@@ -489,6 +501,8 @@ export interface FilterOptions {
   roles: { id: Id; name: string }[];
   /** the project and its subprojects (or every visible project for the global list) */
   projects: { id: Id; name: string }[];
+  /** custom fields active somewhere in that scope: column and filter choices */
+  customFields: CustomField[];
 }
 
 /* ---------- boards ---------- */
@@ -557,6 +571,67 @@ export interface SearchHit {
   title: string;
   subtitle: string;
   href: string;
+}
+
+/* ---------- custom fields (S34 관리, S25 프로젝트 설정) ---------- */
+
+export type CustomFieldFormat = "string" | "text" | "integer" | "float" | "list" | "date" | "bool" | "user" | "link";
+
+/** As stored: list → option id(s), user → user id(s), date → ISO date, integer/float → number, bool, text. */
+export type CustomValue = string | number | boolean | string[] | null;
+
+export interface CustomFieldOption {
+  id: Id;
+  value: string;
+}
+
+/** A work package custom field. Active in a project when isForAll or turned on there, and only for its types. */
+export interface CustomField {
+  id: Id;
+  name: string;
+  format: CustomFieldFormat;
+  isRequired: boolean;
+  isForAll: boolean;
+  isFilterable: boolean;
+  /** list and user only */
+  isMultiValue: boolean;
+  defaultValue: CustomValue;
+  /** string and text only */
+  minLength: number | null;
+  maxLength: number | null;
+  regexp: string | null;
+  position: number;
+  /** list only, in order */
+  options: CustomFieldOption[];
+  typeIds: Id[];
+}
+
+export interface AdminCustomField extends CustomField {
+  /** projects that turned it on (not counting isForAll) */
+  projectCount: number;
+}
+
+/** Options without an id are new; existing ones keep theirs; missing ones are removed (and cleared from items). */
+export interface CustomFieldInput {
+  name: string;
+  format: CustomFieldFormat;
+  isRequired: boolean;
+  isForAll: boolean;
+  isFilterable: boolean;
+  isMultiValue: boolean;
+  defaultValue: CustomValue;
+  minLength: number | null;
+  maxLength: number | null;
+  regexp: string | null;
+  options: { id?: Id; value: string }[];
+  typeIds: Id[];
+}
+
+export interface ProjectCustomFields {
+  /** every work package custom field, in order */
+  fields: CustomField[];
+  /** fields turned on for this project (isForAll ones are always on) */
+  enabledIds: Id[];
 }
 
 /* ---------- administration (S27–S36) and project settings (S24–S26) ---------- */

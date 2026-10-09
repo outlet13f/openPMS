@@ -1,9 +1,11 @@
 // Query hooks for administration (S27–S36) and project settings (S24–S26).
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { CalendarSettings, Id, PriorityInput, RoleInput, StatusInput, Transition, TypeInput, UserInput, VersionInput } from "./types";
+import type { CalendarSettings, CustomFieldInput, Id, PriorityInput, RoleInput, StatusInput, Transition, TypeInput, UserInput, VersionInput } from "./types";
 
 export const ak = {
+  customFields: ["admin", "custom-fields"] as const,
+  projectCustomFields: (projectId: string) => ["project", projectId, "custom-fields"] as const,
   types: ["admin", "types"] as const,
   statuses: ["admin", "statuses"] as const,
   priorities: ["admin", "priorities"] as const,
@@ -35,6 +37,21 @@ function useMut<A, R>(fn: (a: A) => Promise<R>) {
   const qc = useQueryClient();
   return useMutation({ mutationFn: fn, onSuccess: () => refreshEverything(qc) });
 }
+
+/* ---------- custom fields (S34, S25) ---------- */
+
+export const useAdminCustomFields = () => useQuery({ queryKey: ak.customFields, queryFn: () => api.admin.customFields.list() });
+export function useCustomFieldMutations() {
+  return {
+    create: useMut((input: CustomFieldInput) => api.admin.customFields.create(input)),
+    update: useMut(({ id, patch }: { id: Id; patch: Partial<CustomFieldInput> }) => api.admin.customFields.update(id, patch)),
+    remove: useMut((id: Id) => api.admin.customFields.remove(id)),
+    reorder: useMut((ids: Id[]) => api.admin.customFields.reorder(ids)),
+  };
+}
+export const useProjectCustomFields = (projectId: Id, enabled = true) =>
+  useQuery({ queryKey: ak.projectCustomFields(projectId), queryFn: () => api.projects.customFields(projectId), enabled });
+export const useSetProjectCustomFields = (projectId: Id) => useMut((ids: Id[]) => api.projects.setCustomFields(projectId, ids));
 
 /* ---------- types / statuses / priorities ---------- */
 

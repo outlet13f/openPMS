@@ -27,6 +27,7 @@ import { propagate, resolveDates, wouldCycle, workCalendar } from "./scheduling"
 import { defaultSpec, runQuery } from "./query";
 import { DEFAULT_COLUMNS } from "./seed";
 import { fieldError, run } from "./util";
+import { activeFields, applyValues, fieldsInProjects, initialValues, toField } from "./custom-fields";
 import { adminApi, categoriesApi, projectExtras, versionsApi } from "./admin";
 
 /* ---------- plumbing ---------- */
@@ -225,6 +226,14 @@ function applyPatch(user: DbUser, number: number, patch: WorkPackagePatch): Work
     const work = (next.workHours ?? wp.workHours)!;
     const ratio = next.doneRatio ?? wp.doneRatio ?? 0;
     set("remainingHours", Math.round(work * (1 - ratio / 100) * 100) / 100);
+  }
+
+  if (patch.customValues) {
+    const r = applyValues({ ...wp, ...next }, patch.customValues);
+    if (Object.keys(r.changes).length) {
+      Object.assign(changes, r.changes);
+      next.customValues = r.values;
+    }
   }
 
   if (!Object.keys(changes).length) return toWp(wp, user);
@@ -512,6 +521,7 @@ export const fakeApi: Api = {
           categories: db.categories.filter((c) => c.projectId === p.id).map((c) => ({ id: c.id, name: c.name, defaultAssigneeId: c.defaultAssigneeId })),
           defaults: { statusId: def.id, priorityId: db.priorities.find((x) => x.isDefault)!.id, descriptionHtml: "" },
           required: ["subject"],
+          customFields: activeFields(p.id, type.id).map(toField),
         });
       }),
     create: (projectId, input: WorkPackageInput) =>
@@ -537,6 +547,7 @@ export const fakeApi: Api = {
           if (!parent) throw fieldError("parent", "상위 작업을 찾을 수 없습니다.");
           parentId = parent.id;
         }
+        const customValues = initialValues(p.id, input.typeId, input.customValues);
         const now = nowIso();
         db.seq.wp += 1;
         const base: DbWp = {
@@ -546,7 +557,7 @@ export const fakeApi: Api = {
           subject, descriptionHtml: input.descriptionHtml ?? "", authorId: user.id, assigneeId,
           responsibleId: input.responsibleId ?? null, versionId: input.versionId ?? null, categoryId: category?.id ?? null, parentId,
           startDate: null, dueDate: null, duration: null, ignoreNonWorkingDays: false, scheduleManually: true,
-          workHours: null, remainingHours: null, doneRatio: null, lockVersion: 0, createdAt: now, updatedAt: now,
+          workHours: null, remainingHours: null, doneRatio: null, customValues, lockVersion: 0, createdAt: now, updatedAt: now,
         };
         Object.assign(base, resolveDates(base, { startDate: input.startDate, dueDate: input.dueDate }));
         db.workPackages.push(base);
@@ -779,6 +790,7 @@ export const fakeApi: Api = {
         const user = sessionUser();
         const p = projectId ? findProject(user, projectId) : null;
         const userIds = p ? projectUserIds(p.id) : db.users.filter((u) => u.status === "active").map((u) => u.id);
+        const scope = visibleProjects(user, "wp.view").filter((x) => !p || x.id === p.id || isDescendant(x.id, p.id));
         return clone({
           statuses: db.statuses.sort((a, b) => a.position - b.position).map((s) => statusRef(s.id)),
           types: db.types.filter((t) => !p || p.typeIds.includes(t.id)).sort((a, b) => a.position - b.position).map((t) => typeRef(t.id)),
@@ -788,9 +800,8 @@ export const fakeApi: Api = {
           categories: db.categories.filter((c) => !p || c.projectId === p.id).map((c) => ({ id: c.id, name: c.name })),
           groups: db.groups.map((g) => ({ id: g.id, name: g.name })),
           roles: db.roles.filter((r) => r.scope === "project" && !r.builtin).map((r) => ({ id: r.id, name: r.name })),
-          projects: visibleProjects(user, "wp.view")
-            .filter((x) => !p || x.id === p.id || isDescendant(x.id, p.id))
-            .map((x) => ({ id: x.id, name: x.name })),
+          projects: scope.map((x) => ({ id: x.id, name: x.name })),
+          customFields: fieldsInProjects(scope.map((x) => x.id)),
         });
       }),
   },

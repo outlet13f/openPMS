@@ -6,6 +6,7 @@ import static com.openpms.db.Tables.WATCHERS;
 import static com.openpms.db.Tables.WORK_PACKAGES;
 
 import com.openpms.api.Dto;
+import com.openpms.customfield.CustomFields;
 import com.openpms.common.ApiException;
 import com.openpms.common.Html;
 import com.openpms.common.In;
@@ -42,7 +43,10 @@ public class WorkPackageService {
     private final Journals journals;
     private final ScheduleStore schedules;
 
-    public WorkPackageService(DSLContext db, Assembler assembler, Journals journals, ScheduleStore schedules) {
+    private final CustomFields customFields;
+
+    public WorkPackageService(DSLContext db, Assembler assembler, Journals journals, ScheduleStore schedules, CustomFields customFields) {
+        this.customFields = customFields;
         this.db = db;
         this.assembler = assembler;
         this.journals = journals;
@@ -85,7 +89,8 @@ public class WorkPackageService {
                 s.versions().stream().filter(v -> v.projectId().equals(p.id()) && "open".equals(v.status())).map(v -> new Dto.IdName(v.id(), v.name())).toList(),
                 s.categories().stream().filter(c -> c.projectId().equals(p.id())).map(c -> new Dto.CategoryOption(c.id(), c.name(), c.defaultAssigneeId())).toList(),
                 new Dto.FormDefaults(def.id(), s.defaultPriority().id(), ""),
-                List.of("subject"));
+                List.of("subject"),
+                s.activeCustomFields(p.id(), type.id()).stream().map(customFields::dto).toList());
     }
 
     public List<Dto.StatusRef> allowedStatuses(Ctx ctx, long number) {
@@ -183,6 +188,8 @@ public class WorkPackageService {
             parentId = parent.getId();
         }
 
+        var custom = customFields.initial(s, p.id(), typeId, customInput(in));
+
         schedules.lock();
         var graph = schedules.load(ctx);
         var milestone = s.type(typeId).map(Snapshot.TypeRow::isMilestone).orElse(false);
@@ -213,6 +220,7 @@ public class WorkPackageService {
         w.setStartDate(dates.start());
         w.setDueDate(dates.due());
         w.setDuration(dates.duration());
+        w.setCustomValues(customFields.write(custom));
         w.setCreatedAt(now);
         w.setUpdatedAt(now);
         w.store();
@@ -223,6 +231,15 @@ public class WorkPackageService {
         var g = schedules.load(ctx);
         schedules.apply(ctx, g.propagate(List.of(w.getId()), null, false));
         return assembler.one(ctx, reload(w.getId()));
+    }
+
+    /** The request's customValues object ({fieldId: value}), or 400 when it is something else. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> customInput(Map<String, Object> in) {
+        var v = in.get("customValues");
+        if (v == null) return Map.of();
+        if (!(v instanceof Map<?, ?> m)) throw new ApiException(400, "customValues는 객체여야 합니다.");
+        return (Map<String, Object>) m;
     }
 
     /* ---------- update (applyPatch) ---------- */
@@ -360,6 +377,14 @@ public class WorkPackageService {
             set.put("duration", wp.getDuration(), r.duration(), () -> wp.setDuration(r.duration()));
         }
         progress(patch, wp, set);
+        if (In.has(patch, "customValues")) {
+            // against the type as patched: a type change in the same request decides which fields exist
+            var r = customFields.apply(s, project.id(), wp.getTypeId(), customFields.read(wp.getCustomValues()), customInput(patch));
+            if (!r.changes().isEmpty()) {
+                changes.putAll(r.changes());
+                wp.setCustomValues(customFields.write(r.values()));
+            }
+        }
 
         if (changes.isEmpty()) return assembler.one(ctx, wp);
 

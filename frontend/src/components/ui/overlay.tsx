@@ -102,9 +102,20 @@ function renderEntries(entries: MenuEntry[]) {
           </M.Portal>
         </M.Sub>
       );
+    // an item with a checked state is a menuitemcheckbox, so the state is announced, not only drawn
+    if (e.checked !== undefined)
+      return (
+        <M.CheckboxItem key={i} checked={e.checked} disabled={e.disabled} onSelect={e.onSelect} className={itemCls}>
+          <Check aria-hidden="true" className={cn(!e.checked && "invisible")} />
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span>{e.label}</span>
+            {e.description && <span className="text-xs text-fg-muted">{e.description}</span>}
+          </span>
+        </M.CheckboxItem>
+      );
     return (
       <M.Item key={i} disabled={e.disabled} onSelect={e.onSelect} className={cn(itemCls, e.danger && "text-danger [&_svg]:text-danger")}>
-        {e.checked !== undefined ? <Check aria-hidden="true" className={cn(!e.checked && "invisible")} /> : e.icon}
+        {e.icon}
         <span className="flex min-w-0 flex-1 flex-col">
           <span>{e.label}</span>
           {e.description && <span className="text-xs text-fg-muted">{e.description}</span>}

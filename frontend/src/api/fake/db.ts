@@ -2,7 +2,7 @@
 // Table shapes follow replica/schema.sql closely so the move to the real API is mechanical.
 // State survives reloads through localStorage (per browser, per user) and can be reset from the login page.
 
-import type { BoardKind, Id, IsoDate, IsoDateTime, ModuleKey, NotificationReason, Preferences, ProjectStatus, QuerySpec, ViewKind } from "../types";
+import type { BoardKind, CustomField, CustomValue, Id, IsoDate, IsoDateTime, ModuleKey, NotificationReason, Preferences, ProjectStatus, QuerySpec, ViewKind } from "../types";
 import { buildSeed } from "./seed";
 
 export interface DbUser {
@@ -68,6 +68,8 @@ export interface DbWp {
   workHours: number | null;
   remainingHours: number | null;
   doneRatio: number | null;
+  /** {customFieldId: value}; values of fields an item no longer has (type or project changed) are kept, hidden */
+  customValues?: Record<Id, CustomValue>;
   lockVersion: number;
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
@@ -123,6 +125,8 @@ export interface Db {
   journals: DbJournal[];
   watchers: { wpId: Id; userId: Id }[];
   attachments: DbAttachment[];
+  customFields: CustomField[];
+  projectCustomFields: { projectId: Id; customFieldId: Id }[];
   queries: DbQuery[];
   queryFavorites: { userId: Id; queryId: Id }[];
   boards: DbBoard[];
@@ -133,7 +137,7 @@ export interface Db {
 }
 
 const KEY = "openpms.fakedb";
-const SCHEMA = 8;
+const SCHEMA = 9;
 
 function load(): Db {
   try {

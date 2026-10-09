@@ -31,7 +31,7 @@
 | 모달 배경막 | 검정 50% | `backdrop` rgba(15,18,24,.5) | `bg-backdrop` |
 | 브레이크포인트 | 390px에서 카드 목록 | sm 640 · md 768 · lg 1024 · xl 1280 | `md:` 이하에서 표가 카드로 바뀌고, `lg:` 미만에서 사이드바가 오버레이로 바뀜 |
 
-z 순서: header 30 < sidebar-overlay 40 < dropdown 50 < modal 60 < toast 70 < tooltip 80. 사용법은 `z-(--pms-z-modal)`입니다.
+z 순서: header 30 < sidebar-overlay 40 < modal 60 < dropdown 65 < toast 70 < tooltip 80. 드롭다운(선택 상자·메뉴)은 대화상자 안에서도 열리므로 모달보다 위에 둡니다. 사용법은 `z-(--pms-z-modal)`입니다.
 
 모션: fast 120ms(hover·색), base 200ms(드롭다운·패널), slow 300ms(분할 패널 슬라이드), ease `cubic-bezier(.2,.8,.2,1)`. `prefers-reduced-motion`이면 모두 끕니다(index.css).
 

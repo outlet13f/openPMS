@@ -17,6 +17,7 @@ import { isApiError } from "@/api";
 import { StatusMenu } from "./status-menu";
 import { InlinePick } from "./inline-pick";
 import { useSaveWorkPackage } from "./use-save";
+import { CustomValueView, cfIdOf, useColumnLabel } from "./custom-fields";
 
 const WIDTH: Partial<Record<ColumnKey, string>> = {
   number: "w-16", type: "w-24", status: "w-32", assignee: "w-40", responsible: "w-40", author: "w-36", priority: "w-24",
@@ -82,8 +83,12 @@ function Cell({ wp, column, options }: { wp: WorkPackage; column: ColumnKey; opt
       return wp.version?.name ?? <span className="text-fg-muted">-</span>;
     case "project":
       return <span className="truncate">{wp.project.name}</span>;
-    default:
-      return null;
+    default: {
+      const id = cfIdOf(column);
+      if (!id) return null;
+      const field = options?.customFields.find((f) => f.id === id);
+      return <span className="inline-block max-w-64 truncate align-middle"><CustomValueView text={wp.customValues[id]?.text ?? ""} format={field?.format} /></span>;
+    }
   }
 }
 
@@ -107,6 +112,7 @@ export function WorkPackageTable({
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const columnLabel = useColumnLabel(options);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const visible = useMemo(() => {
@@ -128,7 +134,7 @@ export function WorkPackageTable({
     const idx = spec.columns.indexOf(c);
     const inSort = spec.sort.findIndex((s) => s.field === c);
     const items: MenuEntry[] = [];
-    if (SORTABLE.includes(c)) {
+    if (SORTABLE.includes(c) || cfIdOf(c)) {
       items.push(
         { label: t("wp.header.sortAsc"), icon: <ArrowUp />, onSelect: () => onSpec({ ...spec, sort: [{ field: c, dir: "asc" }] }) },
         { label: t("wp.header.sortDesc"), icon: <ArrowDown />, onSelect: () => onSpec({ ...spec, sort: [{ field: c, dir: "desc" }] }) },
@@ -175,9 +181,9 @@ export function WorkPackageTable({
                         <button
                           type="button"
                           className="-mx-1 inline-flex items-center gap-1 rounded-sm px-1 py-0.5 hover:bg-surface-hover hover:text-fg data-[state=open]:bg-surface-selected"
-                          aria-label={t("wp.header.menu", { column: t(`wp.columns.${c}`) })}
+                          aria-label={t("wp.header.menu", { column: columnLabel(c) })}
                         >
-                          {t(`wp.columns.${c}`)}
+                          {columnLabel(c)}
                           {dir && (dir === "asc" ? <ArrowUp className="size-3.5" aria-hidden="true" /> : <ArrowDown className="size-3.5" aria-hidden="true" />)}
                           {dir && spec.sort.length > 1 && <span className="text-[10px] tabular-nums" aria-hidden="true">{order + 1}</span>}
                         </button>

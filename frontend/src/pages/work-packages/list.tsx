@@ -18,6 +18,7 @@ import { cn } from "@/lib/cn";
 import { ErrorState, PageHeader, useDocumentTitle } from "@/app/page";
 import { useOptionalProject, can } from "@/app/project";
 import { WorkPackageTable } from "@/features/work-packages/table";
+import { cfColumn, useColumnLabel } from "@/features/work-packages/custom-fields";
 import { FilterPanel } from "@/features/work-packages/filter-panel";
 import { useListState } from "@/features/work-packages/view-state";
 
@@ -109,6 +110,9 @@ export function WorkPackagesPage() {
   const { spec, view, dirty, page, pageSize, search } = state;
   const result = useWpQuery(spec, project?.id, page, pageSize);
   const options = useFilterOptions(project?.id).data;
+  const columnLabel = useColumnLabel(options);
+  // built-in columns, then the custom fields on in this scope
+  const allColumns: ColumnKey[] = [...ALL_COLUMNS, ...(options?.customFields ?? []).map((f) => cfColumn(f.id))];
   const form = useWpForm(project && can(project, "wp.create") ? project.id : undefined);
   const mutations = useSavedQueryMutations(project?.id);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -136,10 +140,10 @@ export function WorkPackagesPage() {
           kind: "sub" as const,
           label: t("wp.columnsMenu"),
           icon: <Columns3 />,
-          items: ALL_COLUMNS.filter((c) => c !== "subject").map((c) => ({
-            label: t(`wp.columns.${c}`),
+          items: allColumns.filter((c) => c !== "subject").map((c) => ({
+            label: columnLabel(c),
             checked: spec.columns.includes(c),
-            onSelect: () => state.setSpec({ ...spec, columns: spec.columns.includes(c) ? spec.columns.filter((x) => x !== c) : ALL_COLUMNS.filter((x) => x === c || spec.columns.includes(x)) }),
+            onSelect: () => state.setSpec({ ...spec, columns: spec.columns.includes(c) ? spec.columns.filter((x) => x !== c) : allColumns.filter((x) => x === c || spec.columns.includes(x)) }),
           })),
         },
         ...(view && view.kind !== "default"

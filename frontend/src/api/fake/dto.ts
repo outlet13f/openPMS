@@ -1,8 +1,9 @@
 // Turns fake database rows into the API's DTO shapes (src/api/types.ts).
-import type { Journal, JournalDetail, Project, ProjectRef, StatusRef, TypeRef, UserRef, WorkPackage, WorkPackageRef, WpField } from "../types";
+import type { CustomValue, Journal, JournalDetail, Project, ProjectRef, StatusRef, TypeRef, UserRef, WorkPackage, WorkPackageRef, WpField } from "../types";
 import { formatDate, todayIso } from "@/lib/dates";
 import { db, type DbJournal, type DbProject, type DbUser, type DbWp } from "./db";
 import { allowedStatusIds, can, projectPermissions } from "./permissions";
+import { cfIdOf, cfText, customValuesOf } from "./custom-fields";
 
 export const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 
@@ -114,6 +115,7 @@ export function toWp(w: DbWp, user: DbUser): WorkPackage {
     watcherCount: db.watchers.filter((x) => x.wpId === w.id).length,
     relationCount: db.relations.filter((r) => r.fromId === w.id || r.toId === w.id).length + kids.length + (parent ? 1 : 0),
     attachmentCount: db.attachments.filter((a) => a.wpId === w.id).length,
+    customValues: customValuesOf(w),
     lockVersion: w.lockVersion,
     createdAt: w.createdAt,
     updatedAt: w.updatedAt,
@@ -203,9 +205,15 @@ function display(field: string, v: unknown): string | null {
 export function toJournal(j: DbJournal, user: DbUser): Journal {
   const details: JournalDetail[] = Object.entries(j.changes)
     .filter(([f]) => f !== "_created" && f !== "lockVersion")
-    .map(([field, [from, to]]) => {
+    .flatMap(([field, [from, to]]): JournalDetail[] => {
+      const cfId = cfIdOf(field);
+      if (cfId) {
+        // a custom field: its current name and display form; a deleted field's history is not shown
+        const f = db.customFields.find((x) => x.id === cfId);
+        return f ? [{ field, label: f.name, from: cfText(f, from as CustomValue) || null, to: cfText(f, to as CustomValue) || null }] : [];
+      }
       const base = field.split(":")[0]; // "attachment:<id>": one key per file
-      return { field, label: FIELD_LABEL[base] ?? field, from: display(base, from), to: display(base, to) };
+      return [{ field, label: FIELD_LABEL[base] ?? field, from: display(base, from), to: display(base, to) }];
     });
   if (j.changes._created) details.unshift({ field: "_created", label: "작업을 만들었습니다", from: null, to: null });
   const wp = db.workPackages.find((w) => w.id === j.wpId)!;

@@ -3,7 +3,7 @@ import { useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
-import { isApiError, type WorkPackageInput } from "@/api";
+import { isApiError, type CustomField, type CustomValue, type WorkPackageInput } from "@/api";
 import { useCreateWorkPackage, useWorkPackage, useWpForm } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
@@ -12,6 +12,7 @@ import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/spinner";
 import { TypeLabel } from "@/components/ui/badges";
 import { RichTextEditor } from "@/components/domain/rich-text-editor";
+import { CustomFieldInput } from "@/features/work-packages/custom-fields";
 import { ErrorState, NotFound, useDocumentTitle } from "@/app/page";
 import { useCurrentProject } from "@/app/project";
 import { WorkPackageDetail, asDetailTab as asTab } from "@/features/work-packages/detail";
@@ -92,6 +93,9 @@ export function NewPanelRoute({ base: hostBase }: { base?: string } = {}) {
     dueDate: params.get("dueDate") ?? undefined,
     assigneeId: params.get("assignee") ?? undefined,
   }));
+  // custom field values typed so far; untouched fields show (and send) the field's default
+  const [cf, setCf] = useState<Record<string, CustomValue>>({});
+  const cfValue = (x: CustomField): CustomValue => (x.id in cf ? cf[x.id] : x.defaultValue);
   useDocumentTitle(form.data ? t("wp.newTitle", { type: form.data.type.name }) : undefined);
 
   if (form.isPending)
@@ -122,6 +126,7 @@ export function NewPanelRoute({ base: hostBase }: { base?: string } = {}) {
         parentNumber: v.parent ? Number(v.parent.replace("#", "")) : null,
         startDate: v.startDate || null,
         dueDate: f.type.isMilestone ? v.startDate || null : v.dueDate || null,
+        customValues: Object.fromEntries(f.customFields.map((x) => [x.id, cfValue(x)])),
       });
       toast({ tone: "success", title: t("wp.created", { number: wp.number }), description: wp.subject });
       navigate(`${base}/details/${wp.number}/overview${search}`);
@@ -201,6 +206,16 @@ export function NewPanelRoute({ base: hostBase }: { base?: string } = {}) {
               <Input id="nw-parent" inputMode="numeric" placeholder="#12" value={v.parent} onChange={(e) => set("parent", e.target.value)} />
             </Field>
           </div>
+          {f.customFields.length > 0 && (
+            <fieldset className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <legend className="mb-2 text-sm font-semibold text-fg">{t("customFields.group")}</legend>
+              {f.customFields.map((x) => (
+                <Field key={x.id} label={x.name} required={x.isRequired} error={fieldErr(`cf:${x.id}`)} className={x.format === "text" ? "sm:col-span-2" : undefined}>
+                  <CustomFieldInput field={x} value={cfValue(x)} people={f.assignees} onChange={(val) => setCf((cur) => ({ ...cur, [x.id]: val }))} />
+                </Field>
+              ))}
+            </fieldset>
+          )}
         </div>
       </div>
       <div className="flex justify-end gap-2 border-t border-border-muted px-4 py-3">

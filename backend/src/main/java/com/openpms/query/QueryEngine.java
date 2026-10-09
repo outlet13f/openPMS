@@ -14,6 +14,7 @@ import static org.jooq.impl.DSL.selectOne;
 import static org.jooq.impl.DSL.trueCondition;
 
 import com.openpms.api.Dto;
+import com.openpms.customfield.CustomFields;
 import com.openpms.common.ApiException;
 import com.openpms.core.Ctx;
 import com.openpms.core.Snapshot;
@@ -34,6 +35,9 @@ import java.util.UUID;
 import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.Field;
+import org.jooq.JSONB;
+import org.jooq.impl.DSL;
+import org.jooq.impl.SQLDataType;
 import org.springframework.stereotype.Component;
 
 /**
@@ -71,10 +75,12 @@ public class QueryEngine {
 
     private final DSLContext db;
     private final Assembler assembler;
+    private final CustomFields customFields;
 
-    public QueryEngine(DSLContext db, Assembler assembler) {
+    public QueryEngine(DSLContext db, Assembler assembler, CustomFields customFields) {
         this.db = db;
         this.assembler = assembler;
+        this.customFields = customFields;
     }
 
     /* ---------- filters → SQL ---------- */
@@ -156,8 +162,51 @@ public class QueryEngine {
         return "not_contains".equals(op) ? col.containsIgnoreCase(needle).not() : col.containsIgnoreCase(needle);
     }
 
+    /**
+     * A custom field filter over work_packages.custom_values. An item without the field (other type, or the field is
+     * off in its project) counts as empty, whatever is stored for it.
+     */
+    private Condition custom(Ctx ctx, Snapshot.CustomFieldRow cf, String op, List<String> vals, Set<UUID> closed) {
+        var s = ctx.s();
+        var id = cf.id().toString();
+        var on = s.projects().values().stream().filter(p -> s.customFieldEnabledIn(cf, p.id())).map(Snapshot.ProjectRow::id).toList();
+        Condition active = (cf.typeIds().isEmpty() ? falseCondition() : W.TYPE_ID.in(cf.typeIds()))
+                .and(cf.isForAll() ? trueCondition() : on.isEmpty() ? falseCondition() : W.PROJECT_ID.in(on));
+        Condition has = active.and(DSL.condition("jsonb_exists({0}, {1})", W.CUSTOM_VALUES, DSL.val(id)));
+        if ("any".equals(op)) return has;
+        if ("none".equals(op)) return has.not();
+        Field<JSONB> raw = DSL.field("({0} -> {1})", SQLDataType.JSONB, W.CUSTOM_VALUES, DSL.val(id));
+        String needle = vals.isEmpty() || vals.get(0) == null ? "" : vals.get(0);
+        return switch (cf.format()) {
+            case "list", "user" -> {
+                var ids = vals.stream().filter(v -> v != null && !v.isEmpty()).toArray(String[]::new);
+                // jsonb_exists_any matches a string value or any element of an array of them
+                Condition hit = ids.length == 0 ? falseCondition() : has.and(DSL.condition("jsonb_exists_any({0}, {1}::text[])", raw, DSL.val(ids)));
+                yield "neq".equals(op) ? hit.not() : hit;
+            }
+            case "integer", "float" -> has.and(num(DSL.field("({0} ->> {1})::numeric", SQLDataType.NUMERIC, W.CUSTOM_VALUES, DSL.val(id)), op, vals));
+            case "date" -> has.and(date(DSL.field("({0} ->> {1})::date", SQLDataType.LOCALDATE, W.CUSTOM_VALUES, DSL.val(id)), op, vals, ctx.today(), closed));
+            case "bool" -> has.and(DSL.condition("({0} -> {1}) = {2}::jsonb", W.CUSTOM_VALUES, DSL.val(id), DSL.val("true".equals(needle) ? "true" : "false")));
+            default -> {
+                Condition hit = has.and(DSL.field("({0} ->> {1})", SQLDataType.VARCHAR, W.CUSTOM_VALUES, DSL.val(id)).containsIgnoreCase(needle));
+                yield "not_contains".equals(op) ? hit.not() : hit;
+            }
+        };
+    }
+
     Condition condition(Ctx ctx, Filter f) {
         var s = ctx.s();
+        if (f.field() != null && f.field().startsWith("cf:")) {
+            var cfId = CustomFields.idOf(f.field());
+            var cf = cfId == null ? null : s.customField(cfId).orElse(null);
+            if (cf == null) throw ApiException.unprocessable("필터를 확인하세요.", "없는 사용자 정의 필드입니다.");
+            if (!CustomFields.ops(cf).contains(f.op())) throw ApiException.unprocessable("필터를 확인하세요.", "연산자 " + f.op() + "는 " + cf.name() + " 필드에 쓸 수 없습니다.");
+            var vals = (f.values() == null ? List.<String>of() : f.values()).stream().map(v -> "me".equals(v) ? ctx.userId().toString() : v).toList();
+            if (NEEDS_VALUE.contains(f.op()) && vals.stream().allMatch(v -> v == null || v.isEmpty())) return noCondition();
+            var closed = new HashSet<UUID>();
+            s.statuses().stream().filter(Snapshot.StatusRow::isClosed).forEach(x -> closed.add(x.id()));
+            return custom(ctx, cf, f.op(), vals, closed);
+        }
         var allowed = OPS.get(f.field());
         if (allowed == null || !allowed.contains(f.op())) throw ApiException.unprocessable("필터를 확인하세요.", "연산자 " + f.op() + "는 " + f.field() + " 필드에 쓸 수 없습니다.");
         var vals = (f.values() == null ? List.<String>of() : f.values()).stream().map(v -> "me".equals(v) ? ctx.userId().toString() : v).toList();
@@ -276,7 +325,17 @@ public class QueryEngine {
     /* ---------- sort ---------- */
 
     record Light(UUID id, long number, UUID parentId, UUID projectId, String subject, UUID typeId, UUID statusId, UUID priorityId, UUID assigneeId,
-                 UUID responsibleId, UUID authorId, LocalDate startDate, LocalDate dueDate, OffsetDateTime updatedAt) {}
+                 UUID responsibleId, UUID authorId, LocalDate startDate, LocalDate dueDate, OffsetDateTime updatedAt, JSONB customValues) {}
+
+    /** Sort key of a custom field: empty (or not on for the item) sorts last. Parsed values are cached per run. */
+    private Comparable<?> customSortValue(Snapshot s, Light w, String field, Map<UUID, Map<String, Object>> parsed) {
+        var cfId = CustomFields.idOf(field);
+        var cf = cfId == null ? null : s.customField(cfId).orElse(null);
+        if (cf == null) return w.number();
+        boolean active = cf.typeIds().contains(w.typeId()) && s.customFieldEnabledIn(cf, w.projectId());
+        var v = active ? parsed.computeIfAbsent(w.id(), k -> customFields.read(w.customValues())).get(cf.id().toString()) : null;
+        return customFields.sortKey(s, cf, v);
+    }
 
     private static Comparable<?> sortValue(Snapshot s, Light w, String field) {
         java.util.function.Function<UUID, String> name = id -> id == null ? "￿" : s.user(id).map(Snapshot.UserRow::name).orElse("");
@@ -298,12 +357,14 @@ public class QueryEngine {
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private static Comparator<Light> comparator(Snapshot s, List<Sort> sort) {
+    private Comparator<Light> comparator(Snapshot s, List<Sort> sort) {
         var keys = sort == null || sort.isEmpty() ? List.of(new Sort("number", "asc")) : sort;
+        var parsed = new HashMap<UUID, Map<String, Object>>();
         return (a, b) -> {
             for (var k : keys) {
-                Comparable va = sortValue(s, a, k.field());
-                Comparable vb = sortValue(s, b, k.field());
+                boolean cf = k.field() != null && k.field().startsWith("cf:");
+                Comparable va = cf ? customSortValue(s, a, k.field(), parsed) : sortValue(s, a, k.field());
+                Comparable vb = cf ? customSortValue(s, b, k.field(), parsed) : sortValue(s, b, k.field());
                 int c = va instanceof String x && vb instanceof String y ? Text.KOREAN.compare(x, y) : va.compareTo(vb);
                 if (c != 0) return "desc".equals(k.dir()) ? -c : c;
             }
@@ -315,9 +376,9 @@ public class QueryEngine {
 
     private List<Light> fetchLight(Condition where) {
         return db.select(W.ID, W.NUMBER, W.PARENT_ID, W.PROJECT_ID, W.SUBJECT, W.TYPE_ID, W.STATUS_ID, W.PRIORITY_ID, W.ASSIGNEE_ID, W.RESPONSIBLE_ID,
-                        W.AUTHOR_ID, W.START_DATE, W.DUE_DATE, W.UPDATED_AT)
+                        W.AUTHOR_ID, W.START_DATE, W.DUE_DATE, W.UPDATED_AT, W.CUSTOM_VALUES)
                 .from(W).where(where).fetch(r -> new Light(r.value1(), r.value2(), r.value3(), r.value4(), r.value5(), r.value6(), r.value7(), r.value8(),
-                        r.value9(), r.value10(), r.value11(), r.value12(), r.value13(), r.value14()));
+                        r.value9(), r.value10(), r.value11(), r.value12(), r.value13(), r.value14(), r.value15()));
     }
 
     /** Projects in scope: one project (plus subprojects when asked) or every visible one. */

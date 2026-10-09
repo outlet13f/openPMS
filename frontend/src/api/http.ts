@@ -66,6 +66,8 @@ export const httpApi: Api = {
     setFavorite: (id, fav) => (fav ? put(`/projects/${id}/favorite`) : del(`/projects/${id}/favorite`)),
     overview: (id) => get(`/projects/${id}/overview`),
     setTypes: (id, typeIds) => put(`/projects/${id}/types`, { typeIds }),
+    customFields: (id) => get(`/projects/${id}/custom-fields`),
+    setCustomFields: (id, customFieldIds) => put(`/projects/${id}/custom-fields`, { customFieldIds }),
     archive: (id) => post(`/projects/${id}/archive`),
   },
   categories: {
@@ -141,6 +143,13 @@ export const httpApi: Api = {
     suggest: (q) => get("/search/suggest", { q }),
   },
   admin: {
+    customFields: {
+      list: () => get("/admin/custom-fields"),
+      create: (input) => post("/admin/custom-fields", input),
+      update: (id, p) => patch(`/admin/custom-fields/${id}`, p),
+      remove: (id) => del(`/admin/custom-fields/${id}`),
+      reorder: (ids) => put("/admin/custom-fields/order", { ids }),
+    },
     types: {
       list: () => get("/admin/types"),
       create: (input) => post("/admin/types", input),
