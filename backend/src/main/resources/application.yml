@@ -1,0 +1,71 @@
+# openPMS configuration. Every deploy-specific value comes from an environment variable (see .env.example).
+server:
+  port: ${PORT:8090}
+  servlet:
+    session:
+      timeout: ${OPENPMS_SESSION_TIMEOUT:8h}
+      cookie:
+        name: OPENPMS_SESSION
+        http-only: true
+        same-site: lax
+        secure: ${OPENPMS_SECURE_COOKIES:true}
+  error:
+    include-message: never
+    include-stacktrace: never
+
+spring:
+  application:
+    name: openpms
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${OPENPMS_DB_URL}
+    username: ${OPENPMS_DB_USER}
+    password: ${OPENPMS_DB_PASSWORD}
+  flyway:
+    locations: classpath:db/migration
+  jooq:
+    sql-dialect: postgres
+  session:
+    jdbc:
+      initialize-schema: never
+      table-name: SPRING_SESSION
+  mail:
+    host: ${OPENPMS_SMTP_HOST:localhost}
+    port: ${OPENPMS_SMTP_PORT:25}
+    username: ${OPENPMS_SMTP_USER:}
+    password: ${OPENPMS_SMTP_PASSWORD:}
+    properties:
+      mail.smtp.starttls.enable: ${OPENPMS_SMTP_STARTTLS:false}
+  jackson:
+    default-property-inclusion: always
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+openpms:
+  base-url: ${OPENPMS_BASE_URL:http://localhost:8090}
+  admin-email: ${OPENPMS_ADMIN_EMAIL:}
+  mail-from: ${OPENPMS_MAIL_FROM:openPMS <no-reply@example.com>}
+
+---
+# Development: dev data set (scripts/gen_dev_data.py), plain-http cookies.
+spring:
+  config:
+    activate:
+      on-profile: dev
+  flyway:
+    locations: classpath:db/migration,classpath:db/dev
+server:
+  servlet:
+    session:
+      cookie:
+        secure: false
