@@ -4,7 +4,7 @@
 #
 #   scripts/dev.sh up            start Postgres 17 (127.0.0.1:55432) and Mailpit (UI http://127.0.0.1:8025)
 #   scripts/dev.sh gradle ARGS   run ./gradlew ARGS in a JDK 21 container (e.g. "build", "test", "jooqCodegen")
-#   scripts/dev.sh run           run the app (bootRun, dev profile) on http://127.0.0.1:8090
+#   scripts/dev.sh run           build and start the app (dev profile) on http://127.0.0.1:8090; scripts/dev.sh logs follows it
 #   scripts/dev.sh psql          open psql in the database container
 #   scripts/dev.sh reset-db      drop and recreate the dev database (migrations and dev data run on next start)
 #   scripts/dev.sh down          stop the containers (data stays in volumes)
@@ -72,7 +72,16 @@ case "${1:-}" in
   up) ensure_infra && echo "db: 127.0.0.1:55432  mail UI: http://127.0.0.1:8025" ;;
   gradle) shift; ensure_infra; jdk "" ./gradlew --no-daemon "$@" ;;
   run) ensure_infra; podman rm -f openpms-app >/dev/null 2>&1 || true
-       jdk "--name openpms-app -p 127.0.0.1:8090:8090" ./gradlew --no-daemon bootRun --args=--spring.profiles.active=dev ;;
+       jdk "" ./gradlew --no-daemon -q bootJar
+       # run a copy of the jar, so the next build can replace it (and use the Gradle cache) while the app is up
+       jdk "-d --name openpms-app -p 127.0.0.1:8090:8090" sh -c 'cp build/libs/openpms-0.1.0.jar /tmp/app.jar && exec java -jar /tmp/app.jar --spring.profiles.active=dev' >/dev/null
+       for _ in $(seq 1 90); do
+         podman logs openpms-app 2>&1 | grep -q "Started OpenPmsApplication" && { echo "app: http://127.0.0.1:8090"; exit 0; }
+         podman logs openpms-app 2>&1 | grep -q "APPLICATION FAILED" && break
+         sleep 2
+       done
+       podman logs openpms-app 2>&1 | tail -40; exit 1 ;;
+  logs) podman logs -f openpms-app ;;
   psql) podman exec -it openpms-db psql -U openpms -d openpms ;;
   reset-db) ensure_infra
             podman exec openpms-db psql -U openpms -d postgres -c "drop database if exists openpms with (force)" -c "create database openpms" ;;
