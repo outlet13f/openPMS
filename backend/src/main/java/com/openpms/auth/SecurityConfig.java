@@ -36,6 +36,8 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.spa())
                 .securityContext(sc -> sc.securityContextRepository(repo))
                 .sessionManagement(s -> s.sessionFixation(f -> f.changeSessionId()))
+                // an API has no page to return to after signing in: do not create sessions for 401s
+                .requestCache(c -> c.disable())
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)

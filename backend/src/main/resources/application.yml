@@ -64,6 +64,9 @@ spring:
       on-profile: dev
   flyway:
     locations: classpath:db/migration,classpath:db/dev
+openpms:
+  # the browser checks sign in many times a minute
+  logins-per-minute: 500
 server:
   servlet:
     session:

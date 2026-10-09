@@ -53,9 +53,12 @@ public class AuthController {
     private final SettingsRepo settings;
     private final Current current;
     private final Sessions sessions;
+    private final int loginsPerMinute;
 
     public AuthController(DSLContext db, PasswordEncoder encoder, SecurityContextRepository contextRepo, RateLimiter limiter, Tokens tokens,
-                          Mailer mailer, SettingsRepo settings, Current current, Sessions sessions) {
+                          Mailer mailer, SettingsRepo settings, Current current, Sessions sessions,
+                          @org.springframework.beans.factory.annotation.Value("${openpms.logins-per-minute:20}") int loginsPerMinute) {
+        this.loginsPerMinute = loginsPerMinute;
         this.db = db;
         this.encoder = encoder;
         this.contextRepo = contextRepo;
@@ -73,7 +76,8 @@ public class AuthController {
 
     /** Start a session for this user (new session id: no fixation). */
     private void signIn(UUID userId, HttpServletRequest req, HttpServletResponse res) {
-        req.changeSessionId();
+        if (req.getSession(false) != null) req.changeSessionId();
+        else req.getSession(true);
         var ctx = SecurityContextHolder.createEmptyContext();
         ctx.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(userId.toString(), null, List.of()));
         SecurityContextHolder.setContext(ctx);
@@ -83,7 +87,7 @@ public class AuthController {
     @PostMapping("/login")
     @Transactional(noRollbackFor = ApiException.class)
     public Dto.Me login(@RequestBody LoginInput in, HttpServletRequest req, HttpServletResponse res) {
-        limiter.check("login:" + req.getRemoteAddr(), 20);
+        limiter.check("login:" + req.getRemoteAddr(), loginsPerMinute);
         var u = byEmail(in.email());
         var now = OffsetDateTime.now();
         if (u != null && ("locked".equals(u.getStatus()) || (u.getLockedUntil() != null && u.getLockedUntil().isAfter(now)))) {

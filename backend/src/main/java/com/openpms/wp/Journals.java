@@ -134,6 +134,10 @@ public class Journals {
             Map.entry("duration", "기간"), Map.entry("scheduleManually", "일정 방식"), Map.entry("ignoreNonWorkingDays", "근무일만 계산"),
             Map.entry("workHours", "작업량"), Map.entry("remainingHours", "남은 작업"), Map.entry("doneRatio", "완료 %"));
 
+    private static final List<String> ORDER = List.of("subject", "descriptionHtml", "typeId", "statusId", "priorityId", "assigneeId", "responsibleId",
+            "versionId", "categoryId", "parentId", "startDate", "dueDate", "duration", "scheduleManually", "ignoreNonWorkingDays", "workHours",
+            "remainingHours", "doneRatio");
+
     private static UUID uuid(Object v) {
         try {
             return UUID.fromString(String.valueOf(v));
@@ -176,10 +180,13 @@ public class Journals {
         var changes = changesOf(j);
         var details = new ArrayList<Dto.JournalDetail>();
         if (changes.containsKey(CREATED)) details.add(new Dto.JournalDetail(CREATED, "작업을 만들었습니다", null, null));
-        changes.forEach((field, v) -> {
-            if (field.equals(CREATED) || field.equals("lockVersion")) return;
-            details.add(new Dto.JournalDetail(field, LABEL.getOrDefault(field, field), display(s, field, v.get(0)), display(s, field, v.size() > 1 ? v.get(1) : null)));
-        });
+        // jsonb does not keep key order: show fields in the form's order (start before due …)
+        changes.keySet().stream().filter(f -> !f.equals(CREATED) && !f.equals("lockVersion"))
+                .sorted(java.util.Comparator.comparingInt(f -> ORDER.indexOf(f) < 0 ? ORDER.size() : ORDER.indexOf(f)))
+                .forEach(field -> {
+                    var v = changes.get(field);
+                    details.add(new Dto.JournalDetail(field, LABEL.getOrDefault(field, field), display(s, field, v.get(0)), display(s, field, v.size() > 1 ? v.get(1) : null)));
+                });
         boolean canEdit = !j.getNotesHtml().isEmpty()
                 && ((j.getUserId().equals(ctx.userId()) && ctx.can(project, "wp.edit_own_comments")) || ctx.can(project, "wp.edit_comments"));
         return new Dto.Journal(j.getId(), j.getVersion(), Refs.user(s, j.getUserId()), j.getNotesHtml(), j.getIsInternal(), details, causeOf(j),

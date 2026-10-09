@@ -7,6 +7,8 @@
 #   scripts/dev.sh run           build and start the app (dev profile) on http://127.0.0.1:8090; scripts/dev.sh logs follows it
 #   scripts/dev.sh psql          open psql in the database container
 #   scripts/dev.sh reset-db      drop and recreate the dev database (migrations and dev data run on next start)
+#   scripts/dev.sh snapshot-db   save the database as a restore point (app stopped); restore-db goes back to it
+#   scripts/dev.sh test          run the JUnit tests on a copy of the restore point
 #   scripts/dev.sh down          stop the containers (data stays in volumes)
 #
 # The dev database password is generated once into backend/.env.local (git-ignored).
@@ -60,7 +62,7 @@ jdk() {
     -v "$HOST_DIR:/work" -w /work \
     -v openpms-gradle:/root/.gradle \
     -e GRADLE_USER_HOME=/root/.gradle \
-    -e OPENPMS_DB_URL=jdbc:postgresql://openpms-db:5432/openpms \
+    -e OPENPMS_DB_URL="jdbc:postgresql://openpms-db:5432/${DB_NAME:-openpms}" \
     -e OPENPMS_DB_USER=openpms \
     -e OPENPMS_DB_PASSWORD="$OPENPMS_DB_PASSWORD" \
     -e OPENPMS_SMTP_HOST=openpms-mail -e OPENPMS_SMTP_PORT=1025 \
@@ -85,6 +87,14 @@ case "${1:-}" in
   psql) podman exec -it openpms-db psql -U openpms -d openpms ;;
   reset-db) ensure_infra
             podman exec openpms-db psql -U openpms -d postgres -c "drop database if exists openpms with (force)" -c "create database openpms" ;;
+  snapshot-db) # keep the current database as the restore point (the app must be stopped: templates need no connections)
+            podman exec openpms-db psql -U openpms -d postgres -c "drop database if exists openpms_seed" -c "create database openpms_seed template openpms" ;;
+  restore-db) # back to the restore point in a second; the running app reconnects by itself
+            podman exec openpms-db psql -U openpms -d postgres -q -c "drop database if exists openpms with (force)" -c "create database openpms template openpms_seed" ;;
+  test) # JUnit on a throwaway copy of the restore point (run snapshot-db once first)
+        ensure_infra
+        podman exec openpms-db psql -U openpms -d postgres -q -c "drop database if exists openpms_test with (force)" -c "create database openpms_test template openpms_seed"
+        shift; DB_NAME=openpms_test jdk "" ./gradlew --no-daemon test "$@" ;;
   down) podman stop openpms-app openpms-mail openpms-db >/dev/null 2>&1 || true ;;
-  *) sed -n '2,13p' "$0"; exit 1 ;;
+  *) sed -n '2,15p' "$0"; exit 1 ;;
 esac

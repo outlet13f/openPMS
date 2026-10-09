@@ -12,8 +12,10 @@ backend/src/main/resources/static/
 replica/screens/
 *.tsbuildinfo
 
-# local secrets (dev database password etc.)
+# local secrets (dev database password etc.); frontend/.env.production only holds the API mode
 .env
-.env.*
-!.env.example
+.env.local
+.env.*.local
+backend/.env.*
+!backend/.env.example
 __pycache__/
