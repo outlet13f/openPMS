@@ -116,8 +116,8 @@ export interface Api {
   };
 
   principals: {
-    /** GET /principals */
-    search(q: string, projectId?: Id): Promise<UserRef[]>;
+    /** GET /principals — with includeGroups (and no project) groups come first, for adding members */
+    search(q: string, projectId?: Id, includeGroups?: boolean): Promise<(UserRef & { kind: "user" | "group" })[]>;
   };
 
   workPackages: {

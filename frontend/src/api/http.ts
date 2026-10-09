@@ -75,7 +75,7 @@ export const httpApi: Api = {
     roles: () => get("/admin/roles", { scope: "project" }),
   },
   principals: {
-    search: (q, projectId) => get("/principals", { q, projectId }),
+    search: (q, projectId, includeGroups) => get("/principals", { q, projectId, kind: includeGroups ? "all" : "user" }),
   },
   workPackages: {
     form: (projectId, typeId) => get(`/projects/${projectId}/work-packages/form`, { typeId }),

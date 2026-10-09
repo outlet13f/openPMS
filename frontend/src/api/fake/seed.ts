@@ -114,13 +114,15 @@ export function buildSeed(schema: number): Db {
   ].map((p) => ({ isTemplate: false, archivedAt: null as string | null, createdAt: t0, updatedAt: t0, latestActivityAt: t0, ...p }));
 
   let mid = 0;
-  const m = (projectId: string, userId: string, roleId: string) => ({ id: `m-${++mid}`, projectId, userId, roleIds: [roleId], createdAt: t0 });
+  const m = (projectId: string, userId: string, roleId: string) => ({ id: `m-${++mid}`, projectId, userId, groupId: null as string | null, roleIds: [roleId], createdAt: t0 });
   const members = [
     m("p-web", "u-seoyeon", "r-manager"), m("p-web", "u-junho", "r-member"), m("p-web", "u-haneul", "r-member"),
     m("p-web", "u-minji", "r-viewer"), m("p-web", "u-alex", "r-member"),
     m("p-mobile", "u-seoyeon", "r-manager"), m("p-mobile", "u-doyoon", "r-member"), m("p-mobile", "u-junho", "r-member"),
     m("p-infra", "u-haneul", "r-manager"), m("p-backup", "u-haneul", "r-manager"), m("p-backup", "u-seoyeon", "r-member"),
     m("p-legacy", "u-seoyeon", "r-manager"),
+    // group membership: everyone in 인프라 담당 can read the mobile project
+    { id: `m-${++mid}`, projectId: "p-mobile", userId: null as string | null, groupId: "g-infra" as string | null, roleIds: ["r-viewer"], createdAt: t0 },
   ];
 
   const versions = [

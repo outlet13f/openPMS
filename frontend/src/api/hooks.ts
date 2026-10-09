@@ -148,6 +148,14 @@ export function useComment(n: number) {
   });
 }
 
+export function useEditComment(n: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ journalId, bodyHtml }: { journalId: Id; bodyHtml: string }) => api.workPackages.editComment(journalId, bodyHtml),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.wpActivities(n) }),
+  });
+}
+
 export function useWatch(n: number) {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (watching: boolean) => api.workPackages.setWatching(n, watching), onSuccess: () => qc.invalidateQueries({ queryKey: qk.wp(n) }) });

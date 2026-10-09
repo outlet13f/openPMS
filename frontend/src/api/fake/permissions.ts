@@ -15,8 +15,20 @@ export function sessionUser(): DbUser {
   return u;
 }
 
+/** Roles from direct membership plus membership through any of the user's groups (architecture.md §3.1). */
 export function memberRoleIds(userId: string, projectId: string): string[] {
-  return db.members.filter((m) => m.projectId === projectId && m.userId === userId).flatMap((m) => m.roleIds);
+  const groups = new Set(db.groups.filter((g) => g.memberIds.includes(userId)).map((g) => g.id));
+  return db.members.filter((m) => m.projectId === projectId && (m.userId === userId || (m.groupId !== null && groups.has(m.groupId)))).flatMap((m) => m.roleIds);
+}
+
+/** Active people who are members of the project, directly or through a group (assignee candidates). */
+export function projectUserIds(projectId: string): string[] {
+  const ids = new Set<string>();
+  for (const m of db.members.filter((x) => x.projectId === projectId)) {
+    if (m.userId) ids.add(m.userId);
+    if (m.groupId) db.groups.find((g) => g.id === m.groupId)?.memberIds.forEach((u) => ids.add(u));
+  }
+  return [...ids].filter((id) => db.users.some((u) => u.id === id && u.status === "active"));
 }
 
 export function projectPermissions(user: DbUser, project: DbProject): Set<string> {

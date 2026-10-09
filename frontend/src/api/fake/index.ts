@@ -14,7 +14,6 @@ import type {
   RelationGroups,
   RelationType,
   SavedQuery,
-  UserRef,
   WorkPackage,
   WorkPackageInput,
   WorkPackagePatch,
@@ -22,7 +21,7 @@ import type {
 import { ApiError } from "../errors";
 import { countWorkingDays, nowIso, todayIso } from "@/lib/dates";
 import { db, newId, persist, type DbBoard, type DbJournal, type DbProject, type DbUser, type DbWp } from "./db";
-import { allowedStatusIds, can, findProject, findWp, globalPermissions, memberRoleIds, requirePerm, sessionUser, visibleProjects } from "./permissions";
+import { allowedStatusIds, can, findProject, findWp, globalPermissions, memberRoleIds, projectUserIds, requirePerm, sessionUser, visibleProjects } from "./permissions";
 import { clone, statusRef, toJournal, toProject, toWp, typeRef, priorityRef, userRef, wpRef } from "./dto";
 import { propagate, resolveDates, wouldCycle, workCalendar } from "./scheduling";
 import { defaultSpec, runQuery } from "./query";
@@ -112,6 +111,22 @@ function fanOut(wp: DbWp, journal: DbJournal, actor: DbUser, mentioned: string[]
     }
     db.notifications.push({ id: newId("n"), recipientId, wpId: wp.id, journalId: journal.id, actorId: actor.id, reason, readAt: null, createdAt: journal.updatedAt });
   }
+}
+
+/** A member row's principal (user or group) for the API. */
+function principalOf(m: (typeof db.members)[number]): { id: string; name: string } {
+  if (m.groupId) return { id: m.groupId, name: db.groups.find((g) => g.id === m.groupId)?.name ?? "삭제된 그룹" };
+  return userRef(m.userId)!;
+}
+
+function toMember(m: (typeof db.members)[number]): Member {
+  const u = m.userId ? db.users.find((x) => x.id === m.userId) : null;
+  return clone({
+    id: m.id,
+    principal: { ...principalOf(m), kind: m.groupId ? ("group" as const) : ("user" as const), email: u?.email },
+    roles: db.roles.filter((r) => m.roleIds.includes(r.id)).map((r) => ({ id: r.id, name: r.name })),
+    createdAt: m.createdAt,
+  });
 }
 
 const mentionsIn = (html: string) => Array.from(html.matchAll(/data-user-id="([^"]+)"/g), (m) => m[1]);
@@ -359,7 +374,7 @@ export const fakeApi: Api = {
           createdAt: now, updatedAt: now, latestActivityAt: now,
         };
         db.projects.push(p);
-        db.members.push({ id: newId("m"), projectId: p.id, userId: user.id, roleIds: ["r-manager"], createdAt: now });
+        db.members.push({ id: newId("m"), projectId: p.id, userId: user.id, groupId: null, roleIds: ["r-manager"], createdAt: now });
         return toProject(p, user);
       }),
     update: (id, patch) =>
@@ -385,7 +400,9 @@ export const fakeApi: Api = {
         const tz = user.timeZone;
         return clone({
           project: toProject(p, user),
-          members: db.members.filter((m) => m.projectId === p.id).map((m) => ({ user: userRef(m.userId)!, roles: db.roles.filter((r) => m.roleIds.includes(r.id)).map((r) => r.name) })),
+          members: db.members
+            .filter((m) => m.projectId === p.id)
+            .map((m) => ({ user: principalOf(m), roles: db.roles.filter((r) => m.roleIds.includes(r.id)).map((r) => r.name) })),
           countsByStatus: db.statuses.map((s) => ({ status: statusRef(s.id), count: wps.filter((w) => w.statusId === s.id).length })).filter((x) => x.count > 0),
           openCount: wps.filter((w) => !statusOf(w).isClosed).length,
           overdueCount: wps.filter((w) => w.dueDate && !statusOf(w).isClosed && w.dueDate < todayIso(tz)).length,
@@ -406,10 +423,7 @@ export const fakeApi: Api = {
         requirePerm(user, p, "project.view_members");
         return db.members
           .filter((m) => m.projectId === p.id)
-          .map((m): Member => {
-            const u = db.users.find((x) => x.id === m.userId)!;
-            return { id: m.id, principal: { id: u.id, name: u.name, kind: "user", email: u.email }, roles: db.roles.filter((r) => m.roleIds.includes(r.id)).map((r) => ({ id: r.id, name: r.name })), createdAt: m.createdAt };
-          })
+          .map(toMember)
           .sort((a, b) => a.principal.name.localeCompare(b.principal.name, "ko"));
       }),
     add: (projectId, principalIds, roleIds) =>
@@ -418,9 +432,15 @@ export const fakeApi: Api = {
         const p = findProject(user, projectId);
         requirePerm(user, p, "project.manage_members");
         if (!roleIds.length) throw fieldError("roles", "역할을 하나 이상 고르세요.");
-        const added = principalIds.filter((id) => !isMember(id, p.id)).map((userId) => ({ id: newId("m"), projectId: p.id, userId, roleIds, createdAt: nowIso() }));
+        const added = principalIds
+          .filter((id) => !db.members.some((m) => m.projectId === p.id && (m.userId === id || m.groupId === id)))
+          .map((id) => {
+            const isGroup = db.groups.some((g) => g.id === id);
+            if (!isGroup && !db.users.some((u) => u.id === id && u.status !== "deleted")) throw new ApiError(404, "사용자나 그룹을 찾을 수 없습니다.");
+            return { id: newId("m"), projectId: p.id, userId: isGroup ? null : id, groupId: isGroup ? id : null, roleIds, createdAt: nowIso() };
+          });
         db.members.push(...added);
-        return added.map((m) => ({ id: m.id, principal: { ...userRef(m.userId)!, kind: "user" as const }, roles: db.roles.filter((r) => roleIds.includes(r.id)).map((r) => ({ id: r.id, name: r.name })), createdAt: m.createdAt }));
+        return added.map(toMember);
       }),
     update: (memberId, roleIds) =>
       run(() => {
@@ -433,7 +453,7 @@ export const fakeApi: Api = {
         const managers = db.members.filter((x) => x.projectId === p.id && x.roleIds.includes("r-manager"));
         if (managers.length === 1 && managers[0].id === m.id && !roleIds.includes("r-manager")) throw new ApiError(422, "마지막 프로젝트 관리자입니다.", "다른 멤버를 관리자로 지정한 뒤 바꾸세요.");
         m.roleIds = roleIds;
-        return { id: m.id, principal: { ...userRef(m.userId)!, kind: "user" as const }, roles: db.roles.filter((r) => roleIds.includes(r.id)).map((r) => ({ id: r.id, name: r.name })), createdAt: m.createdAt };
+        return toMember(m);
       }),
     remove: (memberId) =>
       run(() => {
@@ -450,7 +470,7 @@ export const fakeApi: Api = {
   },
 
   principals: {
-    search: (q, projectId) =>
+    search: (q, projectId, includeGroups) =>
       run(() => {
         const user = sessionUser();
         let users = db.users.filter((u) => u.status === "active");
@@ -459,7 +479,9 @@ export const fakeApi: Api = {
           users = users.filter((u) => isMember(u.id, p.id));
         }
         const needle = q.trim().toLowerCase();
-        return users.filter((u) => !needle || u.name.toLowerCase().includes(needle) || u.email.includes(needle)).slice(0, 20).map((u): UserRef => ({ id: u.id, name: u.name }));
+        const people = users.filter((u) => !needle || u.name.toLowerCase().includes(needle) || u.email.includes(needle)).slice(0, 20).map((u) => ({ id: u.id, name: u.name, kind: "user" as const }));
+        const groups = includeGroups && !projectId ? db.groups.filter((g) => !needle || g.name.toLowerCase().includes(needle)).map((g) => ({ id: g.id, name: g.name, kind: "group" as const })) : [];
+        return [...groups, ...people];
       }),
   },
 
@@ -479,7 +501,7 @@ export const fakeApi: Api = {
           types: types.map((t) => typeRef(t.id)),
           statuses: db.statuses.filter((s) => s.id === def.id || next.includes(s.id)).sort((a, b) => a.position - b.position).map((s) => statusRef(s.id)),
           priorities: db.priorities.filter((x) => x.isActive).sort((a, b) => a.position - b.position).map((x) => priorityRef(x.id)),
-          assignees: db.members.filter((m) => m.projectId === p.id).map((m) => userRef(m.userId)!),
+          assignees: projectUserIds(p.id).map((id) => userRef(id)!).sort((a, b) => a.name.localeCompare(b.name, "ko")),
           versions: db.versions.filter((v) => v.projectId === p.id && v.status === "open").map((v) => ({ id: v.id, name: v.name })),
           categories: db.categories.filter((c) => c.projectId === p.id).map((c) => ({ id: c.id, name: c.name, defaultAssigneeId: c.defaultAssigneeId })),
           defaults: { statusId: def.id, priorityId: db.priorities.find((x) => x.isDefault)!.id, descriptionHtml: "" },
@@ -681,7 +703,7 @@ export const fakeApi: Api = {
       run(() => {
         const user = sessionUser();
         const p = projectId ? findProject(user, projectId) : null;
-        const userIds = p ? db.members.filter((m) => m.projectId === p.id).map((m) => m.userId) : db.users.filter((u) => u.status === "active").map((u) => u.id);
+        const userIds = p ? projectUserIds(p.id) : db.users.filter((u) => u.status === "active").map((u) => u.id);
         return clone({
           statuses: db.statuses.sort((a, b) => a.position - b.position).map((s) => statusRef(s.id)),
           types: db.types.filter((t) => !p || p.typeIds.includes(t.id)).sort((a, b) => a.position - b.position).map((t) => typeRef(t.id)),
@@ -763,7 +785,7 @@ export const fakeApi: Api = {
         if (!name.trim()) throw fieldError("name", "보드 이름을 입력하세요.");
         let values: (string | null)[] = [];
         if (kind === "status") values = db.statuses.filter((s) => !s.isReadonly).sort((a, b) => a.position - b.position).map((s) => s.id);
-        else if (kind === "assignee") values = db.members.filter((m) => m.projectId === p.id).map((m) => m.userId).slice(0, 6);
+        else if (kind === "assignee") values = projectUserIds(p.id).slice(0, 6);
         else if (kind === "version") values = db.versions.filter((v) => v.projectId === p.id).map((v) => v.id);
         const b: DbBoard = {
           id: newId("b"), projectId: p.id, name: name.trim(), kind, isPublic: true, createdAt: nowIso(),

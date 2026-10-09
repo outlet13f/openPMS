@@ -4,7 +4,7 @@ import type { AdminGroup, AdminPriority, AdminRole, AdminStatus, AdminType, Admi
 import { ApiError } from "../errors";
 import { nowIso } from "@/lib/dates";
 import { db, newId, type DbUser } from "./db";
-import { findProject, globalPermissions, requirePerm, sessionUser } from "./permissions";
+import { findProject, globalPermissions, memberRoleIds, requirePerm, sessionUser } from "./permissions";
 import { clone, toProject, userRef } from "./dto";
 import { rescheduleAll } from "./scheduling";
 import { fieldError, HEX, run } from "./util";
@@ -58,7 +58,7 @@ const toRole = (r: (typeof db.roles)[number]): AdminRole =>
 const toUser = (u: DbUser): AdminUser =>
   clone({
     id: u.id, name: u.status === "deleted" ? "삭제된 사용자" : u.name, email: u.email, status: u.status, isAdmin: u.isAdmin, locale: u.locale, timeZone: u.timeZone,
-    lastLoginAt: u.lastLoginAt, createdAt: u.createdAt, projectCount: new Set(db.members.filter((m) => m.userId === u.id).map((m) => m.projectId)).size,
+    lastLoginAt: u.lastLoginAt, createdAt: u.createdAt, projectCount: db.projects.filter((p) => memberRoleIds(u.id, p.id).length > 0).length,
   });
 const toGroup = (g: (typeof db.groups)[number]): AdminGroup => clone({ id: g.id, name: g.name, members: g.memberIds.map((id) => userRef(id)!).filter(Boolean) });
 const toCategory = (c: (typeof db.categories)[number]): Category =>
@@ -490,6 +490,7 @@ export const adminApi: Api["admin"] = {
       run(() => {
         requireUserManager(sessionUser());
         db.groups = db.groups.filter((x) => x.id !== id);
+        db.members = db.members.filter((m) => m.groupId !== id);
       }),
     setMembers: (id, userIds) =>
       run(() => {

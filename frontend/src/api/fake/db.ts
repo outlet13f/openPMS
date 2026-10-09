@@ -36,7 +36,8 @@ export interface DbProject {
   updatedAt: IsoDateTime;
   latestActivityAt: IsoDateTime;
 }
-export interface DbMember { id: Id; projectId: Id; userId: Id; roleIds: Id[]; createdAt: IsoDateTime }
+/** A project member is a user or a group (exactly one of userId / groupId, like members_one_principal). */
+export interface DbMember { id: Id; projectId: Id; userId: Id | null; groupId: Id | null; roleIds: Id[]; createdAt: IsoDateTime }
 export interface DbType { id: Id; name: string; color: string; position: number; isMilestone: boolean; isDefault: boolean; isInRoadmap: boolean }
 export interface DbStatus { id: Id; name: string; color: string; position: number; isDefault: boolean; isClosed: boolean; isReadonly: boolean; defaultDoneRatio: number; excludedFromTotals: boolean }
 export interface DbPriority { id: Id; name: string; color: string; position: number; isDefault: boolean; isActive: boolean }
@@ -128,7 +129,7 @@ export interface Db {
 }
 
 const KEY = "openpms.fakedb";
-const SCHEMA = 5;
+const SCHEMA = 6;
 
 function load(): Db {
   try {
