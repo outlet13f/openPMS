@@ -16,6 +16,12 @@ public class Sessions {
         this.db = db;
     }
 
+    /** Every session of this person except the one with this id (the browser asking). */
+    public void endOthers(UUID userId, String keepSessionId) {
+        db.deleteFrom(table("spring_session")).where(field("principal_name", String.class).eq(userId.toString()), field("session_id", String.class).ne(keepSessionId))
+                .execute();
+    }
+
     public void endAll(UUID userId) {
         db.deleteFrom(table("spring_session")).where(field("principal_name", String.class).eq(userId.toString())).execute();
     }

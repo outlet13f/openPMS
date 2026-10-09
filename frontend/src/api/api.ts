@@ -1,5 +1,6 @@
 import type {
   Attachment,
+  ProfileInput,
   NotificationSetting,
   NotificationSettings,
   Preferences,
@@ -75,6 +76,12 @@ export interface Api {
 
   /** My own settings (architecture.md §4.2 "/me"). */
   account: {
+    /** PATCH /me — name, time zone, theme */
+    updateProfile(input: ProfileInput): Promise<Me>;
+    /** PUT /me/password — 422 on a wrong current password or a weak new one; my other sessions end */
+    changePassword(currentPassword: string, newPassword: string): Promise<void>;
+    /** POST /me/sessions/end-others — sign out everywhere but here */
+    endOtherSessions(): Promise<void>;
     /** PUT /me/preferences — only the given keys change */
     updatePreferences(patch: Partial<Preferences>): Promise<Preferences>;
     /** GET /me/notification-settings */

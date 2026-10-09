@@ -59,6 +59,9 @@ export const httpApi: Api = {
     },
   },
   account: {
+    updateProfile: (input) => patch("/me", input),
+    changePassword: (currentPassword, newPassword) => put("/me/password", { currentPassword, newPassword }),
+    endOtherSessions: () => post("/me/sessions/end-others"),
     updatePreferences: (p) => put("/me/preferences", p),
     notificationSettings: () => get("/me/notification-settings"),
     saveDefaultNotificationSetting: (s) => put("/me/notification-settings/default", s),

@@ -54,7 +54,8 @@ function checkPreferences(patch: Partial<Preferences>) {
     throw fieldError("remindersPausedUntil", "날짜를 YYYY-MM-DD 형식으로 입력하세요.");
 }
 
-export const accountApi: Api["account"] = {
+/** The settings half of /me; profile and password live with the other user code in index.ts. */
+export const accountApi: Omit<Api["account"], "updateProfile" | "changePassword" | "endOtherSessions"> = {
   updatePreferences: (patch) =>
     run(() => {
       const user = sessionUser();

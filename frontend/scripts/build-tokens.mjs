@@ -76,7 +76,22 @@ for (const [k, v] of Object.entries(t.layout)) {
 for (const [k, v] of Object.entries(t.z)) vars.push([`--pms-z-${k}`, String(v)]);
 
 const banner = "/* 생성 파일: scripts/build-tokens.mjs가 replica/design/tokens.json에서 만든다. 직접 고치지 말 것. */\n";
-const tokensCss = `${banner}:root {\n${vars.map(([n, v]) => `  ${n}: ${v};`).join("\n")}\n}\n`;
+// dark theme: the same colour roles with color-dark values. Chosen explicitly (data-theme="dark") or, when the
+// person keeps "시스템", by the operating system; data-theme="light" pins light.
+const darkVars = [];
+(function walkDark(obj, prefix) {
+  for (const [k, v] of Object.entries(obj ?? {})) {
+    if (k.startsWith("_")) continue;
+    const name = prefix ? `${prefix}-${k}` : k;
+    if (typeof v === "string") darkVars.push([`--pms-color-${name}`, v]);
+    else walkDark(v, name);
+  }
+})(t["color-dark"], "");
+const darkBody = ["  color-scheme: dark;", ...darkVars.map(([n, v]) => `  ${n}: ${v};`)].join("\n");
+const tokensCss =
+  `${banner}:root {\n  color-scheme: light;\n${vars.map(([n, v]) => `  ${n}: ${v};`).join("\n")}\n}\n` +
+  `:root[data-theme="dark"] {\n${darkBody}\n}\n` +
+  `@media (prefers-color-scheme: dark) {\n  :root:not([data-theme="light"]) {\n${darkBody.replace(/^/gm, "  ")}\n  }\n}\n`;
 const themeCss = `${banner}@theme inline {\n${theme.map(([n, v]) => `  ${n}: ${v};`).join("\n")}\n}\n`;
 const tokensTs = `${banner.replace("/*", "//").replace(" */", "")}export const tokens = ${JSON.stringify(
   { color: t.color, pairs: t.pairs, type: t.type, space: t.space, radius: t.radius, shadow: t.shadow, motion: t.motion, layout: t.layout, z: t.z },

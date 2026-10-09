@@ -18,6 +18,7 @@ import { WatchersTab } from "./watchers";
 import { ShareDialog } from "./share-dialog";
 import { formatDate, relativeTime } from "@/lib/dates";
 import { RichTextEditor } from "@/components/domain/rich-text-editor";
+import { useUnsavedWarning } from "@/lib/use-unsaved-warning";
 import { cn } from "@/lib/cn";
 import { ErrorState, useDocumentTitle } from "@/app/page";
 import { Attributes } from "./attributes";
@@ -38,6 +39,7 @@ function Description({ wp }: { wp: WorkPackage }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const can = wp._meta.editableFields.includes("description");
+  useUnsavedWarning(editing && draft !== wp.descriptionHtml);
 
   if (editing)
     return (

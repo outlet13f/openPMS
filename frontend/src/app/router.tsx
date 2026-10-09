@@ -24,6 +24,7 @@ import { GanttDetailRoute, GanttPage } from "@/pages/gantt";
 import { AdminHomePage } from "@/pages/admin";
 import { AdminTypesPage } from "@/pages/admin/types";
 import { NotificationSettingsPage } from "@/pages/notification-settings";
+import { AccountPage } from "@/pages/account";
 import { AdminCustomFieldsPage } from "@/pages/admin/custom-fields";
 import { AdminPrioritiesPage, AdminStatusesPage } from "@/pages/admin/statuses";
 import { AdminWorkflowsPage } from "@/pages/admin/workflows";
@@ -73,7 +74,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <MeRoute render={(me) => <HomePage me={me} />} /> },
       { path: "my/page", element: <Stub id="S21" nameKey="nav.myPage" /> },
-      { path: "my/account", element: <Stub id="S37" nameKey="nav.myAccount" /> },
+      { path: "my/account", element: <AccountPage /> },
       { path: "my/notifications", element: <NotificationSettingsPage /> },
       {
         path: "notifications",

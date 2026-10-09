@@ -1,4 +1,4 @@
-import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { forwardRef, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { readableOn } from "@/lib/color";
@@ -85,11 +85,12 @@ export const StatusPill = forwardRef<HTMLButtonElement, StatusPillProps>(functio
   );
 });
 
-/* ---------- Type label: coloured, bold text. Admin colour picker guarantees 4.5:1 on white ---------- */
+/* ---------- Type label: coloured, bold text. Admin colour picker guarantees 4.5:1 on white; the dark theme
+   lightens it (styles/index.css .pms-label) so it stays readable on dark backgrounds ---------- */
 
 export function TypeLabel({ name, color, className }: { name: string; color: string; className?: string }) {
   return (
-    <span className={cn("text-xs font-bold tracking-tight whitespace-nowrap", className)} style={{ color }}>
+    <span className={cn("pms-label text-xs font-bold tracking-tight whitespace-nowrap", className)} style={{ "--pms-label": color } as CSSProperties}>
       {name}
     </span>
   );

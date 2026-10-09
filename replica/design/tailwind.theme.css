@@ -32,6 +32,7 @@
   --color-warning-strong: var(--pms-color-warning-strong);
   --color-info-subtle: var(--pms-color-info-subtle);
   --color-backdrop: var(--pms-color-backdrop);
+  --color-on-data: var(--pms-color-on-data);
   --color-data-blue: var(--pms-color-data-blue);
   --color-data-teal: var(--pms-color-data-teal);
   --color-data-green: var(--pms-color-data-green);

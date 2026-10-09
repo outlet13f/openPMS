@@ -54,3 +54,16 @@
   pointer-events: none;
   color: var(--pms-color-text-muted);
 }
+
+/* Type colours are chosen for white backgrounds (4.5:1); on the dark theme they are mixed toward white. */
+.pms-label {
+  color: var(--pms-label);
+}
+:root[data-theme="dark"] .pms-label {
+  color: color-mix(in oklab, var(--pms-label) 45%, white);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .pms-label {
+    color: color-mix(in oklab, var(--pms-label) 45%, white);
+  }
+}

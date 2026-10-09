@@ -56,6 +56,7 @@ function toMe(u: DbUser): Me {
     timeZone: u.timeZone,
     globalPermissions: globalPermissions(u),
     preferences: u.prefs,
+    theme: u.theme ?? "system",
   });
 }
 
@@ -363,8 +364,43 @@ function notificationSummary(n: (typeof db.notifications)[number], user: DbUser)
 
 /* ---------- the API ---------- */
 
+const PASSWORD_MIN = 10; // auth.password_min_length (backend default)
+
 export const fakeApi: Api = {
-  account: accountApi,
+  account: {
+    ...accountApi,
+    updateProfile: (input) =>
+      run(() => {
+        const user = sessionUser();
+        if (input.name !== undefined) {
+          const name = input.name.trim();
+          if (!name) throw fieldError("name", "이름을 입력하세요.");
+          if (name.length > 100) throw fieldError("name", "이름은 100자 이하로 입력하세요.");
+          user.name = name;
+        }
+        if (input.timeZone !== undefined) {
+          const zones = Intl.supportedValuesOf("timeZone");
+          if (input.timeZone !== "UTC" && !zones.includes(input.timeZone)) throw fieldError("timeZone", "알 수 없는 시간대입니다.");
+          user.timeZone = input.timeZone;
+        }
+        if (input.theme !== undefined) {
+          if (!["system", "light", "dark"].includes(input.theme)) throw fieldError("theme", "테마를 고르세요.");
+          user.theme = input.theme;
+        }
+        return toMe(user);
+      }),
+    changePassword: (currentPassword, newPassword) =>
+      run(() => {
+        const user = sessionUser();
+        if (currentPassword !== user.password) throw fieldError("currentPassword", "현재 비밀번호가 맞지 않습니다.");
+        if (newPassword.length < PASSWORD_MIN) throw fieldError("newPassword", `비밀번호는 ${PASSWORD_MIN}자 이상이어야 합니다.`);
+        if (newPassword.length > 128) throw fieldError("newPassword", "비밀번호는 128자 이하로 정하세요.");
+        if (newPassword === currentPassword) throw fieldError("newPassword", "지금 비밀번호와 다른 비밀번호를 정하세요.");
+        user.password = newPassword;
+      }),
+    // the demo has one session per browser: nothing else to end
+    endOtherSessions: () => run(() => void sessionUser()),
+  },
   auth: {
     login: (email, password) =>
       run(() => {

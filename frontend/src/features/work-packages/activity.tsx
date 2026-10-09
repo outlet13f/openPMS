@@ -5,7 +5,8 @@ import { useTranslation } from "react-i18next";
 import { MessageSquare, Pencil, Send } from "lucide-react";
 import type { Journal, UserRef, WorkPackage } from "@/api";
 import { isApiError } from "@/api";
-import { useActivities, useComment, useEditComment, useFilterOptions } from "@/api/hooks";
+import { useActivities, useComment, useEditComment, useFilterOptions, useMe } from "@/api/hooks";
+import { useUnsavedWarning } from "@/lib/use-unsaved-warning";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/feedback";
@@ -22,6 +23,7 @@ function Entry({ j, wpNumber, people }: { j: Journal; wpNumber: number; people: 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
+  useUnsavedWarning(editing && draft !== j.notesHtml);
   const saveEdit = async () => {
     if (!draft) return setError(t("activity.commentEmpty"));
     try {
@@ -111,6 +113,7 @@ function CommentBox({ wp }: { wp: WorkPackage }) {
   const [html, setHtml] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [round, setRound] = useState(0); // a fresh, empty editor after each comment
+  useUnsavedWarning(!!html);
 
   const submit = async () => {
     if (!html) return setError(t("activity.commentEmpty"));
@@ -150,6 +153,8 @@ export function ActivityTab({ wp }: { wp: WorkPackage }) {
   const { t } = useTranslation();
   const activities = useActivities(wp.number);
   const people = useFilterOptions(wp.project.id).data?.users ?? [];
+  // S37 "최신 활동을 맨 위에": newest first, with the comment box on top
+  const newestFirst = useMe().data?.preferences.commentsNewestFirst ?? false;
   if (activities.isPending)
     return (
       <div className="flex flex-col gap-3 py-3">
@@ -159,18 +164,21 @@ export function ActivityTab({ wp }: { wp: WorkPackage }) {
       </div>
     );
   if (activities.isError) return <ErrorState error={activities.error} onRetry={() => activities.refetch()} />;
+  const entries = newestFirst ? [...activities.data].reverse() : activities.data;
+  const box = wp._meta.allowedActions.comment ? <CommentBox wp={wp} /> : <p className="mt-3 text-sm text-fg-muted">{t("activity.noPermission")}</p>;
   return (
     <div>
-      {activities.data.length === 0 ? (
+      {newestFirst && box}
+      {entries.length === 0 ? (
         <EmptyState compact icon={<MessageSquare />} title={t("activity.empty")} />
       ) : (
         <ol className="divide-y divide-border-muted" aria-label={t("activity.title")}>
-          {activities.data.map((j) => (
+          {entries.map((j) => (
             <Entry key={j.id} j={j} wpNumber={wp.number} people={people} />
           ))}
         </ol>
       )}
-      {wp._meta.allowedActions.comment ? <CommentBox wp={wp} /> : <p className="mt-3 text-sm text-fg-muted">{t("activity.noPermission")}</p>}
+      {!newestFirst && box}
     </div>
   );
 }

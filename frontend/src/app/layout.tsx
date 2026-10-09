@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useMatch, useNavigate, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
+import { applyTheme } from "@/lib/theme";
 import {
   ArrowLeft,
   Bell,
@@ -175,6 +176,7 @@ function AdminSidebar({ me, onNavigate, onCollapse }: { me: Me; onNavigate?: () 
 
 export function AppLayout({ me }: { me: Me }) {
   const { t } = useTranslation();
+  useEffect(() => applyTheme(me.theme), [me.theme]);
   const navigate = useNavigate();
   const location = useLocation();
   const logout = useLogout();

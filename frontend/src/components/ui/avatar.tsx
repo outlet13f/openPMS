@@ -20,7 +20,7 @@ export function Avatar({ id, name, size = "sm", className }: { id: string; name:
   return (
     <span
       aria-hidden="true"
-      className={cn("inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white select-none", sizes[size], className)}
+      className={cn("inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-on-data select-none", sizes[size], className)}
       style={{ backgroundColor: `var(--pms-color-data-${role})` }}
     >
       {initials(name, size === "xs" ? 1 : 2)}

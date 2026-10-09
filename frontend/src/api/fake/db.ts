@@ -2,7 +2,7 @@
 // Table shapes follow replica/schema.sql closely so the move to the real API is mechanical.
 // State survives reloads through localStorage (per browser, per user) and can be reset from the login page.
 
-import type { BoardKind, CustomField, CustomValue, Id, NotificationSetting, ShareRole, IsoDate, IsoDateTime, ModuleKey, NotificationReason, Preferences, ProjectStatus, QuerySpec, ViewKind } from "../types";
+import type { BoardKind, CustomField, CustomValue, Id, NotificationSetting, ShareRole, Theme, IsoDate, IsoDateTime, ModuleKey, NotificationReason, Preferences, ProjectStatus, QuerySpec, ViewKind } from "../types";
 import { buildSeed } from "./seed";
 
 export interface DbUser {
@@ -10,6 +10,8 @@ export interface DbUser {
   email: string;
   name: string;
   password: string;
+  /** S37; absent = system */
+  theme?: Theme;
   status: "invited" | "active" | "locked" | "deleted";
   isAdmin: boolean;
   locale: "ko" | "en";

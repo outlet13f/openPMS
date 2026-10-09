@@ -74,9 +74,20 @@ export interface NotificationSettings {
   projects: ProjectNotificationSetting[];
 }
 
+export type Theme = "system" | "light" | "dark";
+
 export interface Me extends User {
   globalPermissions: string[];
   preferences: Preferences;
+  /** S37: system follows the operating system */
+  theme: Theme;
+}
+
+/** S37 프로필: what I may change about myself (email is changed by an administrator). */
+export interface ProfileInput {
+  name?: string;
+  timeZone?: string;
+  theme?: Theme;
 }
 
 export interface Role {

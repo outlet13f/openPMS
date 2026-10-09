@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/spinner";
 import { TypeLabel } from "@/components/ui/badges";
 import { RichTextEditor } from "@/components/domain/rich-text-editor";
 import { CustomFieldInput } from "@/features/work-packages/custom-fields";
+import { useUnsavedWarning } from "@/lib/use-unsaved-warning";
 import { ErrorState, NotFound, useDocumentTitle } from "@/app/page";
 import { useCurrentProject } from "@/app/project";
 import { WorkPackageDetail, asDetailTab as asTab } from "@/features/work-packages/detail";
@@ -96,6 +97,7 @@ export function NewPanelRoute({ base: hostBase }: { base?: string } = {}) {
   // custom field values typed so far; untouched fields show (and send) the field's default
   const [cf, setCf] = useState<Record<string, CustomValue>>({});
   const cfValue = (x: CustomField): CustomValue => (x.id in cf ? cf[x.id] : x.defaultValue);
+  useUnsavedWarning(!!v.subject?.trim() || !!v.description);
   useDocumentTitle(form.data ? t("wp.newTitle", { type: form.data.type.name }) : undefined);
 
   if (form.isPending)

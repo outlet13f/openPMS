@@ -121,11 +121,15 @@ public class AuthController {
 
     @GetMapping("/me")
     public Dto.Me me() {
-        var ctx = current.ctx();
+        return me(current.ctx());
+    }
+
+    /** Me as /auth/me shows it (also the answer of PATCH /me). */
+    public Dto.Me me(com.openpms.core.Ctx ctx) {
         var u = ctx.user();
         var p = db.selectFrom(USER_PREFERENCES).where(USER_PREFERENCES.USER_ID.eq(u.id())).fetchOne();
         var prefs = com.openpms.notification.AccountController.preferences(p);
-        return new Dto.Me(u.id(), u.name(), u.email(), u.status(), u.isAdmin(), u.locale(), u.timeZone(), ctx.globalPermissions(), prefs);
+        return new Dto.Me(u.id(), u.name(), u.email(), u.status(), u.isAdmin(), u.locale(), u.timeZone(), ctx.globalPermissions(), prefs, u.theme());
     }
 
     /** Always 202, whether or not the address has an account (no enumeration). */

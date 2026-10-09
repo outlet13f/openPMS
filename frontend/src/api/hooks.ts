@@ -2,7 +2,7 @@
 // rules live in one place.
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { BoardKind, Id, NotificationSetting, Preferences, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch } from "./types";
+import type { BoardKind, Id, NotificationSetting, Preferences, ProfileInput, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch } from "./types";
 
 export const qk = {
   me: ["me"] as const,
@@ -52,6 +52,9 @@ export function useAccountMutations() {
   const settings = () => qc.invalidateQueries({ queryKey: ["me", "notification-settings"] });
   return {
     preferences: useMutation({ mutationFn: (p: Partial<Preferences>) => api.account.updatePreferences(p), onSuccess: () => qc.invalidateQueries({ queryKey: qk.me }) }),
+    profile: useMutation({ mutationFn: (input: ProfileInput) => api.account.updateProfile(input), onSuccess: (me) => qc.setQueryData(qk.me, me) }),
+    password: useMutation({ mutationFn: ({ current, next }: { current: string; next: string }) => api.account.changePassword(current, next) }),
+    endOthers: useMutation({ mutationFn: () => api.account.endOtherSessions() }),
     saveDefault: useMutation({ mutationFn: (s: NotificationSetting) => api.account.saveDefaultNotificationSetting(s), onSuccess: settings }),
     saveProject: useMutation({
       mutationFn: ({ projectId, setting }: { projectId: Id; setting: NotificationSetting }) => api.account.saveProjectNotificationSetting(projectId, setting),

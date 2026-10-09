@@ -35,7 +35,7 @@ public final class Dto {
     public record NotificationSettings(@JsonProperty("default") NotificationSetting defaultSetting, List<ProjectNotificationSetting> projects) {}
 
     public record Me(UUID id, String name, String email, String status, boolean isAdmin, String locale, String timeZone,
-                     List<String> globalPermissions, Preferences preferences) {}
+                     List<String> globalPermissions, Preferences preferences, String theme) {}
 
     public record Role(UUID id, String name, String scope, String builtin, List<String> permissions) {}
 

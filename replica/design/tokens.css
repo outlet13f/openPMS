@@ -1,5 +1,6 @@
 /* 생성 파일: scripts/build-tokens.mjs가 replica/design/tokens.json에서 만든다. 직접 고치지 말 것. */
 :root {
+  color-scheme: light;
   --pms-color-bg: #ffffff;
   --pms-color-surface: #f6f7f9;
   --pms-color-surface-hover: #eef0f3;
@@ -32,6 +33,7 @@
   --pms-color-warning-strong: #e3a400;
   --pms-color-info-subtle: #e9f1ff;
   --pms-color-backdrop: rgba(15, 18, 24, 0.5);
+  --pms-color-on-data: #ffffff;
   --pms-color-data-blue: #1f5fc4;
   --pms-color-data-teal: #0b7575;
   --pms-color-data-green: #277a32;
@@ -101,4 +103,98 @@
   --pms-z-dropdown: 65;
   --pms-z-toast: 70;
   --pms-z-tooltip: 80;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --pms-color-bg: #15181d;
+  --pms-color-surface: #1c2027;
+  --pms-color-surface-hover: #262b34;
+  --pms-color-surface-selected: #2e3442;
+  --pms-color-surface-sunken: #111418;
+  --pms-color-border: #363d48;
+  --pms-color-border-muted: #272c35;
+  --pms-color-border-input: #7d8794;
+  --pms-color-text: #e7e9ec;
+  --pms-color-text-muted: #a6aeb9;
+  --pms-color-text-disabled: #6f7783;
+  --pms-color-accent: #7b9af6;
+  --pms-color-accent-hover: #98b1f9;
+  --pms-color-accent-subtle: #1f2a47;
+  --pms-color-accent-subtle-text: #b3c4fb;
+  --pms-color-on-accent: #0c1222;
+  --pms-color-focus-ring: #98b1f9;
+  --pms-color-header-bg: #0e1116;
+  --pms-color-header-hover: #1f2530;
+  --pms-color-header-fg: #ffffff;
+  --pms-color-header-fg-muted: #b9c0cb;
+  --pms-color-danger: #f27b7b;
+  --pms-color-danger-hover: #f59797;
+  --pms-color-danger-subtle: #3b1f21;
+  --pms-color-on-danger: #1b0b0b;
+  --pms-color-success: #5ccb95;
+  --pms-color-success-subtle: #16301f;
+  --pms-color-warning: #e9b55a;
+  --pms-color-warning-subtle: #332a12;
+  --pms-color-warning-strong: #e3a400;
+  --pms-color-info-subtle: #1b2741;
+  --pms-color-backdrop: rgba(0, 0, 0, 0.6);
+  --pms-color-on-data: #0c1222;
+  --pms-color-data-blue: #4e81d0;
+  --pms-color-data-teal: #378e8e;
+  --pms-color-data-green: #4a8f53;
+  --pms-color-data-olive: #7d863f;
+  --pms-color-data-amber: #aa762e;
+  --pms-color-data-orange: #bf6b35;
+  --pms-color-data-red: #ce5d67;
+  --pms-color-data-pink: #c16090;
+  --pms-color-data-purple: #916dd2;
+  --pms-color-data-grey: #7a828b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --pms-color-bg: #15181d;
+    --pms-color-surface: #1c2027;
+    --pms-color-surface-hover: #262b34;
+    --pms-color-surface-selected: #2e3442;
+    --pms-color-surface-sunken: #111418;
+    --pms-color-border: #363d48;
+    --pms-color-border-muted: #272c35;
+    --pms-color-border-input: #7d8794;
+    --pms-color-text: #e7e9ec;
+    --pms-color-text-muted: #a6aeb9;
+    --pms-color-text-disabled: #6f7783;
+    --pms-color-accent: #7b9af6;
+    --pms-color-accent-hover: #98b1f9;
+    --pms-color-accent-subtle: #1f2a47;
+    --pms-color-accent-subtle-text: #b3c4fb;
+    --pms-color-on-accent: #0c1222;
+    --pms-color-focus-ring: #98b1f9;
+    --pms-color-header-bg: #0e1116;
+    --pms-color-header-hover: #1f2530;
+    --pms-color-header-fg: #ffffff;
+    --pms-color-header-fg-muted: #b9c0cb;
+    --pms-color-danger: #f27b7b;
+    --pms-color-danger-hover: #f59797;
+    --pms-color-danger-subtle: #3b1f21;
+    --pms-color-on-danger: #1b0b0b;
+    --pms-color-success: #5ccb95;
+    --pms-color-success-subtle: #16301f;
+    --pms-color-warning: #e9b55a;
+    --pms-color-warning-subtle: #332a12;
+    --pms-color-warning-strong: #e3a400;
+    --pms-color-info-subtle: #1b2741;
+    --pms-color-backdrop: rgba(0, 0, 0, 0.6);
+    --pms-color-on-data: #0c1222;
+    --pms-color-data-blue: #4e81d0;
+    --pms-color-data-teal: #378e8e;
+    --pms-color-data-green: #4a8f53;
+    --pms-color-data-olive: #7d863f;
+    --pms-color-data-amber: #aa762e;
+    --pms-color-data-orange: #bf6b35;
+    --pms-color-data-red: #ce5d67;
+    --pms-color-data-pink: #c16090;
+    --pms-color-data-purple: #916dd2;
+    --pms-color-data-grey: #7a828b;
+  }
 }

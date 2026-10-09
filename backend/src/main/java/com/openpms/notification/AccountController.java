@@ -1,29 +1,41 @@
 package com.openpms.notification;
 
 import static com.openpms.db.Tables.NOTIFICATION_SETTINGS;
+import static com.openpms.db.Tables.USERS;
 import static com.openpms.db.Tables.USER_PREFERENCES;
 
 import com.openpms.api.Dto;
+import com.openpms.auth.AuthController;
+import com.openpms.auth.RateLimiter;
+import com.openpms.auth.Sessions;
 import com.openpms.common.ApiException;
 import com.openpms.common.In;
+import com.openpms.common.SettingsRepo;
 import com.openpms.core.Current;
 import com.openpms.core.Refs;
 import com.openpms.core.Snapshot;
 import com.openpms.core.Text;
 import com.openpms.db.tables.records.UserPreferencesRecord;
+import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 import org.jooq.DSLContext;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -35,21 +47,93 @@ import org.springframework.web.bind.annotation.RestController;
 public class AccountController {
     private static final Pattern TIME = Pattern.compile("^([01]\\d|2[0-3]):[0-5]\\d$");
 
+    private static final List<String> THEMES = List.of("system", "light", "dark");
+
     private final Current current;
     private final DSLContext db;
     private final NotificationSettings settings;
+    private final AuthController auth;
+    private final PasswordEncoder encoder;
+    private final RateLimiter limiter;
+    private final Sessions sessions;
+    private final SettingsRepo appSettings;
 
-    public AccountController(Current current, DSLContext db, NotificationSettings settings) {
+    public AccountController(Current current, DSLContext db, NotificationSettings settings, AuthController auth,
+                             PasswordEncoder encoder, RateLimiter limiter,
+                             Sessions sessions, SettingsRepo appSettings) {
         this.current = current;
         this.db = db;
         this.settings = settings;
+        this.auth = auth;
+        this.encoder = encoder;
+        this.limiter = limiter;
+        this.sessions = sessions;
+        this.appSettings = appSettings;
+    }
+
+    /* ---------- profile, password, sessions (S37) ---------- */
+
+    @PatchMapping("")
+    @Transactional
+    public Dto.Me updateProfile(@RequestBody Map<String, Object> body) {
+        var ctx = current.ctx();
+        var u = db.selectFrom(USERS).where(USERS.ID.eq(ctx.userId())).fetchOne();
+        if (In.has(body, "name")) {
+            var name = In.str(body, "name") == null ? "" : In.str(body, "name").trim();
+            if (name.isEmpty()) throw ApiException.field("name", "이름을 입력하세요.");
+            if (name.length() > 100) throw ApiException.field("name", "이름은 100자 이하로 입력하세요.");
+            u.setName(name);
+        }
+        if (In.has(body, "timeZone")) {
+            var zone = In.str(body, "timeZone");
+            if (zone == null || !(zone.equals("UTC") || ZoneId.getAvailableZoneIds().contains(zone))) throw ApiException.field("timeZone", "알 수 없는 시간대입니다.");
+            u.setTimeZone(zone);
+        }
+        if (In.has(body, "theme")) {
+            var theme = In.str(body, "theme");
+            if (!THEMES.contains(theme)) throw ApiException.field("theme", "테마를 고르세요.");
+            u.setTheme(theme);
+        }
+        u.store();
+        ctx.refresh();
+        return auth.me(ctx);
+    }
+
+    /** The current password, then the policy; other devices are signed out, this one stays. */
+    @PutMapping("/password")
+    @Transactional
+    public ResponseEntity<Void> changePassword(@RequestBody Map<String, Object> body, HttpServletRequest req) {
+        var ctx = current.ctx();
+        limiter.check("password:" + ctx.userId(), 10);
+        var u = db.selectFrom(USERS).where(USERS.ID.eq(ctx.userId())).fetchOne();
+        var currentPassword = In.str(body, "currentPassword");
+        var next = In.str(body, "newPassword");
+        if (currentPassword == null || u.getPasswordHash() == null || !encoder.matches(currentPassword, u.getPasswordHash()))
+            throw ApiException.field("currentPassword", "현재 비밀번호가 맞지 않습니다.");
+        int min = appSettings.integer("auth.password_min_length", 10);
+        if (next == null || next.length() < min) throw ApiException.field("newPassword", "비밀번호는 " + min + "자 이상이어야 합니다.");
+        if (next.length() > 128) throw ApiException.field("newPassword", "비밀번호는 128자 이하로 정하세요.");
+        if (next.equals(currentPassword)) throw ApiException.field("newPassword", "지금 비밀번호와 다른 비밀번호를 정하세요.");
+        u.setPasswordHash(encoder.encode(next));
+        u.store();
+        var session = req.getSession(false);
+        if (session != null) sessions.endOthers(ctx.userId(), session.getId());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/sessions/end-others")
+    public ResponseEntity<Void> endOtherSessions(HttpServletRequest req) {
+        var ctx = current.ctx();
+        var session = req.getSession(false);
+        if (session != null) sessions.endOthers(ctx.userId(), session.getId());
+        return ResponseEntity.noContent().build();
     }
 
     /** Preferences as the API shows them; no row yet means the column defaults. */
     public static Dto.Preferences preferences(UserPreferencesRecord p) {
-        if (p == null) return new Dto.Preferences(false, true, true, true, true, java.util.List.of("08:00"), null);
+        if (p == null) return new Dto.Preferences(false, true, true, true, true, List.of("08:00"), null);
         return new Dto.Preferences(p.getCommentsNewestFirst(), p.getWarnOnUnsaved(), p.getKeyboardShortcuts(), p.getImmediateOnMention(),
-                p.getDigestEnabled(), java.util.Arrays.stream(p.getDigestTimes()).sorted().map(t -> t.toString().substring(0, 5)).toList(),
+                p.getDigestEnabled(), Arrays.stream(p.getDigestTimes()).sorted().map(t -> t.toString().substring(0, 5)).toList(),
                 p.getRemindersPausedUntil());
     }
 
