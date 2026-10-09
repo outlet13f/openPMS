@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Outlet, useMatch, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { Columns3, Filter, FolderTree, ListTodo, MoreHorizontal, Pencil, Plus, RotateCcw, Save, Star, Trash2 } from "lucide-react";
+import { Columns3, Download, Filter, FolderTree, ListTodo, MoreHorizontal, Pencil, Plus, RotateCcw, Save, Star, Trash2 } from "lucide-react";
 import type { ColumnKey, Project, QuerySpec, SavedQuery } from "@/api";
 import { isApiError } from "@/api";
 import { useFilterOptions, useSavedQueryMutations, useWpForm, useWpQuery } from "@/api/hooks";
@@ -20,6 +20,7 @@ import { useOptionalProject, can } from "@/app/project";
 import { WorkPackageTable } from "@/features/work-packages/table";
 import { cfColumn, useColumnLabel } from "@/features/work-packages/custom-fields";
 import { FilterPanel } from "@/features/work-packages/filter-panel";
+import { ExportDialog } from "@/features/work-packages/export-dialog";
 import { useListState } from "@/features/work-packages/view-state";
 
 const ALL_COLUMNS: ColumnKey[] = ["number", "subject", "type", "status", "priority", "assignee", "responsible", "author", "version", "startDate", "dueDate", "duration", "doneRatio", "updatedAt", "project"];
@@ -118,6 +119,7 @@ export function WorkPackagesPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [saveAs, setSaveAs] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const details = useMatch(`${base}/details/:number/*`);
   const creating = useMatch(`${base}/new`);
   const panelOpen = !!(details || creating);
@@ -136,6 +138,7 @@ export function WorkPackagesPage() {
           : []),
         ...(project && can(project, "query.save") ? [{ label: t("wp.saveViewAs"), icon: <Save />, onSelect: () => setSaveAs(true) }] : []),
         ...(dirty ? [{ label: t("wp.resetView"), icon: <RotateCcw />, onSelect: () => state.resetToView(view?.id) }] : []),
+        ...(!project || can(project, "wp.export") ? [{ label: t("export.open"), icon: <Download />, onSelect: () => setExporting(true) }] : []),
         {
           kind: "sub" as const,
           label: t("wp.columnsMenu"),
@@ -266,6 +269,18 @@ export function WorkPackagesPage() {
       </div>
       {panelOpen && panel}
       {renaming && view && <RenameViewDialog view={view} projectId={project?.id} onClose={() => setRenaming(false)} />}
+      {exporting && spec && (
+        <ExportDialog
+          open
+          onOpenChange={setExporting}
+          spec={spec}
+          projectId={project?.id}
+          title={view?.name ?? t("wp.listTitle")}
+          total={result.data?.total}
+          allColumns={allColumns}
+          columnLabel={columnLabel}
+        />
+      )}
       {spec && (
         <SaveViewDialog
           open={saveAs}

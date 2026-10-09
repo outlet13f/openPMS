@@ -39,6 +39,22 @@ async function upload<T>(path: string, file: File): Promise<T> {
   return data as T;
 }
 
+/** A file answer (export): the bytes and the name from Content-Disposition (filename*=UTF-8''…). */
+async function download(path: string, body: unknown): Promise<{ blob: Blob; fileName: string }> {
+  const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "*/*" };
+  const token = csrfToken();
+  if (token) headers["X-XSRF-TOKEN"] = token;
+  const res = await fetch(BASE + path, { method: "POST", headers, credentials: "same-origin", body: JSON.stringify(body) });
+  if (!res.ok) {
+    const data = res.headers.get("content-type")?.includes("json") ? await res.json() : undefined;
+    throw new ApiError(res.status, data?.title ?? res.statusText, data?.detail, { fieldErrors: data?.errors });
+  }
+  const cd = res.headers.get("content-disposition") ?? "";
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+  const plain = /filename="?([^";]+)"?/i.exec(cd);
+  return { blob: await res.blob(), fileName: star ? decodeURIComponent(star[1]) : (plain?.[1] ?? "export") };
+}
+
 const get = <T>(p: string, q?: Record<string, unknown>) => call<T>("GET", p, undefined, q);
 const post = <T>(p: string, b?: unknown) => call<T>("POST", p, b ?? {});
 const patch = <T>(p: string, b: unknown) => call<T>("PATCH", p, b);
@@ -113,6 +129,7 @@ export const httpApi: Api = {
     activities: (n) => get(`/work-packages/${n}/activities`),
     comment: (n, bodyHtml) => post(`/work-packages/${n}/comments`, { bodyHtml }),
     editComment: (id, bodyHtml) => patch(`/comments/${id}`, { bodyHtml }),
+    export: (input) => download("/work-packages/export", input),
     shares: (n) => get(`/work-packages/${n}/shares`),
     share: (n, userId, role) => post(`/work-packages/${n}/shares`, { userId, role }),
     updateShare: (id, role) => patch(`/shares/${id}`, { role }),

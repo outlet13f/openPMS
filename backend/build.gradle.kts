@@ -39,6 +39,7 @@ dependencies {
     implementation("com.googlecode.owasp-java-html-sanitizer:owasp-java-html-sanitizer:20260924.2")
     implementation("com.bucket4j:bucket4j_jdk17-core:8.21.0")
     implementation("org.apache.tika:tika-core:3.3.2")
+    implementation("org.apache.poi:poi-ooxml:5.4.1")
     runtimeOnly("org.postgresql:postgresql")
 
     jooqCodegen("org.postgresql:postgresql")

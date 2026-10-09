@@ -1,5 +1,6 @@
 import type {
   Attachment,
+  ExportInput,
   SearchResults,
   SearchScope,
   ProfileInput,
@@ -214,6 +215,8 @@ export interface Api {
     query(spec: QuerySpec, opts: { projectId?: Id; page?: number; pageSize?: number }): Promise<QueryResult>;
     /** GET /work-packages/filters */
     filterOptions(projectId?: Id): Promise<FilterOptions>;
+    /** POST /work-packages/export (wp.export) — the file; 422 above EXPORT_LIMIT items */
+    export(input: ExportInput): Promise<{ blob: Blob; fileName: string }>;
   };
 
   queries: {

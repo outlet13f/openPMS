@@ -533,6 +533,21 @@ export interface QuerySpec {
   timeline?: { visible: boolean; zoom: "day" | "week" | "month" | "auto" };
 }
 
+/** S12 내보내기: every item matching the spec (not just the page), in its order; at most EXPORT_LIMIT. */
+export type ExportFormat = "csv" | "xlsx";
+export const EXPORT_LIMIT = 5000;
+
+export interface ExportInput {
+  spec: QuerySpec;
+  projectId?: Id;
+  format: ExportFormat;
+  columns: ColumnKey[];
+  /** an extra last column with the description as plain text */
+  includeDescription: boolean;
+  /** names the file: "<title>-<yyyymmdd>.<format>" */
+  title: string;
+}
+
 export interface QueryRow {
   wp: WorkPackage;
   depth: number;

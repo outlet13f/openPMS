@@ -89,7 +89,7 @@ npm run build                # 운영 빌드(실제 API)를 backend 정적 리�
 | 항목 | 메모 |
 | --- | --- |
 | 계정 설정 API | S37 화면과 함께(비밀번호 변경, 이름·시간대). 알림 설정·메일 설정 API(`/me/notification-settings`, `/me/preferences`)는 완료 |
-| 내보내기(CSV·XLSX·PDF) | S12 |
+| PDF 내보내기 | S12의 CSV·XLSX는 완료(`POST /work-packages/export`, Apache POI). PDF는 한글 글꼴 내장과 함께 |
 | 사용자 정의 필드: 프로젝트·사용자 엔터티 | 작업 패키지 필드는 완료(`customfield/`). 프로젝트 특성·사용자 특성, 버전 형식은 없음 |
 | 진행률 합계(P2–P5) | 가짜 계층에도 없음 |
 | 배포 파일 | Dockerfile·compose.yaml은 `/replica-deploy`에서 |

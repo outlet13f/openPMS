@@ -32,6 +32,7 @@ import { DEFAULT_COLUMNS } from "./seed";
 import { fieldError, run } from "./util";
 import { activeFields, applyValues, fieldsInProjects, initialValues, toField } from "./custom-fields";
 import { accountApi, effectiveSetting } from "./notification-settings";
+import { exportWorkPackages } from "./export";
 import { adminApi, categoriesApi, projectExtras, versionsApi } from "./admin";
 
 /* ---------- plumbing ---------- */
@@ -907,6 +908,7 @@ export const fakeApi: Api = {
         const projectId = opts.projectId ? findProject(user, opts.projectId).id : undefined;
         return runQuery(user, spec, { ...opts, projectId });
       }),
+    export: (input) => run(() => exportWorkPackages(sessionUser(), input)),
     filterOptions: (projectId) =>
       run(() => {
         const user = sessionUser();
