@@ -143,6 +143,17 @@ export function Attributes({ wp }: { wp: WorkPackage }) {
             {wp.version?.name ?? <span className="text-fg-muted">-</span>}
           </InlinePick>
         </Row>
+        <Row label={t("wp.fields.category")}>
+          <InlinePick
+            value={wp.category?.id ?? null}
+            disabled={!can("category") || !options}
+            label={`${t("wp.fields.category")}: ${wp.category?.name ?? t("app.none")}`}
+            onPick={(v) => void save(wp, { categoryId: v })}
+            options={[{ value: null, label: t("app.none") }, ...(options?.categories ?? []).map((c) => ({ value: c.id, label: c.name }))]}
+          >
+            {wp.category?.name ?? <span className="text-fg-muted">-</span>}
+          </InlinePick>
+        </Row>
         <Row label={t("wp.fields.parent")}>
           {wp.parent ? (
             <Link to={`/projects/${wp.parent.project.identifier}/work-packages/${wp.parent.number}/activity`} className="text-accent hover:underline">

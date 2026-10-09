@@ -112,6 +112,7 @@ export function NewPanelRoute() {
         priorityId: v.priorityId || f.defaults.priorityId,
         assigneeId: v.assigneeId ?? null,
         versionId: v.versionId ?? null,
+        categoryId: v.categoryId ?? null,
         parentNumber: v.parent ? Number(v.parent.replace("#", "")) : null,
         startDate: v.startDate || null,
         dueDate: f.type.isMilestone ? v.startDate || null : v.dueDate || null,
@@ -166,6 +167,20 @@ export function NewPanelRoute() {
             {f.versions.length > 0 && (
               <Field label={t("wp.fields.version")}>
                 <Select value={v.versionId ?? "none"} onValueChange={(x) => x && set("versionId", x === "none" ? null : x)} options={[{ value: "none", label: t("app.none") }, ...f.versions.map((x) => ({ value: x.id, label: x.name }))]} />
+              </Field>
+            )}
+            {f.categories.length > 0 && (
+              <Field label={t("wp.fields.category")} hint={t("wp.categoryHint")}>
+                <Select
+                  value={v.categoryId ?? "none"}
+                  onValueChange={(x) => {
+                    if (!x) return;
+                    const cat = f.categories.find((c) => c.id === x);
+                    // fill an empty assignee with the category's default (S25)
+                    setV((cur) => ({ ...cur, categoryId: x === "none" ? null : x, assigneeId: cur.assigneeId === undefined && cat?.defaultAssigneeId ? cat.defaultAssigneeId : cur.assigneeId }));
+                  }}
+                  options={[{ value: "none", label: t("app.none") }, ...f.categories.map((c) => ({ value: c.id, label: c.name }))]}
+                />
               </Field>
             )}
             <Field label={f.type.isMilestone ? t("dates.date") : t("wp.fields.startDate")}>
