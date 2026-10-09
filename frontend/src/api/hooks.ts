@@ -18,7 +18,8 @@ export const qk = {
   wpForm: (projectId: string, typeId?: string) => ["wp-form", projectId, typeId ?? ""] as const,
   query: (spec: QuerySpec, projectId?: string, page = 1, pageSize = 20) => ["wp-query", projectId ?? "", page, pageSize, spec] as const,
   filterOptions: (projectId?: string) => ["filter-options", projectId ?? ""] as const,
-  savedQueries: (projectId?: string) => ["saved-queries", projectId ?? ""] as const,
+  /** The view kind comes last so invalidating ["saved-queries", projectId] refreshes every kind. */
+  savedQueries: (projectId?: string, view?: string) => ["saved-queries", projectId ?? "", view ?? "work_packages"] as const,
   boards: (projectId: string) => ["boards", projectId] as const,
   board: (id: string) => ["board", id] as const,
   notifications: (filter: string) => ["notifications", "list", filter] as const,
@@ -175,12 +176,12 @@ export function useRelationMutations(n: number) {
 
 /* ---------- saved views ---------- */
 
-export const useSavedQueries = (projectId?: string) =>
-  useQuery({ queryKey: qk.savedQueries(projectId), queryFn: () => api.queries.list(projectId) });
+export const useSavedQueries = (projectId?: string, view?: "calendar" | "team_planner") =>
+  useQuery({ queryKey: qk.savedQueries(projectId, view), queryFn: () => api.queries.list(projectId, view) });
 
 export function useSavedQueryMutations(projectId?: string) {
   const qc = useQueryClient();
-  const done = () => qc.invalidateQueries({ queryKey: qk.savedQueries(projectId) });
+  const done = () => qc.invalidateQueries({ queryKey: ["saved-queries", projectId ?? ""] });
   return {
     create: useMutation({ mutationFn: api.queries.create, onSuccess: done }),
     update: useMutation({ mutationFn: ({ id, patch }: { id: Id; patch: Parameters<typeof api.queries.update>[1] }) => api.queries.update(id, patch), onSuccess: done }),

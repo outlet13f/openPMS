@@ -716,18 +716,19 @@ export const fakeApi: Api = {
   },
 
   queries: {
-    list: (projectId) =>
+    list: (projectId, view) =>
       run(() => {
         const user = sessionUser();
         const p = projectId ? findProject(user, projectId) : null;
+        const ofKind = (v: string) => (view ? v === view : v === "table" || v === "gantt");
         const saved = db.queries
-          .filter((q) => (q.projectId ?? null) === (p?.id ?? null) && (q.isPublic || q.ownerId === user.id))
+          .filter((q) => (q.projectId ?? null) === (p?.id ?? null) && (q.isPublic || q.ownerId === user.id) && ofKind(q.view))
           .map((q): SavedQuery => ({
             id: q.id, name: q.name, kind: q.isPublic ? "public" : "private", view: q.view, spec: q.spec, projectId: q.projectId,
             favorite: db.queryFavorites.some((f) => f.userId === user.id && f.queryId === q.id),
             canEdit: q.ownerId === user.id || (!!p && q.isPublic && can(user, p, "query.manage_public")),
           }));
-        return clone([...defaultViews(p?.id ?? null), ...saved]);
+        return clone(view ? saved : [...defaultViews(p?.id ?? null), ...saved]);
       }),
     create: (input) =>
       run(() => {
@@ -736,7 +737,8 @@ export const fakeApi: Api = {
         if (p) requirePerm(user, p, input.isPublic ? "query.manage_public" : "query.save", input.isPublic ? "공개 보기를 저장할 권한이 없습니다." : "보기를 저장할 권한이 없습니다.");
         const name = input.name.trim();
         if (!name) throw fieldError("name", "보기 이름을 입력하세요.");
-        const q = { id: newId("q"), projectId: p?.id ?? null, ownerId: user.id, name, isPublic: input.isPublic, view: input.view, spec: input.spec };
+        if ((input.view === "calendar" || input.view === "team_planner") && !p) throw new ApiError(422, "캘린더와 팀 플래너는 프로젝트 안에서만 만들 수 있습니다.");
+        const q = { id: newId("q"), projectId: p?.id ?? null, ownerId: user.id, name, isPublic: input.isPublic, view: input.view, spec: input.spec, createdAt: nowIso() };
         db.queries.push(q);
         return clone({ ...q, kind: q.isPublic ? ("public" as const) : ("private" as const), favorite: false, canEdit: true });
       }),

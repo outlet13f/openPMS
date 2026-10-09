@@ -9,7 +9,7 @@ import { Select, type SelectOption } from "@/components/ui/select";
 
 type Def = { label: string; ops: { op: FilterOp; label: string; needsValue: boolean }[]; values: (o: FilterOptions) => SelectOption[] };
 
-function useDefs(): Record<Exclude<FilterField, "subject" | "updatedAt" | "isMilestone" | "responsible">, Def> {
+function useDefs(): Record<Exclude<FilterField, "subject" | "updatedAt" | "isMilestone" | "responsible" | "dates">, Def> {
   const { t } = useTranslation();
   const f = (k: string) => t(`filters.${k}` as "filters.is");
   const people = (o: FilterOptions) => [{ value: "me", label: f("me") }, ...o.users.map((u) => ({ value: u.id, label: u.name }))];

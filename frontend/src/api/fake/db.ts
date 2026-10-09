@@ -2,7 +2,7 @@
 // Table shapes follow replica/schema.sql closely so the move to the real API is mechanical.
 // State survives reloads through localStorage (per browser, per user) and can be reset from the login page.
 
-import type { BoardKind, Id, IsoDate, IsoDateTime, ModuleKey, NotificationReason, Preferences, ProjectStatus, QuerySpec } from "../types";
+import type { BoardKind, Id, IsoDate, IsoDateTime, ModuleKey, NotificationReason, Preferences, ProjectStatus, QuerySpec, ViewKind } from "../types";
 import { buildSeed } from "./seed";
 
 export interface DbUser {
@@ -86,7 +86,7 @@ export interface DbJournal {
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
 }
-export interface DbQuery { id: Id; projectId: Id | null; ownerId: Id; name: string; isPublic: boolean; view: "table" | "gantt"; spec: QuerySpec }
+export interface DbQuery { id: Id; projectId: Id | null; ownerId: Id; name: string; isPublic: boolean; view: ViewKind; spec: QuerySpec; createdAt?: IsoDateTime }
 export interface DbBoard {
   id: Id;
   projectId: Id;
@@ -129,7 +129,7 @@ export interface Db {
 }
 
 const KEY = "openpms.fakedb";
-const SCHEMA = 6;
+const SCHEMA = 7;
 
 function load(): Db {
   try {

@@ -217,6 +217,12 @@ export function buildSeed(schema: number): Db {
 
   const milestoneSpec: QuerySpec = { v: 1, filters: [{ field: "isMilestone", op: "eq", values: ["true"] }], columns: ["number", "subject", "status", "dueDate", "assignee"], sort: [{ field: "dueDate", dir: "asc" }], groupBy: null, hierarchy: false, sums: false, includeSubprojects: true };
   const myBugsSpec: QuerySpec = { v: 1, filters: [{ field: "type", op: "eq", values: ["t-bug"] }, { field: "status", op: "open" }], columns: DEFAULT_COLUMNS, sort: [{ field: "priority", dir: "desc" }], groupBy: null, hierarchy: false, sums: false, includeSubprojects: true };
+  // calendars and team planners are saved queries too (queries.view); the visible window is added at query time
+  const calendarSpec: QuerySpec = { v: 1, filters: [{ field: "status", op: "open" }], columns: DEFAULT_COLUMNS, sort: [{ field: "startDate", dir: "asc" }], groupBy: null, hierarchy: false, sums: false, includeSubprojects: false };
+  const plannerSpec: QuerySpec = {
+    ...calendarSpec,
+    filters: [{ field: "assignee", op: "eq", values: ["u-seoyeon", "u-junho", "u-haneul", "u-alex"] }, { field: "status", op: "open" }],
+  };
 
   return {
     schema,
@@ -250,6 +256,8 @@ export function buildSeed(schema: number): Db {
     queries: [
       { id: "q-milestones", projectId: "p-web", ownerId: "u-seoyeon", name: "마일스톤 일정", isPublic: true, view: "table", spec: milestoneSpec },
       { id: "q-mybugs", projectId: "p-web", ownerId: "u-seoyeon", name: "열린 버그", isPublic: false, view: "table", spec: myBugsSpec },
+      { id: "q-cal-web", projectId: "p-web", ownerId: "u-seoyeon", name: "팀 일정", isPublic: true, view: "calendar", spec: calendarSpec, createdAt: t0 },
+      { id: "q-tp-web", projectId: "p-web", ownerId: "u-seoyeon", name: "웹팀 주간 계획", isPublic: true, view: "team_planner", spec: plannerSpec, createdAt: t0 },
     ],
     queryFavorites: [{ userId: "u-seoyeon", queryId: "q-milestones" }],
     boards: [

@@ -1,14 +1,24 @@
 import type {
+  AdminGroup,
+  AdminPriority,
+  AdminRole,
+  AdminStatus,
+  AdminType,
+  AdminUser,
   Board,
   BoardKind,
   BoardSummary,
+  CalendarSettings,
+  Category,
   FilterOptions,
   Id,
+  IsoDate,
   Journal,
   Me,
   Member,
   NotificationGroup,
   Page,
+  PriorityInput,
   Project,
   ProjectInput,
   ProjectListParams,
@@ -18,33 +28,24 @@ import type {
   RelationGroups,
   RelationType,
   Role,
+  RoleInput,
   SavedQuery,
   SchedulePreview,
   SearchHit,
+  StatusInput,
   StatusRef,
+  Transition,
+  TypeInput,
+  UserInput,
   UserRef,
+  Version,
+  VersionInput,
+  ViewKind,
   WorkPackage,
   WorkPackageForm,
   WorkPackageInput,
   WorkPackagePatch,
   WorkPackageRef,
-  IsoDate,
-  AdminGroup,
-  AdminPriority,
-  AdminRole,
-  AdminStatus,
-  AdminType,
-  AdminUser,
-  CalendarSettings,
-  Category,
-  PriorityInput,
-  RoleInput,
-  StatusInput,
-  Transition,
-  TypeInput,
-  UserInput,
-  Version,
-  VersionInput,
 } from "./types";
 
 /**
@@ -158,10 +159,10 @@ export interface Api {
   };
 
   queries: {
-    /** GET /queries */
-    list(projectId?: Id): Promise<SavedQuery[]>;
+    /** GET /queries — without view: built-in + table/Gantt views; with view: only calendars or team planners */
+    list(projectId?: Id, view?: "calendar" | "team_planner"): Promise<SavedQuery[]>;
     /** POST /queries */
-    create(input: { projectId: Id | null; name: string; isPublic: boolean; spec: QuerySpec; view: "table" | "gantt" }): Promise<SavedQuery>;
+    create(input: { projectId: Id | null; name: string; isPublic: boolean; spec: QuerySpec; view: ViewKind }): Promise<SavedQuery>;
     /** PATCH /queries/{id} */
     update(id: Id, patch: { name?: string; spec?: QuerySpec; isPublic?: boolean }): Promise<SavedQuery>;
     /** DELETE /queries/{id} */

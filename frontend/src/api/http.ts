@@ -97,7 +97,7 @@ export const httpApi: Api = {
     filterOptions: (projectId) => get("/work-packages/filters", { projectId }),
   },
   queries: {
-    list: (projectId) => get("/queries", { projectId }),
+    list: (projectId, view) => get("/queries", { projectId, view }),
     create: (input) => post("/queries", input),
     update: (id, p) => patch(`/queries/${id}`, p),
     remove: (id) => del(`/queries/${id}`),

@@ -93,6 +93,12 @@ function matches(w: DbWp, f: QueryFilter, user: DbUser): boolean {
       return date(w.startDate);
     case "updatedAt":
       return date(w.updatedAt.slice(0, 10));
+    case "dates": {
+      if (f.op !== "overlaps" || vals.length < 2) throw new ApiError(422, "날짜 범위 필터는 시작일과 종료일이 필요합니다.");
+      const s = w.startDate ?? w.dueDate;
+      const e = w.dueDate ?? w.startDate;
+      return !!s && !!e && s <= vals[1] && e >= vals[0];
+    }
     default:
       return true;
   }

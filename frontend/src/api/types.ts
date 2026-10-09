@@ -333,7 +333,9 @@ export type FilterOp =
   | "overdue"
   | "today"
   | "this_week"
-  | "next_days";
+  | "next_days"
+  /** dates only: start..due (a single date counts as one day) overlaps values[0]..values[1] */
+  | "overlaps";
 
 export type FilterField =
   | "status"
@@ -347,7 +349,9 @@ export type FilterField =
   | "dueDate"
   | "startDate"
   | "updatedAt"
-  | "isMilestone";
+  | "isMilestone"
+  /** The work package's whole date range; used by the calendar and team planner for the visible window. */
+  | "dates";
 
 export interface QueryFilter {
   field: FilterField;
@@ -404,12 +408,15 @@ export interface QueryResult {
   relations?: { fromNumber: number; toNumber: number; lag: number }[];
 }
 
+/** queries.view: list and Gantt share the work package views; calendars and team planners are their own lists. */
+export type ViewKind = "table" | "gantt" | "calendar" | "team_planner";
+
 export interface SavedQuery {
   id: Id;
   name: string;
   /** "default" views are built in and cannot be edited. */
   kind: "default" | "public" | "private";
-  view: "table" | "gantt";
+  view: ViewKind;
   spec: QuerySpec;
   favorite: boolean;
   projectId: Id | null;
