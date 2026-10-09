@@ -29,6 +29,7 @@ import { defaultSpec, runQuery } from "./query";
 import { DEFAULT_COLUMNS } from "./seed";
 import { fieldError, run } from "./util";
 import { activeFields, applyValues, fieldsInProjects, initialValues, toField } from "./custom-fields";
+import { accountApi, effectiveSetting } from "./notification-settings";
 import { adminApi, categoriesApi, projectExtras, versionsApi } from "./admin";
 
 /* ---------- plumbing ---------- */
@@ -89,8 +90,14 @@ function writeJournal(wp: DbWp, actor: DbUser, changes: DbJournal["changes"], no
   return j;
 }
 
-const REASON_RANK = ["mentioned", "assigned", "responsible", "watched"] as const;
+/** Strongest first: one notification per person, with the best reason they have. */
+const REASON_RANK = ["mentioned", "assigned", "responsible", "watched", "created", "commented", "status_changed", "priority_changed", "dates_changed"] as const;
 
+/**
+ * Who hears about a journal (architecture.md §3.6), within each person's notification settings (S20):
+ * mentions and watching always; assignee and responsible when switched on; and, for anyone in the project
+ * who asked for them, new items, comments and status / priority / date changes.
+ */
 function fanOut(wp: DbWp, journal: DbJournal, actor: DbUser, mentioned: string[] = []) {
   const project = projectOf(wp);
   const recipients = new Map<string, (typeof REASON_RANK)[number]>();
@@ -102,10 +109,25 @@ function fanOut(wp: DbWp, journal: DbJournal, actor: DbUser, mentioned: string[]
     const cur = recipients.get(userId);
     if (!cur || REASON_RANK.indexOf(reason) < REASON_RANK.indexOf(cur)) recipients.set(userId, reason);
   };
+  const setting = (userId: string) => effectiveSetting(userId, project.id);
   mentioned.forEach((id) => offer(id, "mentioned"));
-  offer(wp.assigneeId, "assigned");
-  offer(wp.responsibleId, "responsible");
+  if (wp.assigneeId && setting(wp.assigneeId).assignee) offer(wp.assigneeId, "assigned");
+  if (wp.responsibleId && setting(wp.responsibleId).responsible) offer(wp.responsibleId, "responsible");
   db.watchers.filter((x) => x.wpId === wp.id).forEach((x) => offer(x.userId, "watched"));
+  const c = journal.changes;
+  const events: [(typeof REASON_RANK)[number], keyof ReturnType<typeof setting>, boolean][] = [
+    ["created", "workPackageCreated", "_created" in c],
+    ["commented", "commented", !!journal.notesHtml],
+    ["status_changed", "statusChanged", "statusId" in c],
+    ["priority_changed", "priorityChanged", "priorityId" in c],
+    ["dates_changed", "datesChanged", "startDate" in c || "dueDate" in c],
+  ];
+  if (events.some(([, , happened]) => happened))
+    for (const userId of projectUserIds(project.id)) {
+      const s = setting(userId);
+      const hit = events.find(([, key, happened]) => happened && s[key]);
+      if (hit) offer(userId, hit[0]);
+    }
   for (const [recipientId, reason] of recipients) {
     const existing = db.notifications.find((n) => n.journalId === journal.id && n.recipientId === recipientId && !n.readAt);
     if (existing) {
@@ -317,6 +339,10 @@ const REASON_TEXT: Record<string, (actor: string) => string> = {
   responsible: (a) => `${a}님이 내가 책임자인 작업을 바꿨습니다`,
   watched: (a) => `${a}님이 주시 중인 작업을 바꿨습니다`,
   shared: (a) => `${a}님이 나에게 작업을 공유했습니다`,
+  commented: (a) => `${a}님이 코멘트를 남겼습니다`,
+  status_changed: (a) => `${a}님이 상태를 바꿨습니다`,
+  priority_changed: (a) => `${a}님이 우선순위를 바꿨습니다`,
+  dates_changed: (a) => `${a}님이 날짜를 바꿨습니다`,
   date_alert_due: () => "완료일이 다가옵니다",
   date_alert_start: () => "시작일이 다가옵니다",
   date_alert_overdue: () => "기한이 지났습니다",
@@ -338,6 +364,7 @@ function notificationSummary(n: (typeof db.notifications)[number], user: DbUser)
 /* ---------- the API ---------- */
 
 export const fakeApi: Api = {
+  account: accountApi,
   auth: {
     login: (email, password) =>
       run(() => {
@@ -709,8 +736,8 @@ export const fakeApi: Api = {
         }
         const s = { id: newId("sh"), wpId: wp.id, userId, role, createdBy: user.id, createdAt: nowIso() };
         db.shares.push(s);
-        // the one notification a share sends (reason "shared")
-        db.notifications.push({ id: newId("n"), recipientId: userId, wpId: wp.id, journalId: null, actorId: user.id, reason: "shared", readAt: null, createdAt: s.createdAt });
+        // the one notification a share sends (reason "shared"), unless that person switched it off
+        if (effectiveSetting(userId, project.id).shared) db.notifications.push({ id: newId("n"), recipientId: userId, wpId: wp.id, journalId: null, actorId: user.id, reason: "shared", readAt: null, createdAt: s.createdAt });
         return toShare(s);
       }),
     updateShare: (id, role) =>

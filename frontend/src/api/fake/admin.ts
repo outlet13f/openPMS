@@ -555,7 +555,7 @@ export const adminApi: Api["admin"] = {
         if (db.users.some((u) => u.email.toLowerCase() === email)) throw fieldError("email", "이미 등록된 이메일입니다.");
         const u: DbUser = {
           id: newId("u"), email, name: input.name.trim(), password: "", status: "invited", isAdmin: input.isAdmin, locale: "ko", timeZone: "Asia/Seoul",
-          prefs: { commentsNewestFirst: false, warnOnUnsaved: true, keyboardShortcuts: true }, createdAt: nowIso(), lastLoginAt: null,
+          prefs: { commentsNewestFirst: false, warnOnUnsaved: true, keyboardShortcuts: true, immediateOnMention: true, digestEnabled: true, digestTimes: ["08:00"], remindersPausedUntil: null }, createdAt: nowIso(), lastLoginAt: null,
         };
         db.users.push(u);
         return toUser(u);

@@ -18,7 +18,11 @@ public class NotificationTexts {
             "assigned", "%s님이 내가 담당한 작업을 바꿨습니다",
             "responsible", "%s님이 내가 책임자인 작업을 바꿨습니다",
             "watched", "%s님이 주시 중인 작업을 바꿨습니다",
-            "shared", "%s님이 나에게 작업을 공유했습니다");
+            "shared", "%s님이 나에게 작업을 공유했습니다",
+            "commented", "%s님이 코멘트를 남겼습니다",
+            "status_changed", "%s님이 상태를 바꿨습니다",
+            "priority_changed", "%s님이 우선순위를 바꿨습니다",
+            "dates_changed", "%s님이 날짜를 바꿨습니다");
 
     private final Journals journals;
 

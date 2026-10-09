@@ -124,7 +124,7 @@ public class AuthController {
         var ctx = current.ctx();
         var u = ctx.user();
         var p = db.selectFrom(USER_PREFERENCES).where(USER_PREFERENCES.USER_ID.eq(u.id())).fetchOne();
-        var prefs = p == null ? new Dto.Preferences(false, true, true) : new Dto.Preferences(p.getCommentsNewestFirst(), p.getWarnOnUnsaved(), p.getKeyboardShortcuts());
+        var prefs = com.openpms.notification.AccountController.preferences(p);
         return new Dto.Me(u.id(), u.name(), u.email(), u.status(), u.isAdmin(), u.locale(), u.timeZone(), ctx.globalPermissions(), prefs);
     }
 

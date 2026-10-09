@@ -31,6 +31,47 @@ export interface Preferences {
   commentsNewestFirst: boolean;
   warnOnUnsaved: boolean;
   keyboardShortcuts: boolean;
+  /** S20 이메일: mentions mailed right away (else they wait for the digest) */
+  immediateOnMention: boolean;
+  /** S20 이메일: the daily digest of unread notifications */
+  digestEnabled: boolean;
+  /** "HH:MM" in my time zone, 1–4 of them */
+  digestTimes: string[];
+  /** no date alerts up to and including this day */
+  remindersPausedUntil: IsoDate | null;
+}
+
+/* ---------- notification settings (S20) ---------- */
+
+/** Days before the date (0 = on the day); null = off. */
+export type AlertDays = 0 | 1 | 3 | 7;
+
+/**
+ * What I am notified about. Mentions and watched items always notify, so they have no switch.
+ * The non-participating events (created … datesChanged) cover every item I can see in the project.
+ */
+export interface NotificationSetting {
+  assignee: boolean;
+  responsible: boolean;
+  shared: boolean;
+  workPackageCreated: boolean;
+  commented: boolean;
+  statusChanged: boolean;
+  priorityChanged: boolean;
+  datesChanged: boolean;
+  startDateAlertDays: AlertDays | null;
+  dueDateAlertDays: AlertDays | null;
+  overdueAlert: boolean;
+}
+
+/** A project's own setting, used instead of my default for that project. */
+export interface ProjectNotificationSetting extends NotificationSetting {
+  project: ProjectRef;
+}
+
+export interface NotificationSettings {
+  default: NotificationSetting;
+  projects: ProjectNotificationSetting[];
 }
 
 export interface Me extends User {
@@ -562,6 +603,7 @@ export type NotificationReason =
   | "created"
   | "commented"
   | "status_changed"
+  | "priority_changed"
   | "dates_changed"
   | "date_alert_start"
   | "date_alert_due"

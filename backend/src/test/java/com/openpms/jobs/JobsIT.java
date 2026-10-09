@@ -96,6 +96,8 @@ class JobsIT {
 
     @Test
     void overdueOncePerDueDateAndANewDateGivesANewAlert() {
+        // overdue alerts are off by default (V7): 박준호 turns them on
+        db.insertInto(NOTIFICATION_SETTINGS).set(NOTIFICATION_SETTINGS.USER_ID, junho).set(NOTIFICATION_SETTINGS.OVERDUE_ALERT, true).execute();
         dates(LocalDate.of(2030, 1, 1), LocalDate.of(2030, 1, 8));
         alerts.run(Instant.parse("2030-01-10T01:00:00Z"));
         alerts.run(Instant.parse("2030-01-11T01:00:00Z"));

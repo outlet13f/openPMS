@@ -2,7 +2,7 @@
 // rules live in one place.
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { BoardKind, Id, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch } from "./types";
+import type { BoardKind, Id, NotificationSetting, Preferences, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch } from "./types";
 
 export const qk = {
   me: ["me"] as const,
@@ -44,6 +44,22 @@ export function invalidateWorkPackages(qc: QueryClient, number?: number) {
 /* ---------- session ---------- */
 
 export const useMe = () => useQuery({ queryKey: qk.me, queryFn: () => api.auth.me(), staleTime: 60_000 });
+
+export const useNotificationSettings = () => useQuery({ queryKey: ["me", "notification-settings"], queryFn: () => api.account.notificationSettings() });
+
+export function useAccountMutations() {
+  const qc = useQueryClient();
+  const settings = () => qc.invalidateQueries({ queryKey: ["me", "notification-settings"] });
+  return {
+    preferences: useMutation({ mutationFn: (p: Partial<Preferences>) => api.account.updatePreferences(p), onSuccess: () => qc.invalidateQueries({ queryKey: qk.me }) }),
+    saveDefault: useMutation({ mutationFn: (s: NotificationSetting) => api.account.saveDefaultNotificationSetting(s), onSuccess: settings }),
+    saveProject: useMutation({
+      mutationFn: ({ projectId, setting }: { projectId: Id; setting: NotificationSetting }) => api.account.saveProjectNotificationSetting(projectId, setting),
+      onSuccess: settings,
+    }),
+    removeProject: useMutation({ mutationFn: (projectId: Id) => api.account.removeProjectNotificationSetting(projectId), onSuccess: settings }),
+  };
+}
 
 /* ---------- projects ---------- */
 

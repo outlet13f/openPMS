@@ -32,8 +32,8 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class DateAlerts {
-    /** Used when someone has no settings row; the same as the column defaults (V4). */
-    public static final Setting DEFAULTS = new Setting(1, 1, true);
+    /** Used when someone has no settings row; the same as the column defaults (V4, V7). */
+    public static final Setting DEFAULTS = new Setting(1, 1, false);
 
     /** null days = off. */
     public record Setting(Integer startDays, Integer dueDays, boolean overdue) {}

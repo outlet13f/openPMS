@@ -19,7 +19,20 @@ public final class Dto {
 
     public record UserRef(UUID id, String name) {}
 
-    public record Preferences(boolean commentsNewestFirst, boolean warnOnUnsaved, boolean keyboardShortcuts) {}
+    /** digestTimes: "HH:MM" in the person's time zone; remindersPausedUntil: no date alerts up to that day */
+    public record Preferences(boolean commentsNewestFirst, boolean warnOnUnsaved, boolean keyboardShortcuts, boolean immediateOnMention,
+                              boolean digestEnabled, List<String> digestTimes, LocalDate remindersPausedUntil) {}
+
+    /** S20: what a person is notified about (mentions and watched items always). Alert days: 0, 1, 3, 7 or null (off). */
+    public record NotificationSetting(boolean assignee, boolean responsible, boolean shared, boolean workPackageCreated, boolean commented,
+                                      boolean statusChanged, boolean priorityChanged, boolean datesChanged, Integer startDateAlertDays,
+                                      Integer dueDateAlertDays, boolean overdueAlert) {}
+
+    public record ProjectNotificationSetting(ProjectRef project, boolean assignee, boolean responsible, boolean shared, boolean workPackageCreated,
+                                             boolean commented, boolean statusChanged, boolean priorityChanged, boolean datesChanged,
+                                             Integer startDateAlertDays, Integer dueDateAlertDays, boolean overdueAlert) {}
+
+    public record NotificationSettings(@JsonProperty("default") NotificationSetting defaultSetting, List<ProjectNotificationSetting> projects) {}
 
     public record Me(UUID id, String name, String email, String status, boolean isAdmin, String locale, String timeZone,
                      List<String> globalPermissions, Preferences preferences) {}

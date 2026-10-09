@@ -1,5 +1,9 @@
 import type {
   Attachment,
+  NotificationSetting,
+  NotificationSettings,
+  Preferences,
+  ProjectNotificationSetting,
   ShareRole,
   WorkPackageShare,
   AdminCustomField,
@@ -67,6 +71,20 @@ export interface Api {
     logout(): Promise<void>;
     /** GET /auth/me — null when not signed in (401). */
     me(): Promise<Me | null>;
+  };
+
+  /** My own settings (architecture.md §4.2 "/me"). */
+  account: {
+    /** PUT /me/preferences — only the given keys change */
+    updatePreferences(patch: Partial<Preferences>): Promise<Preferences>;
+    /** GET /me/notification-settings */
+    notificationSettings(): Promise<NotificationSettings>;
+    /** PUT /me/notification-settings/default */
+    saveDefaultNotificationSetting(setting: NotificationSetting): Promise<NotificationSetting>;
+    /** PUT /me/notification-settings/projects/{project} — creates or replaces that project's setting */
+    saveProjectNotificationSetting(projectId: Id, setting: NotificationSetting): Promise<ProjectNotificationSetting>;
+    /** DELETE /me/notification-settings/projects/{project} — the project follows my default again */
+    removeProjectNotificationSetting(projectId: Id): Promise<void>;
   };
 
   projects: {

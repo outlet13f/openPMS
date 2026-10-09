@@ -58,6 +58,13 @@ export const httpApi: Api = {
       }
     },
   },
+  account: {
+    updatePreferences: (p) => put("/me/preferences", p),
+    notificationSettings: () => get("/me/notification-settings"),
+    saveDefaultNotificationSetting: (s) => put("/me/notification-settings/default", s),
+    saveProjectNotificationSetting: (projectId, s) => put(`/me/notification-settings/projects/${projectId}`, s),
+    removeProjectNotificationSetting: (projectId) => del(`/me/notification-settings/projects/${projectId}`),
+  },
   projects: {
     list: (params) => get("/projects", { ...params }),
     get: (id) => get(`/projects/${encodeURIComponent(id)}`),

@@ -2,12 +2,12 @@ package com.openpms.wp;
 
 import static com.openpms.db.Tables.JOURNALS;
 import static com.openpms.db.Tables.NOTIFICATIONS;
-import static com.openpms.db.Tables.NOTIFICATION_SETTINGS;
 import static com.openpms.db.Tables.WATCHERS;
 import static com.openpms.db.Tables.WORK_PACKAGES;
 
 import com.openpms.api.Dto;
 import com.openpms.customfield.CustomFields;
+import com.openpms.notification.NotificationSettings;
 import com.openpms.common.Dates;
 import com.openpms.common.Html;
 import com.openpms.core.Ctx;
@@ -37,16 +37,20 @@ import tools.jackson.databind.json.JsonMapper;
 @Component
 public class Journals {
     public static final String CREATED = "_created";
-    private static final List<String> REASON_RANK = List.of("mentioned", "assigned", "responsible", "watched");
+    /** Strongest first: one notification per person, with the best reason they have. */
+    private static final List<String> REASON_RANK = List.of("mentioned", "assigned", "responsible", "watched", "created", "commented", "status_changed",
+            "priority_changed", "dates_changed");
 
     private final DSLContext db;
     private final JsonMapper json;
     private final CustomFields customFields;
+    private final NotificationSettings settings;
 
-    public Journals(DSLContext db, JsonMapper json, CustomFields customFields) {
+    public Journals(DSLContext db, JsonMapper json, CustomFields customFields, NotificationSettings settings) {
         this.db = db;
         this.json = json;
         this.customFields = customFields;
+        this.settings = settings;
     }
 
     public Map<String, List<Object>> changesOf(JournalsRecord j) {
@@ -100,7 +104,11 @@ public class Journals {
         return l;
     }
 
-    /** One notification per recipient, with the strongest reason: mentioned > assigned > responsible > watched. */
+    /**
+     * Who hears about a journal (architecture.md §3.6), within each person's notification settings (S20): mentions and
+     * watching always; assignee and responsible when switched on; and, for anyone in the project who asked for them,
+     * new items, comments and status / priority / date changes. One notification per person, strongest reason.
+     */
     public void fanOut(Ctx ctx, WorkPackagesRecord wp, JournalsRecord journal, List<UUID> mentioned) {
         var s = ctx.s();
         var project = s.project(wp.getProjectId()).orElseThrow();
@@ -113,10 +121,35 @@ public class Journals {
             var cur = recipients.get(userId);
             if (cur == null || REASON_RANK.indexOf(reason) < REASON_RANK.indexOf(cur)) recipients.put(userId, reason);
         };
+        var changes = changesOf(journal);
+        // the non-participating events this journal is about, in rank order
+        var events = new ArrayList<String>();
+        if (changes.containsKey(CREATED)) events.add("created");
+        if (!journal.getNotesHtml().isEmpty()) events.add("commented");
+        if (changes.containsKey("statusId")) events.add("status_changed");
+        if (changes.containsKey("priorityId")) events.add("priority_changed");
+        if (changes.containsKey("startDate") || changes.containsKey("dueDate")) events.add("dates_changed");
+        var people = new java.util.HashSet<UUID>();
+        if (wp.getAssigneeId() != null) people.add(wp.getAssigneeId());
+        if (wp.getResponsibleId() != null) people.add(wp.getResponsibleId());
+        var members = events.isEmpty() ? List.<UUID>of() : s.projectUsers(project.id()).stream().map(Snapshot.UserRow::id).toList();
+        people.addAll(members);
+        var effective = settings.effective(project.id(), people);
+
         mentioned.forEach(id -> offer.accept(id, "mentioned"));
-        offer.accept(wp.getAssigneeId(), "assigned");
-        offer.accept(wp.getResponsibleId(), "responsible");
+        if (wp.getAssigneeId() != null && effective.get(wp.getAssigneeId()).assignee()) offer.accept(wp.getAssigneeId(), "assigned");
+        if (wp.getResponsibleId() != null && effective.get(wp.getResponsibleId()).responsible()) offer.accept(wp.getResponsibleId(), "responsible");
         db.select(WATCHERS.USER_ID).from(WATCHERS).where(WATCHERS.WORK_PACKAGE_ID.eq(wp.getId())).fetch(WATCHERS.USER_ID).forEach(id -> offer.accept(id, "watched"));
+        for (var userId : members) {
+            var st = effective.get(userId);
+            events.stream().filter(e -> switch (e) {
+                case "created" -> st.workPackageCreated();
+                case "commented" -> st.commented();
+                case "status_changed" -> st.statusChanged();
+                case "priority_changed" -> st.priorityChanged();
+                default -> st.datesChanged();
+            }).findFirst().ifPresent(e -> offer.accept(userId, e));
+        }
         recipients.forEach((recipientId, reason) -> {
             int touched = db.update(NOTIFICATIONS).set(NOTIFICATIONS.CREATED_AT, journal.getUpdatedAt())
                     .where(NOTIFICATIONS.JOURNAL_ID.eq(journal.getId()), NOTIFICATIONS.RECIPIENT_ID.eq(recipientId), NOTIFICATIONS.READ_AT.isNull()).execute();
@@ -134,11 +167,7 @@ public class Journals {
      * their notification settings (the project row wins over the personal default; no row means on).
      */
     public void notifyShared(Ctx ctx, WorkPackagesRecord wp, UUID recipientId) {
-        var settings = db.select(NOTIFICATION_SETTINGS.PROJECT_ID, NOTIFICATION_SETTINGS.SHARED).from(NOTIFICATION_SETTINGS)
-                .where(NOTIFICATION_SETTINGS.USER_ID.eq(recipientId), NOTIFICATION_SETTINGS.PROJECT_ID.isNull().or(NOTIFICATION_SETTINGS.PROJECT_ID.eq(wp.getProjectId())))
-                .fetch();
-        var own = settings.stream().filter(r -> r.value1() != null).findFirst().or(() -> settings.stream().findFirst());
-        if (own.isPresent() && !own.get().value2()) return;
+        if (!settings.effective(wp.getProjectId(), recipientId).shared()) return;
         db.insertInto(NOTIFICATIONS)
                 .set(NOTIFICATIONS.RECIPIENT_ID, recipientId).set(NOTIFICATIONS.WORK_PACKAGE_ID, wp.getId()).set(NOTIFICATIONS.PROJECT_ID, wp.getProjectId())
                 .set(NOTIFICATIONS.ACTOR_ID, ctx.userId()).set(NOTIFICATIONS.REASON, "shared")
