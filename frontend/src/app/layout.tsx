@@ -19,6 +19,7 @@ import {
   UserRound,
   Users,
   CalendarRange,
+  PanelLeftOpen,
 } from "lucide-react";
 import type { Me, Project } from "@/api";
 import { API_MODE } from "@/api";
@@ -26,7 +27,7 @@ import { resetFakeDb } from "@/api/fake";
 import { queryClient } from "./providers";
 import { useProject, useProjects, useSavedQueries, useUnreadCount } from "@/api/hooks";
 import { AppHeader, Sidebar, SidebarDrawer, type SidebarSection } from "@/components/shell/app-shell";
-import { Menu, type MenuEntry } from "@/components/ui/overlay";
+import { Menu, Tooltip, type MenuEntry } from "@/components/ui/overlay";
 import { Input } from "@/components/ui/field";
 import { Counter } from "@/components/ui/badges";
 import { useLogout } from "./auth";
@@ -36,7 +37,7 @@ import { ADMIN_SECTIONS } from "@/pages/admin";
 
 /* ---------- sidebars ---------- */
 
-function GlobalSidebar({ me, onNavigate, unread }: { me: Me; onNavigate?: () => void; unread: number }) {
+function GlobalSidebar({ me, onNavigate, unread, onCollapse }: { me: Me; onNavigate?: () => void; unread: number; onCollapse?: () => void }) {
   const { t } = useTranslation();
   const sections: SidebarSection[] = [
     {
@@ -51,7 +52,7 @@ function GlobalSidebar({ me, onNavigate, unread }: { me: Me; onNavigate?: () => 
     },
   ];
   if (me.isAdmin) sections.push({ items: [{ label: t("nav.admin"), to: "/admin", icon: <Shield /> }] });
-  return <Sidebar label={t("nav.globalMenu")} sections={sections} onNavigate={onNavigate} />;
+  return <Sidebar label={t("nav.globalMenu")} sections={sections} onNavigate={onNavigate} onCollapse={onCollapse} />;
 }
 
 function ProjectSwitcher({ project }: { project: Project }) {
@@ -79,7 +80,7 @@ function ProjectSwitcher({ project }: { project: Project }) {
   );
 }
 
-function WorkPackageViewsNav({ project, base, onNavigate }: { project: Project; base: string; onNavigate?: () => void }) {
+function WorkPackageViewsNav({ project, base, onNavigate, onCollapse }: { project: Project; base: string; onNavigate?: () => void; onCollapse?: () => void }) {
   const { t } = useTranslation();
   const [params] = useSearchParams();
   const views = useSavedQueries(project.id);
@@ -98,6 +99,7 @@ function WorkPackageViewsNav({ project, base, onNavigate }: { project: Project; 
     <Sidebar
       label={t("nav.projectMenu")}
       onNavigate={onNavigate}
+      onCollapse={onCollapse}
       header={
         <div className="flex flex-col gap-2">
           <Link to={`/projects/${project.identifier}`} onClick={onNavigate} className="inline-flex h-8 items-center gap-2 rounded-md px-2 text-sm text-fg hover:bg-surface-hover">
@@ -115,7 +117,7 @@ function WorkPackageViewsNav({ project, base, onNavigate }: { project: Project; 
   );
 }
 
-function ProjectSidebar({ identifier, onNavigate }: { identifier: string; onNavigate?: () => void }) {
+function ProjectSidebar({ identifier, onNavigate, onCollapse }: { identifier: string; onNavigate?: () => void; onCollapse?: () => void }) {
   const { t } = useTranslation();
   const project = useProject(identifier);
   const inViews = useMatch("/projects/:p/work-packages/*");
@@ -123,8 +125,8 @@ function ProjectSidebar({ identifier, onNavigate }: { identifier: string; onNavi
   if (!project.data) return <Sidebar label={t("nav.projectMenu")} sections={[]} />;
   const p = project.data;
   const base = `/projects/${p.identifier}`;
-  if (inViews && !/\/work-packages\/\d+/.test(inViews.pathname)) return <WorkPackageViewsNav project={p} base={`${base}/work-packages`} onNavigate={onNavigate} />;
-  if (inGanttViews) return <WorkPackageViewsNav project={p} base={`${base}/gantt`} onNavigate={onNavigate} />;
+  if (inViews && !/\/work-packages\/\d+/.test(inViews.pathname)) return <WorkPackageViewsNav project={p} base={`${base}/work-packages`} onNavigate={onNavigate} onCollapse={onCollapse} />;
+  if (inGanttViews) return <WorkPackageViewsNav project={p} base={`${base}/gantt`} onNavigate={onNavigate} onCollapse={onCollapse} />;
   const mod = (m: Project["enabledModules"][number]) => p.enabledModules.includes(m);
   const items = [
     { label: t("nav.overview"), to: base, icon: <LayoutDashboard />, end: true },
@@ -136,10 +138,10 @@ function ProjectSidebar({ identifier, onNavigate }: { identifier: string; onNavi
     can(p, "project.view_members") && { label: t("nav.members"), to: `${base}/members`, icon: <Users /> },
     can(p, "project.edit") && { label: t("nav.settings"), to: `${base}/settings/general`, icon: <Settings /> },
   ].filter(Boolean) as SidebarSection["items"];
-  return <Sidebar label={t("nav.projectMenu")} header={<ProjectSwitcher project={p} />} sections={[{ items }]} onNavigate={onNavigate} />;
+  return <Sidebar label={t("nav.projectMenu")} header={<ProjectSwitcher project={p} />} sections={[{ items }]} onNavigate={onNavigate} onCollapse={onCollapse} />;
 }
 
-function AdminSidebar({ me, onNavigate }: { me: Me; onNavigate?: () => void }) {
+function AdminSidebar({ me, onNavigate, onCollapse }: { me: Me; onNavigate?: () => void; onCollapse?: () => void }) {
   const { t } = useTranslation();
   const groups: { title: string; keys: string[] }[] = [
     { title: t("admin.groupTitles.workPackages"), keys: ["types", "statuses", "workflows", "priorities"] },
@@ -151,6 +153,7 @@ function AdminSidebar({ me, onNavigate }: { me: Me; onNavigate?: () => void }) {
     <Sidebar
       label={t("nav.admin")}
       onNavigate={onNavigate}
+      onCollapse={onCollapse}
       header={
         <Link to="/" onClick={onNavigate} className="inline-flex h-8 items-center gap-2 rounded-md px-2 text-sm text-fg hover:bg-surface-hover">
           <ArrowLeft className="size-4 text-fg-muted" aria-hidden="true" />
@@ -176,6 +179,22 @@ export function AppLayout({ me }: { me: Me }) {
   const location = useLocation();
   const logout = useLogout();
   const [drawer, setDrawer] = useState(false);
+  // Desktop sidebar can be collapsed to a thin rail; remembered per browser (a convenience, not data).
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("openpms.sidebarCollapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setCollapsedSaved = (v: boolean) => {
+    setCollapsed(v);
+    try {
+      localStorage.setItem("openpms.sidebarCollapsed", v ? "1" : "0");
+    } catch {
+      /* storage unavailable */
+    }
+  };
   const unread = useUnreadCount(true).data ?? 0;
   const projectMatch = useMatch("/projects/:p/*");
   const identifier = projectMatch && projectMatch.params.p !== "new" ? projectMatch.params.p : undefined;
@@ -195,14 +214,24 @@ export function AppLayout({ me }: { me: Me }) {
   }, [pageKey]);
 
   const inAdmin = !!useMatch("/admin/*");
-  const sidebar = (close?: () => void) =>
+  const sidebar = (close?: () => void, onCollapse?: () => void) =>
     identifier ? (
-      <ProjectSidebar identifier={identifier} onNavigate={close} />
+      <ProjectSidebar identifier={identifier} onNavigate={close} onCollapse={onCollapse} />
     ) : inAdmin ? (
-      <AdminSidebar me={me} onNavigate={close} />
+      <AdminSidebar me={me} onNavigate={close} onCollapse={onCollapse} />
     ) : (
-      <GlobalSidebar me={me} onNavigate={close} unread={unread} />
+      <GlobalSidebar me={me} onNavigate={close} unread={unread} onCollapse={onCollapse} />
     );
+
+  const moduleItems: MenuEntry[] = [
+    { label: t("nav.home"), icon: <Home />, onSelect: () => navigate("/") },
+    { label: t("nav.myPage"), icon: <UserRound />, onSelect: () => navigate("/my/page") },
+    { label: t("nav.projects"), icon: <FolderKanban />, onSelect: () => navigate("/projects") },
+    { label: t("nav.workPackages"), icon: <ListTodo />, onSelect: () => navigate("/work-packages") },
+    { label: t("nav.gantt"), icon: <GanttChart />, onSelect: () => navigate("/gantt") },
+    { label: t("nav.notifications"), icon: <Bell />, onSelect: () => navigate("/notifications") },
+    ...(me.isAdmin ? [{ kind: "separator" as const }, { label: t("nav.admin"), icon: <Shield />, onSelect: () => navigate("/admin") }] : []),
+  ];
 
   const quickAdd = useMemo<MenuEntry[]>(() => {
     const items: MenuEntry[] = [];
@@ -230,10 +259,26 @@ export function AppLayout({ me }: { me: Me }) {
         quickAddItems={quickAdd}
         accountItems={accountItems}
         helpItems={[{ label: t("nav.designSystem"), icon: <Palette />, onSelect: () => navigate("/design") }]}
+        moduleItems={moduleItems}
         onOpenMenu={() => setDrawer(true)}
       />
       <div className="flex min-h-0 flex-1">
-        <div className="sticky top-header hidden h-[calc(100dvh-var(--pms-layout-header-h))] lg:flex">{sidebar()}</div>
+        {collapsed ? (
+          <div className="sticky top-header hidden h-[calc(100dvh-var(--pms-layout-header-h))] w-12 shrink-0 flex-col items-center border-r border-border-muted py-3 lg:flex">
+            <Tooltip content={t("nav.expand")} side="right">
+              <button
+                type="button"
+                onClick={() => setCollapsedSaved(false)}
+                aria-label={t("nav.expand")}
+                className="inline-flex size-8 items-center justify-center rounded-md text-fg-muted hover:bg-surface-hover hover:text-fg"
+              >
+                <PanelLeftOpen className="size-4" />
+              </button>
+            </Tooltip>
+          </div>
+        ) : (
+          <div className="sticky top-header hidden h-[calc(100dvh-var(--pms-layout-header-h))] lg:flex">{sidebar(undefined, () => setCollapsedSaved(true))}</div>
+        )}
         <SidebarDrawer open={drawer} onOpenChange={setDrawer} title={identifier ? t("nav.projectMenu") : t("nav.globalMenu")}>
           {sidebar(() => setDrawer(false))}
         </SidebarDrawer>

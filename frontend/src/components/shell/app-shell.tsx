@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, NavLink } from "react-router";
 import { Dialog as D } from "radix-ui";
-import { Bell, ChevronDown, CircleHelp, Menu as MenuIcon, Plus, X } from "lucide-react";
+import { Bell, ChevronDown, CircleHelp, LayoutGrid, Menu as MenuIcon, PanelLeftClose, Plus, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/cn";
 import { Avatar } from "@/components/ui/avatar";
@@ -19,6 +19,7 @@ export function AppHeader({
   quickAddItems,
   accountItems,
   helpItems,
+  moduleItems,
   onOpenMenu,
   notificationsHref = "/notifications",
 }: {
@@ -28,6 +29,8 @@ export function AppHeader({
   quickAddItems?: MenuEntry[];
   accountItems?: MenuEntry[];
   helpItems?: MenuEntry[];
+  /** Global modules (grid button); desktop only — phones use the drawer. */
+  moduleItems?: MenuEntry[];
   onOpenMenu?: () => void;
   notificationsHref?: string;
 }) {
@@ -41,6 +44,19 @@ export function AppHeader({
         <button type="button" className={cn(headerBtn, "lg:hidden")} aria-label={t("nav.openMenu")} onClick={onOpenMenu}>
           <MenuIcon />
         </button>
+      )}
+      {moduleItems && moduleItems.length > 0 && (
+        <span className="hidden lg:inline-flex">
+          <Menu
+            width="w-60"
+            trigger={
+              <button type="button" className={headerBtn} aria-label={t("nav.modules")}>
+                <LayoutGrid />
+              </button>
+            }
+            items={moduleItems}
+          />
+        </span>
       )}
       <Link to="/" className="mr-2 inline-flex h-8 items-center gap-2 rounded-md px-1 font-bold tracking-tight hover:bg-header-hover focus-visible:outline-header-fg">
         {/* Wordmark placeholder: the real logo comes from /replica-brand */}
@@ -128,6 +144,7 @@ export function Sidebar({
   sections,
   footer,
   onNavigate,
+  onCollapse,
   className,
 }: {
   label: string;
@@ -135,8 +152,11 @@ export function Sidebar({
   sections: SidebarSection[];
   footer?: ReactNode;
   onNavigate?: () => void;
+  /** Desktop only: shows a "메뉴 접기" button at the bottom. */
+  onCollapse?: () => void;
   className?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <nav aria-label={label} className={cn("flex w-sidebar shrink-0 flex-col border-r border-border-muted bg-bg", className)}>
       {header && <div className="border-b border-border-muted p-3">{header}</div>}
@@ -165,6 +185,18 @@ export function Sidebar({
         ))}
       </div>
       {footer && <div className="border-t border-border-muted p-3">{footer}</div>}
+      {onCollapse && (
+        <div className="hidden border-t border-border-muted p-2 lg:block">
+          <button
+            type="button"
+            onClick={onCollapse}
+            className="inline-flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-sm text-fg-muted hover:bg-surface-hover hover:text-fg [&_svg]:size-4"
+          >
+            <PanelLeftClose aria-hidden="true" />
+            {t("nav.collapse")}
+          </button>
+        </div>
+      )}
     </nav>
   );
 }
