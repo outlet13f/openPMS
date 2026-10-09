@@ -45,3 +45,12 @@
     outline-offset: 2px;
   }
 }
+
+/* Rich text editor (Tiptap): placeholder on the empty first paragraph */
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--pms-color-text-muted);
+}

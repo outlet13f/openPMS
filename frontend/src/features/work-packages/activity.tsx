@@ -1,6 +1,6 @@
 // Activity tab (components.md "ActivityStream"): journal entries and comments with @mentions.
-// partial: plain-text comment box with a mention picker instead of the Tiptap rich text editor.
-import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+// Comments are written in the rich text editor (Tiptap) with @mentions; Ctrl+Enter sends.
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MessageSquare, Pencil, Send } from "lucide-react";
 import type { Journal, UserRef, WorkPackage } from "@/api";
@@ -12,9 +12,7 @@ import { EmptyState } from "@/components/ui/feedback";
 import { Skeleton } from "@/components/ui/spinner";
 import { RichText } from "@/components/domain/rich-text";
 import { formatDateTime, relativeTime } from "@/lib/dates";
-import { htmlToText, textToHtml } from "@/lib/text";
-import { Textarea } from "@/components/ui/field";
-import { cn } from "@/lib/cn";
+import { RichTextEditor } from "@/components/domain/rich-text-editor";
 import { ErrorState } from "@/app/page";
 
 function Entry({ j, wpNumber, people }: { j: Journal; wpNumber: number; people: UserRef[] }) {
@@ -25,9 +23,9 @@ function Entry({ j, wpNumber, people }: { j: Journal; wpNumber: number; people: 
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const saveEdit = async () => {
-    if (!draft.trim()) return setError(t("activity.commentEmpty"));
+    if (!draft) return setError(t("activity.commentEmpty"));
     try {
-      await edit.mutateAsync({ journalId: j.id, bodyHtml: textToHtml(draft, people) });
+      await edit.mutateAsync({ journalId: j.id, bodyHtml: draft });
       setEditing(false);
       setError(null);
     } catch (e) {
@@ -52,7 +50,7 @@ function Entry({ j, wpNumber, people }: { j: Journal; wpNumber: number; people: 
               className="ml-1 align-middle"
               aria-label={t("activity.editComment")}
               icon={<Pencil />}
-              onClick={() => (setDraft(htmlToText(j.notesHtml)), setEditing(true))}
+              onClick={() => (setDraft(j.notesHtml), setEditing(true))}
             />
           )}
         </p>
@@ -80,20 +78,15 @@ function Entry({ j, wpNumber, people }: { j: Journal; wpNumber: number; people: 
         {j.notesHtml && !editing && <RichText html={j.notesHtml} className="mt-1.5 rounded-md bg-surface px-3 py-2" />}
         {editing && (
           <div className="mt-1.5 flex flex-col gap-2">
-            <label htmlFor={`edit-${j.id}`} className="sr-only">
-              {t("activity.editComment")}
-            </label>
-            <Textarea
-              id={`edit-${j.id}`}
-              rows={3}
+            <RichTextEditor
+              value={j.notesHtml}
+              onChange={setDraft}
+              label={t("activity.editComment")}
+              people={people}
               autoFocus
-              value={draft}
-              aria-invalid={!!error}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") setEditing(false);
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void saveEdit();
-              }}
+              invalid={!!error}
+              onSubmit={() => void saveEdit()}
+              onCancel={() => setEditing(false)}
             />
             {error && <p className="text-xs text-danger">{error}</p>}
             <div className="flex justify-end gap-2">
@@ -115,112 +108,35 @@ function CommentBox({ wp }: { wp: WorkPackage }) {
   const { t } = useTranslation();
   const people = useFilterOptions(wp.project.id).data?.users ?? [];
   const comment = useComment(wp.number);
-  const [text, setText] = useState("");
+  const [html, setHtml] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [caret, setCaret] = useState(0);
-  const [active, setActive] = useState(0);
-  const [dismissed, setDismissed] = useState(false);
-  const ref = useRef<HTMLTextAreaElement>(null);
-
-  // "@이" right before the caret → suggest members whose name contains "이"
-  const query = useMemo(() => {
-    if (dismissed) return null;
-    const m = text.slice(0, caret).match(/(?:^|\s)@([^\s@]{0,20})$/);
-    return m ? m[1] : null;
-  }, [text, caret, dismissed]);
-  const matches = query === null ? [] : people.filter((p) => p.name.toLowerCase().includes(query.toLowerCase())).slice(0, 6);
-
-  // Where the caret goes after a mention is inserted. Applied in a layout effect, i.e. in the same task as the
-  // click, so keys typed right after picking a name cannot land before the caret moves (they used to, a frame late).
-  const pendingCaret = useRef<number | null>(null);
-  useLayoutEffect(() => {
-    const at = pendingCaret.current;
-    if (at === null || !ref.current) return;
-    pendingCaret.current = null;
-    ref.current.focus();
-    ref.current.setSelectionRange(at, at);
-  }, [text]);
-
-  const insert = (name: string) => {
-    const before = text.slice(0, caret).replace(/@([^\s@]{0,20})$/, `@${name} `);
-    const next = before + text.slice(caret);
-    pendingCaret.current = before.length;
-    setText(next);
-    setCaret(before.length);
-    setActive(0);
-  };
+  const [round, setRound] = useState(0); // a fresh, empty editor after each comment
 
   const submit = async () => {
-    if (!text.trim()) {
-      setError(t("activity.commentEmpty"));
-      ref.current?.focus();
-      return;
-    }
+    if (!html) return setError(t("activity.commentEmpty"));
     try {
-      await comment.mutateAsync(textToHtml(text, people));
-      setText("");
+      await comment.mutateAsync(html);
+      setHtml("");
       setError(null);
+      setRound((r) => r + 1);
     } catch (e) {
       setError(isApiError(e) ? e.message : t("app.errorBody"));
     }
   };
 
-  const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (matches.length) {
-      if (e.key === "ArrowDown") return (e.preventDefault(), setActive((a) => (a + 1) % matches.length));
-      if (e.key === "ArrowUp") return (e.preventDefault(), setActive((a) => (a - 1 + matches.length) % matches.length));
-      if (e.key === "Enter" || e.key === "Tab") return (e.preventDefault(), insert(matches[active].name));
-      if (e.key === "Escape") return (e.preventDefault(), setDismissed(true));
-    }
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      void submit();
-    }
-  };
-
   return (
     <div className="relative mt-2 border-t border-border-muted pt-3">
-      <label htmlFor={`comment-${wp.number}`} className="sr-only">
-        {t("activity.commentLabel")}
-      </label>
-      <textarea
-        id={`comment-${wp.number}`}
-        ref={ref}
-        rows={3}
-        value={text}
+      <RichTextEditor
+        key={round}
+        value=""
+        onChange={(v) => (setHtml(v), error && setError(null))}
+        label={t("activity.commentLabel")}
         placeholder={t("activity.commentPlaceholder")}
-        aria-invalid={!!error}
-        aria-describedby={error ? `comment-${wp.number}-err` : undefined}
-        aria-autocomplete="list"
-        aria-controls={matches.length ? `mention-${wp.number}` : undefined}
-        aria-activedescendant={matches.length ? `mention-${wp.number}-${active}` : undefined}
-        onChange={(e) => (setText(e.target.value), setCaret(e.target.selectionStart ?? 0), setActive(0), setDismissed(false))}
-        onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
-        onKeyDown={onKey}
-        className="w-full rounded-md border border-border-input bg-bg px-2.5 py-2 text-sm text-fg placeholder:text-fg-muted focus-visible:border-focus-ring focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-focus-ring aria-invalid:border-danger"
+        people={people}
+        onSubmit={() => void submit()}
+        invalid={!!error}
       />
-      {matches.length > 0 && (
-        <ul id={`mention-${wp.number}`} role="listbox" aria-label={t("activity.mentionHint")} className="absolute bottom-full left-0 z-(--pms-z-dropdown) mb-1 w-60 rounded-lg border border-border bg-bg p-1 shadow-pop">
-          {matches.map((p, i) => (
-            <li
-              key={p.id}
-              id={`mention-${wp.number}-${i}`}
-              role="option"
-              aria-selected={i === active}
-              onMouseDown={(e) => (e.preventDefault(), insert(p.name))}
-              className={cn("flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm", i === active && "bg-surface-hover")}
-            >
-              <Avatar id={p.id} name={p.name} size="xs" />
-              {p.name}
-            </li>
-          ))}
-        </ul>
-      )}
-      {error && (
-        <p id={`comment-${wp.number}-err`} className="mt-1 text-xs text-danger">
-          {error}
-        </p>
-      )}
+      {error && <p className="mt-1 text-xs text-danger">{error}</p>}
       <div className="mt-2 flex justify-end">
         <Button variant="primary" size="sm" icon={<Send />} loading={comment.isPending} onClick={() => void submit()}>
           {t("activity.commentSubmit")}

@@ -6,12 +6,12 @@ import { X } from "lucide-react";
 import { isApiError, type WorkPackageInput } from "@/api";
 import { useCreateWorkPackage, useWorkPackage, useWpForm } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Textarea } from "@/components/ui/field";
+import { Field, Input } from "@/components/ui/field";
 import { Banner, useToast } from "@/components/ui/feedback";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/spinner";
 import { TypeLabel } from "@/components/ui/badges";
-import { textToHtml } from "@/lib/text";
+import { RichTextEditor } from "@/components/domain/rich-text-editor";
 import { ErrorState, NotFound, useDocumentTitle } from "@/app/page";
 import { useCurrentProject } from "@/app/project";
 import { WorkPackageDetail, type DetailTab } from "@/features/work-packages/detail";
@@ -115,7 +115,7 @@ export function NewPanelRoute({ base: hostBase }: { base?: string } = {}) {
       const wp = await create.mutateAsync({
         typeId: f.type.id,
         subject: v.subject ?? "",
-        descriptionHtml: textToHtml(v.description),
+        descriptionHtml: v.description,
         statusId: v.statusId || f.defaults.statusId,
         priorityId: v.priorityId || f.defaults.priorityId,
         assigneeId: v.assigneeId ?? null,
@@ -156,7 +156,7 @@ export function NewPanelRoute({ base: hostBase }: { base?: string } = {}) {
             <Input id="nw-subject" autoFocus maxLength={255} value={v.subject ?? ""} onChange={(e) => set("subject", e.target.value)} />
           </Field>
           <Field label={t("wp.fields.description")}>
-            <Textarea rows={5} value={v.description} onChange={(e) => set("description", e.target.value)} />
+            <RichTextEditor value="" onChange={(html) => set("description", html)} label={t("wp.fields.description")} minRows={4} />
           </Field>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label={t("wp.fields.status")}>

@@ -7,7 +7,6 @@ import type { WorkPackage } from "@/api";
 import { useDeleteWorkPackage, useWatch, useWorkPackage } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/choice";
-import { Textarea } from "@/components/ui/field";
 import { Banner, useToast } from "@/components/ui/feedback";
 import { Dialog, Menu, Tooltip } from "@/components/ui/overlay";
 import { Skeleton } from "@/components/ui/spinner";
@@ -16,7 +15,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { RichText } from "@/components/domain/rich-text";
 import { FilesTab } from "./files";
 import { formatDate, relativeTime } from "@/lib/dates";
-import { htmlToText, textToHtml } from "@/lib/text";
+import { RichTextEditor } from "@/components/domain/rich-text-editor";
 import { cn } from "@/lib/cn";
 import { ErrorState, useDocumentTitle } from "@/app/page";
 import { Attributes } from "./attributes";
@@ -38,15 +37,20 @@ function Description({ wp }: { wp: WorkPackage }) {
   if (editing)
     return (
       <div className="flex flex-col gap-2">
-        <label htmlFor={`desc-${wp.number}`} className="sr-only">
-          {t("wp.fields.description")}
-        </label>
-        <Textarea id={`desc-${wp.number}`} rows={6} autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setEditing(false)} />
+        <RichTextEditor
+          value={wp.descriptionHtml}
+          onChange={setDraft}
+          label={t("wp.fields.description")}
+          autoFocus
+          minRows={5}
+          onSubmit={async () => (await save(wp, { descriptionHtml: draft })) && setEditing(false)}
+          onCancel={() => setEditing(false)}
+        />
         <div className="flex justify-end gap-2">
           <Button size="sm" onClick={() => setEditing(false)}>
             {t("app.cancel")}
           </Button>
-          <Button size="sm" variant="primary" loading={isPending} onClick={async () => (await save(wp, { descriptionHtml: textToHtml(draft) })) && setEditing(false)}>
+          <Button size="sm" variant="primary" loading={isPending} onClick={async () => (await save(wp, { descriptionHtml: draft })) && setEditing(false)}>
             {t("app.save")}
           </Button>
         </div>
@@ -69,7 +73,7 @@ function Description({ wp }: { wp: WorkPackage }) {
           className="absolute -top-1 right-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
           aria-label={`${t("wp.fields.description")} ${t("app.edit")}`}
           icon={<Pencil />}
-          onClick={() => (setDraft(htmlToText(wp.descriptionHtml)), setEditing(true))}
+          onClick={() => (setDraft(wp.descriptionHtml), setEditing(true))}
         />
       )}
     </div>

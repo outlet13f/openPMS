@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { cn } from "@/lib/cn";
 
 const ALLOWED: Record<string, string[]> = {
-  P: [], BR: [], STRONG: [], B: [], EM: [], I: [], S: [], CODE: [], PRE: [], UL: [], OL: [], LI: [], BLOCKQUOTE: [],
+  P: [], BR: [], STRONG: [], B: [], EM: [], I: [], U: [], S: [], CODE: [], PRE: [], UL: [], OL: [], LI: [], BLOCKQUOTE: [],
   A: ["href"], SPAN: ["class", "data-user-id"], H3: [], H4: [],
 };
 
@@ -33,19 +33,21 @@ export function sanitizeHtml(html: string): string {
   return doc.body.innerHTML;
 }
 
+/** Typography for stored HTML; the editor uses the same so editing looks like reading. */
+export const richTextClasses = cn(
+  "text-sm leading-6 text-fg break-words",
+  "[&_p+p]:mt-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5",
+  "[&_a]:text-accent [&_a]:underline [&_code]:rounded-sm [&_code]:bg-surface-sunken [&_code]:px-1 [&_code]:font-mono [&_code]:text-[0.9em]",
+  "[&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-surface-sunken [&_pre]:p-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0",
+  "[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-fg-muted",
+  "[&_.mention]:rounded-sm [&_.mention]:bg-accent-subtle [&_.mention]:px-0.5 [&_.mention]:font-medium [&_.mention]:text-accent-subtle-text",
+);
+
 export function RichText({ html, className }: { html: string; className?: string }) {
   const safe = useMemo(() => sanitizeHtml(html), [html]);
   return (
     <div
-      className={cn(
-        "text-sm leading-6 text-fg break-words",
-        "[&_p+p]:mt-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5",
-        "[&_a]:text-accent [&_a]:underline [&_code]:rounded-sm [&_code]:bg-surface-sunken [&_code]:px-1 [&_code]:font-mono [&_code]:text-[0.9em]",
-        "[&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-surface-sunken [&_pre]:p-3",
-        "[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-fg-muted",
-        "[&_.mention]:rounded-sm [&_.mention]:bg-accent-subtle [&_.mention]:px-0.5 [&_.mention]:font-medium [&_.mention]:text-accent-subtle-text",
-        className,
-      )}
+      className={cn(richTextClasses, className)}
       dangerouslySetInnerHTML={{ __html: safe }}
     />
   );
