@@ -5,6 +5,7 @@ import type { Db, DbJournal, DbWp } from "./db";
 import type { CustomField, QuerySpec } from "../types";
 
 const P_MANAGER = [
+  "wp.share",
   "project.view", "project.edit", "project.archive", "project.manage_modules", "project.manage_members",
   "project.view_members", "project.manage_versions", "project.manage_categories", "project.manage_types",
   "project.manage_custom_fields",
@@ -297,6 +298,7 @@ export function buildSeed(schema: number): Db {
     notifications,
     projectFavorites: [{ userId: "u-seoyeon", projectId: "p-web" }],
     attachments: [],
+    shares: [],
     customFields,
     projectCustomFields: [
       { projectId: "p-web", customFieldId: "cf-client" },

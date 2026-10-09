@@ -22,6 +22,7 @@ import com.openpms.db.tables.Types.TypesPath;
 import com.openpms.db.tables.Users.UsersPath;
 import com.openpms.db.tables.Versions.VersionsPath;
 import com.openpms.db.tables.Watchers.WatchersPath;
+import com.openpms.db.tables.WorkPackageShares.WorkPackageSharesPath;
 import com.openpms.db.tables.records.WorkPackagesRecord;
 
 import java.math.BigDecimal;
@@ -550,6 +551,19 @@ public class WorkPackages extends TableImpl<WorkPackagesRecord> {
         return _watchers;
     }
 
+    private transient WorkPackageSharesPath _workPackageShares;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.work_package_shares</code> table
+     */
+    public WorkPackageSharesPath workPackageShares() {
+        if (_workPackageShares == null)
+            _workPackageShares = new WorkPackageSharesPath(this, null, Keys.WORK_PACKAGE_SHARES__WORK_PACKAGE_SHARES_WORK_PACKAGE_ID_FKEY.getInverseKey());
+
+        return _workPackageShares;
+    }
+
     /**
      * Get the implicit many-to-many join path to the <code>public.boards</code>
      * table
@@ -560,10 +574,18 @@ public class WorkPackages extends TableImpl<WorkPackagesRecord> {
 
     /**
      * Get the implicit many-to-many join path to the <code>public.users</code>
-     * table
+     * table, via the <code>watchers_user_id_fkey</code> key
      */
-    public UsersPath users() {
+    public UsersPath watchersUserIdFkey() {
         return watchers().users();
+    }
+
+    /**
+     * Get the implicit many-to-many join path to the <code>public.users</code>
+     * table, via the <code>work_package_shares_user_id_fkey</code> key
+     */
+    public UsersPath workPackageSharesUserIdFkey() {
+        return workPackageShares().workPackageSharesUserIdFkey();
     }
 
     @Override

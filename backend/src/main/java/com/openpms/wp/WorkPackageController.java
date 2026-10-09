@@ -82,6 +82,27 @@ public class WorkPackageController {
         return service.editComment(current.ctx(), id, In.str(body, "bodyHtml"));
     }
 
+    @GetMapping("/work-packages/{number}/shares")
+    public List<Dto.WorkPackageShare> shares(@PathVariable long number) {
+        return service.shares(current.ctx(), number);
+    }
+
+    @PostMapping("/work-packages/{number}/shares")
+    public ResponseEntity<Dto.WorkPackageShare> share(@PathVariable long number, @RequestBody Map<String, Object> body) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.share(current.ctx(), number, In.uuid(body, "userId", "userId"), In.str(body, "role")));
+    }
+
+    @PatchMapping("/shares/{id}")
+    public Dto.WorkPackageShare updateShare(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
+        return service.updateShare(current.ctx(), id, In.str(body, "role"));
+    }
+
+    @DeleteMapping("/shares/{id}")
+    public ResponseEntity<Void> removeShare(@PathVariable UUID id) {
+        service.removeShare(current.ctx(), id);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/work-packages/{number}/watchers")
     public List<Dto.Watcher> watchers(@PathVariable long number) {
         return service.watchers(current.ctx(), number);

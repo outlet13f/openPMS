@@ -228,7 +228,11 @@ export interface WorkPackage {
       addWatchers: boolean;
       /** upload and delete files (wp.attach) */
       attach: boolean;
+      /** share this item with people outside the project (wp.share) */
+      share: boolean;
     };
+    /** set when the item reached me through a share rather than (only) project membership */
+    sharedWithMe: ShareRole | null;
     editableFields: WpField[];
     /** Fields whose value is computed (e.g. parent dates in automatic mode). */
     derived: WpField[];
@@ -310,6 +314,20 @@ export interface Attachment {
   createdAt: IsoDateTime;
   url: string;
   canDelete: boolean;
+}
+
+/**
+ * Work package sharing (S07/S08 공유): one item for one person, also outside the project.
+ * view = see it; comment = + comment; edit = + edit fields and files.
+ */
+export type ShareRole = "view" | "comment" | "edit";
+
+export interface WorkPackageShare {
+  id: Id;
+  user: UserRef;
+  role: ShareRole;
+  sharedBy: UserRef | null;
+  createdAt: IsoDateTime;
 }
 
 /** Someone watching a work package (S08 주시자 탭). Anyone can remove themselves; others need wp.delete_watchers. */
@@ -540,6 +558,7 @@ export type NotificationReason =
   | "assigned"
   | "responsible"
   | "watched"
+  | "shared"
   | "created"
   | "commented"
   | "status_changed"

@@ -63,12 +63,15 @@ public final class Dto {
                                       LocalDate startDate, LocalDate dueDate) {}
 
     public record AllowedActions(boolean edit, boolean delete, boolean move, boolean comment, boolean manageRelations, boolean manageSubtasks,
-                                 boolean watch, boolean viewWatchers, boolean addWatchers, boolean attach) {}
+                                 boolean watch, boolean viewWatchers, boolean addWatchers, boolean attach, boolean share) {}
 
     /** S08 주시자 탭: anyone may remove themselves; removing others needs wp.delete_watchers. */
     public record Watcher(UserRef user, boolean canRemove) {}
 
-    public record Meta(AllowedActions allowedActions, List<String> editableFields, List<String> derived, boolean overdue) {}
+    /** sharedWithMe: my share role when the item reached me through a share (view, comment, edit), else null */
+    public record Meta(AllowedActions allowedActions, List<String> editableFields, List<String> derived, boolean overdue, String sharedWithMe) {}
+
+    public record WorkPackageShare(UUID id, UserRef user, String role, UserRef sharedBy, OffsetDateTime createdAt) {}
 
     public record WorkPackage(UUID id, long number, ProjectRef project, TypeRef type, StatusRef status, PriorityRef priority, String subject,
                               String descriptionHtml, UserRef author, UserRef assignee, UserRef responsible, IdName version, IdName category,

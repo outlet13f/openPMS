@@ -109,7 +109,7 @@ public class Assembler {
             var project = s.project(w.getProjectId()).orElseThrow();
             var status = s.status(w.getStatusId()).orElseThrow();
             int kids = childCount.getOrDefault(w.getId(), 0);
-            boolean canEdit = ctx.can(project, "wp.edit");
+            boolean canEdit = ctx.can(project, w.getId(), "wp.edit");
 
             var derived = new ArrayList<String>();
             if (!w.getScheduleManually() && kids > 0) derived.add("dates");
@@ -126,10 +126,11 @@ public class Assembler {
             var parent = w.getParentId() == null ? null : parents.get(w.getParentId());
             boolean overdue = w.getDueDate() != null && !status.isClosed() && w.getDueDate().isBefore(ctx.today());
             var meta = new Dto.Meta(
-                    new Dto.AllowedActions(canEdit, ctx.can(project, "wp.delete"), ctx.can(project, "wp.move"), ctx.can(project, "wp.comment"),
+                    new Dto.AllowedActions(canEdit, ctx.can(project, "wp.delete"), ctx.can(project, "wp.move"), ctx.can(project, w.getId(), "wp.comment"),
                             ctx.can(project, "wp.manage_relations"), ctx.can(project, "wp.manage_subtasks"), true,
-                            ctx.can(project, "wp.view_watchers"), ctx.can(project, "wp.add_watchers"), ctx.can(project, "wp.attach")),
-                    editable, derived, overdue);
+                            ctx.can(project, "wp.view_watchers"), ctx.can(project, "wp.add_watchers"), ctx.can(project, w.getId(), "wp.attach"),
+                            ctx.can(project, "wp.share")),
+                    editable, derived, overdue, ctx.shareRole(w.getId()));
             out.add(new Dto.WorkPackage(w.getId(), w.getNumber(), Refs.project(project), Refs.type(s, w.getTypeId()), Refs.status(status),
                     Refs.priority(s, w.getPriorityId()), w.getSubject(), w.getDescriptionHtml(), Refs.user(s, w.getAuthorId()), Refs.user(s, w.getAssigneeId()),
                     Refs.user(s, w.getResponsibleId()), Refs.version(s, w.getVersionId()), Refs.category(s, w.getCategoryId()),

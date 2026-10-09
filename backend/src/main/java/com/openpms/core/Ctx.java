@@ -19,6 +19,12 @@ import java.util.UUID;
 public final class Ctx {
     public static final List<String> GLOBAL_PERMISSIONS = List.of("global.create_projects", "global.manage_users");
 
+    /** What each share role allows on its one work package (frontend: fake/permissions.ts SHARE_PERMISSIONS). */
+    public static final Map<String, Set<String>> SHARE_PERMISSIONS = Map.of(
+            "view", Set.of("wp.view"),
+            "comment", Set.of("wp.view", "wp.comment", "wp.edit_own_comments"),
+            "edit", Set.of("wp.view", "wp.comment", "wp.edit_own_comments", "wp.edit", "wp.attach"));
+
     /** Permissions that need a project module: switched-off modules take them away. */
     private static final Map<String, String> MODULE_OF = Map.of("board.view", "boards", "board.manage", "boards");
 
@@ -73,6 +79,8 @@ public final class Ctx {
                 snapshot.roles().stream().filter(r -> "non_member".equals(r.builtin())).findFirst().ifPresent(r -> perms.addAll(r.permissions()));
             }
         }
+        // someone with an item shared from this project sees the project (its name, the shared items), nothing more
+        if (!perms.contains("project.view") && snapshot.shares(u.id()).projectIds().contains(p.id())) perms.add("project.view");
         if (p.archivedAt() != null) perms.removeIf(x -> !(x.endsWith(".view") || x.equals("project.view_members")));
         MODULE_OF.forEach((perm, module) -> {
             if (!p.enabledModules().contains(module)) perms.remove(perm);
@@ -90,6 +98,32 @@ public final class Ctx {
 
     public boolean can(UserRow u, ProjectRow p, String perm) {
         return u.id().equals(userId) ? can(p, perm) : projectPermissions(u, p).contains(perm);
+    }
+
+    /** Permission on one work package: the project's roles plus a share of that item. */
+    public boolean can(ProjectRow p, UUID wpId, String perm) {
+        return can(p, perm) || shareAllows(user(), p, wpId, perm);
+    }
+
+    /** The same for someone else (who gets a notification, who can watch …). */
+    public boolean can(UserRow u, ProjectRow p, UUID wpId, String perm) {
+        return can(u, p, perm) || shareAllows(u, p, wpId, perm);
+    }
+
+    private boolean shareAllows(UserRow u, ProjectRow p, UUID wpId, String perm) {
+        var role = snapshot.shares(u.id()).roles().get(wpId);
+        if (role == null) return false;
+        var allowed = SHARE_PERMISSIONS.getOrDefault(role, Set.of()).contains(perm);
+        return p.archivedAt() == null ? allowed : allowed && perm.endsWith(".view");
+    }
+
+    /** My share role on an item, or null. */
+    public String shareRole(UUID wpId) {
+        return snapshot.shares(userId).roles().get(wpId);
+    }
+
+    public void require(ProjectRow p, UUID wpId, String perm, String message) {
+        if (!can(p, wpId, perm)) throw ApiException.forbidden(message);
     }
 
     public void require(ProjectRow p, String perm, String message) {

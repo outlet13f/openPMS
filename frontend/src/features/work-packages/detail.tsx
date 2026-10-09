@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Eye, EyeOff, Link2, Maximize2, MoreHorizontal, Pencil, Trash2, X } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Link2, Maximize2, MoreHorizontal, Pencil, Share2, Trash2, X } from "lucide-react";
 import type { WorkPackage } from "@/api";
 import { useDeleteWorkPackage, useWatch, useWorkPackage } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
@@ -10,11 +10,12 @@ import { Checkbox } from "@/components/ui/choice";
 import { Banner, useToast } from "@/components/ui/feedback";
 import { Dialog, Menu, Tooltip } from "@/components/ui/overlay";
 import { Skeleton } from "@/components/ui/spinner";
-import { TypeLabel } from "@/components/ui/badges";
+import { Badge, TypeLabel } from "@/components/ui/badges";
 import { Tabs } from "@/components/ui/tabs";
 import { RichText } from "@/components/domain/rich-text";
 import { FilesTab } from "./files";
 import { WatchersTab } from "./watchers";
+import { ShareDialog } from "./share-dialog";
 import { formatDate, relativeTime } from "@/lib/dates";
 import { RichTextEditor } from "@/components/domain/rich-text-editor";
 import { cn } from "@/lib/cn";
@@ -146,6 +147,7 @@ export function WorkPackageDetail({
   const watch = useWatch(number);
   const { save } = useSaveWorkPackage();
   const [deleting, setDeleting] = useState(false);
+  const [sharing, setSharing] = useState(false);
   useDocumentTitle(q.data ? `#${q.data.number} ${q.data.subject}` : undefined);
   // Opening an item in the split panel moves focus into the panel, so keyboard and screen reader
   // users land on what they opened instead of staying in the table behind it.
@@ -184,6 +186,16 @@ export function WorkPackageDetail({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          {wp._meta.sharedWithMe && (
+            <Badge tone="accent" icon={<Share2 />}>
+              {t("share.sharedWithMe", { role: t(`share.roles.${wp._meta.sharedWithMe}`) })}
+            </Badge>
+          )}
+          {wp._meta.allowedActions.share && (
+            <Tooltip content={t("share.title")}>
+              <Button variant="ghost" size="sm" iconOnly aria-label={t("share.title")} icon={<Share2 />} onClick={() => setSharing(true)} />
+            </Tooltip>
+          )}
           <Tooltip content={wp.watching ? t("wp.unwatch") : t("wp.watch")}>
             <Button variant="ghost" size="sm" iconOnly aria-pressed={wp.watching} aria-label={wp.watching ? t("wp.unwatch") : t("wp.watch")} icon={wp.watching ? <EyeOff /> : <Eye />} onClick={() => watch.mutate(!wp.watching)} />
           </Tooltip>
@@ -280,6 +292,7 @@ export function WorkPackageDetail({
           <div>{tabs(["activity", "files", "relations", "watchers"])}</div>
         </div>
       )}
+      {sharing && <ShareDialog wp={wp} open onOpenChange={setSharing} />}
       <DeleteDialog
         wp={wp}
         open={deleting}

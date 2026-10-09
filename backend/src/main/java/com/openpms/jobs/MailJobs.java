@@ -111,7 +111,7 @@ public class MailJobs {
             var u = l.s().user(n.getRecipientId()).filter(x -> "active".equals(x.status())).orElse(null);
             var wp = l.wps().get(n.getWorkPackageId());
             var project = wp == null ? null : l.s().project(wp.getProjectId()).orElse(null);
-            if (u == null || project == null || !new Ctx(u.id(), l::s).can(project, "wp.view")) {
+            if (u == null || project == null || !new Ctx(u.id(), l::s).can(project, wp.getId(), "wp.view")) {
                 drop.add(n.getId()); // nobody to tell any more
                 continue;
             }
@@ -177,7 +177,7 @@ public class MailJobs {
                 for (var n : mine) {
                     var wp = loaded.wps().get(n.getWorkPackageId());
                     var project = wp == null ? null : s.project(wp.getProjectId()).orElse(null);
-                    if (project != null && ctx.can(project, "wp.view")) visible.add(n);
+                    if (project != null && ctx.can(project, wp.getId(), "wp.view")) visible.add(n);
                 }
                 if (!visible.isEmpty()) {
                     ok = mailer.send(u.email(), "[openPMS] 읽지 않은 알림 " + visible.size() + "건", digestBody(ctx, u, visible, loaded, times));

@@ -75,7 +75,7 @@ const toVersion = (v: (typeof db.versions)[number]): Version => {
 /** Every permission key the app knows, grouped for the role editor (architecture.md "권한 키"). */
 const PERMISSIONS: { key: string; scope: "project" | "global"; group: string }[] = [
   ...["project.view", "project.edit", "project.archive", "project.manage_modules", "project.manage_members", "project.view_members", "project.manage_versions", "project.manage_categories", "project.manage_types", "project.manage_custom_fields"].map((key) => ({ key, scope: "project" as const, group: "project" })),
-  ...["wp.view", "wp.create", "wp.edit", "wp.delete", "wp.move", "wp.attach", "wp.comment", "wp.edit_own_comments", "wp.edit_comments", "wp.view_internal_comments", "wp.add_internal_comments", "wp.manage_relations", "wp.manage_subtasks", "wp.assign_versions", "wp.view_watchers", "wp.add_watchers", "wp.delete_watchers", "wp.export"].map((key) => ({ key, scope: "project" as const, group: "wp" })),
+  ...["wp.view", "wp.create", "wp.edit", "wp.delete", "wp.move", "wp.attach", "wp.comment", "wp.edit_own_comments", "wp.edit_comments", "wp.view_internal_comments", "wp.add_internal_comments", "wp.manage_relations", "wp.manage_subtasks", "wp.assign_versions", "wp.view_watchers", "wp.add_watchers", "wp.delete_watchers", "wp.share", "wp.export"].map((key) => ({ key, scope: "project" as const, group: "wp" })),
   ...["query.save", "query.manage_public"].map((key) => ({ key, scope: "project" as const, group: "query" })),
   ...["board.view", "board.manage"].map((key) => ({ key, scope: "project" as const, group: "board" })),
   ...["global.create_projects", "global.manage_users"].map((key) => ({ key, scope: "global" as const, group: "global" })),
@@ -593,6 +593,7 @@ export const adminApi: Api["admin"] = {
         Object.assign(u, { status: "deleted", name: "삭제된 사용자", email: `deleted+${u.id}@invalid`, password: "", isAdmin: false });
         db.members = db.members.filter((m) => m.userId !== id);
         db.watchers = db.watchers.filter((w) => w.userId !== id);
+        db.shares = db.shares.filter((x) => x.userId !== id);
         db.notifications = db.notifications.filter((n) => n.recipientId !== id);
         db.groups.forEach((g) => (g.memberIds = g.memberIds.filter((m) => m !== id)));
         db.workPackages.forEach((w) => {

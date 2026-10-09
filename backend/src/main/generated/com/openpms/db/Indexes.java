@@ -32,6 +32,7 @@ import com.openpms.db.tables.UserTokens;
 import com.openpms.db.tables.Users;
 import com.openpms.db.tables.Versions;
 import com.openpms.db.tables.Watchers;
+import com.openpms.db.tables.WorkPackageShares;
 import com.openpms.db.tables.WorkPackages;
 import com.openpms.db.tables.Workflows;
 
@@ -112,6 +113,8 @@ public class Indexes {
     public static final Index VERSIONS_SHARING_IDX = Internal.createIndex(DSL.name("versions_sharing_idx"), Versions.VERSIONS, new OrderField[] { Versions.VERSIONS.SHARING }, false);
     public static final Index VERSIONS_STATUS_IDX = Internal.createIndex(DSL.name("versions_status_idx"), Versions.VERSIONS, new OrderField[] { Versions.VERSIONS.STATUS }, false);
     public static final Index WATCHERS_USER_IDX = Internal.createIndex(DSL.name("watchers_user_idx"), Watchers.WATCHERS, new OrderField[] { Watchers.WATCHERS.USER_ID }, false);
+    public static final Index WORK_PACKAGE_SHARES_CREATED_BY_IDX = Internal.createIndex(DSL.name("work_package_shares_created_by_idx"), WorkPackageShares.WORK_PACKAGE_SHARES, new OrderField[] { WorkPackageShares.WORK_PACKAGE_SHARES.CREATED_BY }, false);
+    public static final Index WORK_PACKAGE_SHARES_USER_IDX = Internal.createIndex(DSL.name("work_package_shares_user_idx"), WorkPackageShares.WORK_PACKAGE_SHARES, new OrderField[] { WorkPackageShares.WORK_PACKAGE_SHARES.USER_ID }, false);
     public static final Index WORKFLOWS_FROM_STATUS_IDX = Internal.createIndex(DSL.name("workflows_from_status_idx"), Workflows.WORKFLOWS, new OrderField[] { Workflows.WORKFLOWS.FROM_STATUS_ID }, false);
     public static final Index WORKFLOWS_ROLE_IDX = Internal.createIndex(DSL.name("workflows_role_idx"), Workflows.WORKFLOWS, new OrderField[] { Workflows.WORKFLOWS.ROLE_ID }, false);
     public static final Index WORKFLOWS_TO_STATUS_IDX = Internal.createIndex(DSL.name("workflows_to_status_idx"), Workflows.WORKFLOWS, new OrderField[] { Workflows.WORKFLOWS.TO_STATUS_ID }, false);

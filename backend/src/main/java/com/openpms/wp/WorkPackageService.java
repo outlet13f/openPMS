@@ -3,6 +3,7 @@ package com.openpms.wp;
 import static com.openpms.db.Tables.JOURNALS;
 import static com.openpms.db.Tables.RELATIONS;
 import static com.openpms.db.Tables.WATCHERS;
+import static com.openpms.db.Tables.WORK_PACKAGE_SHARES;
 import static com.openpms.db.Tables.WORK_PACKAGES;
 
 import com.openpms.api.Dto;
@@ -14,6 +15,7 @@ import com.openpms.core.Ctx;
 import com.openpms.core.Refs;
 import com.openpms.core.Snapshot;
 import com.openpms.core.Snapshot.ProjectRow;
+import com.openpms.db.tables.records.WorkPackageSharesRecord;
 import com.openpms.db.tables.records.WorkPackagesRecord;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -57,7 +59,7 @@ public class WorkPackageService {
     public Found find(Ctx ctx, long number) {
         var wp = db.selectFrom(WORK_PACKAGES).where(WORK_PACKAGES.NUMBER.eq(number)).fetchOne();
         var project = wp == null ? null : ctx.s().project(wp.getProjectId()).orElse(null);
-        if (wp == null || project == null || !ctx.can(project, "wp.view")) throw ApiException.notFound("작업을 찾을 수 없습니다.");
+        if (wp == null || project == null || !ctx.can(project, wp.getId(), "wp.view")) throw ApiException.notFound("작업을 찾을 수 없습니다.");
         return new Found(wp, project);
     }
 
@@ -144,7 +146,7 @@ public class WorkPackageService {
     }
 
     private boolean visible(Ctx ctx, WorkPackagesRecord w) {
-        return w != null && ctx.s().project(w.getProjectId()).map(p -> ctx.can(p, "wp.view")).orElse(false);
+        return w != null && ctx.s().project(w.getProjectId()).map(p -> ctx.can(p, w.getId(), "wp.view")).orElse(false);
     }
 
     /* ---------- create ---------- */
@@ -267,7 +269,7 @@ public class WorkPackageService {
         if (lockVersion == null || lockVersion != wp.getLockVersion()) {
             throw ApiException.conflict("다른 사람이 먼저 수정했습니다.", "최신 내용을 불러온 뒤 다시 저장하세요.", assembler.one(ctx, wp));
         }
-        ctx.require(project, "wp.edit", "이 작업을 수정할 권한이 없습니다.");
+        ctx.require(project, wp.getId(), "wp.edit", "이 작업을 수정할 권한이 없습니다.");
         var status = s.status(wp.getStatusId()).orElseThrow();
         var given = patch.keySet().stream().filter(k -> !k.equals("lockVersion") && !k.equals("touched")).toList();
         if (status.isReadonly() && given.stream().anyMatch(k -> !k.equals("statusId"))) {
@@ -492,7 +494,7 @@ public class WorkPackageService {
     @Transactional
     public Dto.Journal comment(Ctx ctx, long number, String bodyHtml) {
         var f = find(ctx, number);
-        ctx.require(f.project(), "wp.comment", "코멘트를 쓸 권한이 없습니다.");
+        ctx.require(f.project(), f.wp().getId(), "wp.comment", "코멘트를 쓸 권한이 없습니다.");
         var html = Html.sanitize(bodyHtml);
         if (Html.text(html).isEmpty()) throw ApiException.field("comment", "코멘트를 입력하세요.");
         var j = journals.write(ctx, f.wp(), new LinkedHashMap<>(), html, null, false);
@@ -516,6 +518,73 @@ public class WorkPackageService {
         return journals.toDto(ctx, j, f.project());
     }
 
+    /* ---------- shares (S07/S08 공유) ---------- */
+
+    private static final List<String> SHARE_ROLES = List.of("view", "comment", "edit");
+
+    private Dto.WorkPackageShare shareDto(Ctx ctx, WorkPackageSharesRecord r) {
+        return new Dto.WorkPackageShare(r.getId(), Refs.user(ctx.s(), r.getUserId()), r.getRole(), r.getCreatedBy() == null ? null : Refs.user(ctx.s(), r.getCreatedBy()),
+                r.getCreatedAt());
+    }
+
+    public List<Dto.WorkPackageShare> shares(Ctx ctx, long number) {
+        var f = find(ctx, number);
+        ctx.require(f.project(), "wp.share", "작업을 공유할 권한이 없습니다.");
+        return db.selectFrom(WORK_PACKAGE_SHARES).where(WORK_PACKAGE_SHARES.WORK_PACKAGE_ID.eq(f.wp().getId())).fetch().stream()
+                .map(r -> shareDto(ctx, r))
+                .sorted((a, b) -> com.openpms.core.Text.KOREAN.compare(a.user().name(), b.user().name()))
+                .toList();
+    }
+
+    /** Shares the item, or changes the role of an existing share. Only a new share notifies (reason "shared"). */
+    @Transactional
+    public Dto.WorkPackageShare share(Ctx ctx, long number, UUID userId, String role) {
+        var f = find(ctx, number);
+        ctx.require(f.project(), "wp.share", "작업을 공유할 권한이 없습니다.");
+        if (role == null || !SHARE_ROLES.contains(role)) throw ApiException.field("role", "공유 권한을 고르세요.");
+        if (userId == null) throw ApiException.field("userId", "공유할 사람을 고르세요.");
+        if (userId.equals(ctx.userId())) throw ApiException.field("userId", "자기 자신에게는 공유할 수 없습니다.");
+        if (ctx.s().user(userId).filter(u -> "active".equals(u.status())).isEmpty()) throw ApiException.field("userId", "활성 사용자에게만 공유할 수 있습니다.");
+        var existing = db.selectFrom(WORK_PACKAGE_SHARES).where(WORK_PACKAGE_SHARES.WORK_PACKAGE_ID.eq(f.wp().getId()), WORK_PACKAGE_SHARES.USER_ID.eq(userId)).fetchOne();
+        if (existing != null) {
+            existing.setRole(role);
+            existing.store();
+            return shareDto(ctx, existing);
+        }
+        var r = db.newRecord(WORK_PACKAGE_SHARES);
+        r.setWorkPackageId(f.wp().getId());
+        r.setUserId(userId);
+        r.setRole(role);
+        r.setCreatedBy(ctx.userId());
+        r.store();
+        r.refresh();
+        journals.notifyShared(ctx, f.wp(), userId);
+        return shareDto(ctx, r);
+    }
+
+    private WorkPackageSharesRecord findShare(Ctx ctx, UUID id) {
+        var r = db.selectFrom(WORK_PACKAGE_SHARES).where(WORK_PACKAGE_SHARES.ID.eq(id)).fetchOne();
+        if (r == null) throw ApiException.notFound("공유를 찾을 수 없습니다.");
+        var wp = reload(r.getWorkPackageId());
+        var f = find(ctx, wp.getNumber());
+        ctx.require(f.project(), "wp.share", "작업을 공유할 권한이 없습니다.");
+        return r;
+    }
+
+    @Transactional
+    public Dto.WorkPackageShare updateShare(Ctx ctx, UUID id, String role) {
+        var r = findShare(ctx, id);
+        if (role == null || !SHARE_ROLES.contains(role)) throw ApiException.field("role", "공유 권한을 고르세요.");
+        r.setRole(role);
+        r.store();
+        return shareDto(ctx, r);
+    }
+
+    @Transactional
+    public void removeShare(Ctx ctx, UUID id) {
+        findShare(ctx, id).delete();
+    }
+
     public List<Dto.Watcher> watchers(Ctx ctx, long number) {
         var f = find(ctx, number);
         ctx.require(f.project(), "wp.view_watchers", "주시자를 볼 권한이 없습니다.");
@@ -533,7 +602,7 @@ public class WorkPackageService {
         var f = find(ctx, number);
         if (!userId.equals(ctx.userId())) ctx.require(f.project(), "wp.add_watchers", "주시자를 추가할 권한이 없습니다.");
         var u = ctx.s().user(userId).filter(x -> "active".equals(x.status())).orElse(null);
-        if (u == null || !ctx.can(u, f.project(), "wp.view"))
+        if (u == null || !ctx.can(u, f.project(), f.wp().getId(), "wp.view"))
             throw ApiException.field("userId", "이 작업을 볼 수 없는 사람은 주시자로 추가할 수 없습니다.");
         db.insertInto(WATCHERS).set(WATCHERS.WORK_PACKAGE_ID, f.wp().getId()).set(WATCHERS.USER_ID, userId).onConflictDoNothing().execute();
     }

@@ -17,6 +17,7 @@ import type {
   WorkPackage,
   WorkPackageInput,
   WorkPackagePatch,
+  WorkPackageShare,
 } from "../types";
 import { ApiError } from "../errors";
 import { countWorkingDays, nowIso, todayIso } from "@/lib/dates";
@@ -96,7 +97,7 @@ function fanOut(wp: DbWp, journal: DbJournal, actor: DbUser, mentioned: string[]
   const offer = (userId: string | null, reason: (typeof REASON_RANK)[number]) => {
     if (!userId || userId === actor.id) return;
     const u = db.users.find((x) => x.id === userId && x.status === "active");
-    if (!u || !can(u, project, "wp.view")) return; // never notify people who cannot see the item
+    if (!u || !can(u, project, "wp.view", wp)) return; // never notify people who cannot see the item
     if (journal.isInternal && !can(u, project, "wp.view_internal_comments")) return;
     const cur = recipients.get(userId);
     if (!cur || REASON_RANK.indexOf(reason) < REASON_RANK.indexOf(cur)) recipients.set(userId, reason);
@@ -145,7 +146,7 @@ function applyPatch(user: DbUser, number: number, patch: WorkPackagePatch): Work
   if (patch.lockVersion !== wp.lockVersion) {
     throw new ApiError(409, "다른 사람이 먼저 수정했습니다.", "최신 내용을 불러온 뒤 다시 저장하세요.", { current: toWp(wp, user) });
   }
-  requirePerm(user, project, "wp.edit", "이 작업을 수정할 권한이 없습니다.");
+  requirePerm(user, project, "wp.edit", "이 작업을 수정할 권한이 없습니다.", wp);
 
   const given = Object.entries(patch).filter(([k, v]) => !["lockVersion", "touched"].includes(k) && v !== undefined).map(([k]) => k);
   if (statusOf(wp).isReadonly && given.some((k) => k !== "statusId")) {
@@ -305,6 +306,9 @@ function toBoard(user: DbUser, b: DbBoard): Board {
   return { id: b.id, name: b.name, kind: b.kind, isPublic: b.isPublic, createdAt: b.createdAt, projectId: b.projectId, columns: boardColumns(user, b, project), canManage: can(user, project, "board.manage") };
 }
 
+const toShare = (s: (typeof db.shares)[number]): WorkPackageShare =>
+  clone({ id: s.id, user: userRef(s.userId)!, role: s.role, sharedBy: userRef(s.createdBy), createdAt: s.createdAt });
+
 /* ---------- notifications ---------- */
 
 const REASON_TEXT: Record<string, (actor: string) => string> = {
@@ -312,6 +316,7 @@ const REASON_TEXT: Record<string, (actor: string) => string> = {
   assigned: (a) => `${a}님이 내가 담당한 작업을 바꿨습니다`,
   responsible: (a) => `${a}님이 내가 책임자인 작업을 바꿨습니다`,
   watched: (a) => `${a}님이 주시 중인 작업을 바꿨습니다`,
+  shared: (a) => `${a}님이 나에게 작업을 공유했습니다`,
   date_alert_due: () => "완료일이 다가옵니다",
   date_alert_start: () => "시작일이 다가옵니다",
   date_alert_overdue: () => "기한이 지났습니다",
@@ -619,7 +624,7 @@ export const fakeApi: Api = {
       run(() => {
         const user = sessionUser();
         const { wp, project } = findWp(user, number);
-        requirePerm(user, project, "wp.comment", "코멘트를 쓸 권한이 없습니다.");
+        requirePerm(user, project, "wp.comment", "코멘트를 쓸 권한이 없습니다.", wp);
         if (!bodyHtml.replace(/<[^>]*>/g, "").trim()) throw fieldError("comment", "코멘트를 입력하세요.");
         const j = writeJournal(wp, user, {}, bodyHtml);
         fanOut(wp, j, user, mentionsIn(bodyHtml));
@@ -641,7 +646,7 @@ export const fakeApi: Api = {
       run(() => {
         const user = sessionUser();
         const { wp, project } = findWp(user, number);
-        const canDelete = can(user, project, "wp.attach");
+        const canDelete = can(user, project, "wp.attach", wp);
         return db.attachments
           .filter((a) => a.wpId === wp.id)
           .map((a) => ({ id: a.id, fileName: a.fileName, contentType: a.contentType, byteSize: a.byteSize, author: userRef(a.authorId)!, createdAt: a.createdAt, url: a.dataUrl, canDelete }));
@@ -658,7 +663,7 @@ export const fakeApi: Api = {
       return run(() => {
         const user = sessionUser();
         const { wp, project } = findWp(user, number);
-        requirePerm(user, project, "wp.attach", "파일을 첨부할 권한이 없습니다.");
+        requirePerm(user, project, "wp.attach", "파일을 첨부할 권한이 없습니다.", wp);
         if (!file.size) throw fieldError("file", "빈 파일은 올릴 수 없습니다.");
         const a = { id: newId("att"), wpId: wp.id, fileName: file.name.split(/[\\/]/).pop() || "file", contentType: file.type || "application/octet-stream", byteSize: file.size, authorId: user.id, createdAt: nowIso(), dataUrl };
         db.attachments.push(a);
@@ -674,9 +679,61 @@ export const fakeApi: Api = {
         const wp = a && db.workPackages.find((w) => w.id === a.wpId);
         if (!a || !wp) throw new ApiError(404, "파일을 찾을 수 없습니다.");
         const { project } = findWp(user, wp.number);
-        requirePerm(user, project, "wp.attach", "파일을 지울 권한이 없습니다.");
+        requirePerm(user, project, "wp.attach", "파일을 지울 권한이 없습니다.", wp);
         db.attachments = db.attachments.filter((x) => x.id !== id);
         writeJournal(wp, user, { [`attachment:${a.id}`]: [a.fileName, null] });
+      }),
+    shares: (number) =>
+      run(() => {
+        const user = sessionUser();
+        const { wp, project } = findWp(user, number);
+        requirePerm(user, project, "wp.share", "작업을 공유할 권한이 없습니다.");
+        return db.shares
+          .filter((s) => s.wpId === wp.id)
+          .map(toShare)
+          .sort((a, b) => a.user.name.localeCompare(b.user.name, "ko"));
+      }),
+    share: (number, userId, role) =>
+      run(() => {
+        const user = sessionUser();
+        const { wp, project } = findWp(user, number);
+        requirePerm(user, project, "wp.share", "작업을 공유할 권한이 없습니다.");
+        if (!["view", "comment", "edit"].includes(role)) throw fieldError("role", "공유 권한을 고르세요.");
+        if (userId === user.id) throw fieldError("userId", "자기 자신에게는 공유할 수 없습니다.");
+        const target = db.users.find((u) => u.id === userId && u.status === "active");
+        if (!target) throw fieldError("userId", "활성 사용자에게만 공유할 수 있습니다.");
+        const existing = db.shares.find((s) => s.wpId === wp.id && s.userId === userId);
+        if (existing) {
+          existing.role = role;
+          return toShare(existing);
+        }
+        const s = { id: newId("sh"), wpId: wp.id, userId, role, createdBy: user.id, createdAt: nowIso() };
+        db.shares.push(s);
+        // the one notification a share sends (reason "shared")
+        db.notifications.push({ id: newId("n"), recipientId: userId, wpId: wp.id, journalId: null, actorId: user.id, reason: "shared", readAt: null, createdAt: s.createdAt });
+        return toShare(s);
+      }),
+    updateShare: (id, role) =>
+      run(() => {
+        const user = sessionUser();
+        const s = db.shares.find((x) => x.id === id);
+        const wp = s && db.workPackages.find((w) => w.id === s.wpId);
+        if (!s || !wp) throw new ApiError(404, "공유를 찾을 수 없습니다.");
+        const { project } = findWp(user, wp.number);
+        requirePerm(user, project, "wp.share", "작업을 공유할 권한이 없습니다.");
+        if (!["view", "comment", "edit"].includes(role)) throw fieldError("role", "공유 권한을 고르세요.");
+        s.role = role;
+        return toShare(s);
+      }),
+    removeShare: (id) =>
+      run(() => {
+        const user = sessionUser();
+        const s = db.shares.find((x) => x.id === id);
+        const wp = s && db.workPackages.find((w) => w.id === s.wpId);
+        if (!s || !wp) throw new ApiError(404, "공유를 찾을 수 없습니다.");
+        const { project } = findWp(user, wp.number);
+        requirePerm(user, project, "wp.share", "작업을 공유할 권한이 없습니다.");
+        db.shares = db.shares.filter((x) => x.id !== id);
       }),
     watchers: (number) =>
       run(() => {
@@ -695,7 +752,7 @@ export const fakeApi: Api = {
         const { wp, project } = findWp(user, number);
         if (userId !== user.id) requirePerm(user, project, "wp.add_watchers", "주시자를 추가할 권한이 없습니다.");
         const target = db.users.find((u) => u.id === userId && u.status === "active");
-        if (!target || !can(target, project, "wp.view")) throw fieldError("userId", "이 작업을 볼 수 없는 사람은 주시자로 추가할 수 없습니다.");
+        if (!target || !can(target, project, "wp.view", wp)) throw fieldError("userId", "이 작업을 볼 수 없는 사람은 주시자로 추가할 수 없습니다.");
         if (!db.watchers.some((x) => x.wpId === wp.id && x.userId === userId)) db.watchers.push({ wpId: wp.id, userId });
       }),
     removeWatcher: (number, userId) =>
@@ -718,7 +775,7 @@ export const fakeApi: Api = {
         const { wp } = findWp(user, number);
         const reverse: Record<string, RelationType> = { relates: "relates", precedes: "follows", duplicates: "duplicated", blocks: "blocked", includes: "partof", requires: "required" };
         const withDates = (w: DbWp) => ({ ...wpRef(w), startDate: w.startDate, dueDate: w.dueDate });
-        const visible = (w: DbWp | undefined): w is DbWp => !!w && can(user, projectOf(w), "wp.view");
+        const visible = (w: DbWp | undefined): w is DbWp => !!w && can(user, projectOf(w), "wp.view", w);
         const relations = db.relations
           .filter((r) => r.fromId === wp.id || r.toId === wp.id)
           .map((r) => {
@@ -935,7 +992,7 @@ export const fakeApi: Api = {
         const groups = new Map<string, NotificationGroup>();
         for (const n of mine.sort((a, b) => b.createdAt.localeCompare(a.createdAt))) {
           const wp = db.workPackages.find((w) => w.id === n.wpId);
-          if (!wp || !can(user, projectOf(wp), "wp.view")) continue;
+          if (!wp || !can(user, projectOf(wp), "wp.view", wp)) continue;
           const g = groups.get(wp.id) ?? { workPackage: wpRef(wp), items: [], unread: 0, latestAt: n.createdAt };
           const item: NotificationItem = { id: n.id, reason: n.reason, read: !!n.readAt, actor: userRef(n.actorId), summary: notificationSummary(n, user), createdAt: n.createdAt };
           g.items.push(item);

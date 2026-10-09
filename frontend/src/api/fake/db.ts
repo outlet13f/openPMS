@@ -2,7 +2,7 @@
 // Table shapes follow replica/schema.sql closely so the move to the real API is mechanical.
 // State survives reloads through localStorage (per browser, per user) and can be reset from the login page.
 
-import type { BoardKind, CustomField, CustomValue, Id, IsoDate, IsoDateTime, ModuleKey, NotificationReason, Preferences, ProjectStatus, QuerySpec, ViewKind } from "../types";
+import type { BoardKind, CustomField, CustomValue, Id, ShareRole, IsoDate, IsoDateTime, ModuleKey, NotificationReason, Preferences, ProjectStatus, QuerySpec, ViewKind } from "../types";
 import { buildSeed } from "./seed";
 
 export interface DbUser {
@@ -125,6 +125,7 @@ export interface Db {
   journals: DbJournal[];
   watchers: { wpId: Id; userId: Id }[];
   attachments: DbAttachment[];
+  shares: { id: Id; wpId: Id; userId: Id; role: ShareRole; createdBy: Id | null; createdAt: IsoDateTime }[];
   customFields: CustomField[];
   projectCustomFields: { projectId: Id; customFieldId: Id }[];
   queries: DbQuery[];
@@ -137,7 +138,7 @@ export interface Db {
 }
 
 const KEY = "openpms.fakedb";
-const SCHEMA = 9;
+const SCHEMA = 10;
 
 function load(): Db {
   try {

@@ -62,7 +62,7 @@ public class NotificationController {
         for (var n : items) {
             var wp = wps.get(n.getWorkPackageId());
             var project = wp == null ? null : s.project(wp.getProjectId()).orElse(null);
-            if (wp == null || project == null || !ctx.can(project, "wp.view")) continue;
+            if (wp == null || project == null || !ctx.can(project, wp.getId(), "wp.view")) continue;
             var g = groups.computeIfAbsent(wp.getId(), k -> new Group(Assembler.ref(s, wp), new ArrayList<>(), new int[] {0}, new OffsetDateTime[] {n.getCreatedAt()}));
             var j = n.getJournalId() == null ? null : js.get(n.getJournalId());
             g.items().add(new Dto.NotificationItem(n.getId(), n.getReason(), n.getReadAt() != null, Refs.user(s, n.getActorId()), texts.summary(ctx, n, j, project), n.getCreatedAt()));

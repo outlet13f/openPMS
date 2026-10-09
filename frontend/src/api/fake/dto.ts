@@ -2,7 +2,7 @@
 import type { CustomValue, Journal, JournalDetail, Project, ProjectRef, StatusRef, TypeRef, UserRef, WorkPackage, WorkPackageRef, WpField } from "../types";
 import { formatDate, todayIso } from "@/lib/dates";
 import { db, type DbJournal, type DbProject, type DbUser, type DbWp } from "./db";
-import { allowedStatusIds, can, projectPermissions } from "./permissions";
+import { allowedStatusIds, can, projectPermissions, shareRoleOf } from "./permissions";
 import { cfIdOf, cfText, customValuesOf } from "./custom-fields";
 
 export const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
@@ -71,7 +71,7 @@ export function toWp(w: DbWp, user: DbUser): WorkPackage {
   const version = w.versionId ? db.versions.find((v) => v.id === w.versionId) : null;
   const category = w.categoryId ? db.categories.find((c) => c.id === w.categoryId) : null;
   const kids = children(w);
-  const canEdit = can(user, project, "wp.edit");
+  const canEdit = can(user, project, "wp.edit", w);
 
   const derived: WpField[] = [];
   if (!w.scheduleManually && kids.length) derived.push("dates");
@@ -124,17 +124,19 @@ export function toWp(w: DbWp, user: DbUser): WorkPackage {
         edit: canEdit,
         delete: can(user, project, "wp.delete"),
         move: can(user, project, "wp.move"),
-        comment: can(user, project, "wp.comment"),
+        comment: can(user, project, "wp.comment", w),
         manageRelations: can(user, project, "wp.manage_relations"),
         manageSubtasks: can(user, project, "wp.manage_subtasks"),
         watch: true,
         viewWatchers: can(user, project, "wp.view_watchers"),
         addWatchers: can(user, project, "wp.add_watchers"),
-        attach: can(user, project, "wp.attach"),
+        attach: can(user, project, "wp.attach", w),
+        share: can(user, project, "wp.share"),
       },
       editableFields: editable,
       derived,
       overdue: isOverdue(w, user.timeZone),
+      sharedWithMe: shareRoleOf(user.id, w.id),
     },
   });
 }
@@ -228,6 +230,6 @@ export function toJournal(j: DbJournal, user: DbUser): Journal {
     cause: j.cause,
     createdAt: j.createdAt,
     updatedAt: j.updatedAt,
-    canEdit: !!j.notesHtml && ((j.userId === user.id && can(user, project, "wp.edit_own_comments")) || can(user, project, "wp.edit_comments")),
+    canEdit: !!j.notesHtml && ((j.userId === user.id && can(user, project, "wp.edit_own_comments", wp)) || can(user, project, "wp.edit_comments")),
   });
 }

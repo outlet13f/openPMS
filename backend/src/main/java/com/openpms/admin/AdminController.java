@@ -15,6 +15,7 @@ import static com.openpms.db.Tables.USER_GROUPS;
 import static com.openpms.db.Tables.USER_GROUP_MEMBERS;
 import static com.openpms.db.Tables.USER_PREFERENCES;
 import static com.openpms.db.Tables.WATCHERS;
+import static com.openpms.db.Tables.WORK_PACKAGE_SHARES;
 import static com.openpms.db.Tables.WORKFLOWS;
 import static com.openpms.db.Tables.WORK_PACKAGES;
 import static org.jooq.impl.DSL.count;
@@ -97,7 +98,7 @@ public class AdminController {
             PERMISSIONS.add(new Permission(k, "project", "project"));
         for (var k : List.of("wp.view", "wp.create", "wp.edit", "wp.delete", "wp.move", "wp.attach", "wp.comment", "wp.edit_own_comments", "wp.edit_comments",
                 "wp.view_internal_comments", "wp.add_internal_comments", "wp.manage_relations", "wp.manage_subtasks", "wp.assign_versions", "wp.view_watchers",
-                "wp.add_watchers", "wp.delete_watchers", "wp.export"))
+                "wp.add_watchers", "wp.delete_watchers", "wp.share", "wp.export"))
             PERMISSIONS.add(new Permission(k, "project", "wp"));
         for (var k : List.of("query.save", "query.manage_public")) PERMISSIONS.add(new Permission(k, "project", "query"));
         for (var k : List.of("board.view", "board.manage")) PERMISSIONS.add(new Permission(k, "project", "board"));
@@ -638,6 +639,7 @@ public class AdminController {
                 .setNull(USERS.PASSWORD_HASH).set(USERS.IS_ADMIN, false).where(USERS.ID.eq(id)).execute();
         db.deleteFrom(MEMBERS).where(MEMBERS.USER_ID.eq(id)).execute();
         db.deleteFrom(WATCHERS).where(WATCHERS.USER_ID.eq(id)).execute();
+        db.deleteFrom(WORK_PACKAGE_SHARES).where(WORK_PACKAGE_SHARES.USER_ID.eq(id)).execute();
         db.deleteFrom(NOTIFICATIONS).where(NOTIFICATIONS.RECIPIENT_ID.eq(id)).execute();
         db.deleteFrom(USER_GROUP_MEMBERS).where(USER_GROUP_MEMBERS.USER_ID.eq(id)).execute();
         db.deleteFrom(BOARD_COLUMNS).where(BOARD_COLUMNS.USER_ID.eq(id)).execute();

@@ -38,6 +38,7 @@ import com.openpms.db.tables.UserTokens;
 import com.openpms.db.tables.Users;
 import com.openpms.db.tables.Versions;
 import com.openpms.db.tables.Watchers;
+import com.openpms.db.tables.WorkPackageShares;
 import com.openpms.db.tables.WorkPackages;
 import com.openpms.db.tables.Workflows;
 
@@ -235,6 +236,11 @@ public class Public extends SchemaImpl {
     public final Watchers WATCHERS = Watchers.WATCHERS;
 
     /**
+     * The table <code>public.work_package_shares</code>.
+     */
+    public final WorkPackageShares WORK_PACKAGE_SHARES = WorkPackageShares.WORK_PACKAGE_SHARES;
+
+    /**
      * The table <code>public.work_packages</code>.
      */
     public final WorkPackages WORK_PACKAGES = WorkPackages.WORK_PACKAGES;
@@ -301,6 +307,7 @@ public class Public extends SchemaImpl {
             Users.USERS,
             Versions.VERSIONS,
             Watchers.WATCHERS,
+            WorkPackageShares.WORK_PACKAGE_SHARES,
             WorkPackages.WORK_PACKAGES,
             Workflows.WORKFLOWS
         );

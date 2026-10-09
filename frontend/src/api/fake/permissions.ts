@@ -1,4 +1,5 @@
 // Permission rules from architecture.md §3.1, applied to the fake database.
+import type { ShareRole } from "../types";
 import { ApiError } from "../errors";
 import { db, type DbProject, type DbUser, type DbWp } from "./db";
 
@@ -31,6 +32,15 @@ export function projectUserIds(projectId: string): string[] {
   return [...ids].filter((id) => db.users.some((u) => u.id === id && u.status === "active"));
 }
 
+/** What each share role allows on its one work package (backend: core/Ctx.SHARE_PERMISSIONS). */
+export const SHARE_PERMISSIONS: Record<ShareRole, string[]> = {
+  view: ["wp.view"],
+  comment: ["wp.view", "wp.comment", "wp.edit_own_comments"],
+  edit: ["wp.view", "wp.comment", "wp.edit_own_comments", "wp.edit", "wp.attach"],
+};
+
+export const shareRoleOf = (userId: string, wpId: string): ShareRole | null => db.shares.find((s) => s.userId === userId && s.wpId === wpId)?.role ?? null;
+
 export function projectPermissions(user: DbUser, project: DbProject): Set<string> {
   let perms: string[];
   if (user.isAdmin) perms = ALL_PROJECT_PERMS;
@@ -41,13 +51,21 @@ export function projectPermissions(user: DbUser, project: DbProject): Set<string
     else perms = [];
   }
   let set = new Set(perms);
+  // someone with an item shared from this project sees the project (its name, the shared items), nothing more
+  if (!set.has("project.view") && db.shares.some((s) => s.userId === user.id && db.workPackages.some((w) => w.id === s.wpId && w.projectId === project.id))) set.add("project.view");
   if (project.archivedAt) set = new Set([...set].filter((p) => p.endsWith(".view") || p === "project.view_members"));
   for (const [perm, mod] of Object.entries(MODULE_OF)) if (!project.enabledModules.includes(mod)) set.delete(perm);
   return set;
 }
 
-export function can(user: DbUser, project: DbProject, perm: string) {
-  return projectPermissions(user, project).has(perm);
+/** Permission in a project, or on one of its work packages (project roles plus a share of that item). */
+export function can(user: DbUser, project: DbProject, perm: string, wp?: DbWp) {
+  if (projectPermissions(user, project).has(perm)) return true;
+  if (!wp) return false;
+  const role = shareRoleOf(user.id, wp.id);
+  if (!role) return false;
+  const shared = SHARE_PERMISSIONS[role];
+  return project.archivedAt ? perm.endsWith(".view") && shared.includes(perm) : shared.includes(perm);
 }
 
 export function globalPermissions(user: DbUser): string[] {
@@ -69,12 +87,12 @@ export function findProject(user: DbUser, idOrIdentifier: string): DbProject {
 export function findWp(user: DbUser, number: number): { wp: DbWp; project: DbProject } {
   const wp = db.workPackages.find((w) => w.number === number);
   const project = wp && db.projects.find((p) => p.id === wp.projectId);
-  if (!wp || !project || !can(user, project, "wp.view")) throw new ApiError(404, "작업을 찾을 수 없습니다.");
+  if (!wp || !project || !can(user, project, "wp.view", wp)) throw new ApiError(404, "작업을 찾을 수 없습니다.");
   return { wp, project };
 }
 
-export function requirePerm(user: DbUser, project: DbProject, perm: string, message = "이 작업을 할 권한이 없습니다.") {
-  if (!can(user, project, perm)) throw new ApiError(403, message);
+export function requirePerm(user: DbUser, project: DbProject, perm: string, message = "이 작업을 할 권한이 없습니다.", wp?: DbWp) {
+  if (!can(user, project, perm, wp)) throw new ApiError(403, message);
 }
 
 /** Workflow check (architecture.md §3.2): the statuses this user may move this work package to. */

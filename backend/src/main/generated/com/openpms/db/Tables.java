@@ -38,6 +38,7 @@ import com.openpms.db.tables.UserTokens;
 import com.openpms.db.tables.Users;
 import com.openpms.db.tables.Versions;
 import com.openpms.db.tables.Watchers;
+import com.openpms.db.tables.WorkPackageShares;
 import com.openpms.db.tables.WorkPackages;
 import com.openpms.db.tables.Workflows;
 
@@ -217,6 +218,11 @@ public class Tables {
      * The table <code>public.watchers</code>.
      */
     public static final Watchers WATCHERS = Watchers.WATCHERS;
+
+    /**
+     * The table <code>public.work_package_shares</code>.
+     */
+    public static final WorkPackageShares WORK_PACKAGE_SHARES = WorkPackageShares.WORK_PACKAGE_SHARES;
 
     /**
      * The table <code>public.work_packages</code>.

@@ -1,5 +1,7 @@
 import type {
   Attachment,
+  ShareRole,
+  WorkPackageShare,
   AdminCustomField,
   CustomFieldInput,
   ProjectCustomFields,
@@ -153,6 +155,14 @@ export interface Api {
     editComment(journalId: Id, bodyHtml: string): Promise<Journal>;
     /** POST|DELETE /work-packages/{number}/watchers */
     setWatching(number: number, watching: boolean): Promise<void>;
+    /** GET /work-packages/{number}/shares (wp.share) */
+    shares(number: number): Promise<WorkPackageShare[]>;
+    /** POST /work-packages/{number}/shares {userId, role} — shares, or changes the role of an existing share */
+    share(number: number, userId: Id, role: ShareRole): Promise<WorkPackageShare>;
+    /** PATCH /shares/{id} {role} */
+    updateShare(id: Id, role: ShareRole): Promise<WorkPackageShare>;
+    /** DELETE /shares/{id} */
+    removeShare(id: Id): Promise<void>;
     /** GET /work-packages/{number}/watchers (wp.view_watchers) */
     watchers(number: number): Promise<Watcher[]>;
     /** POST /work-packages/{number}/watchers {userId} (wp.add_watchers; 422 when that person cannot see the item) */

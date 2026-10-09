@@ -2,6 +2,7 @@ package com.openpms.wp;
 
 import static com.openpms.db.Tables.JOURNALS;
 import static com.openpms.db.Tables.NOTIFICATIONS;
+import static com.openpms.db.Tables.NOTIFICATION_SETTINGS;
 import static com.openpms.db.Tables.WATCHERS;
 import static com.openpms.db.Tables.WORK_PACKAGES;
 
@@ -107,7 +108,7 @@ public class Journals {
         java.util.function.BiConsumer<UUID, String> offer = (userId, reason) -> {
             if (userId == null || userId.equals(ctx.userId())) return;
             var u = s.user(userId).filter(x -> "active".equals(x.status())).orElse(null);
-            if (u == null || !ctx.can(u, project, "wp.view")) return; // never notify people who cannot see the item
+            if (u == null || !ctx.can(u, project, wp.getId(), "wp.view")) return; // never notify people who cannot see the item
             if (journal.getIsInternal() && !ctx.can(u, project, "wp.view_internal_comments")) return;
             var cur = recipients.get(userId);
             if (cur == null || REASON_RANK.indexOf(reason) < REASON_RANK.indexOf(cur)) recipients.put(userId, reason);
@@ -126,6 +127,22 @@ public class Journals {
                     .set(NOTIFICATIONS.CREATED_AT, journal.getUpdatedAt())
                     .execute();
         });
+    }
+
+    /**
+     * The one notification a share sends: reason "shared", no journal. Off when the person turned "shared" off in
+     * their notification settings (the project row wins over the personal default; no row means on).
+     */
+    public void notifyShared(Ctx ctx, WorkPackagesRecord wp, UUID recipientId) {
+        var settings = db.select(NOTIFICATION_SETTINGS.PROJECT_ID, NOTIFICATION_SETTINGS.SHARED).from(NOTIFICATION_SETTINGS)
+                .where(NOTIFICATION_SETTINGS.USER_ID.eq(recipientId), NOTIFICATION_SETTINGS.PROJECT_ID.isNull().or(NOTIFICATION_SETTINGS.PROJECT_ID.eq(wp.getProjectId())))
+                .fetch();
+        var own = settings.stream().filter(r -> r.value1() != null).findFirst().or(() -> settings.stream().findFirst());
+        if (own.isPresent() && !own.get().value2()) return;
+        db.insertInto(NOTIFICATIONS)
+                .set(NOTIFICATIONS.RECIPIENT_ID, recipientId).set(NOTIFICATIONS.WORK_PACKAGE_ID, wp.getId()).set(NOTIFICATIONS.PROJECT_ID, wp.getProjectId())
+                .set(NOTIFICATIONS.ACTOR_ID, ctx.userId()).set(NOTIFICATIONS.REASON, "shared")
+                .execute();
     }
 
     /* ---------- DTOs ---------- */
@@ -216,7 +233,7 @@ public class Journals {
                     details.add(new Dto.JournalDetail(field, LABEL.getOrDefault(base(field), field), display(s, base(field), from), display(s, base(field), to)));
                 });
         boolean canEdit = !j.getNotesHtml().isEmpty()
-                && ((j.getUserId().equals(ctx.userId()) && ctx.can(project, "wp.edit_own_comments")) || ctx.can(project, "wp.edit_comments"));
+                && ((j.getUserId().equals(ctx.userId()) && ctx.can(project, j.getWorkPackageId(), "wp.edit_own_comments")) || ctx.can(project, "wp.edit_comments"));
         return new Dto.Journal(j.getId(), j.getVersion(), Refs.user(s, j.getUserId()), j.getNotesHtml(), j.getIsInternal(), details, causeOf(j),
                 j.getCreatedAt(), j.getUpdatedAt(), canEdit);
     }

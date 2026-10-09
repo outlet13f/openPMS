@@ -393,12 +393,24 @@ public class QueryEngine {
         return out;
     }
 
+    /** Items I may list: those of projects in scope where I have wp.view, plus items shared with me in the projects the list covers. */
+    private Condition visible(Ctx ctx, Snapshot.ProjectRow project, boolean includeSubprojects) {
+        var projects = scope(ctx, project, includeSubprojects);
+        Condition c = projects.isEmpty() ? falseCondition() : W.PROJECT_ID.in(projects);
+        var shared = ctx.s().shares(ctx.userId()).roles().keySet();
+        if (shared.isEmpty()) return c;
+        var covered = ctx.s().projects().values().stream()
+                .filter(p -> project == null ? p.archivedAt() == null : p.id().equals(project.id()) || (includeSubprojects && ctx.s().isDescendant(p.id(), project.id())))
+                .map(Snapshot.ProjectRow::id).toList();
+        return c.or(W.ID.in(shared).and(covered.isEmpty() ? falseCondition() : W.PROJECT_ID.in(covered)));
+    }
+
     public Dto.QueryResult run(Ctx ctx, Spec spec, Snapshot.ProjectRow project, int page, int pageSize) {
         var s = ctx.s();
         page = Math.max(1, page);
         pageSize = Math.min(1000, Math.max(1, pageSize));
-        var projects = scope(ctx, project, spec.includeSubprojects());
-        Condition where = projects.isEmpty() ? falseCondition() : W.PROJECT_ID.in(projects);
+        var inScope = visible(ctx, project, spec.includeSubprojects());
+        Condition where = inScope;
         for (var f : spec.filters()) where = where.and(condition(ctx, f));
         var text = spec.text() == null ? "" : spec.text().trim();
         if (!text.isEmpty()) {
@@ -431,7 +443,7 @@ public class QueryEngine {
             });
             var missing = matching.stream().map(Light::parentId).filter(p -> p != null && !shown.containsKey(p)).collect(java.util.stream.Collectors.toSet());
             for (int i = 0; i < 50 && !missing.isEmpty(); i++) {
-                var found = fetchLight(W.ID.in(missing).and(W.PROJECT_ID.in(projects)));
+                var found = fetchLight(W.ID.in(missing).and(inScope));
                 missing = new HashSet<>();
                 for (var a : found) shown.put(a.id(), a);
                 for (var a : found) if (a.parentId() != null && !shown.containsKey(a.parentId())) missing.add(a.parentId());

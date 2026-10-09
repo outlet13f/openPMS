@@ -79,7 +79,7 @@ public class AttachmentController {
     public List<Attachment> list(@PathVariable long number) {
         var ctx = current.ctx();
         var f = workPackages.find(ctx, number);
-        boolean canAttach = ctx.can(f.project(), "wp.attach");
+        boolean canAttach = ctx.can(f.project(), f.wp().getId(), "wp.attach");
         return db.selectFrom(ATTACHMENTS).where(ATTACHMENTS.WORK_PACKAGE_ID.eq(f.wp().getId())).orderBy(ATTACHMENTS.CREATED_AT).fetch().stream()
                 .map(a -> toDto(ctx, a, canAttach)).toList();
     }
@@ -97,7 +97,7 @@ public class AttachmentController {
     public ResponseEntity<Attachment> upload(@PathVariable long number, @RequestParam("file") MultipartFile file) throws IOException {
         var ctx = current.ctx();
         var f = workPackages.find(ctx, number);
-        ctx.require(f.project(), "wp.attach", "파일을 첨부할 권한이 없습니다.");
+        ctx.require(f.project(), f.wp().getId(), "wp.attach", "파일을 첨부할 권한이 없습니다.");
         long max = settings.integer("attachments.max_bytes", 26_214_400);
         if (file.isEmpty()) throw ApiException.field("file", "빈 파일은 올릴 수 없습니다.");
         if (file.getSize() > max) throw new ApiException(413, "파일이 너무 큽니다.", "파일 하나는 " + (max / 1024 / 1024) + "MB까지 올릴 수 있습니다.");
@@ -179,7 +179,7 @@ public class AttachmentController {
     public ResponseEntity<Void> remove(@PathVariable UUID id) {
         var ctx = current.ctx();
         var found = find(ctx, id);
-        ctx.require(found.wp().project(), "wp.attach", "파일을 지울 권한이 없습니다.");
+        ctx.require(found.wp().project(), found.wp().wp().getId(), "wp.attach", "파일을 지울 권한이 없습니다.");
         var a = found.attachment();
         a.delete();
         var changes = new LinkedHashMap<String, List<Object>>();

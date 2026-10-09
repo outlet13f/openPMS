@@ -28,6 +28,7 @@ import com.openpms.db.tables.UserGroups.UserGroupsPath;
 import com.openpms.db.tables.UserPreferences.UserPreferencesPath;
 import com.openpms.db.tables.UserTokens.UserTokensPath;
 import com.openpms.db.tables.Watchers.WatchersPath;
+import com.openpms.db.tables.WorkPackageShares.WorkPackageSharesPath;
 import com.openpms.db.tables.WorkPackages.WorkPackagesPath;
 import com.openpms.db.tables.records.UsersRecord;
 
@@ -510,6 +511,34 @@ public class Users extends TableImpl<UsersRecord> {
         return _watchers;
     }
 
+    private transient WorkPackageSharesPath _workPackageSharesCreatedByFkey;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.work_package_shares</code> table, via the
+     * <code>work_package_shares_created_by_fkey</code> key
+     */
+    public WorkPackageSharesPath workPackageSharesCreatedByFkey() {
+        if (_workPackageSharesCreatedByFkey == null)
+            _workPackageSharesCreatedByFkey = new WorkPackageSharesPath(this, null, Keys.WORK_PACKAGE_SHARES__WORK_PACKAGE_SHARES_CREATED_BY_FKEY.getInverseKey());
+
+        return _workPackageSharesCreatedByFkey;
+    }
+
+    private transient WorkPackageSharesPath _workPackageSharesUserIdFkey;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.work_package_shares</code> table, via the
+     * <code>work_package_shares_user_id_fkey</code> key
+     */
+    public WorkPackageSharesPath workPackageSharesUserIdFkey() {
+        if (_workPackageSharesUserIdFkey == null)
+            _workPackageSharesUserIdFkey = new WorkPackageSharesPath(this, null, Keys.WORK_PACKAGE_SHARES__WORK_PACKAGE_SHARES_USER_ID_FKEY.getInverseKey());
+
+        return _workPackageSharesUserIdFkey;
+    }
+
     private transient WorkPackagesPath _workPackagesAssigneeIdFkey;
 
     /**
@@ -588,10 +617,20 @@ public class Users extends TableImpl<UsersRecord> {
 
     /**
      * Get the implicit many-to-many join path to the
-     * <code>public.work_packages</code> table
+     * <code>public.work_packages</code> table, via the
+     * <code>watchers_work_package_id_fkey</code> key
      */
-    public WorkPackagesPath workPackages() {
+    public WorkPackagesPath watchersWorkPackageIdFkey() {
         return watchers().workPackages();
+    }
+
+    /**
+     * Get the implicit many-to-many join path to the
+     * <code>public.work_packages</code> table, via the
+     * <code>work_package_shares_work_package_id_fkey</code> key
+     */
+    public WorkPackagesPath workPackageSharesWorkPackageIdFkey() {
+        return workPackageSharesUserIdFkey().workPackages();
     }
 
     @Override

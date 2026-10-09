@@ -38,6 +38,7 @@ import com.openpms.db.tables.UserTokens;
 import com.openpms.db.tables.Users;
 import com.openpms.db.tables.Versions;
 import com.openpms.db.tables.Watchers;
+import com.openpms.db.tables.WorkPackageShares;
 import com.openpms.db.tables.WorkPackages;
 import com.openpms.db.tables.Workflows;
 import com.openpms.db.tables.records.AttachmentsRecord;
@@ -74,6 +75,7 @@ import com.openpms.db.tables.records.UserTokensRecord;
 import com.openpms.db.tables.records.UsersRecord;
 import com.openpms.db.tables.records.VersionsRecord;
 import com.openpms.db.tables.records.WatchersRecord;
+import com.openpms.db.tables.records.WorkPackageSharesRecord;
 import com.openpms.db.tables.records.WorkPackagesRecord;
 import com.openpms.db.tables.records.WorkflowsRecord;
 
@@ -147,6 +149,8 @@ public class Keys {
     public static final UniqueKey<VersionsRecord> VERSIONS_PKEY = Internal.createUniqueKey(Versions.VERSIONS, DSL.name("versions_pkey"), new TableField[] { Versions.VERSIONS.ID }, true);
     public static final UniqueKey<VersionsRecord> VERSIONS_PROJECT_NAME_KEY = Internal.createUniqueKey(Versions.VERSIONS, DSL.name("versions_project_name_key"), new TableField[] { Versions.VERSIONS.PROJECT_ID, Versions.VERSIONS.NAME }, true);
     public static final UniqueKey<WatchersRecord> WATCHERS_PKEY = Internal.createUniqueKey(Watchers.WATCHERS, DSL.name("watchers_pkey"), new TableField[] { Watchers.WATCHERS.WORK_PACKAGE_ID, Watchers.WATCHERS.USER_ID }, true);
+    public static final UniqueKey<WorkPackageSharesRecord> WORK_PACKAGE_SHARES_ONE_PER_USER = Internal.createUniqueKey(WorkPackageShares.WORK_PACKAGE_SHARES, DSL.name("work_package_shares_one_per_user"), new TableField[] { WorkPackageShares.WORK_PACKAGE_SHARES.WORK_PACKAGE_ID, WorkPackageShares.WORK_PACKAGE_SHARES.USER_ID }, true);
+    public static final UniqueKey<WorkPackageSharesRecord> WORK_PACKAGE_SHARES_PKEY = Internal.createUniqueKey(WorkPackageShares.WORK_PACKAGE_SHARES, DSL.name("work_package_shares_pkey"), new TableField[] { WorkPackageShares.WORK_PACKAGE_SHARES.ID }, true);
     public static final UniqueKey<WorkPackagesRecord> WORK_PACKAGES_NUMBER_KEY = Internal.createUniqueKey(WorkPackages.WORK_PACKAGES, DSL.name("work_packages_number_key"), new TableField[] { WorkPackages.WORK_PACKAGES.NUMBER }, true);
     public static final UniqueKey<WorkPackagesRecord> WORK_PACKAGES_PKEY = Internal.createUniqueKey(WorkPackages.WORK_PACKAGES, DSL.name("work_packages_pkey"), new TableField[] { WorkPackages.WORK_PACKAGES.ID }, true);
     public static final UniqueKey<WorkflowsRecord> WORKFLOWS_PKEY = Internal.createUniqueKey(Workflows.WORKFLOWS, DSL.name("workflows_pkey"), new TableField[] { Workflows.WORKFLOWS.ID }, true);
@@ -214,6 +218,9 @@ public class Keys {
     public static final ForeignKey<VersionsRecord, ProjectsRecord> VERSIONS__VERSIONS_PROJECT_ID_FKEY = Internal.createForeignKey(Versions.VERSIONS, DSL.name("versions_project_id_fkey"), new TableField[] { Versions.VERSIONS.PROJECT_ID }, Keys.PROJECTS_PKEY, new TableField[] { Projects.PROJECTS.ID }, true, ForeignKeyRule.CASCADE, ForeignKeyRule.NO_ACTION);
     public static final ForeignKey<WatchersRecord, UsersRecord> WATCHERS__WATCHERS_USER_ID_FKEY = Internal.createForeignKey(Watchers.WATCHERS, DSL.name("watchers_user_id_fkey"), new TableField[] { Watchers.WATCHERS.USER_ID }, Keys.USERS_PKEY, new TableField[] { Users.USERS.ID }, true, ForeignKeyRule.CASCADE, ForeignKeyRule.NO_ACTION);
     public static final ForeignKey<WatchersRecord, WorkPackagesRecord> WATCHERS__WATCHERS_WORK_PACKAGE_ID_FKEY = Internal.createForeignKey(Watchers.WATCHERS, DSL.name("watchers_work_package_id_fkey"), new TableField[] { Watchers.WATCHERS.WORK_PACKAGE_ID }, Keys.WORK_PACKAGES_PKEY, new TableField[] { WorkPackages.WORK_PACKAGES.ID }, true, ForeignKeyRule.CASCADE, ForeignKeyRule.NO_ACTION);
+    public static final ForeignKey<WorkPackageSharesRecord, UsersRecord> WORK_PACKAGE_SHARES__WORK_PACKAGE_SHARES_CREATED_BY_FKEY = Internal.createForeignKey(WorkPackageShares.WORK_PACKAGE_SHARES, DSL.name("work_package_shares_created_by_fkey"), new TableField[] { WorkPackageShares.WORK_PACKAGE_SHARES.CREATED_BY }, Keys.USERS_PKEY, new TableField[] { Users.USERS.ID }, true, ForeignKeyRule.SET_NULL, ForeignKeyRule.NO_ACTION);
+    public static final ForeignKey<WorkPackageSharesRecord, UsersRecord> WORK_PACKAGE_SHARES__WORK_PACKAGE_SHARES_USER_ID_FKEY = Internal.createForeignKey(WorkPackageShares.WORK_PACKAGE_SHARES, DSL.name("work_package_shares_user_id_fkey"), new TableField[] { WorkPackageShares.WORK_PACKAGE_SHARES.USER_ID }, Keys.USERS_PKEY, new TableField[] { Users.USERS.ID }, true, ForeignKeyRule.CASCADE, ForeignKeyRule.NO_ACTION);
+    public static final ForeignKey<WorkPackageSharesRecord, WorkPackagesRecord> WORK_PACKAGE_SHARES__WORK_PACKAGE_SHARES_WORK_PACKAGE_ID_FKEY = Internal.createForeignKey(WorkPackageShares.WORK_PACKAGE_SHARES, DSL.name("work_package_shares_work_package_id_fkey"), new TableField[] { WorkPackageShares.WORK_PACKAGE_SHARES.WORK_PACKAGE_ID }, Keys.WORK_PACKAGES_PKEY, new TableField[] { WorkPackages.WORK_PACKAGES.ID }, true, ForeignKeyRule.CASCADE, ForeignKeyRule.NO_ACTION);
     public static final ForeignKey<WorkPackagesRecord, UsersRecord> WORK_PACKAGES__WORK_PACKAGES_ASSIGNEE_ID_FKEY = Internal.createForeignKey(WorkPackages.WORK_PACKAGES, DSL.name("work_packages_assignee_id_fkey"), new TableField[] { WorkPackages.WORK_PACKAGES.ASSIGNEE_ID }, Keys.USERS_PKEY, new TableField[] { Users.USERS.ID }, true, ForeignKeyRule.SET_NULL, ForeignKeyRule.NO_ACTION);
     public static final ForeignKey<WorkPackagesRecord, UsersRecord> WORK_PACKAGES__WORK_PACKAGES_AUTHOR_ID_FKEY = Internal.createForeignKey(WorkPackages.WORK_PACKAGES, DSL.name("work_packages_author_id_fkey"), new TableField[] { WorkPackages.WORK_PACKAGES.AUTHOR_ID }, Keys.USERS_PKEY, new TableField[] { Users.USERS.ID }, true, ForeignKeyRule.RESTRICT, ForeignKeyRule.NO_ACTION);
     public static final ForeignKey<WorkPackagesRecord, CategoriesRecord> WORK_PACKAGES__WORK_PACKAGES_CATEGORY_ID_FKEY = Internal.createForeignKey(WorkPackages.WORK_PACKAGES, DSL.name("work_packages_category_id_fkey"), new TableField[] { WorkPackages.WORK_PACKAGES.CATEGORY_ID }, Keys.CATEGORIES_PKEY, new TableField[] { Categories.CATEGORIES.ID }, true, ForeignKeyRule.SET_NULL, ForeignKeyRule.NO_ACTION);

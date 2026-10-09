@@ -17,7 +17,8 @@ public class NotificationTexts {
             "mentioned", "%s님이 코멘트에서 나를 언급했습니다",
             "assigned", "%s님이 내가 담당한 작업을 바꿨습니다",
             "responsible", "%s님이 내가 책임자인 작업을 바꿨습니다",
-            "watched", "%s님이 주시 중인 작업을 바꿨습니다");
+            "watched", "%s님이 주시 중인 작업을 바꿨습니다",
+            "shared", "%s님이 나에게 작업을 공유했습니다");
 
     private final Journals journals;
 

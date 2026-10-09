@@ -21,6 +21,8 @@ import static com.openpms.db.Tables.USER_GROUPS;
 import static com.openpms.db.Tables.USER_GROUP_MEMBERS;
 import static com.openpms.db.Tables.VERSIONS;
 import static com.openpms.db.Tables.WORKFLOWS;
+import static com.openpms.db.Tables.WORK_PACKAGES;
+import static com.openpms.db.Tables.WORK_PACKAGE_SHARES;
 
 import com.openpms.common.Dates;
 import java.time.LocalDate;
@@ -211,6 +213,25 @@ public final class Snapshot {
     private final Supplier<Set<LocalDate>> holidays = lazy(() -> new HashSet<>(this.db.select(NON_WORKING_DAYS.DAY).from(NON_WORKING_DAYS).fetch(NON_WORKING_DAYS.DAY)));
 
     /* ---------- accessors ---------- */
+
+    /** One person's shares: work package id → role, and the projects those items are in. Loaded once per person. */
+    public record Shares(Map<UUID, String> roles, Set<UUID> projectIds) {}
+
+    private final Map<UUID, Shares> shares = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public Shares shares(UUID userId) {
+        return shares.computeIfAbsent(userId, id -> {
+            var roles = new HashMap<UUID, String>();
+            var projectIds = new HashSet<UUID>();
+            this.db.select(WORK_PACKAGE_SHARES.WORK_PACKAGE_ID, WORK_PACKAGE_SHARES.ROLE, WORK_PACKAGES.PROJECT_ID).from(WORK_PACKAGE_SHARES)
+                    .join(WORK_PACKAGES).on(WORK_PACKAGES.ID.eq(WORK_PACKAGE_SHARES.WORK_PACKAGE_ID))
+                    .where(WORK_PACKAGE_SHARES.USER_ID.eq(id)).fetch().forEach(r -> {
+                        roles.put(r.value1(), r.value2());
+                        projectIds.add(r.value3());
+                    });
+            return new Shares(roles, projectIds);
+        });
+    }
 
     /** Work package custom fields, in order. */
     public List<CustomFieldRow> customFields() {

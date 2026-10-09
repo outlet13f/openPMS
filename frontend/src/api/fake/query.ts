@@ -14,8 +14,13 @@ function descendantsOf(projectId: string): string[] {
 }
 
 function scopeProjects(user: DbUser, projectId: string | undefined, includeSubprojects: boolean): DbProject[] {
+  return candidateProjects(projectId, includeSubprojects).filter((p) => can(user, p, "wp.view"));
+}
+
+/** Projects a list covers, before permissions: one (plus subprojects) or every unarchived one. */
+function candidateProjects(projectId: string | undefined, includeSubprojects: boolean): DbProject[] {
   const ids = projectId ? (includeSubprojects ? descendantsOf(projectId) : [projectId]) : db.projects.map((p) => p.id);
-  return db.projects.filter((p) => ids.includes(p.id) && can(user, p, "wp.view") && (projectId ? true : !p.archivedAt));
+  return db.projects.filter((p) => ids.includes(p.id) && (projectId ? true : !p.archivedAt));
 }
 
 function resolveUser(v: string, user: DbUser) {
@@ -274,11 +279,15 @@ export function runQuery(user: DbUser, spec: QuerySpec, opts: { projectId?: stri
   const page = Math.max(1, opts.page ?? 1);
   const pageSize = Math.min(1000, Math.max(1, opts.pageSize ?? 20));
   const projects = new Set(scopeProjects(user, opts.projectId, spec.includeSubprojects).map((p) => p.id));
+  // items shared with me count too, in the projects this list covers
+  const candidates = new Set(candidateProjects(opts.projectId, spec.includeSubprojects).map((p) => p.id));
+  const shared = new Set(db.shares.filter((s) => s.userId === user.id).map((s) => s.wpId));
+  const inScope = (w: DbWp) => projects.has(w.projectId) || (shared.has(w.id) && candidates.has(w.projectId));
   const text = spec.text?.trim().toLowerCase();
 
   const matching = db.workPackages.filter(
     (w) =>
-      projects.has(w.projectId) &&
+      inScope(w) &&
       spec.filters.every((f) => matches(w, f, user)) &&
       (!text || w.subject.toLowerCase().includes(text) || `#${w.number}` === text || String(w.number) === text.replace("#", "")),
   );
@@ -296,7 +305,7 @@ export function runQuery(user: DbUser, spec: QuerySpec, opts: { projectId?: stri
     for (const w of matching) {
       shown.set(w.id, w);
       let cur = w.parentId ? db.workPackages.find((x) => x.id === w.parentId) : undefined;
-      while (cur && projects.has(cur.projectId)) {
+      while (cur && inScope(cur)) {
         shown.set(cur.id, cur);
         cur = cur.parentId ? db.workPackages.find((x) => x.id === cur!.parentId) : undefined;
       }

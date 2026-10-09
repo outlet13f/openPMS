@@ -2,7 +2,7 @@
 // rules live in one place.
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { BoardKind, Id, QuerySpec, RelationType, WorkPackage, WorkPackageInput, WorkPackagePatch } from "./types";
+import type { BoardKind, Id, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch } from "./types";
 
 export const qk = {
   me: ["me"] as const,
@@ -16,6 +16,7 @@ export const qk = {
   wpRelations: (n: number) => ["wp", n, "relations"] as const,
   wpAttachments: (n: number) => ["wp", n, "attachments"] as const,
   wpWatchers: (n: number) => ["wp", n, "watchers"] as const,
+  wpShares: (n: number) => ["wp", n, "shares"] as const,
   wpStatuses: (n: number) => ["wp", n, "allowed-statuses"] as const,
   wpForm: (projectId: string, typeId?: string) => ["wp-form", projectId, typeId ?? ""] as const,
   query: (spec: QuerySpec, projectId?: string, page = 1, pageSize = 20) => ["wp-query", projectId ?? "", page, pageSize, spec] as const,
@@ -179,6 +180,18 @@ export function useEditComment(n: number) {
 export function useWatch(n: number) {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (watching: boolean) => api.workPackages.setWatching(n, watching), onSuccess: () => qc.invalidateQueries({ queryKey: qk.wp(n) }) });
+}
+
+export const useShares = (n: number, enabled = true) => useQuery({ queryKey: qk.wpShares(n), queryFn: () => api.workPackages.shares(n), enabled });
+
+export function useShareMutations(n: number) {
+  const qc = useQueryClient();
+  const done = () => qc.invalidateQueries({ queryKey: qk.wp(n) });
+  return {
+    add: useMutation({ mutationFn: ({ userId, role }: { userId: Id; role: ShareRole }) => api.workPackages.share(n, userId, role), onSuccess: done }),
+    update: useMutation({ mutationFn: ({ id, role }: { id: Id; role: ShareRole }) => api.workPackages.updateShare(id, role), onSuccess: done }),
+    remove: useMutation({ mutationFn: (id: Id) => api.workPackages.removeShare(id), onSuccess: done }),
+  };
 }
 
 export const useWatchers = (n: number, enabled = true) => useQuery({ queryKey: qk.wpWatchers(n), queryFn: () => api.workPackages.watchers(n), enabled });

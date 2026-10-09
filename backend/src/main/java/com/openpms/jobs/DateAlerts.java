@@ -88,7 +88,7 @@ public class DateAlerts {
                 var u = s.user(userId).filter(x -> "active".equals(x.status())).orElse(null);
                 if (u == null) continue;
                 var ctx = ctxs.computeIfAbsent(userId, id -> new Ctx(id, () -> s));
-                if (!ctx.can(project, "wp.view")) continue;
+                if (!ctx.can(project, wp.getId(), "wp.view")) continue;
                 var today = LocalDate.ofInstant(now, zone(u.timeZone()));
                 var paused = pausedUntil.get(userId);
                 if (paused != null && !today.isAfter(paused)) continue;
