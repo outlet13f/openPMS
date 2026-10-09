@@ -32,6 +32,7 @@ import { Counter } from "@/components/ui/badges";
 import { useLogout } from "./auth";
 import { SearchBox } from "./search-box";
 import { can } from "./project";
+import { ADMIN_SECTIONS } from "@/pages/admin";
 
 /* ---------- sidebars ---------- */
 
@@ -138,6 +139,35 @@ function ProjectSidebar({ identifier, onNavigate }: { identifier: string; onNavi
   return <Sidebar label={t("nav.projectMenu")} header={<ProjectSwitcher project={p} />} sections={[{ items }]} onNavigate={onNavigate} />;
 }
 
+function AdminSidebar({ me, onNavigate }: { me: Me; onNavigate?: () => void }) {
+  const { t } = useTranslation();
+  const groups: { title: string; keys: string[] }[] = [
+    { title: t("admin.groupTitles.workPackages"), keys: ["types", "statuses", "workflows", "priorities"] },
+    { title: t("admin.groupTitles.people"), keys: ["users", "groups", "roles"] },
+    { title: t("admin.groupTitles.calendar"), keys: ["calendar"] },
+  ];
+  const visible = (k: string) => me.isAdmin || ((k === "users" || k === "groups") && me.globalPermissions.includes("global.manage_users"));
+  return (
+    <Sidebar
+      label={t("nav.admin")}
+      onNavigate={onNavigate}
+      header={
+        <Link to="/" onClick={onNavigate} className="inline-flex h-8 items-center gap-2 rounded-md px-2 text-sm text-fg hover:bg-surface-hover">
+          <ArrowLeft className="size-4 text-fg-muted" aria-hidden="true" />
+          {t("admin.back")}
+        </Link>
+      }
+      sections={[
+        { items: [{ label: t("nav.admin"), to: "/admin", icon: <Shield />, end: true }] },
+        ...groups.map((g) => ({
+          title: g.title,
+          items: ADMIN_SECTIONS.filter((s) => g.keys.includes(s.key) && visible(s.key)).map((s) => ({ label: t(`admin.sections.${s.key}`), to: s.to, icon: s.icon })),
+        })),
+      ].filter((s) => s.items.length)}
+    />
+  );
+}
+
 /* ---------- the layout ---------- */
 
 export function AppLayout({ me }: { me: Me }) {
@@ -164,8 +194,15 @@ export function AppLayout({ me }: { me: Me }) {
     window.scrollTo({ top: 0 });
   }, [pageKey]);
 
+  const inAdmin = !!useMatch("/admin/*");
   const sidebar = (close?: () => void) =>
-    identifier ? <ProjectSidebar identifier={identifier} onNavigate={close} /> : <GlobalSidebar me={me} onNavigate={close} unread={unread} />;
+    identifier ? (
+      <ProjectSidebar identifier={identifier} onNavigate={close} />
+    ) : inAdmin ? (
+      <AdminSidebar me={me} onNavigate={close} />
+    ) : (
+      <GlobalSidebar me={me} onNavigate={close} unread={unread} />
+    );
 
   const quickAdd = useMemo<MenuEntry[]>(() => {
     const items: MenuEntry[] = [];

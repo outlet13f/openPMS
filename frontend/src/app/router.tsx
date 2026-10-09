@@ -21,6 +21,14 @@ import { DetailsPanelRoute, FullViewRoute, NewPanelRoute } from "@/pages/work-pa
 import { NotificationDetailRoute, NotificationsPage } from "@/pages/notifications";
 import { DesignPage } from "@/pages/design-page";
 import { GanttDetailRoute, GanttPage } from "@/pages/gantt";
+import { AdminHomePage } from "@/pages/admin";
+import { AdminTypesPage } from "@/pages/admin/types";
+import { AdminPrioritiesPage, AdminStatusesPage } from "@/pages/admin/statuses";
+import { AdminWorkflowsPage } from "@/pages/admin/workflows";
+import { AdminRoleEditPage, AdminRolesPage } from "@/pages/admin/roles";
+import { AdminGroupsPage, AdminUsersPage } from "@/pages/admin/users";
+import { AdminCalendarPage } from "@/pages/admin/calendar";
+import { ProjectSettingsPage } from "@/pages/projects/settings";
 import { BoardsPage, NewBoardPage } from "@/pages/boards/list";
 import { BoardDetailRoute, BoardPage } from "@/pages/boards/board";
 
@@ -101,11 +109,21 @@ export const router = createBrowserRouter([
           { path: "calendar", element: <RequireModule module="calendar"><Stub id="S17" nameKey="nav.calendar" /></RequireModule> },
           { path: "team-planner", element: <RequireModule module="team_planner"><Stub id="S18" nameKey="nav.teamPlanner" /></RequireModule> },
           { path: "members", element: <MembersPage /> },
-          { path: "settings/:section", element: <Stub id="S24–S26" nameKey="nav.settings" /> },
+          { path: "settings", element: <ProjectSettingsPage /> },
+          { path: "settings/:section", element: <ProjectSettingsPage /> },
           { path: "*", element: <NotFound /> },
         ],
       },
-      { path: "admin", element: <AdminStub /> },
+      { path: "admin", element: <AdminHomePage /> },
+      { path: "admin/types", element: <AdminTypesPage /> },
+      { path: "admin/statuses", element: <AdminStatusesPage /> },
+      { path: "admin/workflows", element: <AdminWorkflowsPage /> },
+      { path: "admin/priorities", element: <AdminPrioritiesPage /> },
+      { path: "admin/roles", element: <AdminRolesPage /> },
+      { path: "admin/roles/:id", element: <AdminRoleEditPage /> },
+      { path: "admin/users", element: <AdminUsersPage /> },
+      { path: "admin/groups", element: <AdminGroupsPage /> },
+      { path: "admin/calendar", element: <AdminCalendarPage /> },
       { path: "admin/:section/*", element: <AdminStub /> },
       { path: "*", element: <NotFound /> },
     ],
