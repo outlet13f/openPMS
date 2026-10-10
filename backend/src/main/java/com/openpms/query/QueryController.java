@@ -75,8 +75,10 @@ public class QueryController {
             if (s instanceof Map<?, ?> x) sort.add(new QueryEngine.Sort(String.valueOf(x.get("field")), String.valueOf(x.get("dir"))));
         }
         boolean timeline = m.get("timeline") instanceof Map<?, ?> t && Boolean.TRUE.equals(t.get("visible"));
+        List<String> columns = m.get("columns") instanceof List<?> cs ? cs.stream().map(String::valueOf).toList() : List.of();
+        var groupBy = m.get("groupBy") == null || "".equals(m.get("groupBy")) ? null : String.valueOf(m.get("groupBy"));
         return new QueryEngine.Spec(filters, sort, Boolean.TRUE.equals(m.get("hierarchy")), !Boolean.FALSE.equals(m.get("includeSubprojects")),
-                m.get("text") == null ? null : String.valueOf(m.get("text")), timeline);
+                m.get("text") == null ? null : String.valueOf(m.get("text")), timeline, groupBy, Boolean.TRUE.equals(m.get("sums")), columns);
     }
 
     @PostMapping("/work-packages/query")

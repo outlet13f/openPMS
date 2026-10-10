@@ -21,6 +21,7 @@ import com.openpms.core.Snapshot;
 import com.openpms.core.Text;
 import com.openpms.db.tables.WorkPackages;
 import com.openpms.wp.Assembler;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -51,7 +52,12 @@ public class QueryEngine {
 
     public record Sort(String field, String dir) {}
 
-    public record Spec(List<Filter> filters, List<Sort> sort, boolean hierarchy, boolean includeSubprojects, String text, boolean timeline) {}
+    /** groupBy: a column key (GROUPABLE, or a list/user/bool custom field); sums: totals of the summable columns among {@code columns}. */
+    public record Spec(List<Filter> filters, List<Sort> sort, boolean hierarchy, boolean includeSubprojects, String text, boolean timeline, String groupBy,
+                       boolean sums, List<String> columns) {}
+
+    /** Columns a list can be grouped by (plus list, user and yes/no custom fields). */
+    public static final Set<String> GROUPABLE = Set.of("type", "status", "priority", "assignee", "responsible", "author", "version", "project");
 
     private static final Map<String, Set<String>> OPS = new HashMap<>();
 
@@ -325,7 +331,8 @@ public class QueryEngine {
     /* ---------- sort ---------- */
 
     record Light(UUID id, long number, UUID parentId, UUID projectId, String subject, UUID typeId, UUID statusId, UUID priorityId, UUID assigneeId,
-                 UUID responsibleId, UUID authorId, LocalDate startDate, LocalDate dueDate, OffsetDateTime updatedAt, JSONB customValues) {}
+                 UUID responsibleId, UUID authorId, LocalDate startDate, LocalDate dueDate, OffsetDateTime updatedAt, JSONB customValues, UUID versionId,
+                 BigDecimal workHours, BigDecimal remainingHours) {}
 
     /** Sort key of a custom field: empty (or not on for the item) sorts last. Parsed values are cached per run. */
     private Comparable<?> customSortValue(Snapshot s, Light w, String field, Map<UUID, Map<String, Object>> parsed) {
@@ -337,8 +344,13 @@ public class QueryEngine {
         return customFields.sortKey(s, cf, v);
     }
 
+    /** A user's or a group's name (the assignee may be a group). */
+    private static String principalName(Snapshot s, UUID id) {
+        return s.user(id).map(Snapshot.UserRow::name).orElseGet(() -> s.groups().containsKey(id) ? s.groups().get(id).name() : "");
+    }
+
     private static Comparable<?> sortValue(Snapshot s, Light w, String field) {
-        java.util.function.Function<UUID, String> name = id -> id == null ? "￿" : s.user(id).map(Snapshot.UserRow::name).orElse("");
+        java.util.function.Function<UUID, String> name = id -> id == null ? "￿" : principalName(s, id);
         return switch (field) {
             case "number" -> w.number();
             case "subject" -> w.subject();
@@ -352,20 +364,116 @@ public class QueryEngine {
             case "dueDate" -> w.dueDate() == null ? "9999" : w.dueDate().toString();
             case "updatedAt" -> w.updatedAt().toInstant().toString();
             case "project" -> s.project(w.projectId()).map(Snapshot.ProjectRow::name).orElse("");
+            case "version" -> w.versionId() == null ? "￿" : s.version(w.versionId()).map(Snapshot.VersionRow::name).orElse("");
+            case "work" -> w.workHours() == null ? Double.MAX_VALUE : w.workHours().doubleValue();
+            case "remainingWork" -> w.remainingHours() == null ? Double.MAX_VALUE : w.remainingHours().doubleValue();
             default -> w.number();
         };
     }
 
+    /* ---------- groups and sums ---------- */
+
+    record Group(String key, String label, String color) {}
+
+    private static final Group NONE = new Group("", "", null);
+
+    /** The custom field a groupBy names, when it is one a list can be grouped by. */
+    private Snapshot.CustomFieldRow groupField(Snapshot s, String groupBy) {
+        var id = CustomFields.idOf(groupBy);
+        var cf = id == null ? null : s.customField(id).orElse(null);
+        return cf != null && Set.of("list", "user", "bool").contains(cf.format()) ? cf : null;
+    }
+
+    private Group groupOf(Snapshot s, Light w, String by, Snapshot.CustomFieldRow cf, Map<UUID, Map<String, Object>> parsed) {
+        if (cf != null) {
+            boolean active = cf.typeIds().contains(w.typeId()) && s.customFieldEnabledIn(cf, w.projectId());
+            var v = active ? parsed.computeIfAbsent(w.id(), k -> customFields.read(w.customValues())).get(cf.id().toString()) : null;
+            var label = customFields.text(s, cf, v);
+            if (label.isEmpty()) return NONE;
+            var key = v instanceof java.util.Collection<?> c ? String.join(",", c.stream().map(String::valueOf).sorted().toList()) : String.valueOf(v);
+            return new Group(key, label, null);
+        }
+        UUID id = switch (by) {
+            case "type" -> w.typeId();
+            case "status" -> w.statusId();
+            case "priority" -> w.priorityId();
+            case "assignee" -> w.assigneeId();
+            case "responsible" -> w.responsibleId();
+            case "author" -> w.authorId();
+            case "version" -> w.versionId();
+            case "project" -> w.projectId();
+            default -> null;
+        };
+        if (id == null) return NONE;
+        return switch (by) {
+            case "type" -> s.type(id).map(t -> new Group(id.toString(), t.name(), t.color())).orElse(NONE);
+            case "status" -> s.status(id).map(t -> new Group(id.toString(), t.name(), t.color())).orElse(NONE);
+            case "priority" -> s.priority(id).map(t -> new Group(id.toString(), t.name(), t.color())).orElse(NONE);
+            case "version" -> s.version(id).map(v -> new Group(id.toString(), v.name(), null)).orElse(NONE);
+            case "project" -> s.project(id).map(p -> new Group(id.toString(), p.name(), null)).orElse(NONE);
+            default -> new Group(id.toString(), principalName(s, id), null);
+        };
+    }
+
+    /** Summable columns among the visible ones: work, remaining work, % complete (derived), number custom fields. */
+    private List<String> summable(Snapshot s, List<String> columns) {
+        return columns.stream().filter(c -> switch (c) {
+            case "work", "remainingWork", "doneRatio" -> true;
+            default -> {
+                var id = CustomFields.idOf(c);
+                yield id != null && s.customField(id).map(f -> f.format().equals("integer") || f.format().equals("float")).orElse(false);
+            }
+        }).distinct().toList();
+    }
+
+    /** Adds one item to running totals ("work" and "remainingWork" are always kept: % complete needs them). */
+    private void accumulate(Snapshot s, Light w, List<String> cols, Map<String, BigDecimal> acc, Map<UUID, Map<String, Object>> parsed) {
+        if (w.workHours() != null) acc.merge("work", w.workHours(), BigDecimal::add);
+        if (w.remainingHours() != null) acc.merge("remainingWork", w.remainingHours(), BigDecimal::add);
+        for (var c : cols) {
+            var id = CustomFields.idOf(c);
+            if (id == null) continue;
+            var cf = s.customField(id).orElse(null);
+            if (cf == null || !cf.typeIds().contains(w.typeId()) || !s.customFieldEnabledIn(cf, w.projectId())) continue;
+            var v = parsed.computeIfAbsent(w.id(), k -> customFields.read(w.customValues())).get(id.toString());
+            if (v == null || "".equals(v)) continue;
+            try {
+                acc.merge(c, new BigDecimal(String.valueOf(v)), BigDecimal::add);
+            } catch (NumberFormatException ignored) {
+                // not a number: left out of the sum
+            }
+        }
+    }
+
+    /** The totals to show: the visible summable columns; % complete weighted by work, as the progress rules do. */
+    private static Map<String, BigDecimal> finish(Map<String, BigDecimal> acc, List<String> cols) {
+        var out = new LinkedHashMap<String, BigDecimal>();
+        for (var c : cols) {
+            if (c.equals("doneRatio")) {
+                var work = acc.get("work");
+                var remaining = acc.getOrDefault("remainingWork", BigDecimal.ZERO);
+                out.put(c, work == null || work.signum() == 0 ? null
+                        : work.subtract(remaining).multiply(BigDecimal.valueOf(100)).divide(work, 0, java.math.RoundingMode.HALF_UP).max(BigDecimal.ZERO));
+            } else {
+                out.put(c, acc.get(c));
+            }
+        }
+        return out;
+    }
+
     @SuppressWarnings({"unchecked", "rawtypes"})
+    private static int compareValues(Comparable va, Comparable vb) {
+        return va instanceof String x && vb instanceof String y ? Text.KOREAN.compare(x, y) : va.compareTo(vb);
+    }
+
     private Comparator<Light> comparator(Snapshot s, List<Sort> sort) {
         var keys = sort == null || sort.isEmpty() ? List.of(new Sort("number", "asc")) : sort;
         var parsed = new HashMap<UUID, Map<String, Object>>();
         return (a, b) -> {
             for (var k : keys) {
                 boolean cf = k.field() != null && k.field().startsWith("cf:");
-                Comparable va = cf ? customSortValue(s, a, k.field(), parsed) : sortValue(s, a, k.field());
-                Comparable vb = cf ? customSortValue(s, b, k.field(), parsed) : sortValue(s, b, k.field());
-                int c = va instanceof String x && vb instanceof String y ? Text.KOREAN.compare(x, y) : va.compareTo(vb);
+                int c = compareValues(cf ? customSortValue(s, a, k.field(), parsed) : sortValue(s, a, k.field()),
+                        cf ? customSortValue(s, b, k.field(), parsed) : sortValue(s, b, k.field()));
                 if (c != 0) return "desc".equals(k.dir()) ? -c : c;
             }
             return Long.compare(a.number(), b.number());
@@ -376,9 +484,9 @@ public class QueryEngine {
 
     private List<Light> fetchLight(Condition where) {
         return db.select(W.ID, W.NUMBER, W.PARENT_ID, W.PROJECT_ID, W.SUBJECT, W.TYPE_ID, W.STATUS_ID, W.PRIORITY_ID, W.ASSIGNEE_ID, W.RESPONSIBLE_ID,
-                        W.AUTHOR_ID, W.START_DATE, W.DUE_DATE, W.UPDATED_AT, W.CUSTOM_VALUES)
+                        W.AUTHOR_ID, W.START_DATE, W.DUE_DATE, W.UPDATED_AT, W.CUSTOM_VALUES, W.VERSION_ID, W.WORK_HOURS, W.REMAINING_HOURS)
                 .from(W).where(where).fetch(r -> new Light(r.value1(), r.value2(), r.value3(), r.value4(), r.value5(), r.value6(), r.value7(), r.value8(),
-                        r.value9(), r.value10(), r.value11(), r.value12(), r.value13(), r.value14(), r.value15()));
+                        r.value9(), r.value10(), r.value11(), r.value12(), r.value13(), r.value14(), r.value15(), r.value16(), r.value17(), r.value18()));
     }
 
     /** Projects in scope: one project (plus subprojects when asked) or every visible one. */
@@ -423,14 +531,57 @@ public class QueryEngine {
             }
             where = where.and(W.SUBJECT.containsIgnoreCase(text).or(byNumber));
         }
-        var cmp = comparator(s, spec.sort());
+        var sortCmp = comparator(s, spec.sort());
         var matching = new ArrayList<>(fetchLight(where));
+        // grouped: the group decides the order first (its own order: status position, names…; "none" last), then the sort
+        var groupCf = spec.groupBy() == null ? null : groupField(s, spec.groupBy());
+        var groupBy = spec.groupBy() != null && (GROUPABLE.contains(spec.groupBy()) || groupCf != null) ? spec.groupBy() : null;
+        var parsed = new HashMap<UUID, Map<String, Object>>();
+        var groupOfRow = new HashMap<UUID, Group>();
+        Comparator<Light> cmp = sortCmp;
+        if (groupBy != null) {
+            for (var w : matching) groupOfRow.put(w.id(), groupOf(s, w, groupBy, groupCf, parsed));
+            boolean desc = spec.sort() != null && !spec.sort().isEmpty() && groupBy.equals(spec.sort().get(0).field()) && "desc".equals(spec.sort().get(0).dir());
+            Comparator<Light> byGroup = (a, b) -> {
+                boolean na = groupOfRow.get(a.id()) == NONE, nb = groupOfRow.get(b.id()) == NONE;
+                if (na || nb) return Boolean.compare(na, nb);
+                int c = compareValues(groupCf != null ? customSortValue(s, a, groupBy, parsed) : sortValue(s, a, groupBy),
+                        groupCf != null ? customSortValue(s, b, groupBy, parsed) : sortValue(s, b, groupBy));
+                if (c == 0) c = groupOfRow.get(a.id()).key().compareTo(groupOfRow.get(b.id()).key());
+                return desc ? -c : c;
+            };
+            cmp = byGroup.thenComparing(sortCmp);
+        }
         matching.sort(cmp);
+        final var treeCmp = cmp; // the hierarchy below sorts siblings with the same order
         long total = matching.size();
+
+        var sumCols = spec.sums() ? summable(s, spec.columns()) : List.<String>of();
+        List<Dto.QueryGroup> groups = null;
+        if (groupBy != null) {
+            var counts = new LinkedHashMap<String, long[]>();
+            var labels = new LinkedHashMap<String, Group>();
+            var accs = new HashMap<String, Map<String, BigDecimal>>();
+            for (var w : matching) {
+                var g = groupOfRow.get(w.id());
+                labels.putIfAbsent(g.key(), g);
+                counts.computeIfAbsent(g.key(), k -> new long[1])[0]++;
+                if (spec.sums()) accumulate(s, w, sumCols, accs.computeIfAbsent(g.key(), k -> new HashMap<>()), parsed);
+            }
+            groups = labels.values().stream().map(g -> new Dto.QueryGroup(g.key(), g.label(), g.color(), counts.get(g.key())[0],
+                    spec.sums() ? finish(accs.getOrDefault(g.key(), Map.of()), sumCols) : null)).toList();
+        }
+        Map<String, BigDecimal> sums = null;
+        if (spec.sums()) {
+            var acc = new HashMap<String, BigDecimal>();
+            for (var w : matching) accumulate(s, w, sumCols, acc, parsed);
+            sums = finish(acc, sumCols);
+        }
 
         record Row(UUID id, int depth, boolean hasChildren, boolean context) {}
         var rows = new ArrayList<Row>();
-        if (!spec.hierarchy()) {
+        // a grouped list is flat (the original turns hierarchy off while grouping)
+        if (!spec.hierarchy() || groupBy != null) {
             int from = Math.min(matching.size(), (page - 1) * pageSize);
             for (var w : matching.subList(from, Math.min(matching.size(), from + pageSize))) rows.add(new Row(w.id(), 0, false, false));
         } else {
@@ -454,8 +605,8 @@ public class QueryEngine {
                 if (w.parentId() == null || !shown.containsKey(w.parentId())) roots.add(w);
                 else kids.computeIfAbsent(w.parentId(), k -> new ArrayList<>()).add(w);
             }
-            roots.sort(cmp);
-            kids.values().forEach(l -> l.sort(cmp));
+            roots.sort(treeCmp);
+            kids.values().forEach(l -> l.sort(treeCmp));
             var out = new ArrayList<Row>();
             var walk = new Object() {
                 void go(Light w, int depth) {
@@ -491,7 +642,8 @@ public class QueryEngine {
         var byId = new HashMap<UUID, Dto.WorkPackage>();
         dtos.forEach(d -> byId.put(d.id(), d));
         var result = rows.stream().filter(r -> byId.containsKey(r.id()))
-                .map(r -> new Dto.QueryRow(byId.get(r.id()), r.depth(), r.hasChildren(), r.context())).toList();
+                .map(r -> new Dto.QueryRow(byId.get(r.id()), r.depth(), r.hasChildren(), r.context(),
+                        groupOfRow.containsKey(r.id()) ? groupOfRow.get(r.id()).key() : null)).toList();
 
         List<Dto.TimelineLink> links = null;
         if (spec.timeline()) {
@@ -501,6 +653,6 @@ public class QueryEngine {
                     .where(RELATIONS.TYPE.eq("precedes"), RELATIONS.FROM_ID.in(numbers.keySet()), RELATIONS.TO_ID.in(numbers.keySet()))
                     .fetch(r -> new Dto.TimelineLink(numbers.get(r.value1()), numbers.get(r.value2()), r.value3()));
         }
-        return new Dto.QueryResult(result, total, page, pageSize, links);
+        return new Dto.QueryResult(result, total, page, pageSize, links, groups, sums);
     }
 }

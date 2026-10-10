@@ -2,8 +2,8 @@
 import { useState } from "react";
 import { Outlet, useMatch, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { Columns3, Download, Filter, FolderTree, ListTodo, MoreHorizontal, Pencil, Plus, RotateCcw, Save, Star, Trash2 } from "lucide-react";
-import type { ColumnKey, Project, QuerySpec, SavedQuery } from "@/api";
+import { Columns3, Download, Filter, FolderTree, Group, ListTodo, MoreHorizontal, Pencil, Plus, RotateCcw, Save, Sigma, Star, Trash2 } from "lucide-react";
+import { GROUPABLE_COLUMNS, type ColumnKey, type Project, type QuerySpec, type SavedQuery } from "@/api";
 import { isApiError } from "@/api";
 import { useFilterOptions, useSavedQueryMutations, useWpForm, useWpQuery } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,7 @@ import { ExportDialog } from "@/features/work-packages/export-dialog";
 import { BulkBar } from "@/features/work-packages/bulk-bar";
 import { useListState } from "@/features/work-packages/view-state";
 
-const ALL_COLUMNS: ColumnKey[] = ["number", "subject", "type", "status", "priority", "assignee", "responsible", "author", "version", "startDate", "dueDate", "duration", "doneRatio", "updatedAt", "project"];
+const ALL_COLUMNS: ColumnKey[] = ["number", "subject", "type", "status", "priority", "assignee", "responsible", "author", "version", "startDate", "dueDate", "duration", "work", "remainingWork", "doneRatio", "updatedAt", "project"];
 
 function SaveViewDialog({ open, onOpenChange, spec, project, onSaved }: { open: boolean; onOpenChange: (o: boolean) => void; spec: QuerySpec; project: Project | null; onSaved: (id: string) => void }) {
   const { t } = useTranslation();
@@ -115,6 +115,7 @@ export function WorkPackagesPage() {
   const columnLabel = useColumnLabel(options);
   // built-in columns, then the custom fields on in this scope
   const allColumns: ColumnKey[] = [...ALL_COLUMNS, ...(options?.customFields ?? []).map((f) => cfColumn(f.id))];
+  const groupColumns: ColumnKey[] = [...GROUPABLE_COLUMNS, ...(options?.customFields ?? []).filter((f) => ["list", "user", "bool"].includes(f.format)).map((f) => cfColumn(f.id))];
   const form = useWpForm(project && can(project, "wp.create") ? project.id : undefined);
   const mutations = useSavedQueryMutations(project?.id);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -161,6 +162,21 @@ export function WorkPackagesPage() {
             onSelect: () => state.setSpec({ ...spec, columns: spec.columns.includes(c) ? spec.columns.filter((x) => x !== c) : allColumns.filter((x) => x === c || spec.columns.includes(x)) }),
           })),
         },
+        {
+          kind: "sub" as const,
+          label: t("wp.grouping.menu"),
+          icon: <Group />,
+          items: [
+            { label: t("wp.grouping.none"), checked: !spec.groupBy, onSelect: () => state.setSpec({ ...spec, groupBy: null }) },
+            ...groupColumns.map((c) => ({
+              label: columnLabel(c),
+              checked: spec.groupBy === c,
+              // grouped lists are flat, as in the original
+              onSelect: () => state.setSpec({ ...spec, groupBy: c, hierarchy: false }),
+            })),
+          ],
+        },
+        { label: t("wp.grouping.sums"), icon: <Sigma />, checked: spec.sums, onSelect: () => state.setSpec({ ...spec, sums: !spec.sums }) },
         ...(view && view.kind !== "default"
           ? [
               { kind: "separator" as const },
@@ -222,7 +238,12 @@ export function WorkPackagesPage() {
                 </Button>
               )}
               {spec && spec.hierarchy !== undefined && (
-                <Button aria-pressed={spec.hierarchy} icon={<ListTodo />} onClick={() => state.setSpec({ ...spec, hierarchy: !spec.hierarchy })}>
+                <Button
+                  aria-pressed={spec.hierarchy}
+                  icon={<ListTodo />}
+                  title={spec.groupBy ? t("wp.grouping.noHierarchy") : undefined}
+                  onClick={() => state.setSpec({ ...spec, hierarchy: !spec.hierarchy, groupBy: spec.hierarchy ? spec.groupBy : null })}
+                >
                   <span className="hidden xl:inline">{t("wp.hierarchy")}</span>
                   <span className="sr-only xl:hidden">{t("wp.hierarchy")}</span>
                 </Button>
@@ -269,6 +290,8 @@ export function WorkPackagesPage() {
               checked={checked}
               onCheck={onCheck}
               rows={result.data.rows}
+              groups={result.data.groups ?? undefined}
+              sums={result.data.sums ?? undefined}
               spec={spec}
               onSpec={state.setSpec}
               selected={selected}

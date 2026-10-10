@@ -43,6 +43,8 @@ export function cell(wp: WorkPackage, column: ColumnKey, zone: string): string |
     case "dueDate": return wp.dueDate;
     case "duration": return wp.duration;
     case "doneRatio": return wp.doneRatio;
+    case "work": return wp.workHours;
+    case "remainingWork": return wp.remainingHours;
     case "updatedAt": return localDateTime(wp.updatedAt, zone);
     case "project": return wp.project.name;
     default: {

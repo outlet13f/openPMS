@@ -1,6 +1,7 @@
 package com.openpms.api;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -145,11 +146,17 @@ public final class Dto {
 
     /* ---------- queries ---------- */
 
-    public record QueryRow(WorkPackage wp, int depth, boolean hasChildren, boolean context) {}
+    /** groupKey: the row's group when the list is grouped (QueryGroup.key), else null. */
+    public record QueryRow(WorkPackage wp, int depth, boolean hasChildren, boolean context, String groupKey) {}
 
     public record TimelineLink(long fromNumber, long toNumber, int lag) {}
 
-    public record QueryResult(List<QueryRow> rows, long total, int page, int pageSize, List<TimelineLink> relations) {}
+    /** A group of a grouped list, over every matching item (not just the page). sums: per summable visible column. */
+    public record QueryGroup(String key, String label, String color, long count, Map<String, BigDecimal> sums) {}
+
+    /** groups: only when grouped; sums: totals over every matching item, only when sums are on. */
+    public record QueryResult(List<QueryRow> rows, long total, int page, int pageSize, List<TimelineLink> relations, List<QueryGroup> groups,
+                              Map<String, BigDecimal> sums) {}
 
     public record SavedQuery(String id, String name, String kind, String view, Object spec, boolean favorite, UUID projectId, boolean canEdit) {}
 

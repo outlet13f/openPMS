@@ -209,7 +209,7 @@ export function GanttChart({ result, zoom, detailsHref }: { result: QueryResult;
                       type="button"
                       aria-expanded={!collapsed.has(wp.id)}
                       aria-label={collapsed.has(wp.id) ? t("wp.expand") : t("wp.collapse")}
-                      onClick={() => setCollapsed((s) => (s.has(wp.id) ? (s.delete(wp.id), new Set(s)) : new Set(s.add(wp.id))))}
+                      onClick={() => setCollapsed((s) => (s.has(wp.id) ? new Set([...s].filter((x) => x !== wp.id)) : new Set([...s, wp.id])))}
                       className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-fg-muted hover:bg-surface-hover"
                     >
                       {collapsed.has(wp.id) ? <ChevronRight className="size-4" /> : <ChevronDown className="size-4" />}

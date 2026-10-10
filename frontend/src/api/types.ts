@@ -518,7 +518,12 @@ export type ColumnKey =
   | "doneRatio"
   | "updatedAt"
   | "project"
+  | "work"
+  | "remainingWork"
   | `cf:${string}`;
+
+/** Columns a list can be grouped by (and list, user and yes/no custom fields). */
+export const GROUPABLE_COLUMNS: ColumnKey[] = ["type", "status", "priority", "assignee", "responsible", "author", "version", "project"];
 
 export interface QuerySpec {
   v: 1;
@@ -593,6 +598,18 @@ export interface QueryRow {
   hasChildren: boolean;
   /** Ancestor shown for context only: it does not match the filters. */
   context: boolean;
+  /** the row's QueryGroup.key when the list is grouped */
+  groupKey?: string | null;
+}
+
+/** A group of a grouped list, over every matching item (not only this page). key "" = no value. */
+export interface QueryGroup {
+  key: string;
+  label: string;
+  color: string | null;
+  count: number;
+  /** per summable visible column, when sums are on */
+  sums: Record<string, number | null> | null;
 }
 
 export interface QueryResult {
@@ -602,6 +619,10 @@ export interface QueryResult {
   pageSize: number;
   /** Only with spec.timeline.visible: predecessor → successor links among the returned rows. */
   relations?: { fromNumber: number; toNumber: number; lag: number }[];
+  /** only when grouped, in display order */
+  groups?: QueryGroup[] | null;
+  /** only with spec.sums: totals of the summable visible columns over every matching item */
+  sums?: Record<string, number | null> | null;
 }
 
 /** queries.view: list and Gantt share the work package views; calendars and team planners are their own lists. */

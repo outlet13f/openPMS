@@ -64,7 +64,7 @@ public class ExportController {
         var project = projectId == null || projectId.isBlank() ? null : ctx.findProject(projectId);
         if (project != null) ctx.require(project, "wp.export", "내보낼 권한이 없습니다.");
         var spec = QueryController.parse(body.get("spec"));
-        var flat = new QueryEngine.Spec(spec.filters(), spec.sort(), false, spec.includeSubprojects(), spec.text(), false);
+        var flat = new QueryEngine.Spec(spec.filters(), spec.sort(), false, spec.includeSubprojects(), spec.text(), false, null, false, List.of());
         var first = engine.run(ctx, flat, project, 1, 1000);
         if (first.total() > LIMIT) return new Selection(first.total(), List.of());
         var wps = new ArrayList<Dto.WorkPackage>();
@@ -172,6 +172,8 @@ public class ExportController {
             case "dueDate" -> w.dueDate() == null ? null : w.dueDate().toString();
             case "duration" -> w.duration();
             case "doneRatio" -> w.doneRatio();
+            case "work" -> w.workHours();
+            case "remainingWork" -> w.remainingHours();
             case "updatedAt" -> w.updatedAt().atZoneSameInstant(zone).format(LOCAL);
             case "project" -> w.project().name();
             default -> {

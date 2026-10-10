@@ -258,7 +258,18 @@ const ko = {
     columns: {
       number: "번호", subject: "제목", type: "유형", status: "상태", priority: "우선순위", assignee: "담당자",
       responsible: "책임자", author: "작성자", version: "버전", startDate: "시작일", dueDate: "완료일", duration: "기간",
-      doneRatio: "완료 %", updatedAt: "최근 수정", project: "프로젝트",
+      doneRatio: "완료 %", updatedAt: "최근 수정", project: "프로젝트", work: "작업량", remainingWork: "남은 작업",
+    },
+    grouping: {
+      menu: "그룹화",
+      none: "그룹화 안 함",
+      sums: "합계 표시",
+      empty: "(값 없음)",
+      count: "{{count}}건",
+      toggle: "{{label}} 그룹",
+      groupSum: "{{label}} 합계",
+      total: "전체 합계",
+      noHierarchy: "그룹화하는 동안은 계층 표시를 쓰지 않습니다",
     },
     tabs: { overview: "요약", activity: "활동", files: "파일", relations: "관계", watchers: "주시자" },
     fields: {

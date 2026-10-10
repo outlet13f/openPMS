@@ -1,5 +1,5 @@
 // Query engine (architecture.md §3.5) over the fake database.
-import type { ColumnKey, QueryFilter, QueryResult, QueryRow, QuerySpec } from "../types";
+import { GROUPABLE_COLUMNS, type ColumnKey, type CustomField, type QueryFilter, type QueryGroup, type QueryResult, type QueryRow, type QuerySpec } from "../types";
 import { ApiError } from "../errors";
 import { addDays, isoWeekday, todayIso } from "@/lib/dates";
 import { db, type DbProject, type DbUser, type DbWp } from "./db";
@@ -253,6 +253,12 @@ function sortValue(w: DbWp, field: ColumnKey): string | number {
       return w.updatedAt;
     case "project":
       return db.projects.find((p) => p.id === w.projectId)?.name ?? "";
+    case "version":
+      return w.versionId ? (db.versions.find((v) => v.id === w.versionId)?.name ?? "") : "￿";
+    case "work":
+      return w.workHours ?? Number.MAX_VALUE;
+    case "remainingWork":
+      return w.remainingHours ?? Number.MAX_VALUE;
     default:
       if (field.startsWith("cf:")) {
         const f = db.customFields.find((x) => `cf:${x.id}` === field);
@@ -260,6 +266,73 @@ function sortValue(w: DbWp, field: ColumnKey): string | number {
       }
       return w.number;
   }
+}
+
+const compareValues = (va: string | number, vb: string | number) => (typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb), "ko"));
+
+/* ---------- groups and sums (same rules as the server's QueryEngine) ---------- */
+
+type Group = { key: string; label: string; color: string | null };
+const NONE: Group = { key: "", label: "", color: null };
+
+function groupField(groupBy: string): CustomField | null {
+  const f = groupBy.startsWith("cf:") ? db.customFields.find((x) => `cf:${x.id}` === groupBy) : undefined;
+  return f && ["list", "user", "bool"].includes(f.format) ? f : null;
+}
+
+function groupOf(w: DbWp, by: ColumnKey, cf: CustomField | null): Group {
+  if (cf) {
+    const v = valueOn(w, cf);
+    const label = cfText(cf, v);
+    if (!label) return NONE;
+    return { key: Array.isArray(v) ? [...v].map(String).sort().join(",") : String(v), label, color: null };
+  }
+  const principal = (id: string | null) => (id ? (db.users.find((u) => u.id === id)?.name ?? db.groups.find((g) => g.id === id)?.name ?? "") : null);
+  const pick = <T extends { id: string; name: string; color?: string }>(list: T[], id: string | null): Group =>
+    id ? ((x) => (x ? { key: id, label: x.name, color: x.color ?? null } : NONE))(list.find((x) => x.id === id)) : NONE;
+  switch (by) {
+    case "type": return pick(db.types, w.typeId);
+    case "status": return pick(db.statuses, w.statusId);
+    case "priority": return pick(db.priorities, w.priorityId);
+    case "version": return pick(db.versions, w.versionId);
+    case "project": return pick(db.projects, w.projectId);
+    case "assignee": case "responsible": case "author": {
+      const id = by === "assignee" ? w.assigneeId : by === "responsible" ? w.responsibleId : w.authorId;
+      return id ? { key: id, label: principal(id) ?? "", color: null } : NONE;
+    }
+    default: return NONE;
+  }
+}
+
+function summable(columns: ColumnKey[]): ColumnKey[] {
+  return [...new Set(columns)].filter((c) => {
+    if (c === "work" || c === "remainingWork" || c === "doneRatio") return true;
+    const f = c.startsWith("cf:") ? db.customFields.find((x) => `cf:${x.id}` === c) : undefined;
+    return !!f && (f.format === "integer" || f.format === "float");
+  });
+}
+
+function accumulate(w: DbWp, cols: ColumnKey[], acc: Record<string, number>) {
+  if (w.workHours !== null) acc.work = (acc.work ?? 0) + w.workHours;
+  if (w.remainingHours !== null) acc.remainingWork = (acc.remainingWork ?? 0) + w.remainingHours;
+  for (const c of cols) {
+    const f = c.startsWith("cf:") ? db.customFields.find((x) => `cf:${x.id}` === c) : undefined;
+    if (!f) continue;
+    const v = valueOn(w, f);
+    const n = typeof v === "number" ? v : typeof v === "string" && v !== "" ? Number(v) : NaN;
+    if (!Number.isNaN(n)) acc[c] = (acc[c] ?? 0) + n;
+  }
+}
+
+function finish(acc: Record<string, number>, cols: ColumnKey[]): Record<string, number | null> {
+  const out: Record<string, number | null> = {};
+  for (const c of cols) {
+    if (c === "doneRatio") {
+      const work = acc.work;
+      out[c] = !work ? null : Math.max(0, Math.round(((work - (acc.remainingWork ?? 0)) * 100) / work));
+    } else out[c] = acc[c] !== undefined ? Math.round(acc[c] * 100) / 100 : null;
+  }
+  return out;
 }
 
 function comparator(spec: QuerySpec) {
@@ -291,12 +364,50 @@ export function runQuery(user: DbUser, spec: QuerySpec, opts: { projectId?: stri
       spec.filters.every((f) => matches(w, f, user)) &&
       (!text || w.subject.toLowerCase().includes(text) || `#${w.number}` === text || String(w.number) === text.replace("#", "")),
   );
-  const cmp = comparator(spec);
+  const sortCmp = comparator(spec);
   const total = matching.length;
+  // grouped: the group decides the order first ("none" last), then the sort
+  const groupCf = spec.groupBy ? groupField(spec.groupBy) : null;
+  const groupBy = spec.groupBy && (GROUPABLE_COLUMNS.includes(spec.groupBy) || groupCf) ? spec.groupBy : null;
+  const groupOfRow = new Map<string, Group>();
+  let cmp = sortCmp;
+  if (groupBy) {
+    for (const w of matching) groupOfRow.set(w.id, groupOf(w, groupBy, groupCf));
+    const desc = spec.sort[0]?.field === groupBy && spec.sort[0].dir === "desc";
+    const key = (w: DbWp) => (groupCf ? sortKey(w, groupCf) : sortValue(w, groupBy));
+    cmp = (a, b) => {
+      const ga = groupOfRow.get(a.id)!, gb = groupOfRow.get(b.id)!;
+      if (ga === NONE || gb === NONE) return ga === gb ? sortCmp(a, b) : ga === NONE ? 1 : -1;
+      let c = compareValues(key(a), key(b));
+      if (c === 0) c = ga.key.localeCompare(gb.key);
+      if (c !== 0) return desc ? -c : c;
+      return sortCmp(a, b);
+    };
+  }
+  const sumCols = spec.sums ? summable(spec.columns) : [];
+  let groups: QueryGroup[] | undefined;
+  let sums: Record<string, number | null> | undefined;
+  if (groupBy) {
+    const byKey = new Map<string, { g: Group; count: number; acc: Record<string, number> }>();
+    for (const w of [...matching].sort(cmp)) {
+      const g = groupOfRow.get(w.id)!;
+      const e = byKey.get(g.key) ?? byKey.set(g.key, { g, count: 0, acc: {} }).get(g.key)!;
+      e.count++;
+      if (spec.sums) accumulate(w, sumCols, e.acc);
+    }
+    groups = [...byKey.values()].map((e) => ({ key: e.g.key, label: e.g.label, color: e.g.color, count: e.count, sums: spec.sums ? finish(e.acc, sumCols) : null }));
+  }
+  if (spec.sums) {
+    const acc: Record<string, number> = {};
+    for (const w of matching) accumulate(w, sumCols, acc);
+    sums = finish(acc, sumCols);
+  }
+  const extra = { groups: groups ?? null, sums: sums ?? null };
 
   let rows: QueryRow[];
-  if (!spec.hierarchy) {
-    rows = matching.sort(cmp).map((w) => ({ wp: toWp(w, user), depth: 0, hasChildren: false, context: false }));
+  // a grouped list is flat (hierarchy is off while grouping)
+  if (!spec.hierarchy || groupBy) {
+    rows = matching.sort(cmp).map((w) => ({ wp: toWp(w, user), depth: 0, hasChildren: false, context: false, groupKey: groupBy ? groupOfRow.get(w.id)!.key : null }));
     rows = rows.slice((page - 1) * pageSize, page * pageSize);
   } else {
     // Matching items plus their visible ancestors (as context rows), printed as a tree.
@@ -345,9 +456,9 @@ export function runQuery(user: DbUser, spec: QuerySpec, opts: { projectId?: stri
     const relations = db.relations
       .filter((r) => r.type === "precedes" && shown.has(r.fromId) && shown.has(r.toId))
       .map((r) => ({ fromNumber: shown.get(r.fromId)!, toNumber: shown.get(r.toId)!, lag: r.lag }));
-    return { rows, total, page, pageSize, relations };
+    return { rows, total, page, pageSize, relations, ...extra };
   }
-  return { rows, total, page, pageSize };
+  return { rows, total, page, pageSize, ...extra };
 }
 
 export function defaultSpec(overrides: Partial<QuerySpec> = {}): QuerySpec {

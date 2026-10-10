@@ -1,10 +1,10 @@
 // The work package table (S06, components.md "WorkPackageTable").
-import { useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { Fragment, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, ChevronRight, EyeOff, ListPlus, ListX, Plus } from "lucide-react";
 import { Menu, type MenuEntry } from "@/components/ui/overlay";
-import type { ColumnKey, FilterOptions, QueryRow, QuerySpec, WorkPackage } from "@/api";
+import type { ColumnKey, FilterOptions, QueryGroup, QueryRow, QuerySpec, WorkPackage } from "@/api";
 import { useCreateWorkPackage } from "@/api/hooks";
 import { Avatar, Principal } from "@/components/ui/avatar";
 import { Priority, TypeLabel } from "@/components/ui/badges";
@@ -21,9 +21,9 @@ import { CustomValueView, cfIdOf, useColumnLabel } from "./custom-fields";
 
 const WIDTH: Partial<Record<ColumnKey, string>> = {
   number: "w-16", type: "w-24", status: "w-32", assignee: "w-40", responsible: "w-40", author: "w-36", priority: "w-24",
-  startDate: "w-28", dueDate: "w-28", updatedAt: "w-28", version: "w-32", project: "w-40", duration: "w-20", doneRatio: "w-20",
+  startDate: "w-28", dueDate: "w-28", updatedAt: "w-28", version: "w-32", project: "w-40", duration: "w-20", doneRatio: "w-20", work: "w-24", remainingWork: "w-24",
 };
-const SORTABLE: ColumnKey[] = ["number", "subject", "type", "status", "priority", "assignee", "responsible", "author", "startDate", "dueDate", "updatedAt", "project"];
+const SORTABLE: ColumnKey[] = ["number", "subject", "type", "status", "priority", "assignee", "responsible", "author", "version", "startDate", "dueDate", "work", "remainingWork", "updatedAt", "project"];
 
 function Cell({ wp, column, options }: { wp: WorkPackage; column: ColumnKey; options?: FilterOptions }) {
   const { t } = useTranslation();
@@ -77,6 +77,10 @@ function Cell({ wp, column, options }: { wp: WorkPackage; column: ColumnKey; opt
       return wp.duration ? t("wp.daysUnit", { value: wp.duration }) : <span className="text-fg-muted">-</span>;
     case "doneRatio":
       return wp.doneRatio !== null ? `${wp.doneRatio}%` : <span className="text-fg-muted">-</span>;
+    case "work":
+      return wp.workHours !== null ? <span className="tabular-nums">{t("wp.hoursUnit", { value: wp.workHours })}</span> : <span className="text-fg-muted">-</span>;
+    case "remainingWork":
+      return wp.remainingHours !== null ? <span className="tabular-nums">{t("wp.hoursUnit", { value: wp.remainingHours })}</span> : <span className="text-fg-muted">-</span>;
     case "updatedAt":
       return <span title={wp.updatedAt}>{relativeTime(wp.updatedAt)}</span>;
     case "version":
@@ -92,8 +96,37 @@ function Cell({ wp, column, options }: { wp: WorkPackage; column: ColumnKey; opt
   }
 }
 
+/** A copy with the key added or removed: state updaters must not change the previous set (StrictMode runs them twice). */
+function flip(s: ReadonlySet<string>, key: string) {
+  const next = new Set(s);
+  if (!next.delete(key)) next.add(key);
+  return next;
+}
+
+/** A sum cell: hours for work, a percentage for % complete, the number for custom fields. */
+function SumValue({ column, value }: { column: string; value: number | null | undefined }) {
+  const { t } = useTranslation();
+  if (value === undefined) return null;
+  if (value === null) return <span className="text-fg-muted">-</span>;
+  const text = column === "doneRatio" ? `${value}%` : column === "work" || column === "remainingWork" ? t("wp.hoursUnit", { value }) : value.toLocaleString("ko-KR");
+  return <span className="font-semibold tabular-nums">{text}</span>;
+}
+
+/** The label of a group: a colour dot for types, statuses and priorities; "(값 없음)" for the empty group. */
+function GroupLabel({ group }: { group: Pick<QueryGroup, "key" | "label" | "color"> }) {
+  const { t } = useTranslation();
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5">
+      {group.color && <span aria-hidden="true" className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: group.color }} />}
+      <span className="truncate">{group.key === "" ? t("wp.grouping.empty") : group.label}</span>
+    </span>
+  );
+}
+
 export function WorkPackageTable({
   rows,
+  groups,
+  sums,
   spec,
   onSpec,
   selected,
@@ -104,6 +137,10 @@ export function WorkPackageTable({
   onCheck,
 }: {
   rows: QueryRow[];
+  /** a grouped list's groups (over every match, in order); rows carry groupKey */
+  groups?: QueryGroup[];
+  /** totals over every match, when the list shows sums */
+  sums?: Record<string, number | null>;
   spec: QuerySpec;
   onSpec: (s: QuerySpec) => void;
   selected?: number;
@@ -119,6 +156,26 @@ export function WorkPackageTable({
   const navigate = useNavigate();
   const columnLabel = useColumnLabel(options);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
+  const grouped = !!groups && !!spec.groupBy;
+  const groupByKey = useMemo(() => new Map((groups ?? []).map((g) => [g.key, g])), [groups]);
+  const toggleGroup = (key: string) => setClosedGroups((s) => flip(s, key));
+  const colCount = spec.columns.length + (onCheck ? 1 : 0);
+
+  /** A sums row: the label in the subject column (or the first one without a sum), the sums under their columns. */
+  const sumsRow = (key: string, label: ReactNode, values: Record<string, number | null>, footer = false) => {
+    const labelAt = spec.columns.includes("subject") && !(("subject" as string) in values) ? "subject" : spec.columns.find((c) => !(c in values));
+    return (
+      <tr key={key} className={cn("h-row border-b border-border-muted bg-surface text-sm", footer && "border-t border-border")}>
+        {onCheck && <td />}
+        {spec.columns.map((c) => (
+          <td key={c} className="px-3 py-1 whitespace-nowrap">
+            {c === labelAt ? <span className="text-xs font-semibold text-fg-muted">{label}</span> : <SumValue column={c} value={values[c]} />}
+          </td>
+        ))}
+      </tr>
+    );
+  };
 
   const visible = useMemo(() => {
     const out: QueryRow[] = [];
@@ -132,7 +189,7 @@ export function WorkPackageTable({
     return out;
   }, [rows, collapsed]);
 
-  const toggle = (id: string) => setCollapsed((s) => (s.has(id) ? (s.delete(id), new Set(s)) : new Set(s.add(id))));
+  const toggle = (id: string) => setCollapsed((s) => flip(s, id));
   const sort = spec.sort[0];
   /** Header menu (sort, multi-sort up to 3 keys, move, hide), like the original's column menu. */
   const headerMenu = (c: ColumnKey): MenuEntry[] => {
@@ -212,11 +269,35 @@ export function WorkPackageTable({
             </tr>
           </thead>
           <tbody>
-            {visible.map(({ wp, depth, hasChildren, context }) => {
+            {visible.map(({ wp, depth, hasChildren, context, groupKey }, i) => {
               const isSel = selected === wp.number;
+              const gk = groupKey ?? "";
+              const group = groupByKey.get(gk);
+              const startsGroup = grouped && (i === 0 || (visible[i - 1].groupKey ?? "") !== gk);
+              const endsGroup = grouped && (i === visible.length - 1 || (visible[i + 1].groupKey ?? "") !== gk);
+              const closed = grouped && closedGroups.has(gk);
+              const groupName = group?.key === "" ? t("wp.grouping.empty") : (group?.label ?? "");
               return (
+                <Fragment key={wp.id}>
+                {startsGroup && group && (
+                  <tr className="h-row border-b border-border bg-surface-sunken">
+                    <th scope="colgroup" colSpan={colCount} className="px-2 py-1 text-left text-sm font-semibold text-fg">
+                      <button
+                        type="button"
+                        aria-expanded={!closed}
+                        onClick={() => toggleGroup(gk)}
+                        className="inline-flex max-w-full items-center gap-1.5 rounded-sm px-1 py-0.5 hover:bg-surface-hover"
+                      >
+                        {closed ? <ChevronRight className="size-4 shrink-0" aria-hidden="true" /> : <ChevronDown className="size-4 shrink-0" aria-hidden="true" />}
+                        <span className="sr-only">{t("wp.grouping.toggle", { label: groupName })}: </span>
+                        <GroupLabel group={group} />
+                        <span className="rounded-full bg-bg px-1.5 text-xs font-normal text-fg-muted tabular-nums">{t("wp.grouping.count", { count: group.count })}</span>
+                      </button>
+                    </th>
+                  </tr>
+                )}
+                {!closed && (
                 <tr
-                  key={wp.id}
                   aria-selected={isSel}
                   onClick={(e) => openRow(e, wp)}
                   className={cn(
@@ -271,9 +352,13 @@ export function WorkPackageTable({
                     </td>
                   ))}
                 </tr>
+                )}
+                {endsGroup && !closed && spec.sums && group?.sums && sumsRow(`sum-${gk}`, t("wp.grouping.groupSum", { label: groupName }), group.sums)}
+                </Fragment>
               );
             })}
           </tbody>
+          {spec.sums && sums && <tfoot>{sumsRow("sum-total", t("wp.grouping.total"), sums, true)}</tfoot>}
         </table>
         {createIn && <InlineCreate projectId={createIn.projectId} typeId={createIn.typeId} />}
       </div>
@@ -282,8 +367,15 @@ export function WorkPackageTable({
       <ul className="flex flex-col gap-2 md:hidden">
         {rows
           .filter((r) => !r.context)
-          .map(({ wp }) => (
-            <li key={wp.id}>
+          .map(({ wp, groupKey }, i, list) => (
+            <Fragment key={wp.id}>
+            {grouped && (i === 0 || (list[i - 1].groupKey ?? "") !== (groupKey ?? "")) && groupByKey.get(groupKey ?? "") && (
+              <li className="mt-2 flex items-center gap-2 text-sm font-semibold text-fg">
+                <GroupLabel group={groupByKey.get(groupKey ?? "")!} />
+                <span className="text-xs font-normal text-fg-muted">{t("wp.grouping.count", { count: groupByKey.get(groupKey ?? "")!.count })}</span>
+              </li>
+            )}
+            <li>
               <WorkPackageCard
                 showStatus
                 href={detailsHref(wp)}
@@ -302,6 +394,7 @@ export function WorkPackageTable({
                 }}
               />
             </li>
+            </Fragment>
           ))}
       </ul>
     </>
