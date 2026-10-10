@@ -461,7 +461,7 @@ function applyOidc(p: FakeOidc, input: Partial<OidcProviderInput>, create: boole
   if (create || input.issuer !== undefined) {
     const v = text("issuer", 500);
     // the fake cannot fetch the discovery document: the address only has to look like one
-    if (!/^https?:\/\/\S+$/.test(v)) throw fieldError("issuer", "https://로 시작하는 주소를 입력하세요.");
+    if (!/^https?:\/\/\S+$/.test(v)) throw fieldError("issuer", "https:// 또는 http://로 시작하는 주소를 입력하세요.");
     p.issuer = v;
   }
 }

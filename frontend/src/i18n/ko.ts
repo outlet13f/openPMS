@@ -414,7 +414,7 @@ const ko = {
       calendar: "일정 계산에 쓰는 근무 요일과 공휴일",
       customFields: "작업에 더하는 회사 고유 항목",
       progress: "완료 %를 계산하는 방식과 상위 작업의 합계",
-      authentication: "비밀번호 규칙, 로그인 실패 잠금, 재설정·초대 링크",
+      authentication: "비밀번호 규칙, 로그인 실패 잠금, 재설정·초대 링크, 사내 SSO",
     },
     types: {
       new: "유형 추가",

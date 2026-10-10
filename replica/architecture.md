@@ -3,7 +3,7 @@
 - 입력: `replica/recon.md` (화면 S01–S37, 흐름 F01–F11), `replica/features.csv` (must 64 · should 50 · could 26 · skip 20)
 - 산출물: 이 문서, `replica/schema.sql` (Flyway V1), `replica/seed.sql` (Flyway V3)
 - 작성일: 2026-10-09
-- 정해진 사항: **사내 서버 셀프 호스팅**, **Spring Boot + React**, **이메일·비밀번호 로그인 (SSO는 should 단계)**
+- 정해진 사항: **사내 서버 셀프 호스팅**, **Spring Boot + React**, **이메일·비밀번호 로그인 (SSO는 should 단계, OIDC로 구현 완료: a677079)**
 
 원본의 구조가 아니라 원본의 기능을 재현합니다. 앱 하나와 데이터베이스 하나로 구성하고, 마이크로서비스는 두지 않습니다.
 
@@ -27,7 +27,7 @@
 | 폼 | React Hook Form + Zod | 서버의 폼 스키마 응답으로 필수 여부·허용값을 그립니다. |
 | 다국어 | react-i18next (ko 기본, en) + Spring MessageSource | 번역 문자열은 openPMS 용어집으로 새로 씁니다. |
 | API 계약 | springdoc-openapi → openapi-typescript | 백엔드 DTO에서 프론트 타입을 생성하므로 수동 동기화가 필요 없습니다. |
-| 인증 | Spring Security 폼 로그인 + 세션 (Spring Session JDBC, HttpOnly 쿠키) + CSRF 쿠키 토큰 | 세션을 Postgres에 두면 재시작해도 로그인이 유지되고, 나중에 인스턴스를 2개로 늘릴 수 있습니다. 비밀번호는 DelegatingPasswordEncoder(bcrypt)로 저장합니다. SSO는 `oauth2Login`(OIDC)을 추가하면 되고, `users.password_hash`가 nullable이라 스키마는 이미 준비돼 있습니다. |
+| 인증 | Spring Security 폼 로그인 + 세션 (Spring Session JDBC, HttpOnly 쿠키) + CSRF 쿠키 토큰 | 세션을 Postgres에 두면 재시작해도 로그인이 유지되고, 나중에 인스턴스를 2개로 늘릴 수 있습니다. 비밀번호는 DelegatingPasswordEncoder(bcrypt)로 저장합니다. SSO는 `oauth2Login`(OIDC, PKCE)으로 붙였습니다(V10, 커밋 a677079). 공급자는 관리자가 화면에서 등록하고 DB에 두며, 로그인 뒤에는 폼 로그인과 같은 세션을 씁니다. SSO로 만든 계정은 `password_hash`가 null입니다. |
 | 결제 | 해당 없음 | 사내 도구입니다. |
 | 이메일 | Spring Mail → 사내 SMTP 릴레이, 템플릿은 Thymeleaf | 외부 SaaS로 메일을 보내지 않습니다. 개발 환경에서는 Mailpit 컨테이너를 씁니다. |
 | 백그라운드 작업 | db-scheduler (Postgres 테이블 하나, 클러스터 안전) | 별도 큐 인프라 없이 일회성 작업과 반복 작업을 모두 처리합니다. 업무 트랜잭션 안에서 작업을 예약하므로 저널을 저장한 뒤 알림 작업이 누락되는 일이 없습니다. |
@@ -54,10 +54,12 @@ openPMS/
       V1__init.sql        = replica/schema.sql
       V2__libraries.sql   = Spring Session JDBC + db-scheduler의 PostgreSQL 스키마(각 라이브러리 제공본)
       V3__seed.sql        = replica/seed.sql
+      V4–V9               구현 중 추가(§2 머리말)
+      V10__oidc.sql       사내 SSO: oidc_providers, user_identities
   frontend/                     Vite + React + TS. 빌드 결과는 backend 정적 리소스로 복사
-  deploy/
-    Dockerfile                  멀티 스테이지(프론트 빌드 → 백엔드 빌드 → JRE 런타임)
-    compose.yaml                app, db (개발용 mailpit 프로필)
+  Dockerfile                    저장소 최상위. 멀티 스테이지(프론트 빌드 → 백엔드 빌드 → JRE 런타임)
+  compose.yaml                  저장소 최상위. app, db (mailpit 없음. 개발용 Mailpit은 backend/scripts/dev.sh가 띄움)
+  .env.example                  compose가 읽는 .env의 견본(값 없음)
   replica/                      recon·설계 문서 (배포하지 않음)
 ```
 
@@ -69,7 +71,7 @@ openPMS/
 [사용자 브라우저] --HTTPS--> [사내 리버스 프록시: TLS, client_max_body_size 30m]
                                    |
                                    v
-                     [app 컨테이너: Spring Boot :8080]
+                     [app 컨테이너: Spring Boot :8090, 호스트 127.0.0.1:${OPENPMS_PORT:-8090}]
                        - /api/v1/**  REST
                        - /**         SPA(index.html 폴백)
                        - db-scheduler 작업 실행
@@ -80,7 +82,7 @@ openPMS/
 호스트 cron: pg_dump -Fc 매일 + /data/files 백업, 복원 연습 월 1회
 ```
 
-환경 변수: `OPENPMS_BASE_URL`, `OPENPMS_DB_URL`·`_USER`·`_PASSWORD`, `OPENPMS_SMTP_HOST`·`_PORT`·`_USER`·`_PASSWORD`·`_STARTTLS`, `OPENPMS_FILES_DIR`, `OPENPMS_ADMIN_EMAIL`, `OPENPMS_SESSION_TIMEOUT`(기본 8h).
+환경 변수: `OPENPMS_BASE_URL`(메일 링크와 SSO 콜백 주소의 기준), `OPENPMS_DB_URL`·`_USER`·`_PASSWORD`, `OPENPMS_SMTP_HOST`·`_PORT`·`_USER`·`_PASSWORD`·`_STARTTLS`, `OPENPMS_MAIL_FROM`, `OPENPMS_FILES_DIR`, `OPENPMS_ADMIN_EMAIL`, `OPENPMS_SESSION_TIMEOUT`(기본 8h), `OPENPMS_SECURE_COOKIES`(기본 true), `OPENPMS_JOBS_ENABLED`(기본 true, dev 프로필은 false), `OPENPMS_PORT`(compose가 쓰는 호스트 포트, 기본 8090. 컨테이너 안 앱 포트는 8090이고 compose는 여기에 연결). 값과 뜻은 `replica/deploy.md` "환경 변수". SSO 공급자 설정은 환경 변수가 아니라 DB(`oidc_providers`)에 둡니다.
 
 **첫 관리자**: 관리자 계정이 하나도 없고 `OPENPMS_ADMIN_EMAIL`이 설정돼 있으면, 시작할 때 그 이메일로 `invited` 상태의 관리자를 만들고 일회용 설정 링크(24시간)를 로그에 한 번 출력합니다. 기본 비밀번호는 없습니다.
 
@@ -88,7 +90,7 @@ openPMS/
 
 ## 2. 스키마
 
-테이블 36개(자체) + 라이브러리 테이블 3개(spring_session, spring_session_attributes, scheduled_tasks). 전문은 `replica/schema.sql`(= Flyway V1). 구현 중 V4–V9로 바뀐 것(work_package_shares 테이블, user_preferences.last_digest_at·my_page_widgets, 알림 기본값, updated_at 트리거 예외, types.attribute_groups를 유형 양식으로 쓰며 기본값 '[]'로 초기화)은 `replica/review-2026-10-10.md` §2.3에 정리했습니다(V9는 그 뒤 추가).
+테이블 36개(자체) + 라이브러리 테이블 3개(spring_session, spring_session_attributes, scheduled_tasks). 전문은 `replica/schema.sql`(= Flyway V1). 구현 중 V4–V9로 바뀐 것(work_package_shares 테이블, user_preferences.last_digest_at·my_page_widgets, 알림 기본값, updated_at 트리거 예외, types.attribute_groups를 유형 양식으로 쓰며 기본값 '[]'로 초기화)은 `replica/review-2026-10-10.md` §2.3에 정리했습니다(V9는 그 뒤 추가). V10은 사내 SSO의 `oidc_providers`, `user_identities` 두 테이블을 더합니다(아래 목록과 설계 결정).
 
 **접근 규칙: 데이터 계층 검사.** RLS는 쓰지 않습니다. 앱이 DB 계정 하나로 접속하기 때문입니다. 대신 모든 서비스 메서드가 `PermissionService`로 권한을 확인하고, 모든 목록 쿼리는 `VisibleProjects.condition(user, permission)` 조건을 반드시 포함합니다(§4.1). 보이지 않는 리소스에는 403이 아니라 404를 돌려줘 존재 여부가 드러나지 않게 합니다.
 
@@ -99,7 +101,7 @@ openPMS/
 
 | 영역 | 테이블 | 소유 기준 |
 | --- | --- | --- |
-| 사용자·인증 | users, user_preferences, user_tokens, user_groups, user_group_members, roles, global_role_assignments | 사용자(user_id) 또는 인스턴스(관리자) |
+| 사용자·인증 | users, user_preferences, user_tokens, user_groups, user_group_members, roles, global_role_assignments, oidc_providers(V10 추가), user_identities(V10 추가) | 사용자(user_id) 또는 인스턴스(관리자). SSO 공급자는 인스턴스(관리자), 연결은 user_id + provider_id |
 | 프로젝트·멤버 | projects, project_favorites, members, member_roles | project_id, 즐겨찾기는 user_id |
 | 작업 설정 | types, project_types, statuses, workflows, priorities, versions, categories, custom_fields, custom_field_options, custom_field_types, project_custom_fields | 인스턴스(관리자), 버전·카테고리는 project_id |
 | 작업 패키지 | work_packages, relations, watchers, attachments, journals, work_package_shares(V6 추가) | project_id (작업 패키지를 통해), 공유는 work_package_id + user_id |
@@ -118,6 +120,7 @@ openPMS/
 - **저장된 보기 설정은 `queries.spec jsonb` 한 칸**에 넣고 `"v":1`로 형식 버전을 둡니다. 기본 보기(모두 열림, 내게 할당됨 등)는 코드에 있습니다.
 - **보드 컬럼은 종류별 FK를 nullable로 각각 둡니다**(`num_nonnulls = 1`). 다형 참조를 피했기 때문에 상태·버전 등이 삭제되면 컬럼도 FK에 따라 같이 삭제됩니다.
 - **돈 컬럼은 없습니다.** 시간·비용은 이번 범위 밖입니다.
+- **SSO 공급자는 DB에 둡니다(V10).** `oidc_providers`: slug(콜백 주소에 들어감, `^[a-z0-9][a-z0-9-]{0,39}$`, 유일), display_name(1–60자), issuer, client_id, client_secret(평문, API로 내보내지 않음), scopes(기본 `openid email profile`), claim_email·claim_name(기본 `email`·`name`), auto_create(기본 false), enabled, position, updated_at 트리거. `user_identities`: user_id → users(cascade), provider_id → oidc_providers(cascade, 공급자를 지우면 연결만 사라짐), subject, last_login_at. 유일 (provider_id, subject)와 (provider_id, user_id): 공급자마다 계정 하나에 sub 하나. 공급자의 토큰은 저장하지 않습니다.
 - PostgreSQL 18로 올리면 시간순 정렬되는 `uuidv7()`을 기본값으로 바꾸는 것을 검토합니다.
 
 ### 권한 키
@@ -281,9 +284,9 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 - **작업 패키지 응답의 `_meta`**: `editableFields`, `allowedActions`(edit, delete, move, comment, manageRelations…), `derived`(파생 필드 목록)를 담습니다. 화면은 이 값으로 편집 가능 여부를 그리고, 권한 규칙을 프론트에 복제하지 않습니다.
 - 원본 앱의 내부 API는 참고하지 않습니다. 모든 경로는 openPMS가 정의한 것입니다.
 
-### 4.2 경로 (총 134개)
+### 4.2 경로 (총 141개: 설계 134 + 사내 SSO 7)
 
-#### 인증·계정 (14)
+#### 인증·계정 (17)
 
 | method path | 하는 일 | 호출 가능 | 입력 | 출력 | 흐름 |
 | --- | --- | --- | --- | --- | --- |
@@ -292,6 +295,9 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | GET /auth/me | 현재 사용자, 환경설정, 전역 권한 | 로그인 | - | me | 공통 |
 | POST /auth/password-reset | 재설정 메일 발송 (가입 여부와 관계없이 항상 202) | 익명 | email | 202 | S01 |
 | POST /auth/password-reset/confirm | 토큰으로 비밀번호 변경 | 토큰 | token, newPassword | 204 / 410 만료 | S01 |
+| GET /auth/sso-providers | 켜진 SSO 공급자 목록(로그인 버튼) | 익명 | - | [{slug, displayName}] | S01 |
+| GET /auth/oidc/start/{slug} | SSO 시작: state·nonce·PKCE(S256)를 세션에 두고 IdP로 302. `next`는 같은 사이트 경로만 세션에 둠. 꺼짐·없음·IdP에 닿지 못함이면 `/login?sso_error=unavailable` | 익명 | next? | 302 | S01 |
+| GET /auth/oidc/callback/{slug} | IdP가 돌아오는 주소(= `OPENPMS_BASE_URL` + 이 경로). code 교환, ID 토큰 서명·issuer·nonce 확인 → 연결된 sub → 같은 이메일 → 자동 생성 → 거부. 성공하면 세션 발급 후 `next` 또는 `/`로 | IdP 리디렉션 | code, state (또는 error) | 302 / `/login?sso_error=no_account\|locked\|unverified\|no_email\|cancelled\|unavailable\|failed` | S01 |
 | GET /auth/invitations/{token} | 초대 정보(이메일, 초대자) | 토큰 | - | invitation / 410 | F10 |
 | POST /auth/invitations/{token}/accept | 이름·비밀번호 설정 후 활성화 (첫 관리자 설정도 같은 경로) | 토큰 | name, password | 200 me | F10 |
 | PATCH /me | 이름, 언어, 시간대, 테마 | 본인 | 부분 | me | S37 |
@@ -420,7 +426,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | GET /search/suggest | 헤더 자동완성 (작업 상위 5건 + 프로젝트 3건) | 로그인 | q | hits[] | 공통 |
 | GET /home | 즐겨찾는 프로젝트 + 내게 할당된 작업 요약 | 로그인 | - | home | S02 S21 |
 
-#### 관리 — F11 (42, 모두 관리자 전용. 사용자·그룹은 global.manage_users로도 가능)
+#### 관리 — F11 (46, 모두 관리자 전용. 사용자·그룹은 global.manage_users로도 가능)
 
 | 리소스 | 경로 | 개수 | 비고 | 화면 |
 | --- | --- | --- | --- | --- |
@@ -434,6 +440,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | 사용자 정의 필드 | GET·POST /admin/custom-fields, PATCH·DELETE /admin/custom-fields/{id} | 4 | 옵션과 사용 유형은 PATCH 본문에 포함 | S34 |
 | 설정 | GET·PUT /admin/settings/{section} | 2 | section: calendar, progress, attachments, notifications, auth, mail. calendar나 progress를 바꾸면 재계산 작업을 예약 | S32 S33 |
 | 휴무일 | GET /admin/non-working-days?year, POST, DELETE /admin/non-working-days/{id} | 3 | 바꾸면 reschedule-all 예약 | S33 |
+| SSO 공급자 | GET·POST /admin/oidc-providers, PATCH·DELETE /admin/oidc-providers/{id} | 4 | V10. 관리자만(global.manage_users로는 안 됨). 발급자를 새로 넣거나 바꾸면 발견 문서를 읽어 확인(못 읽으면 422 issuer). 식별자는 만들 때만, 중복 422. 응답에 client_secret 없음(`secretSet`, `redirectUri`, `linkedUsers`만). PATCH에서 빈 시크릿은 기존 값 유지. DELETE는 연결만 지우고 계정은 남김 | 관리 로그인·비밀번호 |
 
 운영용 `GET /actuator/health`는 API 개수에 넣지 않았습니다.
 
@@ -441,7 +448,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 
 | 경로 | 화면 |
 | --- | --- |
-| /login, /password-reset, /invitations/:token | S01 |
+| /login (?next=, ?sso_error=), /password-reset, /invitations/:token | S01 |
 | / | S02 |
 | /projects, /projects/new | S03, S04 |
 | /projects/:p | S05 |
@@ -528,7 +535,7 @@ S10–S12는 모달이라 라우트가 없습니다.
 
 ### M0. 기반 (약 1주)
 
-- 저장소, Gradle, Vite, Flyway V1–V3, `deploy/compose.yaml`, Dockerfile
+- 저장소, Gradle, Vite, Flyway V1–V3, `compose.yaml`, `Dockerfile`(둘 다 저장소 최상위)
 - CI: 테스트(Testcontainers) → 이미지 빌드
 - 첫 관리자 부트스트랩
 - 완료 기준: 개발 서버에서 `compose up` 한 번으로 빈 화면과 로그인 화면이 뜹니다.
@@ -569,7 +576,7 @@ S10–S12는 모달이라 라우트가 없습니다.
 
 ### M3. should 항목 (약 6~8주)
 
-- 인증: 사내 SSO(OIDC), 이메일 초대(`/projects/{project}/invitations`, `/auth/invitations/*`), 계정·알림 설정(`/me/*`)
+- 인증: 사내 SSO(OIDC, 완료: a677079), 이메일 초대(`/projects/{project}/invitations`, `/auth/invitations/*`), 계정·알림 설정(`/me/*`)
 - 프로젝트: 템플릿 생성, 하위 프로젝트, 모듈 켜기·끄기, 상태, 보관, 버전·카테고리(경로 8개), 그룹(`/admin/groups` 5개)
 - 작업 패키지:
   - 사용자 정의 필드(`/admin/custom-fields` 4개, `PUT …/custom-fields`)
@@ -600,7 +607,7 @@ S10–S12는 모달이라 라우트가 없습니다.
 ## 7. 요약
 
 - **스택**: Spring Boot 4 + Java 21 · jOOQ + Flyway · PostgreSQL 17 · React 19 + Vite + TanStack · db-scheduler · 사내 SMTP · Docker Compose 셀프 호스팅
-- **규모**: 테이블 36개(+ 라이브러리 3개), API 경로 134개, 작업 13종
+- **규모**: 테이블 36개(+ 라이브러리 3개), API 경로 141개(설계 134 + 사내 SSO 7), 작업 13종
 - **가장 위험한 세 가지**:
   1. 스케줄링 엔진: 근무일, lag, 자동 모드, 부모 파생, 전파, 순환 검출
   2. 쿼리 엔진: 필터 30여 종과 계층·그룹 합계를 권한 조건 아래에서 빠르게 처리

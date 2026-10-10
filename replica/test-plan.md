@@ -20,6 +20,25 @@
 | F00-E2 | edge: 열린 리다이렉트 | `?next=//evil.example` | 앱 안에 머묾 | e2e | ✅ |
 | F00-E3 | edge: 휴대폰 폭 | 390px | 가로 넘침 없음 | e2e | ✅ |
 
+## F00 사내 SSO (S01, 관리 로그인·비밀번호)
+
+커밋 a677079. e2e는 `frontend/e2e/f00-sso.spec.ts`이고 테스트 IdP 컨테이너(`frontend/e2e/fake-idp.mjs`, 실행 명령은 파일 머리말)가 필요합니다. IdP가 떠 있지 않으면 4개 모두 건너뜁니다(실패가 아님). JUnit은 `backend/src/test/java/com/openpms/auth/OidcIT.java`이고 테스트 안에서 작은 IdP(발견 문서·토큰·userinfo·JWKS, PKCE 검사)를 띄웁니다.
+
+| case | 종류 | 단계 | 기대 | 자동 | 결과 |
+| --- | --- | --- | --- | --- | --- |
+| F00-S1 | happy | 관리자: 관리 → 로그인·비밀번호 → SSO 공급자 추가, 발견 문서 없는 발급자로 저장 → 테스트 IdP 발급자로 저장 | 첫 저장은 발급자 칸 옆 오류, 두 번째는 목록에 공급자와 콜백 주소(`…/api/v1/auth/oidc/callback/company`). 대화상자·관리 화면 axe | e2e (테스트 IdP) | ✅ |
+| F00-S2 | happy | 로그인 화면 → "사내 계정(으)로 로그인" → IdP에서 기존 계정(이하늘) 선택 | 이메일로 연결되어 홈(`/`)에 로그인. S01(SSO 버튼) axe | e2e (테스트 IdP) | ✅ |
+| F00-S3 | negative: 계정 없음·취소 | 계정 없는 사람 선택 / IdP에서 거부 | `/login?sso_error=no_account`와 초대 요청 안내 / `sso_error=cancelled`와 취소 안내 | e2e (테스트 IdP) | ✅ |
+| F00-S4 | happy | 관리자가 공급자 수정(시크릿 칸은 '비워 두면 저장된 값' 안내) → 계정 자동 생성 켬 → 새 사람으로 로그인 | 계정이 생겨 홈으로, 계정 설정 이름이 성+이름(정다은) | e2e (테스트 IdP) | ✅ |
+| F00-S5 | edge: 연결 뒤 이메일 변경 | 기존 계정을 이메일로 연결(`?next=/projects`) → 같은 sub가 다른 이메일로 다시 로그인 | 처음엔 `/projects`로 돌아감. 두 번째도 같은 계정, 연결은 1개 | JUnit (OidcIT) | ✅ |
+| F00-S6 | negative: 계정 없음 → 자동 생성 | 자동 생성 끔으로 새 사람 → 켜고 다시 | 끔: `no_account`, 세션 없음, 계정 안 생김. 켬: 활성·관리자 아님·비밀번호 없음(폼 로그인 401), 이름은 family_name+given_name | JUnit (OidcIT) | ✅ |
+| F00-S7 | negative: 잠김·미확인·이메일 없음 | 잠긴 계정 이메일 / 기존 계정 이메일 + `email_verified=false` / 이메일 클레임 없음 | `locked` / `unverified` / `no_email`. 연결이 하나도 생기지 않음 | JUnit (OidcIT) | ✅ |
+| F00-S8 | negative: 위조 | 다른 키로 서명한 ID 토큰 / 이 브라우저가 시작하지 않은 state / IdP의 `access_denied` | `failed`, 세션 없음, 계정 안 생김 / `failed` / `/login?sso_error=…`로 돌아감 | JUnit (OidcIT) | ✅ |
+| F00-S9 | negative: 관리 권한·시크릿 | 발견 문서 없는 발급자 → 정상 생성 → 같은 식별자 → 빈 시크릿 + 끄기로 수정 → 멤버로 목록 → 삭제 | 422(issuer), 201(`secretSet: true`, 응답에 시크릿 없음, 콜백 주소), 422(slug), 시크릿 유지·버튼 목록 비고 시작 주소는 `unavailable`, 멤버 403, 204 | JUnit (OidcIT) | ✅ |
+
+- 모든 왕복에서 시작 요청이 PKCE `S256`과 콜백 `redirect_uri`를 보내는지, IdP가 `code_verifier`를 검사하는지 함께 확인합니다(OidcIT, 테스트 IdP).
+- 바뀐 뒤 회귀: JUnit 51/51, e2e 77/77(테스트 IdP를 띄운 상태).
+
 ## F01 작업 패키지 만들기 (S06 → S09 → S07)
 
 | case | 종류 | 단계 | 기대 | 자동 | 결과 |
@@ -111,7 +130,7 @@
 
 ## 화면별 접근성 (a11y.spec.ts)
 
-S02 S05 S08 S17(목록·보기) S18(목록·보기) S20 S21 S22 S24 S25 S26 S28 S31 S32 S33 S34 S35 S36 S37, 관리 로그인·비밀번호, 전역 Gantt를 axe로 검사하고, 흐름 스펙이 S01 S03 S04 S06 S07 S09 S10 S13 S14 S15 S19 S23 S27 S29 S30을 검사합니다. 어두운 테마로 S02 S06 S07 S13 S19 S35를 다시 검사합니다. 결과: 🐞 BUG-003·004·005 → 모두 통과.
+S02 S05 S08 S17(목록·보기) S18(목록·보기) S20 S21 S22 S24 S25 S26 S28 S31 S32 S33 S34 S35 S36 S37, 관리 로그인·비밀번호, 전역 Gantt를 axe로 검사하고, 흐름 스펙이 S01 S03 S04 S06 S07 S09 S10 S13 S14 S15 S19 S23 S27 S29 S30을 검사합니다. 어두운 테마로 S02 S06 S07 S13 S19 S35를 다시 검사합니다. 결과: 🐞 BUG-003·004·005 → 모두 통과. SSO 스펙(f00-sso)이 S01(SSO 버튼), SSO 공급자 대화상자, 공급자가 있는 관리 로그인·비밀번호를 더 검사합니다(테스트 IdP가 있을 때만).
 
 ## 손으로 확인할 것 (자동화하지 않음)
 
@@ -119,7 +138,7 @@ S02 S05 S08 S17(목록·보기) S18(목록·보기) S20 S21 S22 S24 S25 S26 S28 
 | --- | --- |
 | 초대·재설정·멘션 메일이 실제로 도착 | 실제 API 점검 묶음이 Mailpit에서 확인. 사내 SMTP로 보내는 것은 배포 때 |
 | 결제 | ➖ 사내 도구라 결제 없음 |
-| OAuth / SSO | ➖ 아직 없음(should, OIDC 예정) |
+| OAuth / SSO | 테스트 IdP로는 자동(F00-S1–S9). 실제 사내 IdP(Keycloak·Entra ID)와 운영 이미지로 연결하는 것은 배포 때 `replica/deploy.md` "사내 SSO 연결" 순서대로 손으로 확인 |
 | 화면 깨짐(시각) | replica/clone-screens 캡처로 확인, `/replica-diff`에서 비교 |
 | 스크린 리더 실제 낭독 | NVDA로 S06·S07·S15를 손으로 확인할 것(axe는 구조만 봄) |
 
@@ -130,3 +149,4 @@ S02 S05 S08 S17(목록·보기) S18(목록·보기) S20 S21 S22 S24 S25 S26 S28 
 - 저장 중 뒤로 가기.
 - 시간대: 다른 시간대 사용자의 날짜 알림은 JobsIT가 확인. 화면 표시(시간대 설정 → 활동 시각)는 자동 테스트가 없음.
 - 세션 점검 27묶음을 `frontend/e2e/`로 옮기기(지금은 세션 임시 폴더에만 있음).
+- SSO에서 자동 테스트가 없는 것: 초대 상태 계정이 SSO로 활성이 되는 것, 로그인 실패 잠금 시간 중(`locked_until`)의 거부, SSO의 `?next=//evil.example` 같은 열린 리다이렉트, 삭제된 계정의 `no_account`.

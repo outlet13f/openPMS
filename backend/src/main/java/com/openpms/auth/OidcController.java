@@ -153,7 +153,7 @@ public class OidcController {
         if (In.has(in, "enabled")) r.setEnabled(!Boolean.FALSE.equals(In.bool(in, "enabled")));
         if (create || In.has(in, "issuer")) {
             var v = text(in, "issuer", 500);
-            if (v == null || !v.matches("https?://\\S+")) throw ApiException.field("issuer", "https://로 시작하는 주소를 입력하세요.");
+            if (v == null || !v.matches("https?://\\S+")) throw ApiException.field("issuer", "https:// 또는 http://로 시작하는 주소를 입력하세요.");
             // kept exactly as typed: the discovery document must name the same issuer, trailing slash included
             if (create || !v.equals(r.getIssuer())) {
                 try {
