@@ -2,7 +2,7 @@
 #   docker compose up -d --build      first start; the log prints a one-time setup link for OPENPMS_ADMIN_EMAIL
 #   docker compose logs -f app
 # The app listens on 127.0.0.1:8090 only: put the company's reverse proxy (TLS) in front of it.
-# Backups: docker compose exec db pg_dump -U openpms -Fc openpms > openpms-$(date +%F).dump, plus the "files" volume.
+# Backups: docker compose exec -T db pg_dump -U openpms -Fc openpms > openpms-$(date +%F).dump, plus the "files" volume.
 
 services:
   db:

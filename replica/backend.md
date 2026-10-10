@@ -82,7 +82,7 @@ npm run build                # 운영 빌드(실제 API)를 backend 정적 리�
 - [x] 의존성 점검: `npm audit` 0건. Java 쪽은 아직 도구 없음(OWASP dependency-check를 CI에 넣는 것을 권장)
 - [x] 개인정보 처리 위탁: 외부 처리자 없음(셀프 호스팅, 사내 SMTP). 사용자 삭제는 익명화(이름·이메일·비밀번호 제거, 멤버십·주시·알림 삭제, 저널은 "삭제된 사용자"로 유지)
 - [x] 보안 헤더: CSP(`default-src 'self'`), `X-Frame-Options: DENY`, `nosniff`. 쿠키 `Secure`는 운영 기본값(개발만 해제)
-- [ ] 백업: 배포 단계에서(호스트 cron `pg_dump -Fc` + 복원 연습). `/replica-deploy`에서 다룹니다
+- [x] 백업: `pg_dump -Fc` → 새 DB에 `pg_restore` 복원 확인(2026-10-10, `replica/deploy.md` 검증 기록). 호스트 cron 등록과 첨부 파일(`files` 볼륨) 백업은 서버 담당자가 `replica/deploy.md`대로
 
 ## 아직 없는 것 (다음 단계)
 
