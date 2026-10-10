@@ -3,10 +3,10 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { LogIn } from "lucide-react";
+import { KeyRound, LogIn } from "lucide-react";
 import { api, API_MODE, isApiError } from "@/api";
 import { fakeAccounts, fakeOutbox, resetFakeDb } from "@/api/fake";
-import { qk, useMe, usePasswordRules } from "@/api/hooks";
+import { qk, useMe, usePasswordRules, useSsoProviders } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { Banner } from "@/components/ui/feedback";
@@ -18,10 +18,13 @@ export function LoginPage() {
   useDocumentTitle(t("auth.submit"));
   const me = useMe();
   const rules = usePasswordRules();
+  const sso = useSsoProviders();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const next = params.get("next");
+  // a refused SSO sign-in comes back as /login?sso_error=code (OidcLogin)
+  const ssoError = params.get("sso_error");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -68,9 +71,9 @@ export function LoginPage() {
     >
       <h1 className="text-xl text-fg">{t("auth.title")}</h1>
       <p className="mt-1 text-sm text-fg-muted">{t("auth.subtitle")}</p>
-      {error && (
+      {(error || ssoError) && (
         <div className="mt-4">
-          <Banner tone="danger">{error}</Banner>
+          <Banner tone="danger">{error ?? t(`auth.sso.errors.${ssoError}`, { defaultValue: t("auth.sso.errors.failed") })}</Banner>
         </div>
       )}
       <form className="mt-5 flex flex-col gap-4" onSubmit={submit} noValidate>
@@ -89,6 +92,17 @@ export function LoginPage() {
           </Link>
         )}
       </form>
+      {!!sso.data?.length && (
+        <div className="mt-5 flex flex-col gap-3">
+          <p className="flex items-center gap-3 text-xs text-fg-muted before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">{t("auth.sso.or")}</p>
+          {sso.data.map((p) => (
+            // a full page navigation: the provider's sign-in page is on another site
+            <Button key={p.slug} asChild size="lg" icon={<KeyRound />}>
+              <a href={api.auth.ssoStartUrl(p.slug, next && next.startsWith("/") && !next.startsWith("//") ? next : null)}>{t("auth.sso.signIn", { name: p.displayName })}</a>
+            </Button>
+          ))}
+        </div>
+      )}
     </AuthShell>
   );
 }

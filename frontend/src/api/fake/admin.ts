@@ -1,6 +1,6 @@
 // Administration (S27–S36) and project settings (S24–S26) for the fake data layer.
 import type { Api } from "../api";
-import type { AdminCustomField, AuthSettings, CustomField, CustomFieldInput, CustomValue, ProjectCustomFields, TypeForm, AdminGroup, AdminPriority, AdminRole, AdminStatus, AdminType, AdminUser, Category, Version } from "../types";
+import type { AdminCustomField, AdminOidcProvider, OidcProviderInput, AuthSettings, CustomField, CustomFieldInput, CustomValue, ProjectCustomFields, TypeForm, AdminGroup, AdminPriority, AdminRole, AdminStatus, AdminType, AdminUser, Category, Version } from "../types";
 import { ApiError } from "../errors";
 import { nowIso } from "@/lib/dates";
 import { db, newId, type DbUser } from "./db";
@@ -422,8 +422,86 @@ export const versionsApi: Api["versions"] = {
 
 /* ---------- administration ---------- */
 
+/* ---------- SSO providers ---------- */
+
+type FakeOidc = NonNullable<typeof db.settings.oidcProviders>[number];
+const toOidc = (p: FakeOidc): AdminOidcProvider => {
+  const { clientSecret, ...rest } = p;
+  return { ...clone(rest), secretSet: clientSecret !== "", redirectUri: `${window.location.origin}/api/v1/auth/oidc/callback/${p.slug}`, linkedUsers: 0 };
+};
+
+function applyOidc(p: FakeOidc, input: Partial<OidcProviderInput>, create: boolean) {
+  const text = (k: keyof OidcProviderInput, max: number) => {
+    const v = String(input[k] ?? "").trim();
+    if (v.length > max) throw fieldError(k, `${max}자까지 입력할 수 있습니다.`);
+    return v;
+  };
+  if (create || input.displayName !== undefined) {
+    const v = text("displayName", 60);
+    if (!v) throw fieldError("displayName", "로그인 버튼에 보일 이름을 60자까지 입력하세요.");
+    p.displayName = v;
+  }
+  if (create || input.clientId !== undefined) {
+    const v = text("clientId", 255);
+    if (!v) throw fieldError("clientId", "클라이언트 ID를 입력하세요.");
+    p.clientId = v;
+  }
+  const secret = text("clientSecret", 1000);
+  if (secret) p.clientSecret = secret;
+  else if (create) throw fieldError("clientSecret", "클라이언트 시크릿을 입력하세요.");
+  if (create || input.scopes !== undefined) {
+    const v = text("scopes", 500) || "openid email profile";
+    if (!v.split(/[\s,]+/).includes("openid")) throw fieldError("scopes", "openid가 들어 있어야 합니다.");
+    p.scopes = v;
+  }
+  if (create || input.claimEmail !== undefined) p.claimEmail = text("claimEmail", 100) || "email";
+  if (create || input.claimName !== undefined) p.claimName = text("claimName", 100) || "name";
+  if (input.autoCreate !== undefined) p.autoCreate = !!input.autoCreate;
+  if (input.enabled !== undefined) p.enabled = input.enabled !== false;
+  if (create || input.issuer !== undefined) {
+    const v = text("issuer", 500);
+    // the fake cannot fetch the discovery document: the address only has to look like one
+    if (!/^https?:\/\/\S+$/.test(v)) throw fieldError("issuer", "https://로 시작하는 주소를 입력하세요.");
+    p.issuer = v;
+  }
+}
+
+export const oidcAdmin: Api["admin"]["oidc"] = {
+  list: () => run(() => (requireAdmin(sessionUser()), (db.settings.oidcProviders ?? []).map(toOidc))),
+  create: (input) =>
+    run(() => {
+      requireAdmin(sessionUser());
+      const list = (db.settings.oidcProviders ??= []);
+      const slug = String(input.slug ?? "").trim();
+      if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(slug)) throw fieldError("slug", "영문 소문자·숫자·하이픈으로 40자까지 입력하세요.");
+      if (list.some((x) => x.slug === slug)) throw fieldError("slug", "이미 쓰는 식별자입니다.");
+      const p: FakeOidc = { id: newId("oidc"), slug, displayName: "", issuer: "", clientId: "", clientSecret: "", scopes: "", claimEmail: "", claimName: "", autoCreate: false, enabled: true };
+      applyOidc(p, input, true);
+      list.push(p);
+      return toOidc(p);
+    }),
+  update: (id, input) =>
+    run(() => {
+      requireAdmin(sessionUser());
+      const p = (db.settings.oidcProviders ?? []).find((x) => x.id === id);
+      if (!p) throw new ApiError(404, "SSO 공급자를 찾을 수 없습니다.");
+      const draft = clone(p);
+      applyOidc(draft, input, false);
+      Object.assign(p, draft);
+      return toOidc(p);
+    }),
+  remove: (id) =>
+    run(() => {
+      requireAdmin(sessionUser());
+      const list = db.settings.oidcProviders ?? [];
+      if (!list.some((x) => x.id === id)) throw new ApiError(404, "SSO 공급자를 찾을 수 없습니다.");
+      db.settings.oidcProviders = list.filter((x) => x.id !== id);
+    }),
+};
+
 export const adminApi: Api["admin"] = {
   customFields: customFieldsAdmin,
+  oidc: oidcAdmin,
   auth: {
     get: () => run(() => (requireAdmin(sessionUser()), clone(db.settings.auth ?? DEFAULT_AUTH_SETTINGS))),
     save: (input) =>

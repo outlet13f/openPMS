@@ -1,4 +1,4 @@
-import type { AuthSettings, PasswordRules, BulkInput, CopyInput, MoveInput, ExportCount, Invitation,
+import type { AdminOidcProvider, OidcProviderInput, SsoProvider, AuthSettings, PasswordRules, BulkInput, CopyInput, MoveInput, ExportCount, Invitation,
   Attachment,
   ProgressSettings,
   ExportInput,
@@ -86,6 +86,10 @@ export interface Api {
     invitation(token: string): Promise<Invitation>;
     /** POST /auth/invitations/{token}/accept — activates the account and signs it in. */
     acceptInvitation(token: string, input: { name: string; password: string }): Promise<Me>;
+    /** GET /auth/sso-providers (public) — the enabled company OpenID providers, one login button each */
+    ssoProviders(): Promise<SsoProvider[]>;
+    /** where a login button goes: GET /auth/oidc/start/{slug}?next= (a full page navigation, not a fetch) */
+    ssoStartUrl(slug: string, next?: string | null): string;
   };
 
   /** My own settings (architecture.md §4.2 "/me"). */
@@ -396,6 +400,16 @@ export interface Api {
       get(): Promise<AuthSettings>;
       /** PUT /admin/settings/auth */
       save(input: AuthSettings): Promise<AuthSettings>;
+    };
+    oidc: {
+      /** GET /admin/oidc-providers */
+      list(): Promise<AdminOidcProvider[]>;
+      /** POST /admin/oidc-providers — 422 on the issuer when its discovery document cannot be read */
+      create(input: OidcProviderInput): Promise<AdminOidcProvider>;
+      /** PATCH /admin/oidc-providers/{id} — the slug stays */
+      update(id: Id, input: Partial<OidcProviderInput>): Promise<AdminOidcProvider>;
+      /** DELETE /admin/oidc-providers/{id} — accounts stay, their link to this provider goes */
+      remove(id: Id): Promise<void>;
     };
     progress: {
       /** GET /admin/settings/progress */

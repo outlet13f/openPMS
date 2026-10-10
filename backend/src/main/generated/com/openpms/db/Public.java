@@ -19,6 +19,7 @@ import com.openpms.db.tables.Members;
 import com.openpms.db.tables.NonWorkingDays;
 import com.openpms.db.tables.NotificationSettings;
 import com.openpms.db.tables.Notifications;
+import com.openpms.db.tables.OidcProviders;
 import com.openpms.db.tables.Priorities;
 import com.openpms.db.tables.ProjectCustomFields;
 import com.openpms.db.tables.ProjectFavorites;
@@ -33,6 +34,7 @@ import com.openpms.db.tables.Statuses;
 import com.openpms.db.tables.Types;
 import com.openpms.db.tables.UserGroupMembers;
 import com.openpms.db.tables.UserGroups;
+import com.openpms.db.tables.UserIdentities;
 import com.openpms.db.tables.UserPreferences;
 import com.openpms.db.tables.UserTokens;
 import com.openpms.db.tables.Users;
@@ -141,6 +143,11 @@ public class Public extends SchemaImpl {
     public final Notifications NOTIFICATIONS = Notifications.NOTIFICATIONS;
 
     /**
+     * The table <code>public.oidc_providers</code>.
+     */
+    public final OidcProviders OIDC_PROVIDERS = OidcProviders.OIDC_PROVIDERS;
+
+    /**
      * The table <code>public.priorities</code>.
      */
     public final Priorities PRIORITIES = Priorities.PRIORITIES;
@@ -209,6 +216,11 @@ public class Public extends SchemaImpl {
      * The table <code>public.user_groups</code>.
      */
     public final UserGroups USER_GROUPS = UserGroups.USER_GROUPS;
+
+    /**
+     * The table <code>public.user_identities</code>.
+     */
+    public final UserIdentities USER_IDENTITIES = UserIdentities.USER_IDENTITIES;
 
     /**
      * The table <code>public.user_preferences</code>.
@@ -288,6 +300,7 @@ public class Public extends SchemaImpl {
             NonWorkingDays.NON_WORKING_DAYS,
             NotificationSettings.NOTIFICATION_SETTINGS,
             Notifications.NOTIFICATIONS,
+            OidcProviders.OIDC_PROVIDERS,
             Priorities.PRIORITIES,
             ProjectCustomFields.PROJECT_CUSTOM_FIELDS,
             ProjectFavorites.PROJECT_FAVORITES,
@@ -302,6 +315,7 @@ public class Public extends SchemaImpl {
             Types.TYPES,
             UserGroupMembers.USER_GROUP_MEMBERS,
             UserGroups.USER_GROUPS,
+            UserIdentities.USER_IDENTITIES,
             UserPreferences.USER_PREFERENCES,
             UserTokens.USER_TOKENS,
             Users.USERS,

@@ -16,6 +16,7 @@ import com.openpms.db.tables.Journals.JournalsPath;
 import com.openpms.db.tables.Members.MembersPath;
 import com.openpms.db.tables.NotificationSettings.NotificationSettingsPath;
 import com.openpms.db.tables.Notifications.NotificationsPath;
+import com.openpms.db.tables.OidcProviders.OidcProvidersPath;
 import com.openpms.db.tables.ProjectFavorites.ProjectFavoritesPath;
 import com.openpms.db.tables.Projects.ProjectsPath;
 import com.openpms.db.tables.Queries.QueriesPath;
@@ -25,6 +26,7 @@ import com.openpms.db.tables.Roles.RolesPath;
 import com.openpms.db.tables.Settings.SettingsPath;
 import com.openpms.db.tables.UserGroupMembers.UserGroupMembersPath;
 import com.openpms.db.tables.UserGroups.UserGroupsPath;
+import com.openpms.db.tables.UserIdentities.UserIdentitiesPath;
 import com.openpms.db.tables.UserPreferences.UserPreferencesPath;
 import com.openpms.db.tables.UserTokens.UserTokensPath;
 import com.openpms.db.tables.Watchers.WatchersPath;
@@ -459,6 +461,19 @@ public class Users extends TableImpl<UsersRecord> {
         return _userGroupMembers;
     }
 
+    private transient UserIdentitiesPath _userIdentities;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.user_identities</code> table
+     */
+    public UserIdentitiesPath userIdentities() {
+        if (_userIdentities == null)
+            _userIdentities = new UserIdentitiesPath(this, null, Keys.USER_IDENTITIES__USER_IDENTITIES_USER_ID_FKEY.getInverseKey());
+
+        return _userIdentities;
+    }
+
     private transient UserPreferencesPath _userPreferences;
 
     /**
@@ -613,6 +628,14 @@ public class Users extends TableImpl<UsersRecord> {
      */
     public UserGroupsPath userGroups() {
         return userGroupMembers().userGroups();
+    }
+
+    /**
+     * Get the implicit many-to-many join path to the
+     * <code>public.oidc_providers</code> table
+     */
+    public OidcProvidersPath oidcProviders() {
+        return userIdentities().oidcProviders();
     }
 
     /**

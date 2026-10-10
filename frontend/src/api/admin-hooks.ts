@@ -1,7 +1,7 @@
 // Query hooks for administration (S27–S36) and project settings (S24–S26).
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { AuthSettings, CalendarSettings, CustomFieldInput, Id, ProgressSettings, PriorityInput, RoleInput, StatusInput, Transition, TypeInput, UserInput, VersionInput } from "./types";
+import type { OidcProviderInput, AuthSettings, CalendarSettings, CustomFieldInput, Id, ProgressSettings, PriorityInput, RoleInput, StatusInput, Transition, TypeInput, UserInput, VersionInput } from "./types";
 
 export const ak = {
   customFields: ["admin", "custom-fields"] as const,
@@ -47,6 +47,17 @@ export function useSaveAuthSettings() {
     mutationFn: (input: AuthSettings) => api.admin.auth.save(input),
     onSuccess: () => (qc.invalidateQueries({ queryKey: ["admin", "auth"] }), qc.invalidateQueries({ queryKey: ["password-policy"] })),
   });
+}
+
+export const useOidcProviders = () => useQuery({ queryKey: ["admin", "oidc"], queryFn: () => api.admin.oidc.list() });
+export function useOidcMutations() {
+  const qc = useQueryClient();
+  const done = () => (qc.invalidateQueries({ queryKey: ["admin", "oidc"] }), qc.invalidateQueries({ queryKey: ["sso-providers"] }));
+  return {
+    create: useMutation({ mutationFn: (input: OidcProviderInput) => api.admin.oidc.create(input), onSuccess: done }),
+    update: useMutation({ mutationFn: ({ id, patch }: { id: Id; patch: Partial<OidcProviderInput> }) => api.admin.oidc.update(id, patch), onSuccess: done }),
+    remove: useMutation({ mutationFn: (id: Id) => api.admin.oidc.remove(id), onSuccess: done }),
+  };
 }
 
 /* ---------- progress tracking (S32) ---------- */

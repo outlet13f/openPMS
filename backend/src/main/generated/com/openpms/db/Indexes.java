@@ -28,6 +28,7 @@ import com.openpms.db.tables.Roles;
 import com.openpms.db.tables.Settings;
 import com.openpms.db.tables.Statuses;
 import com.openpms.db.tables.UserGroupMembers;
+import com.openpms.db.tables.UserIdentities;
 import com.openpms.db.tables.UserTokens;
 import com.openpms.db.tables.Users;
 import com.openpms.db.tables.Versions;
@@ -105,6 +106,7 @@ public class Indexes {
     public static final Index STATUSES_CLOSED_IDX = Internal.createIndex(DSL.name("statuses_closed_idx"), Statuses.STATUSES, new OrderField[] { Statuses.STATUSES.IS_CLOSED }, false);
     public static final Index STATUSES_ONE_DEFAULT = Internal.createIndex(DSL.name("statuses_one_default"), Statuses.STATUSES, new OrderField[] { Statuses.STATUSES.IS_DEFAULT }, true);
     public static final Index USER_GROUP_MEMBERS_USER_IDX = Internal.createIndex(DSL.name("user_group_members_user_idx"), UserGroupMembers.USER_GROUP_MEMBERS, new OrderField[] { UserGroupMembers.USER_GROUP_MEMBERS.USER_ID }, false);
+    public static final Index USER_IDENTITIES_USER_IDX = Internal.createIndex(DSL.name("user_identities_user_idx"), UserIdentities.USER_IDENTITIES, new OrderField[] { UserIdentities.USER_IDENTITIES.USER_ID }, false);
     public static final Index USER_TOKENS_CREATED_BY_IDX = Internal.createIndex(DSL.name("user_tokens_created_by_idx"), UserTokens.USER_TOKENS, new OrderField[] { UserTokens.USER_TOKENS.CREATED_BY }, false);
     public static final Index USER_TOKENS_EXPIRES_IDX = Internal.createIndex(DSL.name("user_tokens_expires_idx"), UserTokens.USER_TOKENS, new OrderField[] { UserTokens.USER_TOKENS.EXPIRES_AT }, false);
     public static final Index USER_TOKENS_USER_IDX = Internal.createIndex(DSL.name("user_tokens_user_idx"), UserTokens.USER_TOKENS, new OrderField[] { UserTokens.USER_TOKENS.USER_ID }, false);

@@ -78,6 +78,8 @@ export const httpApi: Api = {
     confirmPasswordReset: (token, newPassword) => post("/auth/password-reset/confirm", { token, newPassword }),
     invitation: (token) => get(`/auth/invitations/${encodeURIComponent(token)}`),
     acceptInvitation: (token, input) => post(`/auth/invitations/${encodeURIComponent(token)}/accept`, input),
+    ssoProviders: () => get("/auth/sso-providers"),
+    ssoStartUrl: (slug, next) => `${BASE}/auth/oidc/start/${encodeURIComponent(slug)}${next ? `?next=${encodeURIComponent(next)}` : ""}`,
   },
   account: {
     updateProfile: (input) => patch("/me", input),
@@ -247,6 +249,12 @@ export const httpApi: Api = {
     auth: {
       get: () => get("/admin/settings/auth"),
       save: (input) => put("/admin/settings/auth", input),
+    },
+    oidc: {
+      list: () => get("/admin/oidc-providers"),
+      create: (input) => post("/admin/oidc-providers", input),
+      update: (id, input) => patch(`/admin/oidc-providers/${id}`, input),
+      remove: (id) => del(`/admin/oidc-providers/${id}`),
     },
     progress: {
       get: () => get("/admin/settings/progress"),

@@ -626,6 +626,9 @@ export const fakeApi: Api = {
         db.sessionUserId = u.id;
         return toMe(u);
       }),
+    ssoProviders: () => run(() => (db.settings.oidcProviders ?? []).filter((p) => p.enabled).map((p) => ({ slug: p.slug, displayName: p.displayName }))),
+    // there is no provider to go to in the browser-only data layer: the login page explains it
+    ssoStartUrl: () => "/login?sso_error=fake",
   },
 
   projects: {

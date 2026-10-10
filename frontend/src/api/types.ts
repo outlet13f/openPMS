@@ -826,6 +826,43 @@ export interface AuthSettings extends PasswordRules {
   resetTtlMinutes: number;
 }
 
+/** S01: a "sign in with" button for a company OpenID provider. */
+export interface SsoProvider {
+  slug: string;
+  displayName: string;
+}
+
+/** 관리 · 로그인과 비밀번호 · SSO: a provider. The client secret is write-only (secretSet tells whether one is stored). */
+export interface AdminOidcProvider extends SsoProvider {
+  id: Id;
+  issuer: string;
+  clientId: string;
+  secretSet: boolean;
+  scopes: string;
+  claimEmail: string;
+  claimName: string;
+  /** people without an account get one on their first sign-in */
+  autoCreate: boolean;
+  enabled: boolean;
+  /** what the provider must allow as the redirect URI */
+  redirectUri: string;
+  linkedUsers: number;
+}
+
+export interface OidcProviderInput {
+  slug?: string;
+  displayName: string;
+  issuer: string;
+  clientId: string;
+  /** blank on edit: keep the stored secret */
+  clientSecret: string;
+  scopes: string;
+  claimEmail: string;
+  claimName: string;
+  autoCreate: boolean;
+  enabled: boolean;
+}
+
 /** S01: what an invitation link shows before it is accepted. */
 export interface Invitation {
   email: string;

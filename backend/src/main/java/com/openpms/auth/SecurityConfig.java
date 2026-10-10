@@ -31,7 +31,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http, SecurityContextRepository repo, JsonMapper json) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http, SecurityContextRepository repo, JsonMapper json, OidcLogin oidc) throws Exception {
         http
                 .csrf(csrf -> csrf.spa())
                 .securityContext(sc -> sc.securityContextRepository(repo))
@@ -41,11 +41,19 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
+                // SSO: /api/v1/auth/oidc/start/{slug} → the provider → /api/v1/auth/oidc/callback/{slug} (OidcLogin)
+                .oauth2Login(o -> o
+                        .loginPage("/login") // the SPA's page; also keeps Spring from generating one
+                        .authorizationEndpoint(a -> a.authorizationRequestResolver(oidc.resolver()))
+                        .redirectionEndpoint(r -> r.baseUri(OidcProviders.CALLBACK + "*"))
+                        .authorizedClientRepository(OidcLogin.noTokenStore())
+                        .successHandler(oidc)
+                        .failureHandler(oidc))
                 .headers(h -> h.contentSecurityPolicy(c -> c.policyDirectives(
                         "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'")))
                 .authorizeHttpRequests(a -> a
                         .requestMatchers("/api/v1/auth/login", "/api/v1/auth/password-reset", "/api/v1/auth/password-reset/confirm", "/api/v1/auth/password-policy",
-                                "/api/v1/auth/invitations/**").permitAll()
+                                "/api/v1/auth/invitations/**", "/api/v1/auth/sso-providers", "/api/v1/auth/oidc/**").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll())
                 .exceptionHandling(e -> e
