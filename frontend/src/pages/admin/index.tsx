@@ -2,7 +2,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
-import { CalendarDays, CircleDot, Flag, Gauge, GitBranch, ListPlus, Lock, Shapes, ShieldCheck, Users, UsersRound } from "lucide-react";
+import { CalendarDays, CircleDot, Flag, Gauge, GitBranch, ListPlus, Lock, Shapes, ShieldCheck, Users, UsersRound, KeyRound } from "lucide-react";
 import { useMe } from "@/api/hooks";
 import { EmptyState } from "@/components/ui/feedback";
 import { PageBody, PageHeader, useDocumentTitle } from "@/app/page";
@@ -31,6 +31,7 @@ export const ADMIN_SECTIONS = [
   { to: "/admin/users", key: "users", icon: <Users /> },
   { to: "/admin/groups", key: "groups", icon: <UsersRound /> },
   { to: "/admin/roles", key: "roles", icon: <ShieldCheck /> },
+  { to: "/admin/authentication", key: "authentication", icon: <KeyRound /> },
   { to: "/admin/calendar", key: "calendar", icon: <CalendarDays /> },
 ] as const;
 

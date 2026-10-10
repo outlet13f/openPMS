@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { LogIn } from "lucide-react";
 import { api, API_MODE, isApiError } from "@/api";
 import { fakeAccounts, fakeOutbox, resetFakeDb } from "@/api/fake";
-import { qk, useMe } from "@/api/hooks";
+import { qk, useMe, usePasswordRules } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { Banner } from "@/components/ui/feedback";
@@ -17,6 +17,7 @@ export function LoginPage() {
   const { t } = useTranslation();
   useDocumentTitle(t("auth.submit"));
   const me = useMe();
+  const rules = usePasswordRules();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -82,9 +83,11 @@ export function LoginPage() {
         <Button type="submit" variant="primary" size="lg" loading={busy} icon={<LogIn />}>
           {t("auth.submit")}
         </Button>
-        <Link to="/password-reset" className="self-center text-sm text-accent hover:underline">
-          {t("auth.forgot")}
-        </Link>
+        {rules.data?.resetEnabled !== false && (
+          <Link to="/password-reset" className="self-center text-sm text-accent hover:underline">
+            {t("auth.forgot")}
+          </Link>
+        )}
       </form>
     </AuthShell>
   );

@@ -5,14 +5,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { KeyRound, Mail, UserCheck } from "lucide-react";
 import { api, API_MODE, isApiError } from "@/api";
-import { qk, useMe } from "@/api/hooks";
+import { qk, useMe, usePasswordRules } from "@/api/hooks";
+import { DEFAULT_AUTH_SETTINGS, describeRules, passwordProblem } from "@/api/password-policy";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { Banner, useToast } from "@/components/ui/feedback";
 import { FullPageSpinner, useDocumentTitle } from "@/app/page";
 import { AuthShell, DevOutbox } from "./login";
 
-const PASSWORD_MIN = 10; // auth.password_min_length; the server has the last word
 
 type Errors = Partial<Record<"email" | "name" | "password" | "confirm", string>>;
 
@@ -55,9 +55,10 @@ function Expired({ title, body, action }: { title: string; body: string; action?
 /** New password twice; checked here first so a typo does not cost a round trip. */
 function NewPasswordFields({ password, confirm, onPassword, onConfirm, errors }: { password: string; confirm: string; onPassword: (v: string) => void; onConfirm: (v: string) => void; errors: Errors }) {
   const { t } = useTranslation();
+  const rules = usePasswordRules();
   return (
     <>
-      <Field label={t("authLinks.newPassword")} required hint={t("authLinks.passwordHint", { min: PASSWORD_MIN })} error={errors.password}>
+      <Field label={t("authLinks.newPassword")} required hint={describeRules(rules.data ?? DEFAULT_AUTH_SETTINGS)} error={errors.password}>
         <Input type="password" autoComplete="new-password" maxLength={128} value={password} onChange={(e) => onPassword(e.target.value)} />
       </Field>
       <Field label={t("authLinks.confirm")} required error={errors.confirm}>
@@ -69,8 +70,10 @@ function NewPasswordFields({ password, confirm, onPassword, onConfirm, errors }:
 
 function usePasswordCheck() {
   const { t } = useTranslation();
+  const rules = usePasswordRules().data ?? DEFAULT_AUTH_SETTINGS;
   return (password: string, confirm: string): Errors => {
-    if (password.length < PASSWORD_MIN) return { password: t("authLinks.tooShort", { min: PASSWORD_MIN }) };
+    const problem = passwordProblem(rules, password);
+    if (problem) return { password: problem };
     if (password !== confirm) return { confirm: t("authLinks.mismatch") };
     return {};
   };

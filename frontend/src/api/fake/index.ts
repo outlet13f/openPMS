@@ -36,6 +36,7 @@ import { accountApi, effectiveSetting } from "./notification-settings";
 import { exportCount, exportWorkPackages } from "./export";
 import { deriveProgress, progressLocked } from "./progress";
 import { DEFAULT_TYPE_FORM } from "../type-form";
+import { DEFAULT_AUTH_SETTINGS, passwordProblem } from "../password-policy";
 import { issueToken, revokeAll, sendMail, tokenGone, validToken } from "./tokens";
 import { adminApi, categoriesApi, projectExtras, versionsApi } from "./admin";
 
@@ -523,10 +524,10 @@ function moveWp(user: DbUser, number: number, input: MoveInput): WorkPackage {
 
 /* ---------- the API ---------- */
 
-const PASSWORD_MIN = 10; // auth.password_min_length (backend default)
+const authSettings = () => db.settings.auth ?? DEFAULT_AUTH_SETTINGS;
 function checkNewPassword(password: string, field: string) {
-  if ((password ?? "").length < PASSWORD_MIN) throw fieldError(field, `비밀번호는 ${PASSWORD_MIN}자 이상이어야 합니다.`);
-  if (password.length > 128) throw fieldError(field, "비밀번호는 128자 이하로 정하세요.");
+  const problem = passwordProblem(authSettings(), password);
+  if (problem) throw fieldError(field, problem);
 }
 
 export const fakeApi: Api = {
@@ -556,8 +557,7 @@ export const fakeApi: Api = {
       run(() => {
         const user = sessionUser();
         if (currentPassword !== user.password) throw fieldError("currentPassword", "현재 비밀번호가 맞지 않습니다.");
-        if (newPassword.length < PASSWORD_MIN) throw fieldError("newPassword", `비밀번호는 ${PASSWORD_MIN}자 이상이어야 합니다.`);
-        if (newPassword.length > 128) throw fieldError("newPassword", "비밀번호는 128자 이하로 정하세요.");
+        checkNewPassword(newPassword, "newPassword");
         if (newPassword === currentPassword) throw fieldError("newPassword", "지금 비밀번호와 다른 비밀번호를 정하세요.");
         user.password = newPassword;
       }),
@@ -583,8 +583,14 @@ export const fakeApi: Api = {
         const u = db.users.find((x) => x.id === db.sessionUserId && x.status === "active");
         return u ? toMe(u) : null;
       }),
+    passwordPolicy: () =>
+      run(() => {
+        const { minLength, requiredClasses, minClasses, resetEnabled } = authSettings();
+        return { minLength, requiredClasses, minClasses, resetEnabled };
+      }),
     requestPasswordReset: (email) =>
       run(() => {
+        if (!authSettings().resetEnabled) throw new ApiError(403, "비밀번호 재설정을 쓰지 않습니다. 관리자에게 문의하세요.");
         const u = db.users.find((x) => x.email.toLowerCase() === email.trim().toLowerCase());
         if (u?.status !== "active") return; // the same answer either way (no enumeration)
         revokeAll(u.id, "password_reset"); // only the newest link works

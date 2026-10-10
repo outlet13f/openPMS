@@ -2,6 +2,8 @@
 // out of other devices. Email and roles are changed by an administrator (S35).
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { usePasswordRules } from "@/api/hooks";
+import { DEFAULT_AUTH_SETTINGS, describeRules } from "@/api/password-policy";
 import { KeyRound, LogOut, Monitor, Moon, Save, Sun } from "lucide-react";
 import { isApiError, type Theme } from "@/api";
 import { useAccountMutations, useMe } from "@/api/hooks";
@@ -112,6 +114,7 @@ function Display() {
 
 function Password() {
   const { t } = useTranslation();
+  const rules = usePasswordRules().data ?? DEFAULT_AUTH_SETTINGS;
   const toast = useToast();
   const m = useAccountMutations();
   const [v, setV] = useState({ current: "", next: "", confirm: "" });
@@ -126,7 +129,7 @@ function Password() {
     );
   };
   return (
-    <Section title={t("account.password")} hint={t("account.passwordHint")}>
+    <Section title={t("account.password")} hint={t("account.passwordHint", { rules: describeRules(rules) })}>
       <form onSubmit={submit} noValidate className="flex max-w-form flex-col gap-4">
         <Field label={t("account.currentPassword")} required error={fieldErrorOf(m.password.error, "currentPassword")}>
           <Input type="password" autoComplete="current-password" value={v.current} onChange={(e) => setV({ ...v, current: e.target.value })} />

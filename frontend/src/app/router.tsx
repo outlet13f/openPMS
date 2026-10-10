@@ -29,6 +29,7 @@ import { MyPage } from "@/pages/my-page";
 import { AdminCustomFieldsPage } from "@/pages/admin/custom-fields";
 import { AdminProgressPage } from "@/pages/admin/progress";
 import { AdminTypeFormPage } from "@/pages/admin/type-form";
+import { AdminAuthenticationPage } from "@/pages/admin/authentication";
 import { InvitationPage, PasswordResetPage } from "@/pages/auth-links";
 import { AdminPrioritiesPage, AdminStatusesPage } from "@/pages/admin/statuses";
 import { AdminWorkflowsPage } from "@/pages/admin/workflows";
@@ -150,6 +151,7 @@ export const router = createBrowserRouter([
       { path: "admin/types/:id/form", element: <AdminTypeFormPage /> },
       { path: "admin/custom-fields", element: <AdminCustomFieldsPage /> },
       { path: "admin/progress", element: <AdminProgressPage /> },
+      { path: "admin/authentication", element: <AdminAuthenticationPage /> },
       { path: "admin/statuses", element: <AdminStatusesPage /> },
       { path: "admin/workflows", element: <AdminWorkflowsPage /> },
       { path: "admin/priorities", element: <AdminPrioritiesPage /> },

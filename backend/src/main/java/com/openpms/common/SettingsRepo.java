@@ -10,9 +10,33 @@ import org.springframework.stereotype.Component;
 @Component
 public class SettingsRepo {
     private final DSLContext db;
+    private final tools.jackson.databind.json.JsonMapper json;
 
-    public SettingsRepo(DSLContext db) {
+    public SettingsRepo(DSLContext db, tools.jackson.databind.json.JsonMapper json) {
         this.db = db;
+        this.json = json;
+    }
+
+    private String raw(String key) {
+        var v = db.select(SETTINGS.VALUE).from(SETTINGS).where(SETTINGS.KEY.eq(key)).fetchOne(SETTINGS.VALUE);
+        return v == null ? null : v.data().trim();
+    }
+
+    public boolean bool(String key, boolean fallback) {
+        var v = raw(key);
+        return v == null ? fallback : "true".equals(v) ? true : "false".equals(v) ? false : fallback;
+    }
+
+    /** A JSON array of strings; empty when missing or something else. */
+    public java.util.List<String> strings(String key) {
+        var v = raw(key);
+        if (v == null) return java.util.List.of();
+        try {
+            var list = json.readValue(v, java.util.List.class);
+            return ((java.util.List<?>) list).stream().map(String::valueOf).toList();
+        } catch (RuntimeException e) {
+            return java.util.List.of();
+        }
     }
 
     public int integer(String key, int fallback) {

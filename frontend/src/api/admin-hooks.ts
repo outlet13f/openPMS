@@ -1,7 +1,7 @@
 // Query hooks for administration (S27–S36) and project settings (S24–S26).
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { CalendarSettings, CustomFieldInput, Id, ProgressSettings, PriorityInput, RoleInput, StatusInput, Transition, TypeInput, UserInput, VersionInput } from "./types";
+import type { AuthSettings, CalendarSettings, CustomFieldInput, Id, ProgressSettings, PriorityInput, RoleInput, StatusInput, Transition, TypeInput, UserInput, VersionInput } from "./types";
 
 export const ak = {
   customFields: ["admin", "custom-fields"] as const,
@@ -36,6 +36,17 @@ function refreshEverything(qc: QueryClient) {
 function useMut<A, R>(fn: (a: A) => Promise<R>) {
   const qc = useQueryClient();
   return useMutation({ mutationFn: fn, onSuccess: () => refreshEverything(qc) });
+}
+
+/* ---------- 로그인과 비밀번호 ---------- */
+
+export const useAuthSettings = () => useQuery({ queryKey: ["admin", "auth"], queryFn: () => api.admin.auth.get() });
+export function useSaveAuthSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AuthSettings) => api.admin.auth.save(input),
+    onSuccess: () => (qc.invalidateQueries({ queryKey: ["admin", "auth"] }), qc.invalidateQueries({ queryKey: ["password-policy"] })),
+  });
 }
 
 /* ---------- progress tracking (S32) ---------- */

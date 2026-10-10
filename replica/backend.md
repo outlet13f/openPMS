@@ -90,6 +90,7 @@ npm run build                # 운영 빌드(실제 API)를 backend 정적 리�
 | --- | --- |
 | ~~계정 설정 API~~ | 완료(S37: `PATCH /me`, `/me/password`, `/me/preferences`, `POST /me/sessions/end-others`) |
 | PDF 내보내기 | S12의 CSV·XLSX는 완료(`POST /work-packages/export`, Apache POI). PDF는 한글 글꼴 내장과 함께. 설계의 500행 초과 백그라운드 작업·`GET /exports/{id}`는 빼고 5000행 초과 422로 바꿈. 수식 주입 방어(`=` `+` `-` `@` 탭·CR로 시작하는 셀에 `'`) 완료. 공유 역할에는 내보내기 권한이 없어(원본 문서도 보기·코멘트·편집만) 공유로만 보는 작업은 빠지며, `POST /work-packages/export/count`로 대화상자가 파일 행 수와 빠지는 건수를 미리 보여 줌(전부 빠지면 422). `ExportIT` |
+| ~~로그인·비밀번호 정책~~ | 완료(`auth/PasswordPolicy`: 길이·문자 종류·섞을 종류 수, 잠금 0=끔, 재설정 허용, 링크 유효 시간. `GET/PUT /admin/settings/auth`, 공개 `GET /auth/password-policy`) |
 | ~~초대 수락·비밀번호 재설정 화면 연결~~ | 완료(S01: `Api.auth` 4개 메서드, `/invitations/:token`, `/password-reset`). 새 링크를 보내거나 하나를 쓰면 같은 종류의 다른 링크는 무효(`Tokens.revokeAll`) |
 | 설계에 있으나 없는 경로 17개 | `replica/review-2026-10-10.md` §2 (프로젝트 복원·삭제, 작업 복사·이동·일괄, 보드 열 관리, `GET /queries/{id}`, `/home`, `/admin/settings/{section}` 5종 등) |
 | 사용자 정의 필드: 프로젝트·사용자 엔터티 | 작업 패키지 필드는 완료(`customfield/`). 프로젝트 특성·사용자 특성, 버전 형식은 없음 |

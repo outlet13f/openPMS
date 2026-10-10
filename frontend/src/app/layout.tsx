@@ -146,7 +146,7 @@ function AdminSidebar({ me, onNavigate, onCollapse }: { me: Me; onNavigate?: () 
   const { t } = useTranslation();
   const groups: { title: string; keys: string[] }[] = [
     { title: t("admin.groupTitles.workPackages"), keys: ["types", "statuses", "workflows", "priorities", "customFields", "progress"] },
-    { title: t("admin.groupTitles.people"), keys: ["users", "groups", "roles"] },
+    { title: t("admin.groupTitles.people"), keys: ["users", "groups", "roles", "authentication"] },
     { title: t("admin.groupTitles.calendar"), keys: ["calendar"] },
   ];
   const visible = (k: string) => me.isAdmin || ((k === "users" || k === "groups") && me.globalPermissions.includes("global.manage_users"));

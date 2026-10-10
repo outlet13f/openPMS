@@ -119,9 +119,11 @@ public class AdminController {
     private final Sessions sessions;
 
     private final JsonMapper json;
+    private final com.openpms.auth.PasswordPolicy passwordPolicy;
 
     public AdminController(Current current, DSLContext db, ScheduleStore schedules, SettingsRepo settings, Tokens tokens, Mailer mailer, Sessions sessions,
-                           JsonMapper json) {
+                           JsonMapper json, com.openpms.auth.PasswordPolicy passwordPolicy) {
+        this.passwordPolicy = passwordPolicy;
         this.json = json;
         this.current = current;
         this.db = db;
@@ -739,6 +741,46 @@ public class AdminController {
         schedules.lock();
         var graph = schedules.load(ctx);
         schedules.apply(ctx, graph.rescheduleAll());
+    }
+
+    /* ---------- 로그인과 비밀번호 ---------- */
+
+    @GetMapping("/settings/auth")
+    public com.openpms.auth.PasswordPolicy.Settings authSettings() {
+        admin();
+        return passwordPolicy.current();
+    }
+
+    @PutMapping("/settings/auth")
+    @Transactional
+    public com.openpms.auth.PasswordPolicy.Settings saveAuthSettings(@RequestBody Map<String, Object> in) {
+        var ctx = admin();
+        java.util.function.BiFunction<String, int[], Integer> num = (key, range) -> {
+            var v = In.integer(in, key, key);
+            if (v == null || v < range[0] || v > range[1]) throw ApiException.field(key, range[0] + "에서 " + range[1] + " 사이로 입력하세요.");
+            return v;
+        };
+        int minLength = num.apply("minLength", new int[] {8, 128});
+        int minClasses = num.apply("minClasses", new int[] {0, 4});
+        int lockoutAttempts = num.apply("lockoutAttempts", new int[] {0, 50});
+        int lockoutMinutes = num.apply("lockoutMinutes", new int[] {1, 1440});
+        int invitationTtlHours = num.apply("invitationTtlHours", new int[] {1, 720});
+        int resetTtlMinutes = num.apply("resetTtlMinutes", new int[] {10, 1440});
+        var classes = In.strings(in, "requiredClasses");
+        if (classes == null) classes = List.of();
+        for (var c : classes) if (!com.openpms.auth.PasswordPolicy.CLASSES.contains(c)) throw ApiException.field("requiredClasses", "알 수 없는 문자 종류입니다: " + c);
+        if (minClasses < classes.stream().distinct().count())
+            throw ApiException.field("minClasses", "꼭 넣어야 하는 종류(" + classes.stream().distinct().count() + "가지)보다 적게 정할 수 없습니다.");
+        var by = ctx.userId();
+        settings.put("auth.password_min_length", String.valueOf(minLength), by);
+        settings.put("auth.password_required_classes", json.writeValueAsString(classes.stream().distinct().toList()), by);
+        settings.put("auth.password_min_classes", String.valueOf(minClasses), by);
+        settings.put("auth.password_reset_enabled", String.valueOf(!Boolean.FALSE.equals(In.bool(in, "resetEnabled"))), by);
+        settings.put("auth.lockout_attempts", String.valueOf(lockoutAttempts), by);
+        settings.put("auth.lockout_minutes", String.valueOf(lockoutMinutes), by);
+        settings.put("auth.invitation_ttl_hours", String.valueOf(invitationTtlHours), by);
+        settings.put("auth.password_reset_ttl_minutes", String.valueOf(resetTtlMinutes), by);
+        return passwordPolicy.current();
     }
 
     /* ---------- progress tracking (S32) ---------- */

@@ -66,6 +66,9 @@ export function useAccountMutations() {
 
 /* ---------- projects ---------- */
 
+/** What a new password needs (public; also on the signed-out pages). */
+export const usePasswordRules = () => useQuery({ queryKey: ["password-policy"], queryFn: () => api.auth.passwordPolicy(), staleTime: 60_000 });
+
 export const useProjects = (params: Parameters<typeof api.projects.list>[0]) =>
   useQuery({ queryKey: qk.projects(params), queryFn: () => api.projects.list(params), placeholderData: keepPreviousData });
 

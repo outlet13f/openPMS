@@ -58,11 +58,11 @@ public class AccountController {
     private final PasswordEncoder encoder;
     private final RateLimiter limiter;
     private final Sessions sessions;
-    private final SettingsRepo appSettings;
+    private final com.openpms.auth.PasswordPolicy passwordPolicy;
 
     public AccountController(Current current, DSLContext db, NotificationSettings settings, AuthController auth,
                              PasswordEncoder encoder, RateLimiter limiter,
-                             Sessions sessions, SettingsRepo appSettings) {
+                             Sessions sessions, com.openpms.auth.PasswordPolicy passwordPolicy) {
         this.current = current;
         this.db = db;
         this.settings = settings;
@@ -70,7 +70,7 @@ public class AccountController {
         this.encoder = encoder;
         this.limiter = limiter;
         this.sessions = sessions;
-        this.appSettings = appSettings;
+        this.passwordPolicy = passwordPolicy;
     }
 
     /* ---------- profile, password, sessions (S37) ---------- */
@@ -112,9 +112,7 @@ public class AccountController {
         var next = In.str(body, "newPassword");
         if (currentPassword == null || u.getPasswordHash() == null || !encoder.matches(currentPassword, u.getPasswordHash()))
             throw ApiException.field("currentPassword", "현재 비밀번호가 맞지 않습니다.");
-        int min = appSettings.integer("auth.password_min_length", 10);
-        if (next == null || next.length() < min) throw ApiException.field("newPassword", "비밀번호는 " + min + "자 이상이어야 합니다.");
-        if (next.length() > 128) throw ApiException.field("newPassword", "비밀번호는 128자 이하로 정하세요.");
+        passwordPolicy.check("newPassword", next);
         if (next.equals(currentPassword)) throw ApiException.field("newPassword", "지금 비밀번호와 다른 비밀번호를 정하세요.");
         u.setPasswordHash(encoder.encode(next));
         u.store();

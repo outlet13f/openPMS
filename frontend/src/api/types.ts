@@ -804,6 +804,28 @@ export interface AdminType extends WpType {
   workPackageCount: number;
   projectCount: number;
 }
+export type PasswordClass = "lower" | "upper" | "digit" | "special";
+
+/** What a new password needs (public: the signed-out pages read it too). */
+export interface PasswordRules {
+  minLength: number;
+  /** kinds that must each appear */
+  requiredClasses: PasswordClass[];
+  /** how many of the four kinds must appear, 0 = no rule */
+  minClasses: number;
+  /** "비밀번호를 잊으셨나요?" works */
+  resetEnabled: boolean;
+}
+
+/** 관리 · 로그인과 비밀번호 */
+export interface AuthSettings extends PasswordRules {
+  /** failed sign-ins before a lockout, 0 = never */
+  lockoutAttempts: number;
+  lockoutMinutes: number;
+  invitationTtlHours: number;
+  resetTtlMinutes: number;
+}
+
 /** S01: what an invitation link shows before it is accepted. */
 export interface Invitation {
   email: string;

@@ -1,4 +1,4 @@
-import type { BulkInput, CopyInput, MoveInput, ExportCount, Invitation,
+import type { AuthSettings, PasswordRules, BulkInput, CopyInput, MoveInput, ExportCount, Invitation,
   Attachment,
   ProgressSettings,
   ExportInput,
@@ -76,6 +76,8 @@ export interface Api {
     logout(): Promise<void>;
     /** GET /auth/me — null when not signed in (401). */
     me(): Promise<Me | null>;
+    /** GET /auth/password-policy (public) — what a new password needs, and whether a reset can be asked for */
+    passwordPolicy(): Promise<PasswordRules>;
     /** POST /auth/password-reset — sends a link if the address has an active account; answers the same either way. */
     requestPasswordReset(email: string): Promise<void>;
     /** POST /auth/password-reset/confirm — 410 when the link is expired or used. Signs the account out everywhere. */
@@ -388,6 +390,12 @@ export interface Api {
       remove(id: Id): Promise<void>;
       /** PUT /admin/groups/{id}/members */
       setMembers(id: Id, userIds: Id[]): Promise<AdminGroup>;
+    };
+    auth: {
+      /** GET /admin/settings/auth */
+      get(): Promise<AuthSettings>;
+      /** PUT /admin/settings/auth */
+      save(input: AuthSettings): Promise<AuthSettings>;
     };
     progress: {
       /** GET /admin/settings/progress */

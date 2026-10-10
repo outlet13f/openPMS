@@ -53,11 +53,13 @@ public class AuthController {
     private final SettingsRepo settings;
     private final Current current;
     private final Sessions sessions;
+    private final PasswordPolicy policy;
     private final int loginsPerMinute;
 
     public AuthController(DSLContext db, PasswordEncoder encoder, SecurityContextRepository contextRepo, RateLimiter limiter, Tokens tokens,
-                          Mailer mailer, SettingsRepo settings, Current current, Sessions sessions,
+                          Mailer mailer, SettingsRepo settings, Current current, Sessions sessions, PasswordPolicy policy,
                           @org.springframework.beans.factory.annotation.Value("${openpms.logins-per-minute:20}") int loginsPerMinute) {
+        this.policy = policy;
         this.loginsPerMinute = loginsPerMinute;
         this.db = db;
         this.encoder = encoder;
@@ -99,7 +101,8 @@ public class AuthController {
             if (u != null) {
                 int failures = u.getFailedLoginCount() + 1;
                 var update = db.update(USERS).set(USERS.FAILED_LOGIN_COUNT, failures);
-                if (failures >= settings.integer("auth.lockout_attempts", 5)) {
+                int attempts = settings.integer("auth.lockout_attempts", 5);
+                if (attempts > 0 && failures >= attempts) { // 0 = no lockout
                     update = update.set(USERS.FAILED_LOGIN_COUNT, 0).set(USERS.LOCKED_UNTIL, now.plusMinutes(settings.integer("auth.lockout_minutes", 15)));
                 }
                 update.where(USERS.ID.eq(u.getId())).execute();
@@ -137,6 +140,7 @@ public class AuthController {
     @Transactional
     public ResponseEntity<Void> requestReset(@RequestBody ResetRequest in, HttpServletRequest req) {
         limiter.check("reset:" + req.getRemoteAddr(), 5);
+        if (!policy.current().resetEnabled()) throw ApiException.forbidden("비밀번호 재설정을 쓰지 않습니다. 관리자에게 문의하세요.");
         var u = byEmail(in.email());
         if (u != null && "active".equals(u.getStatus())) {
             tokens.revokeAll(u.getId(), "password_reset"); // only the newest link works
@@ -150,9 +154,13 @@ public class AuthController {
     }
 
     private void checkPassword(String password) {
-        int min = settings.integer("auth.password_min_length", 10);
-        if (password == null || password.length() < min) throw ApiException.field("password", "비밀번호는 " + min + "자 이상이어야 합니다.");
-        if (password.length() > 128) throw ApiException.field("password", "비밀번호는 128자 이하로 정하세요.");
+        policy.check("password", password);
+    }
+
+    /** What a new password needs, for the signed-out pages (and whether a reset can be asked for). */
+    @GetMapping("/password-policy")
+    public PasswordPolicy.Rules passwordPolicy() {
+        return policy.current().rules();
     }
 
     @PostMapping("/password-reset/confirm")

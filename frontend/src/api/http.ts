@@ -73,6 +73,7 @@ export const httpApi: Api = {
         throw e;
       }
     },
+    passwordPolicy: () => get("/auth/password-policy"),
     requestPasswordReset: (email) => post("/auth/password-reset", { email }),
     confirmPasswordReset: (token, newPassword) => post("/auth/password-reset/confirm", { token, newPassword }),
     invitation: (token) => get(`/auth/invitations/${encodeURIComponent(token)}`),
@@ -242,6 +243,10 @@ export const httpApi: Api = {
       rename: (id, name) => patch(`/admin/groups/${id}`, { name }),
       remove: (id) => del(`/admin/groups/${id}`),
       setMembers: (id, userIds) => put(`/admin/groups/${id}/members`, { userIds }),
+    },
+    auth: {
+      get: () => get("/admin/settings/auth"),
+      save: (input) => put("/admin/settings/auth", input),
     },
     progress: {
       get: () => get("/admin/settings/progress"),

@@ -1,6 +1,6 @@
 // Administration (S27–S36) and project settings (S24–S26) for the fake data layer.
 import type { Api } from "../api";
-import type { AdminCustomField, CustomField, CustomFieldInput, CustomValue, ProjectCustomFields, TypeForm, AdminGroup, AdminPriority, AdminRole, AdminStatus, AdminType, AdminUser, Category, Version } from "../types";
+import type { AdminCustomField, AuthSettings, CustomField, CustomFieldInput, CustomValue, ProjectCustomFields, TypeForm, AdminGroup, AdminPriority, AdminRole, AdminStatus, AdminType, AdminUser, Category, Version } from "../types";
 import { ApiError } from "../errors";
 import { nowIso } from "@/lib/dates";
 import { db, newId, type DbUser } from "./db";
@@ -11,6 +11,7 @@ import { fieldError, HEX, run } from "./util";
 import { checkValue, toField } from "./custom-fields";
 import { deriveProgress, progressSettings } from "./progress";
 import { BUILT_IN_ATTRIBUTES } from "../type-form";
+import { DEFAULT_AUTH_SETTINGS, PASSWORD_CLASSES } from "../password-policy";
 import { issueToken, revokeAll, sendMail } from "./tokens";
 
 /* ---------- guards ---------- */
@@ -423,6 +424,33 @@ export const versionsApi: Api["versions"] = {
 
 export const adminApi: Api["admin"] = {
   customFields: customFieldsAdmin,
+  auth: {
+    get: () => run(() => (requireAdmin(sessionUser()), clone(db.settings.auth ?? DEFAULT_AUTH_SETTINGS))),
+    save: (input) =>
+      run(() => {
+        requireAdmin(sessionUser());
+        const num = (key: keyof AuthSettings, lo: number, hi: number) => {
+          const v = input[key] as number;
+          if (!Number.isInteger(v) || v < lo || v > hi) throw fieldError(key, `${lo}에서 ${hi} 사이로 입력하세요.`);
+          return v;
+        };
+        const classes = [...new Set(input.requiredClasses ?? [])];
+        for (const c of classes) if (!PASSWORD_CLASSES.includes(c)) throw fieldError("requiredClasses", `알 수 없는 문자 종류입니다: ${c}`);
+        const minClasses = num("minClasses", 0, 4);
+        if (minClasses < classes.length) throw fieldError("minClasses", `꼭 넣어야 하는 종류(${classes.length}가지)보다 적게 정할 수 없습니다.`);
+        db.settings.auth = {
+          minLength: num("minLength", 8, 128),
+          requiredClasses: classes,
+          minClasses,
+          resetEnabled: input.resetEnabled !== false,
+          lockoutAttempts: num("lockoutAttempts", 0, 50),
+          lockoutMinutes: num("lockoutMinutes", 1, 1440),
+          invitationTtlHours: num("invitationTtlHours", 1, 720),
+          resetTtlMinutes: num("resetTtlMinutes", 10, 1440),
+        };
+        return clone(db.settings.auth);
+      }),
+  },
   progress: {
     get: () => run(() => (requireAdmin(sessionUser()), progressSettings())),
     save: (input) =>
