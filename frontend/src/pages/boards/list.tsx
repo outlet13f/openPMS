@@ -2,7 +2,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { Columns3, GitBranch, KanbanSquare, Milestone, Plus, Users } from "lucide-react";
+import { Columns3, FolderTree, GitBranch, KanbanSquare, Milestone, Plus, Users } from "lucide-react";
 import { isApiError, type BoardKind } from "@/api";
 import { useBoardMutations, useBoards } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
@@ -126,7 +126,8 @@ export function NewBoardPage() {
               { value: "assignee", title: t("boards.kinds.assignee"), description: t("boards.kindHints.assignee"), icon: <Users /> },
               { value: "version", title: t("boards.kinds.version"), description: t("boards.kindHints.version"), icon: <Milestone /> },
               { value: "basic", title: t("boards.kinds.basic"), description: t("boards.kindHints.basic"), icon: <Columns3 /> },
-              { value: "parent_child", title: t("boards.kinds.parent_child"), description: t("boards.kindHints.parent_child"), icon: <GitBranch />, disabled: true },
+              { value: "parent_child", title: t("boards.kinds.parent_child"), description: t("boards.kindHints.parent_child"), icon: <GitBranch /> },
+              { value: "subproject", title: t("boards.kinds.subproject"), description: t("boards.kindHints.subproject"), icon: <FolderTree /> },
             ]}
           />
         </div>

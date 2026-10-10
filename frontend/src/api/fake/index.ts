@@ -394,8 +394,12 @@ function defaultViews(projectId: Id | null): SavedQuery[] {
 
 /* ---------- boards ---------- */
 
+/** Direct subprojects of a project the person can see work in (a subproject board's columns). */
+const subprojectsOf = (user: DbUser, projectId: Id) => db.projects.filter((p) => p.parentId === projectId && !p.archivedAt && can(user, p, "wp.view"));
+
 function boardColumns(user: DbUser, b: DbBoard, project: DbProject, filters: QueryFilter[] = b.filters ?? []): BoardColumn[] {
-  const wps = db.workPackages.filter((w) => w.projectId === project.id && filters.every((f) => matches(w, f, user)));
+  const inBoard = new Set([project.id, ...(b.kind === "subproject" ? subprojectsOf(user, project.id).map((p) => p.id) : [])]);
+  const wps = db.workPackages.filter((w) => inBoard.has(w.projectId) && filters.every((f) => matches(w, f, user)));
   const order = (w: DbWp) => b.order[w.id] ?? w.number;
   return b.columns
     .sort((x, y) => x.position - y.position)
@@ -414,6 +418,13 @@ function boardColumns(user: DbUser, b: DbBoard, project: DbProject, filters: Que
       } else if (b.kind === "version" && c.valueId) {
         title = db.versions.find((v) => v.id === c.valueId)?.name ?? "";
         cards = wps.filter((w) => w.versionId === c.valueId);
+      } else if (b.kind === "subproject" && c.valueId) {
+        title = db.projects.find((p) => p.id === c.valueId)?.name ?? "";
+        cards = wps.filter((w) => w.projectId === c.valueId);
+      } else if (b.kind === "parent_child" && c.valueId) {
+        const parent = db.workPackages.find((w) => w.id === c.valueId);
+        title = parent ? `#${parent.number} ${parent.subject}` : "";
+        cards = wps.filter((w) => w.parentId === c.valueId);
       } else if (b.kind === "basic") {
         cards = wps.filter((w) => b.placed?.[w.id] === c.id);
       }
@@ -1297,9 +1308,12 @@ export const fakeApi: Api = {
         if (kind === "status") values = db.statuses.filter((s) => !s.isReadonly).sort((a, b) => a.position - b.position).map((s) => s.id);
         else if (kind === "assignee") values = projectUserIds(p.id).slice(0, 6);
         else if (kind === "version") values = db.versions.filter((v) => v.projectId === p.id).map((v) => v.id);
+        else if (kind === "subproject") values = subprojectsOf(user, p.id).map((x) => x.id);
+        else if (kind === "parent_child")
+          values = db.workPackages.filter((w) => w.projectId === p.id && db.workPackages.some((k) => k.parentId === w.id)).sort((x, y) => x.number - y.number).slice(0, 6).map((w) => w.id);
         const b: DbBoard = {
           id: newId("b"), projectId: p.id, name: name.trim(), kind, isPublic: true, createdAt: nowIso(),
-          columns: (values.length ? values : [null]).map((v, i) => ({ id: newId("bc"), position: i, name: v ? null : "할 일", valueId: v })),
+          columns: (values.length || kind !== "basic" ? values : [null]).map((v, i) => ({ id: newId("bc"), position: i, name: v ? null : "할 일", valueId: v })),
           order: {},
         };
         db.boards.push(b);
@@ -1353,6 +1367,8 @@ export const fakeApi: Api = {
           b.kind === "status" ? db.statuses.some((s) => s.id === valueId)
           : b.kind === "assignee" ? projectUserIds(b.projectId).includes(valueId)
           : b.kind === "version" ? db.versions.some((v) => v.id === valueId && v.projectId === b.projectId)
+          : b.kind === "subproject" ? subprojectsOf(user, b.projectId).some((p) => p.id === valueId)
+          : b.kind === "parent_child" ? db.workPackages.some((w) => w.id === valueId && w.projectId === b.projectId)
           : false;
         if (!ok) throw fieldError("valueId", "이 보드에 넣을 수 없는 값입니다.");
         if (b.columns.some((c) => c.valueId === valueId)) throw fieldError("valueId", "이미 있는 열입니다.");
@@ -1368,7 +1384,7 @@ export const fakeApi: Api = {
         const cols = b.columns.slice().sort((x, y) => x.position - y.position);
         const col = cols.find((c) => c.id === columnId)!;
         if (patch.name !== undefined) {
-          if (col.valueId) throw fieldError("name", "상태·담당자·버전 열의 이름은 그 값의 이름을 따릅니다.");
+          if (col.valueId) throw fieldError("name", "값이 있는 열의 이름은 그 값의 이름을 따릅니다.");
           const name = patch.name.trim();
           if (!name || name.length > 60) throw fieldError("name", "열 이름을 1~60자로 입력하세요.");
           col.name = name;
@@ -1399,6 +1415,9 @@ export const fakeApi: Api = {
         if (b.kind === "status" && col.valueId && col.valueId !== wp.statusId) applyPatch(user, wp.number, { lockVersion: input.lockVersion, statusId: col.valueId });
         if (b.kind === "assignee" && col.valueId && col.valueId !== wp.assigneeId) applyPatch(user, wp.number, { lockVersion: input.lockVersion, assigneeId: col.valueId });
         if (b.kind === "version" && col.valueId !== wp.versionId) applyPatch(user, wp.number, { lockVersion: input.lockVersion, versionId: col.valueId });
+        if (b.kind === "parent_child" && col.valueId && col.valueId !== wp.parentId)
+          applyPatch(user, wp.number, { lockVersion: input.lockVersion, parentNumber: db.workPackages.find((w) => w.id === col.valueId)?.number ?? null });
+        if (b.kind === "subproject" && col.valueId && col.valueId !== wp.projectId) moveWp(user, wp.number, { targetProjectId: col.valueId, lockVersion: input.lockVersion });
         if (b.kind === "basic") {
           requirePerm(user, db.projects.find((p) => p.id === b.projectId)!, "board.manage", "보드를 바꿀 권한이 없습니다.");
           if (!b.placed?.[wp.id]) throw new ApiError(404, "이 보드에 없는 카드입니다.");
@@ -1434,13 +1453,16 @@ export const fakeApi: Api = {
         if (!col) throw new ApiError(404, "컬럼을 찾을 수 없습니다.");
         if (b.kind === "basic") requirePerm(user, p, "board.manage", "보드를 바꿀 권한이 없습니다.");
         // the default type when the project uses it, else the project's first type
-        const types = db.types.filter((t) => p.typeIds.includes(t.id)).sort((x, y) => Number(y.isDefault) - Number(x.isDefault) || x.position - y.position);
-        const made = createWp(user, p.id, {
+        // a subproject column makes the work package in that subproject
+        const target = b.kind === "subproject" && col.valueId ? (db.projects.find((x) => x.id === col.valueId) ?? p) : p;
+        const types = db.types.filter((t) => target.typeIds.includes(t.id)).sort((x, y) => Number(y.isDefault) - Number(x.isDefault) || x.position - y.position);
+        const made = createWp(user, target.id, {
           subject,
           typeId: types[0]?.id ?? "",
           ...(b.kind === "status" && col.valueId ? { statusId: col.valueId } : {}),
           ...(b.kind === "assignee" && col.valueId ? { assigneeId: col.valueId } : {}),
           ...(b.kind === "version" && col.valueId ? { versionId: col.valueId } : {}),
+          ...(b.kind === "parent_child" && col.valueId ? { parentNumber: db.workPackages.find((w) => w.id === col.valueId)?.number } : {}),
         });
         placeCard(user, b, col.id, db.workPackages.find((w) => w.number === made.number)!, null);
         return { board: toBoard(user, b), workPackage: made };

@@ -24,7 +24,7 @@ import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalList
 import { CSS } from "@dnd-kit/utilities";
 import { ArrowLeft, ArrowRight, Columns3, Filter, GripVertical, ListPlus, MoreHorizontal, Pencil, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
 import { api, isApiError, type Board, type BoardColumn, type QueryFilter, type QuerySpec, type WorkPackage } from "@/api";
-import { invalidateWorkPackages, qk, useBoard, useBoardLook, useBoardMutations, useFilterOptions, useWpQuery } from "@/api/hooks";
+import { invalidateWorkPackages, qk, useBoard, useBoardLook, useBoardMutations, useFilterOptions, useProjects, useWpQuery } from "@/api/hooks";
 import { FilterPanel } from "@/features/work-packages/filter-panel";
 import { Field, Input } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
@@ -337,6 +337,45 @@ function AddExistingDialog({ board, column, projectId, onClose, onPut }: { board
   );
 }
 
+/** 상위-하위 보드: a column is a work package of the project; its children are the cards. */
+function ParentColumnDialog({ board, projectId, onClose, onPick }: { board: Board; projectId: string; onClose: () => void; onPick: (wp: WorkPackage) => Promise<unknown> }) {
+  const { t } = useTranslation();
+  const [text, setText] = useState("");
+  const [q, setQ] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setQ(text.trim()), 250);
+    return () => clearTimeout(id);
+  }, [text]);
+  const spec: QuerySpec = { v: 1, filters: [], columns: ["number", "subject"], sort: [{ field: "number", dir: "asc" }], groupBy: null, hierarchy: false, sums: false, includeSubprojects: false, text: q || undefined };
+  const result = useWpQuery(spec, projectId, 1, 20);
+  const used = new Set(board.columns.map((c) => c.valueId));
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} title={t("boards.addParentColumn")} description={t("boards.addParentColumnHint")} footer={<Button onClick={onClose}>{t("app.close")}</Button>}>
+      <Field label={t("boards.searchWp")}>
+        <Input autoFocus type="search" value={text} onChange={(e) => setText(e.target.value)} />
+      </Field>
+      <ul className="mt-3 flex max-h-80 flex-col divide-y divide-border-muted overflow-y-auto" aria-busy={result.isFetching}>
+        {result.data?.rows.map(({ wp }) => (
+          <li key={wp.id} className="flex items-center justify-between gap-3 py-2">
+            <span className="min-w-0 truncate text-sm">
+              <span className="text-fg-muted tabular-nums">#{wp.number}</span> <span className="text-fg">{wp.subject}</span>
+              {wp.childCount > 0 && <span className="ml-1.5 text-xs text-fg-muted">{t("boards.childCount", { count: wp.childCount })}</span>}
+            </span>
+            {used.has(wp.id) ? (
+              <Badge>{t("boards.onBoard")}</Badge>
+            ) : (
+              <Button size="sm" aria-label={t("boards.useAsColumn", { name: `#${wp.number} ${wp.subject}` })} onClick={() => void onPick(wp).catch(() => undefined)}>
+                {t("boards.useAsColumnShort")}
+              </Button>
+            )}
+          </li>
+        ))}
+        {result.data && result.data.rows.length === 0 && <li className="py-6 text-center text-sm text-fg-muted">{t("boards.noMatches")}</li>}
+      </ul>
+    </Dialog>
+  );
+}
+
 const isText = (f: QueryFilter) => f.field === "subject" && f.op === "contains";
 
 export function BoardPage() {
@@ -355,6 +394,8 @@ export function BoardPage() {
   const [adding, setAdding] = useState<BoardColumn | null>(null);
   const { remove } = useBoardMutations(project.id);
   const options = useFilterOptions(project.id).data;
+  const subprojects = useProjects({ pageSize: 100 });
+  const [pickingParent, setPickingParent] = useState(false);
   const [naming, setNaming] = useState<{ kind: "board" } | { kind: "column"; column: BoardColumn } | { kind: "newColumn" } | null>(null);
   const [columns, setColumns] = useState<BoardColumn[] | null>(null);
   const [active, setActive] = useState<WorkPackage | null>(null);
@@ -481,7 +522,9 @@ export function BoardPage() {
         ? (options?.users ?? []).map((u) => ({ id: u.id, name: u.name }))
         : b.kind === "version"
           ? (options?.versions ?? []).map((v) => ({ id: v.id, name: v.name }))
-          : [];
+          : b.kind === "subproject"
+            ? (subprojects.data?.items ?? []).filter((p) => p.parent?.id === project.id && !p.archivedAt).map((p) => ({ id: p.id, name: p.name }))
+            : [];
   const addable = candidates.filter((c) => !used.has(c.id));
   const columnActions = (c: BoardColumn, i: number): ColumnActions | undefined =>
     b.canManage
@@ -523,7 +566,12 @@ export function BoardPage() {
                     {t("boards.addColumn")}
                   </Button>
                 )}
-                {!basic && (
+                {b.kind === "parent_child" && (
+                  <Button icon={<Columns3 />} onClick={() => setPickingParent(true)}>
+                    {t("boards.addColumn")}
+                  </Button>
+                )}
+                {!basic && b.kind !== "parent_child" && (
                   <Menu
                     align="end"
                     trigger={
@@ -599,6 +647,14 @@ export function BoardPage() {
           </div>
           <DragOverlay>{active ? <WorkPackageCard wp={toCard(active)} dragging className="w-[284px]" /> : null}</DragOverlay>
         </DndContext>
+        {pickingParent && (
+          <ParentColumnDialog
+            board={b}
+            projectId={project.id}
+            onClose={() => setPickingParent(false)}
+            onPick={(wp) => apply(api.boards.addColumn(b.id, { valueId: wp.id }), t("boards.columnAdded", { column: `#${wp.number} ${wp.subject}` })).then(() => setPickingParent(false))}
+          />
+        )}
         {naming?.kind === "board" && (
           <NameDialog title={t("boards.rename")} label={t("boards.name")} initial={b.name} onClose={() => setNaming(null)} onSave={(name) => apply(api.boards.update(b.id, { name }), t("app.saved"))} />
         )}

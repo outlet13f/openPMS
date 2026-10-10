@@ -49,7 +49,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1")
 public class BoardController {
-    private static final Set<String> KINDS = Set.of("basic", "status", "assignee", "version");
+    private static final Set<String> KINDS = Set.of("basic", "status", "assignee", "version", "subproject", "parent_child");
 
     private final Current current;
     private final DSLContext db;
@@ -57,8 +57,11 @@ public class BoardController {
     private final WorkPackageService workPackages;
     private final QueryEngine engine;
     private final JsonMapper json;
+    private final com.openpms.wp.WorkPackageTransfers transfers;
 
-    public BoardController(Current current, DSLContext db, Assembler assembler, WorkPackageService workPackages, QueryEngine engine, JsonMapper json) {
+    public BoardController(Current current, DSLContext db, Assembler assembler, WorkPackageService workPackages, QueryEngine engine, JsonMapper json,
+                           com.openpms.wp.WorkPackageTransfers transfers) {
+        this.transfers = transfers;
         this.current = current;
         this.db = db;
         this.assembler = assembler;
@@ -81,14 +84,25 @@ public class BoardController {
                     case "status" -> c.getStatusId();
                     case "assignee" -> c.getUserId();
                     case "version" -> c.getVersionId();
+                    case "subproject" -> c.getSubprojectId();
+                    case "parent_child" -> c.getParentWorkPackageId();
                     default -> null;
                 })).toList();
+    }
+
+    /** The subprojects a subproject board may show: direct children of the board's project the person can see work in. */
+    private List<Snapshot.ProjectRow> subprojects(Ctx ctx, UUID projectId) {
+        return ctx.s().projects().values().stream().filter(p -> projectId.equals(p.parentId()) && p.archivedAt() == null && ctx.can(p, "wp.view"))
+                .sorted(Comparator.comparing(Snapshot.ProjectRow::name, com.openpms.core.Text.KOREAN)).toList();
     }
 
     /** Cards of each column, in saved order (fractional positions), falling back to the number; only those the filters let through. */
     private Map<UUID, List<WorkPackagesRecord>> cardsByColumn(Ctx ctx, BoardsRecord b, List<Col> cols, List<QueryEngine.Filter> filters) {
         var s = ctx.s();
-        var wps = db.selectFrom(WORK_PACKAGES).where(WORK_PACKAGES.PROJECT_ID.eq(b.getProjectId()), engine.where(ctx, filters)).fetch();
+        // a subproject board shows the work of the subprojects in its columns (those the person can see)
+        var projects = new java.util.HashSet<UUID>(List.of(b.getProjectId()));
+        if ("subproject".equals(b.getKind())) subprojects(ctx, b.getProjectId()).forEach(p -> projects.add(p.id()));
+        var wps = db.selectFrom(WORK_PACKAGES).where(WORK_PACKAGES.PROJECT_ID.in(projects), engine.where(ctx, filters)).fetch();
         var order = db.select(BOARD_CARDS.WORK_PACKAGE_ID, BOARD_CARDS.POSITION).from(BOARD_CARDS).where(BOARD_CARDS.BOARD_ID.eq(b.getId()))
                 .fetchMap(BOARD_CARDS.WORK_PACKAGE_ID, BOARD_CARDS.POSITION);
         var placed = db.select(BOARD_CARDS.WORK_PACKAGE_ID, BOARD_CARDS.COLUMN_ID).from(BOARD_CARDS)
@@ -105,6 +119,8 @@ public class BoardController {
                     case "status" -> c.valueId().equals(w.getStatusId());
                     case "assignee" -> c.valueId().equals(w.getAssigneeId()) && !s.status(w.getStatusId()).map(Snapshot.StatusRow::isClosed).orElse(false);
                     case "version" -> c.valueId().equals(w.getVersionId());
+                    case "subproject" -> c.valueId().equals(w.getProjectId());
+                    case "parent_child" -> c.valueId().equals(w.getParentId());
                     default -> false;
                 };
                 if (in) cards.add(w);
@@ -140,6 +156,11 @@ public class BoardController {
                 }
                 case "assignee" -> title = Refs.user(s, c.valueId()).name();
                 case "version" -> title = s.version(c.valueId()).map(Snapshot.VersionRow::name).orElse("");
+                case "subproject" -> title = s.project(c.valueId()).map(Snapshot.ProjectRow::name).orElse("");
+                case "parent_child" -> {
+                    var parent = db.select(WORK_PACKAGES.NUMBER, WORK_PACKAGES.SUBJECT).from(WORK_PACKAGES).where(WORK_PACKAGES.ID.eq(c.valueId())).fetchOne();
+                    title = parent == null ? "" : "#" + parent.value1() + " " + parent.value2();
+                }
                 default -> { }
             }
             return new Dto.BoardColumn(c.id(), c.position(), title, color, c.valueId(), cards.get(c.id()).stream().map(w -> dtos.get(w.getId())).toList());
@@ -179,20 +200,21 @@ public class BoardController {
             case "status" -> s.statuses().stream().filter(x -> !x.isReadonly()).map(Snapshot.StatusRow::id).toList();
             case "assignee" -> s.projectUsers(p.id()).stream().limit(6).map(Snapshot.UserRow::id).toList();
             case "version" -> s.versions().stream().filter(v -> v.projectId().equals(p.id())).map(Snapshot.VersionRow::id).toList();
+            case "subproject" -> subprojects(ctx, p.id()).stream().map(Snapshot.ProjectRow::id).toList();
+            // the project's work packages that have children (the first six)
+            case "parent_child" -> db.select(WORK_PACKAGES.ID).from(WORK_PACKAGES)
+                    .where(WORK_PACKAGES.PROJECT_ID.eq(p.id()), org.jooq.impl.DSL.exists(org.jooq.impl.DSL.selectOne().from(WORK_PACKAGES.as("k"))
+                            .where(WORK_PACKAGES.as("k").PARENT_ID.eq(WORK_PACKAGES.ID))))
+                    .orderBy(WORK_PACKAGES.NUMBER).limit(6).fetch(WORK_PACKAGES.ID);
             default -> List.of(); // basic: starts with one empty list
         };
         var b = db.insertInto(BOARDS).set(BOARDS.PROJECT_ID, p.id()).set(BOARDS.NAME, name).set(BOARDS.KIND, kind).set(BOARDS.CREATED_BY, ctx.userId())
                 .returning().fetchOne();
-        if (values.isEmpty()) {
+        if (values.isEmpty() && "basic".equals(kind)) {
             db.insertInto(BOARD_COLUMNS).set(BOARD_COLUMNS.BOARD_ID, b.getId()).set(BOARD_COLUMNS.POSITION, 0).set(BOARD_COLUMNS.NAME, "할 일").execute();
         }
         for (int i = 0; i < values.size(); i++) {
-            var col = switch (kind) {
-                case "status" -> BOARD_COLUMNS.STATUS_ID;
-                case "assignee" -> BOARD_COLUMNS.USER_ID;
-                default -> BOARD_COLUMNS.VERSION_ID;
-            };
-            db.insertInto(BOARD_COLUMNS).set(BOARD_COLUMNS.BOARD_ID, b.getId()).set(BOARD_COLUMNS.POSITION, i).set(col, values.get(i)).execute();
+            db.insertInto(BOARD_COLUMNS).set(BOARD_COLUMNS.BOARD_ID, b.getId()).set(BOARD_COLUMNS.POSITION, i).set(valueField(kind), values.get(i)).execute();
         }
         return ResponseEntity.status(HttpStatus.CREATED).body(toBoard(ctx, b));
     }
@@ -232,6 +254,16 @@ public class BoardController {
         var b = visibleBoard(ctx, id);
         ctx.require(ctx.s().project(b.getProjectId()).orElseThrow(), "board.manage", "보드를 바꿀 권한이 없습니다.");
         return b;
+    }
+
+    private static org.jooq.TableField<com.openpms.db.tables.records.BoardColumnsRecord, UUID> valueField(String kind) {
+        return switch (kind) {
+            case "status" -> BOARD_COLUMNS.STATUS_ID;
+            case "assignee" -> BOARD_COLUMNS.USER_ID;
+            case "subproject" -> BOARD_COLUMNS.SUBPROJECT_ID;
+            case "parent_child" -> BOARD_COLUMNS.PARENT_WORK_PACKAGE_ID;
+            default -> BOARD_COLUMNS.VERSION_ID;
+        };
     }
 
     /** Name and visibility (S15). */
@@ -278,17 +310,15 @@ public class BoardController {
             case "status" -> s.status(valueId).isPresent();
             case "assignee" -> s.projectUsers(b.getProjectId()).stream().anyMatch(u -> u.id().equals(valueId));
             case "version" -> s.version(valueId).filter(v -> v.projectId().equals(b.getProjectId())).isPresent();
+            case "subproject" -> subprojects(ctx, b.getProjectId()).stream().anyMatch(p -> p.id().equals(valueId));
+            case "parent_child" -> db.fetchExists(WORK_PACKAGES, WORK_PACKAGES.ID.eq(valueId), WORK_PACKAGES.PROJECT_ID.eq(b.getProjectId()));
             default -> false;
         };
         if (!ok) throw ApiException.field("valueId", "이 보드에 넣을 수 없는 값입니다.");
         var cols = columns(b.getId(), b.getKind());
         if (cols.stream().anyMatch(c -> valueId.equals(c.valueId()))) throw ApiException.field("valueId", "이미 있는 열입니다.");
         if (cols.size() >= 30) throw ApiException.field("valueId", "열은 30개까지 만들 수 있습니다.");
-        var field = switch (b.getKind()) {
-            case "status" -> BOARD_COLUMNS.STATUS_ID;
-            case "assignee" -> BOARD_COLUMNS.USER_ID;
-            default -> BOARD_COLUMNS.VERSION_ID;
-        };
+        var field = valueField(b.getKind());
         int last = cols.stream().mapToInt(Col::position).max().orElse(-1);
         db.insertInto(BOARD_COLUMNS).set(BOARD_COLUMNS.BOARD_ID, b.getId()).set(BOARD_COLUMNS.POSITION, last + 1).set(field, valueId).execute();
         return toBoard(ctx, b);
@@ -309,7 +339,7 @@ public class BoardController {
         var cols = new ArrayList<>(columns(b.getId(), b.getKind()));
         var col = cols.stream().filter(c -> c.id().equals(id)).findFirst().orElseThrow();
         if (In.has(in, "name")) {
-            if (col.valueId() != null) throw ApiException.field("name", "상태·담당자·버전 열의 이름은 그 값의 이름을 따릅니다.");
+            if (col.valueId() != null) throw ApiException.field("name", "값이 있는 열의 이름은 그 값의 이름을 따릅니다.");
             var name = In.str(in, "name") == null ? "" : In.str(in, "name").trim();
             if (name.isEmpty() || name.length() > 60) throw ApiException.field("name", "열 이름을 1~60자로 입력하세요.");
             db.update(BOARD_COLUMNS).set(BOARD_COLUMNS.NAME, name).where(BOARD_COLUMNS.ID.eq(id)).execute();
@@ -359,7 +389,18 @@ public class BoardController {
         if ("status".equals(b.getKind()) && col.valueId() != null && !col.valueId().equals(wp.getStatusId())) patch.put("statusId", col.valueId().toString());
         if ("assignee".equals(b.getKind()) && col.valueId() != null && !col.valueId().equals(wp.getAssigneeId())) patch.put("assigneeId", col.valueId().toString());
         if ("version".equals(b.getKind()) && !java.util.Objects.equals(col.valueId(), wp.getVersionId())) patch.put("versionId", col.valueId() == null ? null : col.valueId().toString());
-        if (patch.size() > 1) workPackages.update(ctx, number, patch);
+        // 상위-하위: the column's work package becomes the parent (the normal hierarchy rules apply)
+        if ("parent_child".equals(b.getKind()) && col.valueId() != null && !col.valueId().equals(wp.getParentId())) {
+            var parent = db.select(WORK_PACKAGES.NUMBER).from(WORK_PACKAGES).where(WORK_PACKAGES.ID.eq(col.valueId())).fetchOne(WORK_PACKAGES.NUMBER);
+            patch.put("parentNumber", parent == null ? null : parent.intValue());
+        }
+        // 하위 프로젝트: the card moves to that project, as 작업 옮기기 does (its subtree comes along)
+        if ("subproject".equals(b.getKind()) && col.valueId() != null && !col.valueId().equals(wp.getProjectId())) {
+            Map<String, Object> move = new HashMap<>();
+            move.put("targetProject", col.valueId().toString());
+            move.put("lockVersion", lockVersion);
+            transfers.move(ctx, number, move);
+        } else if (patch.size() > 1) workPackages.update(ctx, number, patch);
         place(ctx, b, cols, col, wp, In.integer(in, "beforeNumber", "beforeNumber"));
         return toBoard(ctx, b);
     }
@@ -444,9 +485,18 @@ public class BoardController {
             case "status" -> input.put("statusId", col.valueId().toString());
             case "assignee" -> input.put("assigneeId", col.valueId().toString());
             case "version" -> input.put("versionId", col.valueId().toString());
+            case "parent_child" -> input.put("parentNumber", db.select(WORK_PACKAGES.NUMBER).from(WORK_PACKAGES).where(WORK_PACKAGES.ID.eq(col.valueId()))
+                    .fetchOptional(WORK_PACKAGES.NUMBER).map(Long::intValue).orElse(null));
             default -> { }
         }
-        var created = workPackages.create(ctx, project.id().toString(), input);
+        // a subproject column makes the work package in that subproject
+        var target = "subproject".equals(b.getKind()) && col.valueId() != null ? s.project(col.valueId()).orElseThrow() : project;
+        if (!target.id().equals(project.id()) && typeId != null && !target.typeIds().contains(UUID.fromString(typeId))) {
+            input.put("typeId", s.types().stream().filter(t -> target.typeIds().contains(t.id()))
+                    .sorted(Comparator.comparing((Snapshot.TypeRow t) -> !t.isDefault()).thenComparingInt(Snapshot.TypeRow::position))
+                    .map(t -> t.id().toString()).findFirst().orElse(null));
+        }
+        var created = workPackages.create(ctx, target.id().toString(), input);
         var wp = workPackages.find(ctx, created.number()).wp();
         place(ctx, b, cols, col, wp, null);
         return ResponseEntity.status(HttpStatus.CREATED).body(new Dto.BoardCardCreated(toBoard(ctx, b), created));

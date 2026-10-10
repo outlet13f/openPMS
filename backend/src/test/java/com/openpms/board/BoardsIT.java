@@ -26,7 +26,7 @@ import org.springframework.web.context.WebApplicationContext;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-/** S15·S16 보드: basic boards filled by hand, saved and temporary filters, cards made from a column get its value. */
+/** S15·S16 보드: basic boards filled by hand, subproject and parent-child boards, saved and temporary filters, cards made from a column get its value. */
 @SpringBootTest(properties = "openpms.jobs.enabled=false")
 @ActiveProfiles("dev")
 class BoardsIT {
@@ -34,6 +34,8 @@ class BoardsIT {
     WebApplicationContext context;
     @Autowired
     JsonMapper json;
+    @Autowired
+    org.jooq.DSLContext db;
 
     MockMvc mvc;
 
@@ -133,6 +135,74 @@ class BoardsIT {
             send(admin, patch("/api/v1/boards/" + id), "{\"filters\":[{\"field\":\"nope\",\"op\":\"eq\",\"values\":[]}]}").andExpect(status().isUnprocessableContent());
             send(admin, get("/api/v1/boards/" + id).param("filters", "not json"), "").andExpect(status().isUnprocessableContent());
         } finally {
+            send(admin, delete("/api/v1/boards/" + id), "").andExpect(status().isNoContent());
+        }
+    }
+
+    @Test
+    void aSubprojectBoardShowsTheSubprojectsWorkAndMovingACardMovesTheWork() throws Exception {
+        var admin = login("seoyeon.kim@openpms.local");
+        var infra = body(send(admin, get("/api/v1/projects/infra"), "")).get("id").asString();
+        send(admin, post("/api/v1/projects"), "{\"name\":\"임시 하위\",\"identifier\":\"infra-temp\",\"parentId\":\"" + infra + "\"}").andExpect(status().isCreated());
+        String id = null;
+        Long number = null;
+        // the seed has boards switched off in 사내 인프라
+        send(admin, patch("/api/v1/projects/infra"), "{\"enabledModules\":[\"work_packages\",\"gantt\",\"boards\"]}").andExpect(status().isOk());
+        try {
+            var board = body(send(admin, post("/api/v1/projects/infra/boards"), "{\"name\":\"하위 프로젝트\",\"kind\":\"subproject\"}").andExpect(status().isCreated()));
+            id = board.get("id").asString();
+            var backup = column(board, "백업 체계 개선");
+            var temp = column(board, "임시 하위");
+            assertThat(numbers(backup)).contains(21L); // seed: #21 is in 백업 체계 개선
+            var made = body(send(admin, post("/api/v1/boards/" + id + "/cards/new"), "{\"columnId\":\"" + backup.get("id").asString() + "\",\"subject\":\"하위 프로젝트에서 만든 작업\"}")
+                    .andExpect(status().isCreated()));
+            number = made.get("workPackage").get("number").asLong();
+            assertThat(made.get("workPackage").get("project").get("identifier").asString()).isEqualTo("infra-backup");
+            var wp = body(send(admin, get("/api/v1/work-packages/" + number), ""));
+            board = body(send(admin, post("/api/v1/boards/" + id + "/moves"), "{\"number\":" + number + ",\"toColumnId\":\"" + temp.get("id").asString()
+                    + "\",\"beforeNumber\":null,\"lockVersion\":" + wp.get("lockVersion").asInt() + "}").andExpect(status().isOk()));
+            assertThat(numbers(column(board, "임시 하위"))).containsExactly(number);
+            assertThat(body(send(admin, get("/api/v1/work-packages/" + number), "")).get("project").get("identifier").asString()).isEqualTo("infra-temp");
+            // only direct subprojects can be columns
+            send(admin, post("/api/v1/boards/" + id + "/columns"), "{\"valueId\":\"" + infra + "\"}").andExpect(status().isUnprocessableContent());
+        } finally {
+            if (number != null) send(admin, delete("/api/v1/work-packages/" + number), "").andExpect(status().is2xxSuccessful());
+            if (id != null) send(admin, delete("/api/v1/boards/" + id), "").andExpect(status().isNoContent());
+            send(admin, delete("/api/v1/projects/infra-temp"), "{\"confirmIdentifier\":\"infra-temp\"}").andExpect(status().isNoContent());
+            send(admin, patch("/api/v1/projects/infra"), "{\"enabledModules\":[\"work_packages\",\"gantt\"]}").andExpect(status().isOk());
+        }
+    }
+
+    @Test
+    void aParentChildBoardShowsChildrenUnderTheirParentAndMovingACardChangesTheParent() throws Exception {
+        var admin = login("seoyeon.kim@openpms.local");
+        var board = body(send(admin, post("/api/v1/projects/web-platform/boards"), "{\"name\":\"상위-하위\",\"kind\":\"parent_child\"}").andExpect(status().isCreated()));
+        var id = board.get("id").asString();
+        Long number = null;
+        try {
+            // seed: #1 and #7 have children; a column per parent, titled with its number and subject
+            JsonNode one = null, seven = null;
+            for (var c : board.get("columns")) {
+                if (c.get("title").asString().startsWith("#1 ")) one = c;
+                if (c.get("title").asString().startsWith("#7 ")) seven = c;
+            }
+            assertThat(one).isNotNull();
+            assertThat(seven).isNotNull();
+            for (var card : one.get("cards")) assertThat(body(send(admin, get("/api/v1/work-packages/" + card.get("number").asLong()), "")).get("parent").get("number").asLong()).isEqualTo(1L);
+            var made = body(send(admin, post("/api/v1/boards/" + id + "/cards/new"), "{\"columnId\":\"" + one.get("id").asString() + "\",\"subject\":\"새 하위 작업\"}")
+                    .andExpect(status().isCreated()));
+            number = made.get("workPackage").get("number").asLong();
+            assertThat(made.get("workPackage").get("parent").get("number").asLong()).isEqualTo(1L);
+            var wp = body(send(admin, get("/api/v1/work-packages/" + number), ""));
+            board = body(send(admin, post("/api/v1/boards/" + id + "/moves"), "{\"number\":" + number + ",\"toColumnId\":\"" + seven.get("id").asString()
+                    + "\",\"beforeNumber\":null,\"lockVersion\":" + wp.get("lockVersion").asInt() + "}").andExpect(status().isOk()));
+            assertThat(body(send(admin, get("/api/v1/work-packages/" + number), "")).get("parent").get("number").asLong()).isEqualTo(7L);
+            // a work package of another project cannot be a column
+            var other = db.select(com.openpms.db.Tables.WORK_PACKAGES.ID).from(com.openpms.db.Tables.WORK_PACKAGES).where(com.openpms.db.Tables.WORK_PACKAGES.NUMBER.eq(16L))
+                    .fetchOne(com.openpms.db.Tables.WORK_PACKAGES.ID);
+            send(admin, post("/api/v1/boards/" + id + "/columns"), "{\"valueId\":\"" + other + "\"}").andExpect(status().isUnprocessableContent());
+        } finally {
+            if (number != null) send(admin, delete("/api/v1/work-packages/" + number), "").andExpect(status().is2xxSuccessful());
             send(admin, delete("/api/v1/boards/" + id), "").andExpect(status().isNoContent());
         }
     }

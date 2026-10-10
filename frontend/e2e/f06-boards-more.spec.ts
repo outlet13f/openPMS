@@ -66,4 +66,42 @@ test.describe("F06 보드 보강", () => {
     await expect(page.getByRole("button", { name: /^필터 1/ })).toBeVisible();
     await expect(page.getByRole("link", { name: "화면 설계 검토" })).toHaveCount(0);
   });
+  test("F06-B4 a parent-child board: a column per parent, children as cards; moving a card changes its parent", async ({ page }) => {
+    await page.goto("/projects/web-platform/boards/new");
+    await page.getByLabel(/^보드 이름/).fill("상위와 하위");
+    await page.getByRole("radio", { name: /상위-하위/ }).click();
+    await page.getByRole("button", { name: "만들기", exact: true }).click();
+    const one = page.getByRole("region", { name: /^#1 / });
+    const seven = page.getByRole("region", { name: /^#7 / });
+    await expect(one).toBeVisible();
+    await expect(seven).toBeVisible();
+    await axe(page, "S15 상위-하위 보드");
+    // a child of #1 goes under #7 (as dragging it would)
+    const boardId = page.url().split("/").pop()!;
+    const card = await api<{ number: number; lockVersion: number; columnId: string }>(page, "const b = await api.boards.get(args[0]); const one = b.columns.find((c) => c.title.startsWith('#1 ')); const seven = b.columns.find((c) => c.title.startsWith('#7 ')); const w = one.cards[0]; return { number: w.number, lockVersion: w.lockVersion, columnId: seven.id }", boardId);
+    await api(page, "await api.boards.move(args[0], { number: args[1], toColumnId: args[2], beforeNumber: null, lockVersion: args[3] })", boardId, card.number, card.columnId, card.lockVersion);
+    await page.reload();
+    await expect(seven.getByText(`#${card.number}`, { exact: true })).toBeVisible();
+    const parent = await api<number>(page, "return (await api.workPackages.get(args[0])).parent?.number", card.number);
+    expect(parent).toBe(7);
+    // another work package as a column
+    await page.getByRole("button", { name: "열 추가" }).click();
+    const dlg = page.getByRole("dialog", { name: "상위 작업을 열로 추가" });
+    await dlg.getByLabel("제목이나 #번호로 찾기").fill("릴리스 노트");
+    await dlg.getByRole("button", { name: /릴리스 노트 초안 작성을\(를\) 열로 추가/ }).click();
+    await expect(page.getByRole("region", { name: /^#5 / })).toBeVisible();
+  });
+
+  test("F06-B5 a subproject board: a column per subproject with its work", async ({ page }) => {
+    const infra = await api<{ id: string }>(page, "return await api.projects.get('infra')");
+    await api(page, "await api.projects.update(args[0], { enabledModules: ['work_packages', 'gantt', 'boards'] })", infra.id);
+    await page.goto("/projects/infra/boards/new");
+    await page.getByLabel(/^보드 이름/).fill("하위 프로젝트");
+    await page.getByRole("radio", { name: /하위 프로젝트별/ }).click();
+    await page.getByRole("button", { name: "만들기", exact: true }).click();
+    const backup = page.getByRole("region", { name: "백업 체계 개선" });
+    await expect(backup).toBeVisible();
+    await expect(backup.getByText("#21", { exact: true })).toBeVisible();
+    await axe(page, "S15 하위 프로젝트 보드");
+  });
 });
