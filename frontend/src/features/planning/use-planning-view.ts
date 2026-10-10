@@ -8,15 +8,12 @@ import { useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router";
 import type { IsoDate, QueryFilter, QuerySpec, SavedQuery } from "@/api";
 import { useSavedQueries } from "@/api/hooks";
-import { addDays, isoWeekday, todayIso } from "@/lib/dates";
+import { addDays, isoWeekday, todayIso, weekStart } from "@/lib/dates";
 import { decodeSpec, encodeSpec } from "@/features/work-packages/view-state";
 
-/** calendar.week_starts_on (architecture.md §2): weeks start on Sunday. */
-export const WEEK_START = 0;
-
-/** The first day of the week that contains d. */
+/** The first day of the week that contains d (관리 · 날짜 형식 · 주 시작 요일). */
 export function startOfWeek(d: IsoDate): IsoDate {
-  const sinceStart = (isoWeekday(d) % 7) - WEEK_START; // isoWeekday: Monday 1 … Sunday 7
+  const sinceStart = (isoWeekday(d) % 7) - weekStart(); // isoWeekday: Monday 1 … Sunday 7
   return addDays(d, -((sinceStart + 7) % 7));
 }
 

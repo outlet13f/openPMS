@@ -38,6 +38,7 @@ import { exportCount, exportWorkPackages } from "./export";
 import { deriveProgress, progressLocked } from "./progress";
 import { DEFAULT_TYPE_FORM } from "../type-form";
 import { DEFAULT_AUTH_SETTINGS, passwordProblem } from "../password-policy";
+import { DEFAULT_DISPLAY } from "../types";
 import { issueToken, revokeAll, sendMail, tokenGone, validToken } from "./tokens";
 import { adminApi, categoriesApi, projectExtras, versionsApi } from "./admin";
 
@@ -1401,6 +1402,7 @@ export const fakeApi: Api = {
   },
 
   calendar: {
+    display: () => run(() => (sessionUser(), clone(db.settings.display ?? DEFAULT_DISPLAY))),
     nonWorkingDays: (from, to) =>
       run(() => {
         sessionUser();

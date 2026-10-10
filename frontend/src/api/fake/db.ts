@@ -2,7 +2,7 @@
 // Table shapes follow replica/schema.sql closely so the move to the real API is mechanical.
 // State survives reloads through localStorage (per browser, per user) and can be reset from the login page.
 
-import type { QueryFilter, AdminOidcProvider, AuthSettings, BoardKind, CustomField, CustomValue, Id, NotificationSetting, ShareRole, Theme, TypeForm, IsoDate, IsoDateTime, ModuleKey, NotificationReason, Preferences, ProjectStatus, QuerySpec, ViewKind } from "../types";
+import type { DisplaySettings, QueryFilter, AdminOidcProvider, AuthSettings, BoardKind, CustomField, CustomValue, Id, NotificationSetting, ShareRole, Theme, TypeForm, IsoDate, IsoDateTime, ModuleKey, NotificationReason, Preferences, ProjectStatus, QuerySpec, ViewKind } from "../types";
 import { buildSeed } from "./seed";
 
 export interface DbUser {
@@ -156,6 +156,8 @@ export interface Db {
     progressMode?: "work" | "status";
     closedSets100?: boolean;
     progressTotals?: "weighted" | "simple_average";
+    /** 관리 · 달력과 날짜 · 날짜 형식; absent = the defaults */
+    display?: DisplaySettings;
     /** 관리 · 로그인과 비밀번호; absent = the defaults */
     auth?: AuthSettings;
     /** SSO providers (the fake cannot sign in through them; the screens can manage them) */

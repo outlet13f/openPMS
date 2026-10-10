@@ -67,6 +67,7 @@ export function useAccountMutations() {
 /* ---------- projects ---------- */
 
 /** What a new password needs (public; also on the signed-out pages). */
+export const useDisplaySettings = (enabled = true) => useQuery({ queryKey: ["display-settings"], queryFn: () => api.calendar.display(), enabled, staleTime: 5 * 60_000 });
 export const useSsoProviders = () => useQuery({ queryKey: ["sso-providers"], queryFn: () => api.auth.ssoProviders(), staleTime: 60_000 });
 export const usePasswordRules = () => useQuery({ queryKey: ["password-policy"], queryFn: () => api.auth.passwordPolicy(), staleTime: 60_000 });
 

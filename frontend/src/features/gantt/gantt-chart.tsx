@@ -8,7 +8,7 @@ import type { QueryResult, WorkPackage } from "@/api";
 import { useNonWorkingDays } from "@/api/hooks";
 import { TypeLabel } from "@/components/ui/badges";
 import { cn } from "@/lib/cn";
-import { addDays, diffDays, formatDate, formatDateRange, isoWeekday, todayIso } from "@/lib/dates";
+import { addDays, diffDays, formatDate, formatDateRange, isoWeekday, todayIso, weekStart } from "@/lib/dates";
 import { useSaveWorkPackage } from "@/features/work-packages/use-save";
 import { DateDialog } from "@/features/work-packages/date-dialog";
 
@@ -97,7 +97,8 @@ export function GanttChart({ result, zoom, detailsHref }: { result: QueryResult;
     const [y, m, day] = d.split("-");
     if (i === 0 || day === "01") months.push({ label: `${y}년 ${Number(m)}월`, left: i * dayW, width: 0 });
     if (scale === "day") ticks.push({ label: String(Number(day)), left: i * dayW, width: dayW });
-    else if (isoWeekday(d) === 1) ticks.push({ label: scale === "week" ? `${Number(m)}.${Number(day)}` : "", left: i * dayW, width: 7 * dayW });
+    // a week column starts on the configured first weekday (isoWeekday % 7: Sunday 0 … Saturday 6)
+    else if (isoWeekday(d) % 7 === weekStart()) ticks.push({ label: scale === "week" ? `${Number(m)}.${Number(day)}` : "", left: i * dayW, width: 7 * dayW });
     if (dayW >= 12 && (!working.includes(isoWeekday(d)) || holidays.has(d))) shade.push({ left: i * dayW, width: dayW, holiday: holidays.get(d) });
   }
   months.forEach((mo, i) => (mo.width = (months[i + 1]?.left ?? width) - mo.left));

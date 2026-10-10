@@ -188,6 +188,7 @@ export const httpApi: Api = {
     markRead: (target) => post("/notifications/read", target),
   },
   calendar: {
+    display: () => get("/settings/display"),
     nonWorkingDays: (from, to) => get("/calendar/non-working-days", { from, to }),
   },
   search: {
@@ -268,6 +269,7 @@ export const httpApi: Api = {
       save: (input) => put("/admin/settings/calendar", input),
       nonWorkingDays: (year) => get("/admin/non-working-days", { year }),
       addNonWorkingDay: (date, name) => post("/admin/non-working-days", { date, name }),
+      saveDisplay: (input) => put("/admin/settings/display", input),
       removeNonWorkingDay: (id) => del(`/admin/non-working-days/${id}`),
     },
   },

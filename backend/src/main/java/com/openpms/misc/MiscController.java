@@ -24,10 +24,27 @@ import org.springframework.web.bind.annotation.RestController;
 public class MiscController {
     private final Current current;
     private final DSLContext db;
+    private final com.openpms.common.DisplayFormats display;
 
-    public MiscController(Current current, DSLContext db) {
+    public MiscController(Current current, DSLContext db, com.openpms.common.DisplayFormats display) {
         this.current = current;
         this.db = db;
+        this.display = display;
+    }
+
+    /** How dates and times are written and where weeks start (every signed-in screen needs it). */
+    @GetMapping("/settings/display")
+    public com.openpms.common.DisplayFormats.Settings displaySettings() {
+        current.ctx();
+        return display.current();
+    }
+
+    @org.springframework.web.bind.annotation.PutMapping("/admin/settings/display")
+    @org.springframework.transaction.annotation.Transactional
+    public com.openpms.common.DisplayFormats.Settings saveDisplaySettings(@org.springframework.web.bind.annotation.RequestBody com.openpms.common.DisplayFormats.Settings in) {
+        var ctx = current.ctx();
+        if (!ctx.isAdmin()) throw ApiException.forbidden("관리자만 할 수 있습니다.");
+        return display.save(in, ctx.userId());
     }
 
     @GetMapping("/calendar/non-working-days")

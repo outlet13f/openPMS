@@ -993,6 +993,19 @@ export interface CalendarSettings {
   hoursPerDay: number;
 }
 
+/** 관리 · 달력과 날짜 · 날짜 형식. "default" follows the language (Korean: 2026.10.21, 24-hour clock, weeks from Sunday). */
+export type DateFormat = "default" | "YYYY.MM.DD" | "YYYY-MM-DD" | "YYYY/MM/DD" | "YYYY년 M월 D일" | "DD.MM.YYYY" | "MM/DD/YYYY";
+export const DATE_FORMATS: DateFormat[] = ["default", "YYYY.MM.DD", "YYYY-MM-DD", "YYYY/MM/DD", "YYYY년 M월 D일", "DD.MM.YYYY", "MM/DD/YYYY"];
+export type TimeFormat = "default" | "24h" | "12h";
+/** ISO weekday the week starts on: Monday "1", Saturday "6", Sunday "7" */
+export type WeekStart = "default" | "1" | "6" | "7";
+export interface DisplaySettings {
+  dateFormat: DateFormat;
+  timeFormat: TimeFormat;
+  weekStart: WeekStart;
+}
+export const DEFAULT_DISPLAY: DisplaySettings = { dateFormat: "default", timeFormat: "default", weekStart: "7" };
+
 export interface Category {
   id: Id;
   name: string;

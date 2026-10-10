@@ -85,7 +85,14 @@ public final class Dates {
     }
 
     /** "2026.10.09", as the screens show dates. */
+    private static volatile java.time.format.DateTimeFormatter pattern = java.time.format.DateTimeFormatter.ofPattern("yyyy.MM.dd");
+
+    /** The administrator's date format (DisplayFormats); 2026.10.21 until it is loaded. */
+    public static void usePattern(String javaPattern) {
+        pattern = java.time.format.DateTimeFormatter.ofPattern(javaPattern);
+    }
+
     public static String format(LocalDate d) {
-        return d == null ? null : "%04d.%02d.%02d".formatted(d.getYear(), d.getMonthValue(), d.getDayOfMonth());
+        return d == null ? null : pattern.format(d);
     }
 }

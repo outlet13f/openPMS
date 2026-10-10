@@ -1,4 +1,4 @@
-import type { BoardCardCreated, QueryFilter, AdminOidcProvider, OidcProviderInput, SsoProvider, AuthSettings, PasswordRules, BulkInput, CopyInput, MoveInput, ExportCount, Invitation,
+import type { DisplaySettings, BoardCardCreated, QueryFilter, AdminOidcProvider, OidcProviderInput, SsoProvider, AuthSettings, PasswordRules, BulkInput, CopyInput, MoveInput, ExportCount, Invitation,
   Attachment,
   ProgressSettings,
   ExportInput,
@@ -296,6 +296,8 @@ export interface Api {
   };
 
   calendar: {
+    /** GET /settings/display — how dates and times are written and where weeks start */
+    display(): Promise<DisplaySettings>;
     /** GET /calendar/non-working-days */
     nonWorkingDays(from: IsoDate, to: IsoDate): Promise<{ workingDays: number[]; days: { date: IsoDate; name: string }[] }>;
   };
@@ -434,6 +436,8 @@ export interface Api {
       addNonWorkingDay(date: IsoDate, name: string): Promise<void>;
       /** DELETE /admin/non-working-days/{id} */
       removeNonWorkingDay(id: Id): Promise<void>;
+      /** PUT /admin/settings/display */
+      saveDisplay(input: DisplaySettings): Promise<DisplaySettings>;
     };
   };
 }

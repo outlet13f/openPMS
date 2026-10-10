@@ -39,6 +39,18 @@ public class SettingsRepo {
         }
     }
 
+    /** A JSON string value, or the bare value (a number stored without quotes); fallback when missing. */
+    public String text(String key, String fallback) {
+        var v = raw(key);
+        if (v == null) return fallback;
+        try {
+            var parsed = json.readValue(v, Object.class);
+            return parsed == null ? fallback : String.valueOf(parsed);
+        } catch (RuntimeException e) {
+            return v;
+        }
+    }
+
     public int integer(String key, int fallback) {
         var v = db.select(SETTINGS.VALUE).from(SETTINGS).where(SETTINGS.KEY.eq(key)).fetchOne(SETTINGS.VALUE);
         if (v == null) return fallback;

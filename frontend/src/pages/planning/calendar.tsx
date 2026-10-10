@@ -18,12 +18,12 @@ import { Badge, Counter } from "@/components/ui/badges";
 import { Segmented } from "@/components/ui/choice";
 import { EmptyState, useToast } from "@/components/ui/feedback";
 import { Skeleton } from "@/components/ui/spinner";
-import { addDays, formatDate, formatDateRange, isoWeekday, todayIso, toIso } from "@/lib/dates";
+import { addDays, formatDate, formatDateRange, isoWeekday, todayIso, toIso, weekStart } from "@/lib/dates";
 import { ErrorState, PageHeader, useDocumentTitle } from "@/app/page";
 import { can, useCurrentProject } from "@/app/project";
 import { FilterPanel } from "@/features/work-packages/filter-panel";
 import { useSaveWorkPackage } from "@/features/work-packages/use-save";
-import { overlapFilter, startOfWeek, usePlanningView, WEEK_START } from "@/features/planning/use-planning-view";
+import { overlapFilter, startOfWeek, usePlanningView } from "@/features/planning/use-planning-view";
 import { PeriodNav, PlanningViewMenu } from "@/features/planning/view-header";
 
 type Mode = "month" | "week";
@@ -238,7 +238,7 @@ export function CalendarPage() {
               locale={koLocale}
               timeZone="UTC"
               now={todayIso()}
-              firstDay={WEEK_START}
+              firstDay={weekStart()}
               headerToolbar={false}
               height="auto"
               fixedWeekCount={false}

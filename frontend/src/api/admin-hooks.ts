@@ -1,7 +1,7 @@
 // Query hooks for administration (S27–S36) and project settings (S24–S26).
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { OidcProviderInput, AuthSettings, CalendarSettings, CustomFieldInput, Id, ProgressSettings, PriorityInput, RoleInput, StatusInput, Transition, TypeInput, UserInput, VersionInput } from "./types";
+import type { DisplaySettings, OidcProviderInput, AuthSettings, CalendarSettings, CustomFieldInput, Id, ProgressSettings, PriorityInput, RoleInput, StatusInput, Transition, TypeInput, UserInput, VersionInput } from "./types";
 
 export const ak = {
   customFields: ["admin", "custom-fields"] as const,
@@ -161,7 +161,9 @@ export function useGroupMutations() {
 export const useCalendarSettings = () => useQuery({ queryKey: ak.calendar, queryFn: () => api.admin.calendar.get() });
 export const useAdminNonWorkingDays = (year: number) => useQuery({ queryKey: ak.nonWorkingDays(year), queryFn: () => api.admin.calendar.nonWorkingDays(year) });
 export function useCalendarMutations() {
+  const qc = useQueryClient();
   return {
+    saveDisplay: useMutation({ mutationFn: (input: DisplaySettings) => api.admin.calendar.saveDisplay(input), onSuccess: () => qc.invalidateQueries({ queryKey: ["display-settings"] }) }),
     save: useMut((input: CalendarSettings) => api.admin.calendar.save(input)),
     add: useMut(({ date, name }: { date: string; name: string }) => api.admin.calendar.addNonWorkingDay(date, name)),
     remove: useMut((id: Id) => api.admin.calendar.removeNonWorkingDay(id)),

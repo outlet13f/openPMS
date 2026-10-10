@@ -8,8 +8,8 @@ import type { IsoDate } from "@/api";
 import { useNonWorkingDays } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
-import { addDays, isoWeekday, todayIso } from "@/lib/dates";
-import { startOfWeek, WEEK_START } from "@/features/planning/use-planning-view";
+import { addDays, isoWeekday, todayIso, weekStart } from "@/lib/dates";
+import { startOfWeek } from "@/features/planning/use-planning-view";
 
 /** First day of the month that is n months after d's month. */
 export function monthStart(d: IsoDate, n = 0): IsoDate {
@@ -72,7 +72,7 @@ export function TwoMonthCalendar({
     setFocused(d);
   };
   const onKey = (e: KeyboardEvent, d: IsoDate) => {
-    const dayOfWeek = (isoWeekday(d) % 7) - WEEK_START;
+    const dayOfWeek = (isoWeekday(d) % 7) - weekStart();
     const moves: Record<string, () => IsoDate> = {
       ArrowLeft: () => addDays(d, -1),
       ArrowRight: () => addDays(d, 1),
@@ -92,7 +92,7 @@ export function TwoMonthCalendar({
   const lo = start && due && !single ? (start < due ? start : due) : "";
   const hi = start && due && !single ? (start < due ? due : start) : "";
   const tabStop = sameMonth(focused, first) || sameMonth(focused, second) ? focused : first;
-  const weekdayNames = Array.from({ length: 7 }, (_, i) => t(`planner.weekdays.${((WEEK_START + i + 6) % 7) + 1}` as "planner.weekdays.1"));
+  const weekdayNames = Array.from({ length: 7 }, (_, i) => t(`planner.weekdays.${((weekStart() + i + 6) % 7) + 1}` as "planner.weekdays.1"));
 
   const month = (m: IsoDate) => {
     const titleId = `cal-${m}`;

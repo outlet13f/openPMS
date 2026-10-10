@@ -2,6 +2,7 @@
 import type { Api } from "../api";
 import type { AdminCustomField, AdminOidcProvider, OidcProviderInput, AuthSettings, CustomField, CustomFieldInput, CustomValue, ProjectCustomFields, TypeForm, AdminGroup, AdminPriority, AdminRole, AdminStatus, AdminType, AdminUser, Category, Version } from "../types";
 import { ApiError } from "../errors";
+import { DATE_FORMATS } from "../types";
 import { nowIso } from "@/lib/dates";
 import { db, newId, type DbUser } from "./db";
 import { findProject, globalPermissions, memberRoleIds, requirePerm, sessionUser } from "./permissions";
@@ -862,6 +863,15 @@ export const adminApi: Api["admin"] = {
   },
 
   calendar: {
+    saveDisplay: (input) =>
+      run(() => {
+        requireAdmin(sessionUser());
+        if (!DATE_FORMATS.includes(input.dateFormat)) throw fieldError("dateFormat", "날짜 형식을 고르세요.");
+        if (!["default", "24h", "12h"].includes(input.timeFormat)) throw fieldError("timeFormat", "시간 형식을 고르세요.");
+        if (!["default", "1", "6", "7"].includes(input.weekStart)) throw fieldError("weekStart", "주 시작 요일을 고르세요.");
+        db.settings.display = { dateFormat: input.dateFormat, timeFormat: input.timeFormat, weekStart: input.weekStart };
+        return clone(db.settings.display);
+      }),
     get: () => run(() => (requireAdmin(sessionUser()), clone({ workingDays: db.settings.workingDays, hoursPerDay: db.settings.hoursPerDay }))),
     save: (input) =>
       run(() => {

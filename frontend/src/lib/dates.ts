@@ -97,10 +97,29 @@ export function nthWorkingDayAfter(d: IsoDate, n: number, cal: WorkCalendar, ign
 
 /* ---------- display ---------- */
 
+/** The administrator's date format, time format and first weekday (configureDisplay, from GET /settings/display). */
+const display = { date: "YYYY.MM.DD", hour12: false, weekStart: 0 };
+
+/** Applies the display settings; "default" is the Korean way. Call before rendering what shows dates. */
+export function configureDisplay(s: { dateFormat: string; timeFormat: string; weekStart: string }) {
+  display.date = s.dateFormat === "default" ? "YYYY.MM.DD" : s.dateFormat;
+  display.hour12 = s.timeFormat === "12h";
+  // ISO weekday (Monday 1 … Sunday 7) → 0 = Sunday … 6 = Saturday, as calendars count
+  display.weekStart = s.weekStart === "default" ? 0 : Number(s.weekStart) % 7;
+}
+
+/** The first day of the week: 0 = Sunday, 1 = Monday, 6 = Saturday. */
+export const weekStart = () => display.weekStart;
+
+/** A date in the pattern's tokens: YYYY, MM/DD (two digits), M/D (as is). */
+export function formatDateAs(d: IsoDate, pattern: string): string {
+  const [y, m, day] = d.split("-");
+  return pattern.replace(/YYYY|MM|DD|M|D/g, (tok) => (tok === "YYYY" ? y : tok === "MM" ? m : tok === "DD" ? day : tok === "M" ? String(Number(m)) : String(Number(day))));
+}
+
 export function formatDate(d: IsoDate | null | undefined): string {
   if (!d) return "";
-  const [y, m, day] = d.split("-");
-  return `${y}.${m}.${day}`;
+  return formatDateAs(d, display.date);
 }
 
 export function formatDateRange(start: IsoDate | null, due: IsoDate | null): string {
@@ -115,19 +134,13 @@ export function formatDateLong(d: IsoDate): string {
   return `${y}년 ${m}월 ${day}일 ${WEEKDAY_KO[isoWeekday(d)]}요일`;
 }
 
+export function formatTime(dt: IsoDateTime, tz = DEFAULT_TZ): string {
+  return new Intl.DateTimeFormat("ko-KR", { timeZone: tz, hour: display.hour12 ? "numeric" : "2-digit", minute: "2-digit", hour12: display.hour12 }).format(new Date(dt));
+}
+
 export function formatDateTime(dt: IsoDateTime, tz = DEFAULT_TZ): string {
-  return new Intl.DateTimeFormat("ko-KR", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  })
-    .format(new Date(dt))
-    .replace(/\.\s/g, ".")
-    .replace(/\.(?=\d{2}:)/, " ");
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(dt));
+  return `${formatDate(day)} ${formatTime(dt, tz)}`;
 }
 
 const rtf = new Intl.RelativeTimeFormat("ko", { numeric: "auto" });
@@ -139,7 +152,7 @@ export function relativeTime(dt: IsoDateTime, now = Date.now()): string {
   if (abs < 3600) return rtf.format(Math.round(sec / 60), "minute");
   if (abs < 86_400) return rtf.format(Math.round(sec / 3600), "hour");
   if (abs < 86_400 * 30) return rtf.format(Math.round(sec / 86_400), "day");
-  return formatDateTime(dt).slice(0, 10);
+  return formatDate(new Intl.DateTimeFormat("en-CA", { timeZone: DEFAULT_TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(dt)));
 }
 
 export function nowIso(): IsoDateTime {

@@ -1,19 +1,82 @@
-// S33 관리: 근무일 및 휴무일 — changes here re-plan every schedule (architecture.md §3.3 S11).
+// S33 관리: 달력과 날짜 — working days and holidays (changes re-plan every schedule, architecture.md §3.3 S11), and how dates
+// and times are written and where weeks start (for everyone).
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CalendarOff, ChevronLeft, ChevronRight, Plus, Save, Trash2 } from "lucide-react";
+import { DATE_FORMATS, type DisplaySettings } from "@/api";
 import { useAdminNonWorkingDays, useCalendarMutations, useCalendarSettings } from "@/api/admin-hooks";
+import { useDisplaySettings } from "@/api/hooks";
+import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/choice";
 import { Field, Input } from "@/components/ui/field";
 import { Banner, EmptyState } from "@/components/ui/feedback";
 import { Skeleton } from "@/components/ui/spinner";
-import { formatDateLong, todayIso } from "@/lib/dates";
+import { formatDateAs, formatDateLong, todayIso } from "@/lib/dates";
 import { ErrorState, PageBody, PageHeader, useDocumentTitle } from "@/app/page";
 import { ConfirmDialog, fieldErrorOf, useRunWithToast } from "@/features/admin/common";
 import { AdminGuard } from "./index";
 
 const DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
+
+/** 날짜 형식: date and time formats and the first weekday, with a preview of today. */
+function DisplaySection() {
+  const { t } = useTranslation();
+  const q = useDisplaySettings();
+  const m = useCalendarMutations();
+  const runToast = useRunWithToast();
+  const [v, setV] = useState<DisplaySettings | null>(null);
+  const shown = v ?? q.data;
+  if (!shown) return <Skeleton className="h-40 w-full" />;
+  const today = todayIso();
+  const example = (f: string) => formatDateAs(today, f === "default" ? "YYYY.MM.DD" : f);
+  const time = t(shown.timeFormat === "12h" ? "admin.calendar.sample12" : "admin.calendar.sample24");
+  const dirty = v !== null && JSON.stringify(v) !== JSON.stringify(q.data);
+  const err = (k: string) => fieldErrorOf(m.saveDisplay.error, k);
+  return (
+    <section aria-labelledby="display-h" className="flex flex-col gap-4 xl:col-span-2">
+      <div>
+        <h2 id="display-h" className="text-lg text-fg">{t("admin.calendar.display")}</h2>
+        <p className="mt-1 text-sm text-fg-muted">{t("admin.calendar.displayHint")}</p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Field label={t("admin.calendar.dateFormat")} error={err("dateFormat")}>
+          <Select
+            value={shown.dateFormat}
+            onValueChange={(x) => setV({ ...shown, dateFormat: x as DisplaySettings["dateFormat"] })}
+            options={DATE_FORMATS.map((f) => ({ value: f, label: f === "default" ? t("admin.calendar.formats.default", { example: example(f) }) : `${f} (${example(f)})` }))}
+          />
+        </Field>
+        <Field label={t("admin.calendar.timeFormat")} error={err("timeFormat")}>
+          <Select
+            value={shown.timeFormat}
+            onValueChange={(x) => setV({ ...shown, timeFormat: x as DisplaySettings["timeFormat"] })}
+            options={(["default", "24h", "12h"] as const).map((f) => ({ value: f, label: f === "default" ? t("admin.calendar.formats.default", { example: "15:05" }) : t(`admin.calendar.formats.${f}`) }))}
+          />
+        </Field>
+        <Field label={t("admin.calendar.weekStart")} hint={t("admin.calendar.weekStartHint")} error={err("weekStart")}>
+          <Select
+            value={shown.weekStart}
+            onValueChange={(x) => setV({ ...shown, weekStart: x as DisplaySettings["weekStart"] })}
+            options={(["default", "1", "6", "7"] as const).map((f) => ({ value: f, label: t(`admin.calendar.weekStarts.${f}`) }))}
+          />
+        </Field>
+      </div>
+      <p className="rounded-md bg-surface px-3 py-2 text-sm text-fg-muted" aria-live="polite">{t("admin.calendar.preview", { date: example(shown.dateFormat), time })}</p>
+      <div>
+        <Button
+          variant="primary"
+          icon={<Save />}
+          disabled={!dirty}
+          loading={m.saveDisplay.isPending}
+          onClick={() => void runToast(m.saveDisplay.mutateAsync(shown), t("admin.calendar.displaySaved")).then((r) => r && setV(null))}
+        >
+          {t("app.save")}
+        </Button>
+      </div>
+    </section>
+  );
+}
 
 export function AdminCalendarPage() {
   const { t } = useTranslation();
@@ -134,6 +197,7 @@ export function AdminCalendarPage() {
                 </Button>
               </div>
             </section>
+            <DisplaySection />
           </div>
         )}
       </AdminGuard>
