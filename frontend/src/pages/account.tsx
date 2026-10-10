@@ -138,12 +138,16 @@ function PasswordSetup({ email, providers }: { email: string; providers: string[
 }
 
 function Password() {
+  const me = useMe().data;
+  return me && !me.hasPassword ? <PasswordSetup email={me.email} providers={me.signInWith} /> : <PasswordChange />;
+}
+
+function PasswordChange() {
   const { t } = useTranslation();
   const rules = usePasswordRules().data ?? DEFAULT_AUTH_SETTINGS;
   const toast = useToast();
   const m = useAccountMutations();
   const me = useMe().data;
-  if (me && !me.hasPassword) return <PasswordSetup email={me.email} providers={me.signInWith} />;
   const [v, setV] = useState({ current: "", next: "", confirm: "" });
   const [mismatch, setMismatch] = useState(false);
   const submit = (e: FormEvent) => {
