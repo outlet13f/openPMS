@@ -4,6 +4,7 @@
 
 import type { Api } from "../api";
 import type {
+  QueryFilter,
   Board,
   BoardColumn,
   Id,
@@ -28,7 +29,7 @@ import { db, newId, persist, type DbBoard, type DbJournal, type DbProject, type 
 import { allowedStatusIds, can, findProject, findWp, globalPermissions, memberRoleIds, projectUserIds, requirePerm, sessionUser, visibleProjects } from "./permissions";
 import { clone, projectRef, statusRef, toJournal, toProject, toWp, typeRef, priorityRef, userRef, wpRef } from "./dto";
 import { propagate, resolveDates, wouldCycle, workCalendar } from "./scheduling";
-import { defaultSpec, runQuery } from "./query";
+import { matches, defaultSpec, runQuery } from "./query";
 import { DEFAULT_COLUMNS } from "./seed";
 import { fieldError, run } from "./util";
 import { activeFields, applyValues, fieldsInProjects, initialValues, toField } from "./custom-fields";
@@ -323,8 +324,8 @@ function defaultViews(projectId: Id | null): SavedQuery[] {
 
 /* ---------- boards ---------- */
 
-function boardColumns(user: DbUser, b: DbBoard, project: DbProject): BoardColumn[] {
-  const wps = db.workPackages.filter((w) => w.projectId === project.id);
+function boardColumns(user: DbUser, b: DbBoard, project: DbProject, filters: QueryFilter[] = b.filters ?? []): BoardColumn[] {
+  const wps = db.workPackages.filter((w) => w.projectId === project.id && filters.every((f) => matches(w, f, user)));
   const order = (w: DbWp) => b.order[w.id] ?? w.number;
   return b.columns
     .sort((x, y) => x.position - y.position)
@@ -343,14 +344,38 @@ function boardColumns(user: DbUser, b: DbBoard, project: DbProject): BoardColumn
       } else if (b.kind === "version" && c.valueId) {
         title = db.versions.find((v) => v.id === c.valueId)?.name ?? "";
         cards = wps.filter((w) => w.versionId === c.valueId);
+      } else if (b.kind === "basic") {
+        cards = wps.filter((w) => b.placed?.[w.id] === c.id);
       }
       return { id: c.id, position: c.position, title, color, valueId: c.valueId, cards: cards.sort((x, y) => order(x) - order(y)).map((w) => toWp(w, user)) };
     });
 }
 
-function toBoard(user: DbUser, b: DbBoard): Board {
+function toBoard(user: DbUser, b: DbBoard, look?: QueryFilter[] | null): Board {
   const project = db.projects.find((p) => p.id === b.projectId)!;
-  return { id: b.id, name: b.name, kind: b.kind, isPublic: b.isPublic, createdAt: b.createdAt, projectId: b.projectId, columns: boardColumns(user, b, project), canManage: can(user, project, "board.manage") };
+  const filters = look ?? b.filters ?? [];
+  return { id: b.id, name: b.name, kind: b.kind, isPublic: b.isPublic, createdAt: b.createdAt, projectId: b.projectId, columns: boardColumns(user, b, project, filters), canManage: can(user, project, "board.manage"), filters: clone(filters) };
+}
+
+/** A card before `beforeNumber` (null: last) in a column, at a fractional position; basic boards also remember the list. */
+function placeCard(user: DbUser, b: DbBoard, columnId: string, wp: DbWp, beforeNumber: number | null) {
+  const project = db.projects.find((p) => p.id === b.projectId)!;
+  const cards = boardColumns(user, b, project, []).find((c) => c.id === columnId)!.cards.filter((c) => c.number !== wp.number);
+  const pos = (n: number) => b.order[db.workPackages.find((w) => w.number === n)!.id] ?? n;
+  const idx = beforeNumber === null ? cards.length : cards.findIndex((c) => c.number === beforeNumber);
+  const before = idx > 0 ? pos(cards[idx - 1].number) : null;
+  const after = idx >= 0 && idx < cards.length ? pos(cards[idx].number) : null;
+  b.order[wp.id] = before === null && after === null ? 1 : before === null ? after! - 1 : after === null ? before + 1 : (before + after) / 2;
+  if (b.kind === "basic") b.placed = { ...(b.placed ?? {}), [wp.id]: columnId };
+}
+
+function checkBoardFilters(user: DbUser, filters: QueryFilter[]) {
+  const sample = db.workPackages[0];
+  try {
+    if (sample) filters.forEach((f) => matches(sample, f, user));
+  } catch {
+    throw new ApiError(422, "필터를 확인하세요.");
+  }
 }
 
 const toShare = (s: (typeof db.shares)[number]): WorkPackageShare =>
@@ -1199,13 +1224,14 @@ export const fakeApi: Api = {
         db.boards.push(b);
         return toBoard(user, b);
       }),
-    get: (id) =>
+    get: (id, filters) =>
       run(() => {
         const user = sessionUser();
         const b = db.boards.find((x) => x.id === id);
         const p = b && db.projects.find((x) => x.id === b.projectId);
         if (!b || !p || !can(user, p, "board.view")) throw new ApiError(404, "보드를 찾을 수 없습니다.");
-        return toBoard(user, b);
+        if (filters) checkBoardFilters(user, filters);
+        return toBoard(user, b, filters);
       }),
     remove: (id) =>
       run(() => {
@@ -1225,11 +1251,23 @@ export const fakeApi: Api = {
           b.name = name;
         }
         if (patch.isPublic !== undefined) b.isPublic = patch.isPublic;
+        if (patch.filters !== undefined) {
+          checkBoardFilters(user, patch.filters);
+          b.filters = clone(patch.filters.map((f) => ({ field: f.field, op: f.op, values: f.values ?? [] })));
+        }
         return toBoard(user, b);
       }),
-    addColumn: (id, valueId) =>
+    addColumn: (id, input) =>
       run(() => {
         const { user, b } = managedBoard(id);
+        if (b.kind === "basic") {
+          const name = "name" in input ? input.name.trim() : "";
+          if (!name || name.length > 60) throw fieldError("name", "열 이름을 1~60자로 입력하세요.");
+          if (b.columns.length >= 30) throw fieldError("name", "열은 30개까지 만들 수 있습니다.");
+          b.columns.push({ id: newId("bc"), position: Math.max(-1, ...b.columns.map((c) => c.position)) + 1, name, valueId: null });
+          return toBoard(user, b);
+        }
+        const valueId = "valueId" in input ? input.valueId : "";
         const ok =
           b.kind === "status" ? db.statuses.some((s) => s.id === valueId)
           : b.kind === "assignee" ? projectUserIds(b.projectId).includes(valueId)
@@ -1280,15 +1318,51 @@ export const fakeApi: Api = {
         if (b.kind === "status" && col.valueId && col.valueId !== wp.statusId) applyPatch(user, wp.number, { lockVersion: input.lockVersion, statusId: col.valueId });
         if (b.kind === "assignee" && col.valueId && col.valueId !== wp.assigneeId) applyPatch(user, wp.number, { lockVersion: input.lockVersion, assigneeId: col.valueId });
         if (b.kind === "version" && col.valueId !== wp.versionId) applyPatch(user, wp.number, { lockVersion: input.lockVersion, versionId: col.valueId });
-        // place the card before `beforeNumber` (fractional position between neighbours)
-        const project = db.projects.find((p) => p.id === b.projectId)!;
-        const cards = boardColumns(user, b, project).find((c) => c.id === col.id)!.cards.filter((c) => c.number !== wp.number);
-        const pos = (n: number) => b.order[db.workPackages.find((w) => w.number === n)!.id] ?? n;
-        const idx = input.beforeNumber === null ? cards.length : cards.findIndex((c) => c.number === input.beforeNumber);
-        const before = idx > 0 ? pos(cards[idx - 1].number) : null;
-        const after = idx >= 0 && idx < cards.length ? pos(cards[idx].number) : null;
-        b.order[wp.id] = before === null && after === null ? 1 : before === null ? after! - 1 : after === null ? before + 1 : (before + after) / 2;
+        if (b.kind === "basic") {
+          requirePerm(user, db.projects.find((p) => p.id === b.projectId)!, "board.manage", "보드를 바꿀 권한이 없습니다.");
+          if (!b.placed?.[wp.id]) throw new ApiError(404, "이 보드에 없는 카드입니다.");
+        }
+        placeCard(user, b, col.id, wp, input.beforeNumber);
         return toBoard(user, b);
+      }),
+    addCard: (id, columnId, number) =>
+      run(() => {
+        const { user, b } = managedBoard(id);
+        if (b.kind !== "basic") throw new ApiError(422, "기본 보드에서만 작업을 직접 넣을 수 있습니다.");
+        if (!b.columns.some((c) => c.id === columnId)) throw new ApiError(404, "컬럼을 찾을 수 없습니다.");
+        const { wp } = findWp(user, number);
+        if (wp.projectId !== b.projectId) throw fieldError("number", "이 프로젝트의 작업만 넣을 수 있습니다.");
+        placeCard(user, b, columnId, wp, null);
+        return toBoard(user, b);
+      }),
+    removeCard: (id, number) =>
+      run(() => {
+        const { user, b } = managedBoard(id);
+        const { wp } = findWp(user, number);
+        if (b.placed) delete b.placed[wp.id];
+        delete b.order[wp.id];
+        return toBoard(user, b);
+      }),
+    createCard: (id, columnId, subject) =>
+      run(() => {
+        const user = sessionUser();
+        const b = db.boards.find((x) => x.id === id);
+        const p = b && db.projects.find((x) => x.id === b.projectId);
+        if (!b || !p || !can(user, p, "board.view")) throw new ApiError(404, "보드를 찾을 수 없습니다.");
+        const col = b.columns.find((c) => c.id === columnId);
+        if (!col) throw new ApiError(404, "컬럼을 찾을 수 없습니다.");
+        if (b.kind === "basic") requirePerm(user, p, "board.manage", "보드를 바꿀 권한이 없습니다.");
+        // the default type when the project uses it, else the project's first type
+        const types = db.types.filter((t) => p.typeIds.includes(t.id)).sort((x, y) => Number(y.isDefault) - Number(x.isDefault) || x.position - y.position);
+        const made = createWp(user, p.id, {
+          subject,
+          typeId: types[0]?.id ?? "",
+          ...(b.kind === "status" && col.valueId ? { statusId: col.valueId } : {}),
+          ...(b.kind === "assignee" && col.valueId ? { assigneeId: col.valueId } : {}),
+          ...(b.kind === "version" && col.valueId ? { versionId: col.valueId } : {}),
+        });
+        placeCard(user, b, col.id, db.workPackages.find((w) => w.number === made.number)!, null);
+        return { board: toBoard(user, b), workPackage: made };
       }),
   },
 

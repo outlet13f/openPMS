@@ -2,7 +2,7 @@
 // rules live in one place.
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { BoardKind, Id, NotificationSetting, Preferences, ProfileInput, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch } from "./types";
+import type { QueryFilter, BoardKind, Id, NotificationSetting, Preferences, ProfileInput, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch } from "./types";
 
 export const qk = {
   me: ["me"] as const,
@@ -260,6 +260,9 @@ export function useSavedQueryMutations(projectId?: string) {
 
 export const useBoards = (projectId: string) => useQuery({ queryKey: qk.boards(projectId), queryFn: () => api.boards.list(projectId) });
 export const useBoard = (id: string) => useQuery({ queryKey: qk.board(id), queryFn: () => api.boards.get(id) });
+/** The board through filters that are not saved (null: off). */
+export const useBoardLook = (id: string, filters: QueryFilter[] | null) =>
+  useQuery({ queryKey: [...qk.board(id), "look", JSON.stringify(filters)], queryFn: () => api.boards.get(id, filters), enabled: filters !== null, placeholderData: keepPreviousData });
 
 export function useBoardMutations(projectId: string) {
   const qc = useQueryClient();

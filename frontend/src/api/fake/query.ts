@@ -47,7 +47,7 @@ const OPS: Record<QueryFilter["field"], readonly QueryFilter["op"][]> = (() => {
 
 const NEEDS_VALUE = new Set<QueryFilter["op"]>(["eq", "neq", "gte", "lte", "on", "between", "overlaps", "contains", "not_contains"]);
 
-function matches(w: DbWp, f: QueryFilter, user: DbUser): boolean {
+export function matches(w: DbWp, f: QueryFilter, user: DbUser): boolean {
   const custom = f.field.startsWith("cf:") ? findField(f.field) : null;
   const allowed = custom ? opsFor(custom) : OPS[f.field as keyof typeof OPS];
   if (!allowed?.includes(f.op)) throw new ApiError(422, `연산자 ${f.op}는 ${custom?.name ?? f.field} 필드에 쓸 수 없습니다.`);

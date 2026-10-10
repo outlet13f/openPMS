@@ -125,7 +125,7 @@ export function NewBoardPage() {
               { value: "status", title: t("boards.kinds.status"), description: t("boards.kindHints.status"), icon: <KanbanSquare /> },
               { value: "assignee", title: t("boards.kinds.assignee"), description: t("boards.kindHints.assignee"), icon: <Users /> },
               { value: "version", title: t("boards.kinds.version"), description: t("boards.kindHints.version"), icon: <Milestone /> },
-              { value: "basic", title: t("boards.kinds.basic"), description: t("boards.kindHints.basic"), icon: <Columns3 />, disabled: true },
+              { value: "basic", title: t("boards.kinds.basic"), description: t("boards.kindHints.basic"), icon: <Columns3 /> },
               { value: "parent_child", title: t("boards.kinds.parent_child"), description: t("boards.kindHints.parent_child"), icon: <GitBranch />, disabled: true },
             ]}
           />

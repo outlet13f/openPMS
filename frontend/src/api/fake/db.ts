@@ -2,7 +2,7 @@
 // Table shapes follow replica/schema.sql closely so the move to the real API is mechanical.
 // State survives reloads through localStorage (per browser, per user) and can be reset from the login page.
 
-import type { AdminOidcProvider, AuthSettings, BoardKind, CustomField, CustomValue, Id, NotificationSetting, ShareRole, Theme, TypeForm, IsoDate, IsoDateTime, ModuleKey, NotificationReason, Preferences, ProjectStatus, QuerySpec, ViewKind } from "../types";
+import type { QueryFilter, AdminOidcProvider, AuthSettings, BoardKind, CustomField, CustomValue, Id, NotificationSetting, ShareRole, Theme, TypeForm, IsoDate, IsoDateTime, ModuleKey, NotificationReason, Preferences, ProjectStatus, QuerySpec, ViewKind } from "../types";
 import { buildSeed } from "./seed";
 
 export interface DbUser {
@@ -101,6 +101,10 @@ export interface DbBoard {
   columns: { id: Id; position: number; name: string | null; valueId: Id | null }[];
   /** Card order per work package id (fractional positions, like board_cards.position). */
   order: Record<Id, number>;
+  /** basic boards: the list each card was put in (work package id → column id) */
+  placed?: Record<Id, Id>;
+  /** saved filters (list format) */
+  filters?: QueryFilter[];
 }
 export interface DbNotification { id: Id; recipientId: Id; wpId: Id; journalId: Id | null; actorId: Id | null; reason: NotificationReason; readAt: IsoDateTime | null; createdAt: IsoDateTime }
 

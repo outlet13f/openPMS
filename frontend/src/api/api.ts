@@ -1,4 +1,4 @@
-import type { AdminOidcProvider, OidcProviderInput, SsoProvider, AuthSettings, PasswordRules, BulkInput, CopyInput, MoveInput, ExportCount, Invitation,
+import type { BoardCardCreated, QueryFilter, AdminOidcProvider, OidcProviderInput, SsoProvider, AuthSettings, PasswordRules, BulkInput, CopyInput, MoveInput, ExportCount, Invitation,
   Attachment,
   ProgressSettings,
   ExportInput,
@@ -264,14 +264,20 @@ export interface Api {
     list(projectId: Id): Promise<BoardSummary[]>;
     /** POST /projects/{project}/boards */
     create(projectId: Id, name: string, kind: BoardKind): Promise<Board>;
-    /** GET /boards/{id} */
-    get(id: Id): Promise<Board>;
+    /** GET /boards/{id}[?filters=] — with filters: the cards through those, without saving them */
+    get(id: Id, filters?: QueryFilter[] | null): Promise<Board>;
     /** DELETE /boards/{id} */
     remove(id: Id): Promise<void>;
-    /** PATCH /boards/{id} (board.manage) — name, visibility */
-    update(id: Id, patch: { name?: string; isPublic?: boolean }): Promise<Board>;
-    /** POST /boards/{id}/columns {valueId} (board.manage) — a status, member or version not yet on the board, at the end */
-    addColumn(id: Id, valueId: Id): Promise<Board>;
+    /** PATCH /boards/{id} (board.manage) — name, visibility, saved filters (422 on an unknown field or operator) */
+    update(id: Id, patch: { name?: string; isPublic?: boolean; filters?: QueryFilter[] }): Promise<Board>;
+    /** POST /boards/{id}/columns (board.manage) — {valueId}: a status, member or version not yet on the board; {name}: a basic board's list. At the end. */
+    addColumn(id: Id, input: { valueId: Id } | { name: string }): Promise<Board>;
+    /** POST /boards/{id}/cards (board.manage, basic boards) — an existing work package of the project into a list, at the end */
+    addCard(id: Id, columnId: Id, number: number): Promise<Board>;
+    /** DELETE /boards/{id}/cards/{number} (board.manage) — off the board; the work package stays as it is */
+    removeCard(id: Id, number: number): Promise<Board>;
+    /** POST /boards/{id}/cards/new — a new work package with the column's status, assignee or version (basic: in the list) */
+    createCard(id: Id, columnId: Id, subject: string): Promise<BoardCardCreated>;
     /** PATCH /board-columns/{id} (board.manage) — move to a place (0 = first); rename only a column without a value */
     updateColumn(columnId: Id, patch: { position?: number; name?: string }): Promise<Board>;
     /** DELETE /board-columns/{id} (board.manage) — the column goes, its work packages stay */

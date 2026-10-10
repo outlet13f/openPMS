@@ -683,6 +683,14 @@ export interface Board extends BoardSummary {
   projectId: Id;
   columns: BoardColumn[];
   canManage: boolean;
+  /** the saved filters (list format), or the ones asked for when looking without saving */
+  filters: QueryFilter[];
+}
+
+/** POST /boards/{id}/cards/new: the board as it is now and the new work package. */
+export interface BoardCardCreated {
+  board: Board;
+  workPackage: WorkPackage;
 }
 
 /* ---------- notifications ---------- */

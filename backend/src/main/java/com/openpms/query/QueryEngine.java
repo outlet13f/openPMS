@@ -200,6 +200,24 @@ public class QueryEngine {
         };
     }
 
+    /** Filters as JSON ([{field, op, values}]) → records; anything else is no filter. */
+    public static List<Filter> filters(Object raw) {
+        var out = new ArrayList<Filter>();
+        if (raw instanceof List<?> fs) for (var f : fs) {
+            if (!(f instanceof Map<?, ?> x)) continue;
+            List<String> values = x.get("values") instanceof List<?> l ? l.stream().map(v -> v == null ? null : String.valueOf(v)).toList() : List.of();
+            out.add(new Filter(String.valueOf(x.get("field")), String.valueOf(x.get("op")), values));
+        }
+        return out;
+    }
+
+    /** All of these filters, as one condition on work_packages (boards use the list's fields and operators). */
+    public Condition where(Ctx ctx, List<Filter> filters) {
+        Condition c = noCondition();
+        for (var f : filters) c = c.and(condition(ctx, f));
+        return c;
+    }
+
     Condition condition(Ctx ctx, Filter f) {
         var s = ctx.s();
         if (f.field() != null && f.field().startsWith("cf:")) {

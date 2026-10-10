@@ -170,8 +170,12 @@ public final class Dto {
 
     public record BoardColumn(UUID id, int position, String title, String color, UUID valueId, List<WorkPackage> cards) {}
 
+    /** filters: the board's saved filters (list format); the cards shown follow them, or the filters asked for in the request. */
     public record Board(UUID id, String name, String kind, boolean isPublic, OffsetDateTime createdAt, UUID projectId, List<BoardColumn> columns,
-                        boolean canManage) {}
+                        boolean canManage, List<Map<String, Object>> filters) {}
+
+    /** A card made from a column: the board as it is now, and the new work package. */
+    public record BoardCardCreated(Board board, WorkPackage workPackage) {}
 
     /* ---------- notifications, search, calendar ---------- */
 

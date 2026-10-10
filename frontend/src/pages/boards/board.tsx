@@ -1,7 +1,9 @@
-// S15 보드: drag cards between columns (changes status/assignee/version through the API, workflow enforced).
-// With board.manage: rename the board, add columns (a status, member or version not yet there), move and remove them.
-import { useEffect, useMemo, useState, type KeyboardEventHandler, type PointerEventHandler } from "react";
-import { Link, Outlet, useMatch, useNavigate, useParams } from "react-router";
+// S15 보드: drag cards between columns (changes status/assignee/version through the API, workflow enforced), or on a
+// basic board, lists the team fills by hand. A new card from a column gets the column's value. Filters narrow every
+// column; anyone can look through other filters, board.manage saves them. With board.manage: rename the board, add
+// columns (a status, member or version not yet there, or a named list), move and remove them.
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type KeyboardEventHandler, type PointerEventHandler } from "react";
+import { Outlet, useMatch, useNavigate, useParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
@@ -20,12 +22,13 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowLeft, ArrowRight, Columns3, GripVertical, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
-import { api, isApiError, type Board, type BoardColumn, type WorkPackage } from "@/api";
-import { invalidateWorkPackages, qk, useBoard, useBoardMutations, useFilterOptions } from "@/api/hooks";
+import { ArrowLeft, ArrowRight, Columns3, Filter, GripVertical, ListPlus, MoreHorizontal, Pencil, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
+import { api, isApiError, type Board, type BoardColumn, type QueryFilter, type QuerySpec, type WorkPackage } from "@/api";
+import { invalidateWorkPackages, qk, useBoard, useBoardLook, useBoardMutations, useFilterOptions, useWpQuery } from "@/api/hooks";
+import { FilterPanel } from "@/features/work-packages/filter-panel";
 import { Field, Input } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
-import { Counter } from "@/components/ui/badges";
+import { Badge, Counter } from "@/components/ui/badges";
 import { EmptyState, useToast } from "@/components/ui/feedback";
 import { Dialog, Menu } from "@/components/ui/overlay";
 import { Skeleton } from "@/components/ui/spinner";
@@ -79,7 +82,7 @@ function toCard(wp: WorkPackage) {
  * Keyboard: the grip button lifts the card (Space), arrows move it, Space drops, Esc cancels;
  * Enter on the card link keeps opening the item.
  */
-function SortableCard({ wp, href, disabled }: { wp: WorkPackage; href: string; disabled: boolean }) {
+function SortableCard({ wp, href, disabled, onRemove }: { wp: WorkPackage; href: string; disabled: boolean; onRemove?: () => void }) {
   const { t } = useTranslation();
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: cardId(wp.number), disabled });
   return (
@@ -88,7 +91,18 @@ function SortableCard({ wp, href, disabled }: { wp: WorkPackage; href: string; d
         wp={toCard(wp)}
         href={href}
         handle={
-          !disabled && (
+          <>
+          {onRemove && (
+            <button
+              type="button"
+              onClick={onRemove}
+              aria-label={t("boards.removeCard", { number: wp.number })}
+              className="inline-flex size-6 items-center justify-center rounded-sm text-fg-muted hover:bg-surface-hover hover:text-fg"
+            >
+              <X className="size-4" aria-hidden="true" />
+            </button>
+          )}
+          {!disabled && (
             <button
               type="button"
               ref={setActivatorNodeRef}
@@ -100,7 +114,8 @@ function SortableCard({ wp, href, disabled }: { wp: WorkPackage; href: string; d
             >
               <GripVertical className="size-4" aria-hidden="true" />
             </button>
-          )
+          )}
+          </>
         }
       />
     </li>
@@ -150,9 +165,79 @@ function NameDialog({ title, label, initial, onClose, onSave }: { title: string;
 
 type ColumnActions = { left?: () => void; right?: () => void; rename?: () => void; remove: () => void };
 
-function Column({ column, hrefOf, canDrag, addHref, actions }: { column: BoardColumn; hrefOf: (wp: WorkPackage) => string; canDrag: boolean; addHref?: string; actions?: ColumnActions }) {
+/** The column's quick-create row: a title, Enter makes the card (with the column's value), Esc closes. */
+function NewCard({ column, onCreate, onClose }: { column: BoardColumn; onCreate: (subject: string) => Promise<unknown>; onClose: () => void }) {
+  const { t } = useTranslation();
+  const [subject, setSubject] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const sending = useRef(false); // Enter pressed twice makes one card
+  const ref = useRef<HTMLInputElement>(null);
+  const submit = async () => {
+    if (sending.current) return;
+    if (!subject.trim()) return setError(t("wp.subjectRequired"));
+    sending.current = true;
+    try {
+      await onCreate(subject.trim());
+      setSubject("");
+      setError(null);
+      ref.current?.focus();
+    } catch (e) {
+      setError(isApiError(e) ? (e.fieldErrors[0]?.message ?? e.message) : t("app.errorBody"));
+    } finally {
+      sending.current = false;
+    }
+  };
+  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") (e.preventDefault(), void submit());
+    else if (e.key === "Escape") onClose();
+  };
+  const errorId = `new-card-error-${column.id}`;
+  return (
+    <div className="mt-2 rounded-md border border-border-input bg-bg p-2">
+      <label className="sr-only" htmlFor={`new-card-${column.id}`}>{t("boards.newCardLabel", { column: column.title })}</label>
+      <Input
+        id={`new-card-${column.id}`}
+        ref={ref}
+        autoFocus
+        size="sm"
+        maxLength={255}
+        value={subject}
+        placeholder={t("boards.newCardPlaceholder")}
+        aria-invalid={!!error}
+        aria-describedby={error ? errorId : undefined}
+        onChange={(e) => setSubject(e.target.value)}
+        onKeyDown={onKey}
+        onBlur={() => !subject.trim() && onClose()}
+      />
+      {error && <p id={errorId} className="mt-1 text-xs text-danger">{error}</p>}
+    </div>
+  );
+}
+
+function Column({
+  column,
+  hrefOf,
+  canDrag,
+  onCreate,
+  onAddExisting,
+  onRemoveCard,
+  actions,
+}: {
+  column: BoardColumn;
+  hrefOf: (wp: WorkPackage) => string;
+  canDrag: boolean;
+  /** a new card in this column (omitted without the right to create) */
+  onCreate?: (subject: string) => Promise<unknown>;
+  /** basic boards: put an existing work package here */
+  onAddExisting?: () => void;
+  /** basic boards: take a card off the board */
+  onRemoveCard?: (wp: WorkPackage) => void;
+  actions?: ColumnActions;
+}) {
   const { t } = useTranslation();
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
+  const [creating, setCreating] = useState(false);
+  const addLabel = t("boards.addCard", { column: column.title });
   return (
     <section aria-label={column.title} className={cn("flex w-board-col shrink-0 flex-col rounded-lg bg-surface p-2", isOver && "outline-2 outline-accent")}>
       <header className="flex items-center justify-between px-1 pt-1 pb-2">
@@ -162,10 +247,17 @@ function Column({ column, hrefOf, canDrag, addHref, actions }: { column: BoardCo
           <Counter>{column.cards.length}</Counter>
         </h2>
         <div className="flex shrink-0 items-center">
-          {addHref && (
-            <Button asChild variant="ghost" size="sm" iconOnly aria-label={t("boards.addCard", { column: column.title })} icon={<Plus />}>
-              <Link to={addHref} />
-            </Button>
+          {onAddExisting ? (
+            <Menu
+              align="end"
+              trigger={<Button variant="ghost" size="sm" iconOnly aria-label={addLabel} icon={<Plus />} />}
+              items={[
+                ...(onCreate ? [{ label: t("boards.newCard"), icon: <Plus />, onSelect: () => setCreating(true) }] : []),
+                { label: t("boards.addExisting"), icon: <ListPlus />, onSelect: onAddExisting },
+              ]}
+            />
+          ) : (
+            onCreate && <Button variant="ghost" size="sm" iconOnly aria-label={addLabel} aria-expanded={creating} icon={<Plus />} onClick={() => setCreating(true)} />
           )}
           {actions && (
             <Menu
@@ -185,9 +277,15 @@ function Column({ column, hrefOf, canDrag, addHref, actions }: { column: BoardCo
       <SortableContext items={column.cards.map((c) => cardId(c.number))} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className="flex min-h-24 flex-1 flex-col gap-2">
           {column.cards.map((wp) => (
-            <SortableCard key={wp.id} wp={wp} href={hrefOf(wp)} disabled={!canDrag || !wp._meta.allowedActions.edit} />
+            <SortableCard
+              key={wp.id}
+              wp={wp}
+              href={hrefOf(wp)}
+              disabled={!canDrag || (!onRemoveCard && !wp._meta.allowedActions.edit)}
+              onRemove={onRemoveCard && (() => onRemoveCard(wp))}
+            />
           ))}
-          {column.cards.length === 0 && (
+          {column.cards.length === 0 && !creating && (
             <li className="list-none">
               <EmptyState compact title={t("boards.emptyColumn")}>
                 {t("boards.emptyColumnBody")}
@@ -196,9 +294,50 @@ function Column({ column, hrefOf, canDrag, addHref, actions }: { column: BoardCo
           )}
         </ul>
       </SortableContext>
+      {creating && onCreate && <NewCard column={column} onCreate={onCreate} onClose={() => setCreating(false)} />}
     </section>
   );
 }
+
+/** Basic boards: find a work package of the project by title or #number and put it in a list. */
+function AddExistingDialog({ board, column, projectId, onClose, onPut }: { board: Board; column: BoardColumn; projectId: string; onClose: () => void; onPut: (wp: WorkPackage) => Promise<unknown> }) {
+  const { t } = useTranslation();
+  const [text, setText] = useState("");
+  const [q, setQ] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setQ(text.trim()), 250);
+    return () => clearTimeout(id);
+  }, [text]);
+  const spec: QuerySpec = { v: 1, filters: [], columns: ["number", "subject"], sort: [{ field: "updatedAt", dir: "desc" }], groupBy: null, hierarchy: false, sums: false, includeSubprojects: false, text: q || undefined };
+  const result = useWpQuery(spec, projectId, 1, 20);
+  const onBoard = new Set(board.columns.flatMap((c) => c.cards.map((w) => w.number)));
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} title={t("boards.addExistingTitle", { column: column.title })} footer={<Button onClick={onClose}>{t("app.close")}</Button>}>
+      <Field label={t("boards.searchWp")}>
+        <Input autoFocus type="search" value={text} onChange={(e) => setText(e.target.value)} />
+      </Field>
+      <ul className="mt-3 flex max-h-80 flex-col divide-y divide-border-muted overflow-y-auto" aria-busy={result.isFetching}>
+        {result.data?.rows.map(({ wp }) => (
+          <li key={wp.id} className="flex items-center justify-between gap-3 py-2">
+            <span className="min-w-0 truncate text-sm">
+              <span className="text-fg-muted tabular-nums">#{wp.number}</span> <span className="text-fg">{wp.subject}</span>
+            </span>
+            {onBoard.has(wp.number) && board.columns.find((c) => c.cards.some((w) => w.number === wp.number))?.id === column.id ? (
+              <Badge>{t("boards.onBoard")}</Badge>
+            ) : (
+              <Button size="sm" aria-label={`#${wp.number} ${wp.subject} ${t("boards.put")}`} onClick={() => void onPut(wp).catch(() => undefined)}>
+                {t("boards.put")}
+              </Button>
+            )}
+          </li>
+        ))}
+        {result.data && result.data.rows.length === 0 && <li className="py-6 text-center text-sm text-fg-muted">{t("boards.noMatches")}</li>}
+      </ul>
+    </Dialog>
+  );
+}
+
+const isText = (f: QueryFilter) => f.field === "subject" && f.op === "contains";
 
 export function BoardPage() {
   const { t } = useTranslation();
@@ -207,10 +346,16 @@ export function BoardPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const qc = useQueryClient();
-  const board = useBoard(id!);
+  const saved = useBoard(id!);
+  // filters being looked through (not saved); null = the saved ones
+  const [draft, setDraft] = useState<QueryFilter[] | null>(null);
+  const look = useBoardLook(id!, draft);
+  const board = draft !== null && look.data ? look : saved;
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [adding, setAdding] = useState<BoardColumn | null>(null);
   const { remove } = useBoardMutations(project.id);
   const options = useFilterOptions(project.id).data;
-  const [naming, setNaming] = useState<{ kind: "board" } | { kind: "column"; column: BoardColumn } | null>(null);
+  const [naming, setNaming] = useState<{ kind: "board" } | { kind: "column"; column: BoardColumn } | { kind: "newColumn" } | null>(null);
   const [columns, setColumns] = useState<BoardColumn[] | null>(null);
   const [active, setActive] = useState<WorkPackage | null>(null);
   const [origin, setOrigin] = useState<string | null>(null);
@@ -241,6 +386,19 @@ export function BoardPage() {
   if (board.isError) return <ErrorState error={board.error} onRetry={() => board.refetch()} />;
   const b = board.data;
   const cols = columns ?? b.columns;
+  const savedFilters = saved.data?.filters ?? [];
+  const shownFilters = draft ?? savedFilters;
+  const looking = draft !== null && JSON.stringify(draft) !== JSON.stringify(savedFilters);
+  const panelSpec: QuerySpec = {
+    v: 1, filters: shownFilters.filter((f) => !isText(f)), columns: [], sort: [], groupBy: null, hierarchy: false, sums: false, includeSubprojects: false,
+    text: shownFilters.find(isText)?.values?.[0],
+  };
+  const onPanelSpec = (s: QuerySpec) => setDraft([...s.filters.filter((f) => !isText(f)), ...(s.text ? [{ field: "subject", op: "contains", values: [s.text] } as QueryFilter] : [])]);
+  /** A board the server answered with after a change: shown at once unless looking through other filters, then fetched again. */
+  const show = (next: Board) => {
+    qc.setQueryData(qk.board(b.id), next);
+    void qc.invalidateQueries({ queryKey: [...qk.board(b.id), "look"] });
+  };
 
   const onDragStart = (e: DragStartEvent) => {
     const n = numberOf(e.active.id);
@@ -290,8 +448,7 @@ export function BoardPage() {
     const idx = finalCol.cards.findIndex((w) => w.number === moved.number);
     if (to === origin && oldIdx === overIdx) return; // dropped where it started
     try {
-      const saved = await api.boards.move(b.id, { number: moved.number, toColumnId: to, beforeNumber: finalCol.cards[idx + 1]?.number ?? null, lockVersion: moved.lockVersion });
-      qc.setQueryData(qk.board(b.id), saved);
+      show(await api.boards.move(b.id, { number: moved.number, toColumnId: to, beforeNumber: finalCol.cards[idx + 1]?.number ?? null, lockVersion: moved.lockVersion }));
       invalidateWorkPackages(qc, moved.number);
     } catch (err) {
       setColumns(b.columns);
@@ -307,8 +464,7 @@ export function BoardPage() {
   /** A change that answers with the whole board: show it, or say why not (and rethrow for a dialog to keep its error). */
   const apply = async (p: Promise<Board>, done?: string) => {
     try {
-      const saved = await p;
-      qc.setQueryData(qk.board(b.id), saved);
+      show(await p);
       void qc.invalidateQueries({ queryKey: qk.boards(project.id) });
       if (done) toast({ tone: "success", title: done });
     } catch (err) {
@@ -338,8 +494,16 @@ export function BoardPage() {
       : undefined;
 
   const hrefOf = (wp: WorkPackage) => `${base}/details/${wp.number}/overview`;
-  const canDrag = b.kind !== "basic";
-  const addHref = can(project, "wp.create") ? `/projects/${project.identifier}/work-packages/new` : undefined;
+  const basic = b.kind === "basic";
+  // a basic board is the board manager's to arrange; the others move cards by changing the work package
+  const canDrag = basic ? b.canManage : true;
+  const canCreate = can(project, "wp.create") && (!basic || b.canManage);
+  const createIn = (c: BoardColumn) => async (subject: string) => {
+    const made = await api.boards.createCard(b.id, c.id, subject);
+    show(made.board);
+    invalidateWorkPackages(qc, made.workPackage.number);
+    toast({ tone: "success", title: t("boards.cardCreated", { number: made.workPackage.number }), description: made.workPackage.subject });
+  };
 
   return (
     <div className="flex min-h-full">
@@ -348,9 +512,18 @@ export function BoardPage() {
           title={b.name}
           breadcrumbs={[{ label: project.name, href: `/projects/${project.identifier}` }, { label: t("nav.boards"), href: `/projects/${project.identifier}/boards` }, { label: b.name }]}
           actions={
-            b.canManage && (
+            <>
+              <Button aria-expanded={filtersOpen} aria-controls="board-filters" icon={<Filter />} onClick={() => setFiltersOpen((o) => !o)}>
+                {t("boards.filters")} {shownFilters.length > 0 && <Counter>{shownFilters.length}</Counter>}
+              </Button>
+              {b.canManage && (
               <>
-                {b.kind !== "basic" && (
+                {basic && (
+                  <Button icon={<Columns3 />} onClick={() => setNaming({ kind: "newColumn" })}>
+                    {t("boards.addColumn")}
+                  </Button>
+                )}
+                {!basic && (
                   <Menu
                     align="end"
                     trigger={
@@ -358,7 +531,7 @@ export function BoardPage() {
                         {t("boards.addColumn")}
                       </Button>
                     }
-                    items={addable.map((c) => ({ label: c.name, onSelect: () => quietly(apply(api.boards.addColumn(b.id, c.id), t("boards.columnAdded", { column: c.name }))) }))}
+                    items={addable.map((c) => ({ label: c.name, onSelect: () => quietly(apply(api.boards.addColumn(b.id, { valueId: c.id }), t("boards.columnAdded", { column: c.name }))) }))}
                   />
                 )}
                 <Menu
@@ -371,11 +544,28 @@ export function BoardPage() {
                   ]}
                 />
               </>
-            )
+              )}
+            </>
           }
         >
           <p className="mt-1 text-sm text-fg-muted">{t(`boards.kindHints.${b.kind}`)}</p>
         </PageHeader>
+        <div id="board-filters">
+          {filtersOpen && <FilterPanel spec={panelSpec} onSpec={onPanelSpec} options={options} />}
+          {looking && (
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md bg-surface px-3 py-2 text-sm" role="status">
+              <span className="text-fg-muted">{t("boards.filtersLook")}</span>
+              {b.canManage && (
+                <Button size="sm" variant="primary" icon={<Save />} onClick={() => quietly(apply(api.boards.update(b.id, { filters: draft! }), t("boards.filtersSaved")).then(() => setDraft(null)))}>
+                  {t("boards.saveFilters")}
+                </Button>
+              )}
+              <Button size="sm" icon={<RotateCcw />} onClick={() => setDraft(null)}>
+                {t("boards.resetFilters")}
+              </Button>
+            </div>
+          )}
+        </div>
         <DndContext
           sensors={sensors}
           collisionDetection={closestCorners}
@@ -395,13 +585,40 @@ export function BoardPage() {
         >
           <div className="relative flex gap-3 overflow-x-auto pb-4">
             {cols.map((c, i) => (
-              <Column key={c.id} column={c} hrefOf={hrefOf} canDrag={canDrag} addHref={addHref} actions={columnActions(c, i)} />
+              <Column
+                key={c.id}
+                column={c}
+                hrefOf={hrefOf}
+                canDrag={canDrag}
+                onCreate={canCreate ? createIn(c) : undefined}
+                onAddExisting={basic && b.canManage ? () => setAdding(c) : undefined}
+                onRemoveCard={basic && b.canManage ? (wp) => quietly(apply(api.boards.removeCard(b.id, wp.number), t("boards.cardRemoved", { number: wp.number }))) : undefined}
+                actions={columnActions(c, i)}
+              />
             ))}
           </div>
           <DragOverlay>{active ? <WorkPackageCard wp={toCard(active)} dragging className="w-[284px]" /> : null}</DragOverlay>
         </DndContext>
         {naming?.kind === "board" && (
           <NameDialog title={t("boards.rename")} label={t("boards.name")} initial={b.name} onClose={() => setNaming(null)} onSave={(name) => apply(api.boards.update(b.id, { name }), t("app.saved"))} />
+        )}
+        {naming?.kind === "newColumn" && (
+          <NameDialog
+            title={t("boards.addColumn")}
+            label={t("boards.columnName")}
+            initial=""
+            onClose={() => setNaming(null)}
+            onSave={(name) => apply(api.boards.addColumn(b.id, { name }), t("boards.columnAdded", { column: name }))}
+          />
+        )}
+        {adding && (
+          <AddExistingDialog
+            board={b}
+            column={adding}
+            projectId={project.id}
+            onClose={() => setAdding(null)}
+            onPut={(wp) => apply(api.boards.addCard(b.id, adding.id, wp.number), t("boards.cardAdded", { number: wp.number, column: adding.title }))}
+          />
         )}
         {naming?.kind === "column" && (
           <NameDialog

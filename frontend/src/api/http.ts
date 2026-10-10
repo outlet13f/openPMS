@@ -171,13 +171,16 @@ export const httpApi: Api = {
   boards: {
     list: (projectId) => get(`/projects/${projectId}/boards`),
     create: (projectId, name, kind) => post(`/projects/${projectId}/boards`, { name, kind }),
-    get: (id) => get(`/boards/${id}`),
+    get: (id, filters) => get(`/boards/${id}`, filters ? { filters: JSON.stringify(filters) } : undefined),
     remove: (id) => del(`/boards/${id}`),
     move: (id, input) => post(`/boards/${id}/moves`, input),
     update: (id, p) => patch(`/boards/${id}`, p),
-    addColumn: (id, valueId) => post(`/boards/${id}/columns`, { valueId }),
+    addColumn: (id, input) => post(`/boards/${id}/columns`, input),
     updateColumn: (columnId, p) => patch(`/board-columns/${columnId}`, p),
     removeColumn: (columnId) => del(`/board-columns/${columnId}`),
+    addCard: (id, columnId, number) => post(`/boards/${id}/cards`, { columnId, number }),
+    removeCard: (id, number) => del(`/boards/${id}/cards/${number}`),
+    createCard: (id, columnId, subject) => post(`/boards/${id}/cards/new`, { columnId, subject }),
   },
   notifications: {
     list: (filter) => get("/notifications", { filter }),
