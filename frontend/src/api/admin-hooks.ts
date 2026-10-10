@@ -166,6 +166,16 @@ export function useVersionMutations(projectId: string) {
   };
 }
 
+/** S03 (administrators): back from the archive, or delete for good. */
+export function useProjectLifecycle() {
+  const qc = useQueryClient();
+  const done = () => (refreshEverything(qc), qc.invalidateQueries({ queryKey: ["projects"] }));
+  return {
+    unarchive: useMutation({ mutationFn: (id: Id) => api.projects.unarchive(id), onSuccess: done }),
+    remove: useMutation({ mutationFn: ({ id, confirmIdentifier }: { id: Id; confirmIdentifier: string }) => api.projects.remove(id, confirmIdentifier), onSuccess: done }),
+  };
+}
+
 export function useProjectSettingsMutations(projectId: string) {
   return {
     update: useMut((patch: Parameters<typeof api.projects.update>[1]) => api.projects.update(projectId, patch)),

@@ -247,7 +247,7 @@ function projectFields(projectId: string): ProjectCustomFields {
   };
 }
 
-export const projectExtras: Pick<Api["projects"], "setTypes" | "archive" | "customFields" | "setCustomFields"> = {
+export const projectExtras: Pick<Api["projects"], "setTypes" | "archive" | "unarchive" | "remove" | "customFields" | "setCustomFields"> = {
   customFields: (id) =>
     run(() => {
       const user = sessionUser();
@@ -283,6 +283,52 @@ export const projectExtras: Pick<Api["projects"], "setTypes" | "archive" | "cust
       const p = findProject(user, id);
       requirePerm(user, p, "project.archive", "프로젝트를 보관할 권한이 없습니다.");
       p.archivedAt = nowIso();
+    }),
+  unarchive: (id) =>
+    run(() => {
+      const user = sessionUser();
+      const p = findProject(user, id); // first: an invisible project is a 404, not a 403
+      if (!user.isAdmin) throw new ApiError(403, "관리자만 프로젝트를 복원할 수 있습니다.");
+      const parent = db.projects.find((x) => x.id === p.parentId);
+      if (parent?.archivedAt) throw new ApiError(409, "상위 프로젝트가 보관되어 있습니다.", `'${parent.name}'을(를) 먼저 복원하세요.`);
+      p.archivedAt = null;
+      p.updatedAt = nowIso();
+    }),
+  remove: (id, confirmIdentifier) =>
+    run(() => {
+      const user = sessionUser();
+      const p = findProject(user, id);
+      if (!user.isAdmin) throw new ApiError(403, "관리자만 프로젝트를 삭제할 수 있습니다.");
+      if ((confirmIdentifier ?? "").trim() !== p.identifier) throw fieldError("confirmIdentifier", `식별자 '${p.identifier}'를 그대로 입력하세요.`);
+      const children = db.projects.filter((c) => c.parentId === p.id).map((c) => c.name).sort();
+      if (children.length) throw new ApiError(409, "하위 프로젝트가 있습니다.", `먼저 하위 프로젝트를 옮기거나 삭제하세요: ${children.join(", ")}`);
+      // as the database's cascades: everything of the project; items elsewhere lose a parent or a relation
+      const wps = new Set(db.workPackages.filter((w) => w.projectId === p.id).map((w) => w.id));
+      db.workPackages.forEach((w) => w.parentId && wps.has(w.parentId) && !wps.has(w.id) && (w.parentId = null));
+      db.workPackages = db.workPackages.filter((w) => !wps.has(w.id));
+      db.relations = db.relations.filter((r) => !wps.has(r.fromId) && !wps.has(r.toId));
+      db.journals = db.journals.filter((j) => !wps.has(j.wpId));
+      db.watchers = db.watchers.filter((x) => !wps.has(x.wpId));
+      db.attachments = db.attachments.filter((x) => !wps.has(x.wpId));
+      db.shares = db.shares.filter((x) => !wps.has(x.wpId));
+      db.notifications = db.notifications.filter((x) => !wps.has(x.wpId));
+      const versions = new Set(db.versions.filter((v) => v.projectId === p.id).map((v) => v.id));
+      const categories = new Set(db.categories.filter((c) => c.projectId === p.id).map((c) => c.id));
+      db.workPackages.forEach((w) => {
+        if (w.versionId && versions.has(w.versionId)) w.versionId = null;
+        if (w.categoryId && categories.has(w.categoryId)) w.categoryId = null;
+      });
+      db.versions = db.versions.filter((v) => v.projectId !== p.id);
+      db.categories = db.categories.filter((c) => c.projectId !== p.id);
+      db.members = db.members.filter((m) => m.projectId !== p.id);
+      const queries = new Set(db.queries.filter((q) => q.projectId === p.id).map((q) => q.id));
+      db.queries = db.queries.filter((q) => !queries.has(q.id));
+      db.queryFavorites = db.queryFavorites.filter((f) => !queries.has(f.queryId));
+      db.boards = db.boards.filter((x) => x.projectId !== p.id);
+      db.projectFavorites = db.projectFavorites.filter((f) => f.projectId !== p.id);
+      db.projectCustomFields = db.projectCustomFields.filter((f) => f.projectId !== p.id);
+      db.notificationSettings = db.notificationSettings.filter((x) => x.projectId !== p.id);
+      db.projects = db.projects.filter((x) => x.id !== p.id);
     }),
 };
 

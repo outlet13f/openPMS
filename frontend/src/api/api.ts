@@ -127,6 +127,10 @@ export interface Api {
     setCustomFields(id: Id, customFieldIds: Id[]): Promise<ProjectCustomFields>;
     /** POST /projects/{project}/archive */
     archive(id: Id): Promise<void>;
+    /** POST /projects/{project}/unarchive (administrators) — 409 while the parent is archived */
+    unarchive(id: Id): Promise<void>;
+    /** DELETE /projects/{project} {confirmIdentifier} (administrators) — everything in it goes; 409 with subprojects */
+    remove(id: Id, confirmIdentifier: string): Promise<void>;
   };
 
   categories: {

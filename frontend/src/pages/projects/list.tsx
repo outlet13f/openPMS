@@ -2,14 +2,17 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
-import { FolderKanban, Globe, Lock, Plus, Search, Star } from "lucide-react";
+import { ArchiveRestore, FolderKanban, Globe, Lock, MoreHorizontal, Plus, Search, Star, Trash2 } from "lucide-react";
 import type { Me, Project, ProjectListParams, ProjectStatus } from "@/api";
+import { isApiError } from "@/api";
 import { useProjects, useSetProjectFavorite } from "@/api/hooks";
+import { useProjectLifecycle } from "@/api/admin-hooks";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badges";
-import { Input } from "@/components/ui/field";
+import { Field, Input } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
-import { EmptyState } from "@/components/ui/feedback";
+import { Banner, EmptyState, useToast } from "@/components/ui/feedback";
+import { Dialog, Menu } from "@/components/ui/overlay";
 import { Pagination } from "@/components/ui/nav";
 import { Skeleton } from "@/components/ui/spinner";
 import { cn } from "@/lib/cn";
@@ -39,6 +42,64 @@ function FavoriteButton({ project }: { project: Project }) {
       icon={<Star className={cn(on && "fill-warning-strong text-warning")} />}
       onClick={() => fav.mutate({ id: project.id, favorite: !project.favorite })}
     />
+  );
+}
+
+/** Administrators: restore an archived project, or delete one (the identifier typed again). */
+function ProjectActions({ project }: { project: Project }) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const m = useProjectLifecycle();
+  const [deleting, setDeleting] = useState(false);
+  const [typed, setTyped] = useState("");
+  const fail = (e: unknown) => toast({ tone: "danger", title: isApiError(e) ? e.title : t("app.errorTitle"), description: isApiError(e) && e.message !== e.title ? e.message : undefined });
+  const fieldErr = isApiError(m.remove.error) ? m.remove.error.fieldErrors.find((f) => f.field === "confirmIdentifier")?.message : undefined;
+  const otherErr = isApiError(m.remove.error) && !m.remove.error.fieldErrors.length ? m.remove.error : null;
+  return (
+    <>
+      <Menu
+        align="end"
+        trigger={<Button variant="ghost" size="sm" iconOnly aria-label={t("projects.actionsFor", { name: project.name })} icon={<MoreHorizontal />} />}
+        items={[
+          ...(project.archivedAt
+            ? [{ label: t("projects.unarchive"), icon: <ArchiveRestore />, onSelect: () => m.unarchive.mutate(project.id, { onSuccess: () => toast({ tone: "success", title: t("projects.unarchived", { name: project.name }) }), onError: fail }) }]
+            : []),
+          { label: t("projects.delete"), icon: <Trash2 />, danger: true, onSelect: () => (m.remove.reset(), setTyped(""), setDeleting(true)) },
+        ]}
+      />
+      <Dialog
+        open={deleting}
+        onOpenChange={setDeleting}
+        title={t("projects.deleteTitle", { name: project.name })}
+        footer={
+          <>
+            <Button onClick={() => setDeleting(false)}>{t("app.cancel")}</Button>
+            <Button
+              variant="danger"
+              icon={<Trash2 />}
+              loading={m.remove.isPending}
+              disabled={typed.trim() !== project.identifier}
+              onClick={() =>
+                m.remove.mutate(
+                  { id: project.id, confirmIdentifier: typed },
+                  { onSuccess: () => (setDeleting(false), toast({ tone: "success", title: t("projects.deleted", { name: project.name }) })) },
+                )
+              }
+            >
+              {t("projects.deleteConfirm")}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <Banner tone="danger">{t("projects.deleteBody")}</Banner>
+          {otherErr && <Banner tone="warning" title={otherErr.title}>{otherErr.message !== otherErr.title ? otherErr.message : null}</Banner>}
+          <Field label={t("projects.deleteType", { identifier: project.identifier })} error={fieldErr}>
+            <Input autoComplete="off" spellCheck={false} value={typed} onChange={(e) => setTyped(e.target.value)} />
+          </Field>
+        </div>
+      </Dialog>
+    </>
   );
 }
 
@@ -133,6 +194,11 @@ export function ProjectsPage({ me }: { me: Me }) {
                   <th scope="col" className="w-32 px-3">{t("projects.columnStatus")}</th>
                   <th scope="col" className="w-28 px-3">{t("projects.columnVisibility")}</th>
                   <th scope="col" className="w-36 px-3">{t("projects.columnActivity")}</th>
+                  {me.isAdmin && (
+                    <th scope="col" className="w-12 px-2">
+                      <span className="sr-only">{t("app.more")}</span>
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -159,6 +225,11 @@ export function ProjectsPage({ me }: { me: Me }) {
                     <td className="px-3 text-fg-muted" title={p.latestActivityAt}>
                       {relativeTime(p.latestActivityAt)}
                     </td>
+                    {me.isAdmin && (
+                      <td className="px-2">
+                        <ProjectActions project={p} />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -180,6 +251,7 @@ export function ProjectsPage({ me }: { me: Me }) {
                     <span>{relativeTime(p.latestActivityAt)}</span>
                   </div>
                 </div>
+                {me.isAdmin && <ProjectActions project={p} />}
               </li>
             ))}
           </ul>

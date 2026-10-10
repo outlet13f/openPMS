@@ -99,6 +99,8 @@ export const httpApi: Api = {
     customFields: (id) => get(`/projects/${id}/custom-fields`),
     setCustomFields: (id, customFieldIds) => put(`/projects/${id}/custom-fields`, { customFieldIds }),
     archive: (id) => post(`/projects/${id}/archive`),
+    unarchive: (id) => post(`/projects/${id}/unarchive`),
+    remove: (id, confirmIdentifier) => call("DELETE", `/projects/${id}`, { confirmIdentifier }),
   },
   categories: {
     list: (projectId) => get(`/projects/${projectId}/categories`),

@@ -35,6 +35,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.jooq.DSLContext;
+import org.jooq.impl.DSL;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
@@ -259,6 +260,44 @@ public class ProjectController {
         var p = ctx.findProject(id);
         ctx.require(p, "project.archive", "프로젝트를 보관할 권한이 없습니다.");
         db.update(PROJECTS).set(PROJECTS.ARCHIVED_AT, OffsetDateTime.now()).where(PROJECTS.ID.eq(p.id())).execute();
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Back from the archive (administrators). A subproject waits for its archived parent. */
+    @PostMapping("/projects/{id}/unarchive")
+    @Transactional
+    public ResponseEntity<Void> unarchive(@PathVariable String id) {
+        var ctx = current.ctx();
+        var p = ctx.findProject(id); // first: an invisible project is a 404, not a 403
+        if (!ctx.isAdmin()) throw ApiException.forbidden("관리자만 프로젝트를 복원할 수 있습니다.");
+        var parent = p.parentId() == null ? null : ctx.s().projects().get(p.parentId());
+        if (parent != null && parent.archivedAt() != null)
+            throw new ApiException(409, "상위 프로젝트가 보관되어 있습니다.", "'" + parent.name() + "'을(를) 먼저 복원하세요.");
+        db.update(PROJECTS).setNull(PROJECTS.ARCHIVED_AT).set(PROJECTS.UPDATED_AT, OffsetDateTime.now()).where(PROJECTS.ID.eq(p.id())).execute();
+        return ResponseEntity.noContent().build();
+    }
+
+    public record DeleteProject(String confirmIdentifier) {}
+
+    /**
+     * Deletes a project and everything in it (administrators; the identifier typed again). Subprojects block it. Items elsewhere
+     * keep going: a child in another project loses its parent, relations to them go.
+     */
+    @DeleteMapping("/projects/{id}")
+    @Transactional
+    public ResponseEntity<Void> delete(@PathVariable String id, @RequestBody(required = false) DeleteProject in) {
+        var ctx = current.ctx();
+        var p = ctx.findProject(id);
+        if (!ctx.isAdmin()) throw ApiException.forbidden("관리자만 프로젝트를 삭제할 수 있습니다.");
+        if (in == null || in.confirmIdentifier() == null || !p.identifier().equals(in.confirmIdentifier().trim()))
+            throw ApiException.field("confirmIdentifier", "식별자 '" + p.identifier() + "'를 그대로 입력하세요.");
+        var children = ctx.s().projects().values().stream().filter(c -> p.id().equals(c.parentId())).map(ProjectRow::name).sorted().toList();
+        if (!children.isEmpty())
+            throw new ApiException(409, "하위 프로젝트가 있습니다.", "먼저 하위 프로젝트를 옮기거나 삭제하세요: " + String.join(", ", children));
+        var inside = DSL.select(WORK_PACKAGES.ID).from(WORK_PACKAGES).where(WORK_PACKAGES.PROJECT_ID.eq(p.id()));
+        db.update(WORK_PACKAGES).setNull(WORK_PACKAGES.PARENT_ID)
+                .where(WORK_PACKAGES.PARENT_ID.in(inside), WORK_PACKAGES.PROJECT_ID.ne(p.id())).execute();
+        db.deleteFrom(PROJECTS).where(PROJECTS.ID.eq(p.id())).execute();
         return ResponseEntity.noContent().build();
     }
 
