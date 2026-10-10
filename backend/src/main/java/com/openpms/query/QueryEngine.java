@@ -124,7 +124,8 @@ public class QueryEngine {
             case "none" -> col.isNull();
             case "overdue" -> col.lt(today).and(closed.isEmpty() ? trueCondition() : W.STATUS_ID.notIn(closed));
             case "today" -> col.eq(today);
-            case "this_week" -> col.between(today.minusDays(today.getDayOfWeek().getValue() - 1), today.minusDays(today.getDayOfWeek().getValue() - 1).plusDays(6));
+            // the week as the calendars show it (관리 · 날짜 형식 · 주 시작 요일)
+            case "this_week" -> col.between(com.openpms.common.Dates.startOfWeek(today), com.openpms.common.Dates.startOfWeek(today).plusDays(6));
             case "next_days" -> col.between(today, today.plusDays(n));
             case "last_days" -> col.between(today.minusDays(n), today);
             case "on" -> parseDate(vals.get(0)) == null ? noCondition() : col.eq(parseDate(vals.get(0)));

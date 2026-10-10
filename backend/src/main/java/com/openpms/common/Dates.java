@@ -87,9 +87,30 @@ public final class Dates {
     /** "2026.10.09", as the screens show dates. */
     private static volatile java.time.format.DateTimeFormatter pattern = java.time.format.DateTimeFormatter.ofPattern("yyyy.MM.dd");
 
+    private static volatile boolean hour12 = false;
+    private static volatile int weekStart = 7;
+
     /** The administrator's date format (DisplayFormats); 2026.10.21 until it is loaded. */
     public static void usePattern(String javaPattern) {
         pattern = java.time.format.DateTimeFormatter.ofPattern(javaPattern);
+    }
+
+    /** The administrator's clock (12 or 24 hours) and first weekday (ISO: Monday 1 … Sunday 7). */
+    public static void useClock(boolean twelveHours, int isoWeekStart) {
+        hour12 = twelveHours;
+        weekStart = isoWeekStart;
+    }
+
+    /** Date and time as the screens write them: "2026.10.21 15:05" or "2026.10.21 오후 3:05". */
+    public static String formatDateTime(java.time.ZonedDateTime t) {
+        var time = hour12 ? (t.getHour() < 12 ? "오전 " : "오후 ") + (t.getHour() % 12 == 0 ? 12 : t.getHour() % 12) + ":%02d".formatted(t.getMinute())
+                : "%02d:%02d".formatted(t.getHour(), t.getMinute());
+        return format(t.toLocalDate()) + " " + time;
+    }
+
+    /** The first day of the week that contains d. */
+    public static LocalDate startOfWeek(LocalDate d) {
+        return d.minusDays((d.getDayOfWeek().getValue() - weekStart + 7) % 7);
     }
 
     public static String format(LocalDate d) {

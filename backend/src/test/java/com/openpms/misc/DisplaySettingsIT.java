@@ -63,6 +63,9 @@ class DisplaySettingsIT {
             mvc.perform(get("/api/v1/settings/display").session(member)).andExpect(jsonPath("$.dateFormat").value("YYYY-MM-DD"))
                     .andExpect(jsonPath("$.timeFormat").value("12h"));
             assertThat(Dates.format(LocalDate.of(2026, 10, 21))).isEqualTo("2026-10-21");
+            // mail times and the "this week" filter follow the clock and the first weekday too
+            assertThat(Dates.formatDateTime(java.time.ZonedDateTime.of(2026, 10, 21, 15, 5, 0, 0, java.time.ZoneId.of("Asia/Seoul")))).isEqualTo("2026-10-21 오후 3:05");
+            assertThat(Dates.startOfWeek(LocalDate.of(2026, 10, 21))).isEqualTo(LocalDate.of(2026, 10, 19));
             mvc.perform(put("/api/v1/admin/settings/display").session(admin).with(csrf()).contentType(MediaType.APPLICATION_JSON)
                     .content("{\"dateFormat\":\"YYYY년 M월 D일\",\"timeFormat\":\"24h\",\"weekStart\":\"default\"}")).andExpect(status().isOk())
                     .andExpect(jsonPath("$.weekStart").value("default"));
@@ -73,5 +76,7 @@ class DisplaySettingsIT {
                     .content("{\"dateFormat\":\"default\",\"timeFormat\":\"default\",\"weekStart\":\"7\"}")).andExpect(status().isOk());
         }
         assertThat(Dates.format(LocalDate.of(2026, 10, 21))).isEqualTo("2026.10.21");
+        assertThat(Dates.formatDateTime(java.time.ZonedDateTime.of(2026, 10, 21, 15, 5, 0, 0, java.time.ZoneId.of("Asia/Seoul")))).isEqualTo("2026.10.21 15:05");
+        assertThat(Dates.startOfWeek(LocalDate.of(2026, 10, 21))).isEqualTo(LocalDate.of(2026, 10, 18)); // Sunday
     }
 }

@@ -1,7 +1,7 @@
 // Query engine (architecture.md §3.5) over the fake database.
 import { GROUPABLE_COLUMNS, type ColumnKey, type CustomField, type QueryFilter, type QueryGroup, type QueryResult, type QueryRow, type QuerySpec } from "../types";
 import { ApiError } from "../errors";
-import { addDays, isoWeekday, todayIso } from "@/lib/dates";
+import { addDays, isoWeekday, todayIso, weekStart } from "@/lib/dates";
 import { db, type DbProject, type DbUser, type DbWp } from "./db";
 import { can, memberRoleIds } from "./permissions";
 import { toWp } from "./dto";
@@ -83,8 +83,9 @@ export function matches(w: DbWp, f: QueryFilter, user: DbUser): boolean {
       case "today":
         return value === today;
       case "this_week": {
-        const monday = addDays(today, 1 - isoWeekday(today));
-        return !!value && value >= monday && value <= addDays(monday, 6);
+        // the week as the calendars show it (관리 · 날짜 형식 · 주 시작 요일)
+        const first = addDays(today, -((isoWeekday(today) % 7) - weekStart() + 7) % 7);
+        return !!value && value >= first && value <= addDays(first, 6);
       }
       case "next_days":
         return !!value && value >= today && value <= addDays(today, n);

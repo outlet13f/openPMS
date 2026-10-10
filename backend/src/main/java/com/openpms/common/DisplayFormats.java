@@ -62,5 +62,7 @@ public class DisplayFormats {
 
     private static void apply(Settings s) {
         Dates.usePattern(JAVA_PATTERNS.getOrDefault(s.dateFormat(), "yyyy.MM.dd"));
+        // "default" is the Korean way: 24-hour clock, weeks from Sunday
+        Dates.useClock("12h".equals(s.timeFormat()), "default".equals(s.weekStart()) ? 7 : Integer.parseInt(s.weekStart()));
     }
 }

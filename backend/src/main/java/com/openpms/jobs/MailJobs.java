@@ -21,7 +21,6 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -45,7 +44,6 @@ public class MailJobs {
     /** Older unsent notifications are left out of mail (e.g. after a long outage, or the first run). */
     static final Duration MAX_AGE = Duration.ofDays(7);
     private static final LocalTime DEFAULT_DIGEST_TIME = LocalTime.of(8, 0);
-    private static final DateTimeFormatter WHEN = DateTimeFormatter.ofPattern("MM.dd HH:mm");
 
     private final DSLContext db;
     private final Current current;
@@ -203,7 +201,7 @@ public class MailJobs {
             for (var n : ns) {
                 var j = n.getJournalId() == null ? null : l.journals().get(n.getJournalId());
                 b.append("  - ").append(texts.summary(ctx, n, j, project))
-                        .append(" (").append(WHEN.format(n.getCreatedAt().atZoneSameInstant(zone))).append(")\n");
+                        .append(" (").append(com.openpms.common.Dates.formatDateTime(n.getCreatedAt().atZoneSameInstant(zone))).append(")\n");
             }
             b.append("  ").append(link(l.s(), wp)).append('\n');
         });
