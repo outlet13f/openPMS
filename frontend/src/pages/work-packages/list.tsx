@@ -276,7 +276,6 @@ export function WorkPackagesPage() {
           spec={spec}
           projectId={project?.id}
           title={view?.name ?? t("wp.listTitle")}
-          total={result.data?.total}
           allColumns={allColumns}
           columnLabel={columnLabel}
         />

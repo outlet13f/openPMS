@@ -32,7 +32,7 @@ import { DEFAULT_COLUMNS } from "./seed";
 import { fieldError, run } from "./util";
 import { activeFields, applyValues, fieldsInProjects, initialValues, toField } from "./custom-fields";
 import { accountApi, effectiveSetting } from "./notification-settings";
-import { exportWorkPackages } from "./export";
+import { exportCount, exportWorkPackages } from "./export";
 import { deriveProgress, progressLocked } from "./progress";
 import { DEFAULT_TYPE_FORM } from "../type-form";
 import { issueToken, revokeAll, sendMail, tokenGone, validToken } from "./tokens";
@@ -970,6 +970,7 @@ export const fakeApi: Api = {
         return runQuery(user, spec, { ...opts, projectId });
       }),
     export: (input) => run(() => exportWorkPackages(sessionUser(), input)),
+    exportCount: (input) => run(() => exportCount(sessionUser(), input)),
     filterOptions: (projectId) =>
       run(() => {
         const user = sessionUser();

@@ -1,14 +1,17 @@
 // S12 내보내기: the current list (its filters and sort, every page) as CSV or Excel. Columns start as the
-// list's own; they can be reordered, removed and added. Needs wp.export.
+// list's own; they can be reordered, removed and added. Needs wp.export. Before downloading, the server says how many
+// rows the file will have and how many matching items it leaves out (no export right there, or seen only through a share).
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { ArrowDown, ArrowUp, Download, Plus, X } from "lucide-react";
-import { EXPORT_LIMIT, api, isApiError, type ColumnKey, type ExportFormat, type QuerySpec } from "@/api";
+import { api, isApiError, type ColumnKey, type ExportFormat, type QuerySpec } from "@/api";
 import { Button } from "@/components/ui/button";
 import { Checkbox, RadioCards } from "@/components/ui/choice";
 import { Banner, useToast } from "@/components/ui/feedback";
 import { Dialog } from "@/components/ui/overlay";
 import { Select } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/spinner";
 
 export function ExportDialog({
   open,
@@ -16,7 +19,6 @@ export function ExportDialog({
   spec,
   projectId,
   title,
-  total,
   allColumns,
   columnLabel,
 }: {
@@ -25,7 +27,6 @@ export function ExportDialog({
   spec: QuerySpec;
   projectId?: string;
   title: string;
-  total: number | undefined;
   allColumns: ColumnKey[];
   columnLabel: (c: ColumnKey) => string;
 }) {
@@ -37,7 +38,10 @@ export function ExportDialog({
   const [description, setDescription] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const tooMany = total !== undefined && total > EXPORT_LIMIT;
+  const counted = useQuery({ queryKey: ["export-count", projectId ?? null, spec], queryFn: () => api.workPackages.exportCount({ spec, projectId }), staleTime: 0 });
+  const c = counted.data;
+  const tooMany = !!c && c.total > c.limit;
+  const nothing = !!c && c.total > 0 && c.count === 0 && !tooMany;
   const addable = allColumns.filter((c) => !columns.includes(c));
   const move = (i: number, by: -1 | 1) => setColumns((cs) => {
     const next = [...cs];
@@ -78,17 +82,26 @@ export function ExportDialog({
       footer={
         <>
           <Button onClick={() => onOpenChange(false)}>{t("app.cancel")}</Button>
-          <Button variant="primary" icon={<Download />} loading={busy} disabled={tooMany} onClick={() => void run()}>
+          <Button variant="primary" icon={<Download />} loading={busy} disabled={!c || tooMany || nothing} onClick={() => void run()}>
             {t("export.submit")}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-5">
-        {tooMany ? (
-          <Banner tone="warning">{t("export.tooMany", { count: total, limit: EXPORT_LIMIT.toLocaleString() })}</Banner>
+        {counted.isPending ? (
+          <Skeleton className="h-5 w-48" />
+        ) : counted.isError ? (
+          <Banner tone="danger">{isApiError(counted.error) ? counted.error.message : t("app.errorBody")}</Banner>
+        ) : tooMany ? (
+          <Banner tone="warning">{t("export.tooMany", { count: c!.total, limit: c!.limit.toLocaleString() })}</Banner>
+        ) : nothing ? (
+          <Banner tone="warning" title={t("export.nothingTitle")}>{t("export.nothingBody", { count: c!.total })}</Banner>
         ) : (
-          total !== undefined && <p className="text-sm text-fg-muted">{t("export.count", { count: total })}</p>
+          <div className="flex flex-col gap-1">
+            <p className="text-sm text-fg-muted">{t("export.count", { count: c!.count })}</p>
+            {c!.excluded > 0 && <Banner tone="info">{t("export.excluded", { count: c!.excluded })}</Banner>}
+          </div>
         )}
         {error && <Banner tone="danger">{error}</Banner>}
         <div className="flex flex-col gap-2">

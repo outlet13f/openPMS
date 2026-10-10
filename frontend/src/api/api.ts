@@ -1,4 +1,4 @@
-import type { Invitation,
+import type { ExportCount, Invitation,
   Attachment,
   ProgressSettings,
   ExportInput,
@@ -226,6 +226,8 @@ export interface Api {
     filterOptions(projectId?: Id): Promise<FilterOptions>;
     /** POST /work-packages/export (wp.export) — the file; 422 above EXPORT_LIMIT items */
     export(input: ExportInput): Promise<{ blob: Blob; fileName: string }>;
+    /** POST /work-packages/export/count — the rows the file would have and what it leaves out */
+    exportCount(input: Pick<ExportInput, "spec" | "projectId">): Promise<ExportCount>;
   };
 
   queries: {

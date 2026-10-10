@@ -550,6 +550,17 @@ export interface ExportInput {
   title: string;
 }
 
+/** S12: what an export would contain, asked before downloading. */
+export interface ExportCount {
+  /** items matching the list */
+  total: number;
+  /** rows the file would have (0 when total > limit) */
+  count: number;
+  /** matching items left out: in projects where I may not export, or seen only through a share */
+  excluded: number;
+  limit: number;
+}
+
 export interface QueryRow {
   wp: WorkPackage;
   depth: number;

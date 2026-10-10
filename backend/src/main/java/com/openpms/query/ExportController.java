@@ -55,13 +55,45 @@ public class ExportController {
         this.engine = engine;
     }
 
+    /** What a request would export: items matching the list, and of those the ones I may export. */
+    private record Selection(long total, List<Dto.WorkPackage> allowed) {}
+
+    /** total > LIMIT: allowed is left empty (not worth loading). */
+    private Selection select(Ctx ctx, Map<String, Object> body) {
+        var projectId = In.str(body, "projectId");
+        var project = projectId == null || projectId.isBlank() ? null : ctx.findProject(projectId);
+        if (project != null) ctx.require(project, "wp.export", "내보낼 권한이 없습니다.");
+        var spec = QueryController.parse(body.get("spec"));
+        var flat = new QueryEngine.Spec(spec.filters(), spec.sort(), false, spec.includeSubprojects(), spec.text(), false);
+        var first = engine.run(ctx, flat, project, 1, 1000);
+        if (first.total() > LIMIT) return new Selection(first.total(), List.of());
+        var wps = new ArrayList<Dto.WorkPackage>();
+        first.rows().forEach(r -> wps.add(r.wp()));
+        for (int page = 2; wps.size() < first.total(); page++) {
+            var more = engine.run(ctx, flat, project, page, 1000).rows();
+            if (more.isEmpty()) break;
+            more.forEach(r -> wps.add(r.wp()));
+        }
+        // across projects only what I may export; items I only see through a share are left out (share roles do not export)
+        var s = ctx.s();
+        var allowed = wps.stream().filter(w -> s.project(w.project().id()).map(p -> ctx.can(p, w.id(), "wp.export")).orElse(false)).toList();
+        return new Selection(first.total(), allowed);
+    }
+
+    public record ExportCount(long total, long count, long excluded, int limit) {}
+
+    /** S12: how many rows the file would have, and how many matching items it leaves out, before downloading. */
+    @PostMapping("/work-packages/export/count")
+    public ExportCount count(@RequestBody Map<String, Object> body) {
+        var sel = select(current.ctx(), body);
+        long count = sel.total() > LIMIT ? 0 : sel.allowed().size();
+        return new ExportCount(sel.total(), count, sel.total() > LIMIT ? 0 : sel.total() - count, LIMIT);
+    }
+
     @PostMapping("/work-packages/export")
     public ResponseEntity<byte[]> export(@RequestBody Map<String, Object> body) throws IOException {
         var ctx = current.ctx();
         var s = ctx.s();
-        var projectId = In.str(body, "projectId");
-        var project = projectId == null || projectId.isBlank() ? null : ctx.findProject(projectId);
-        if (project != null) ctx.require(project, "wp.export", "내보낼 권한이 없습니다.");
         var format = In.str(body, "format");
         if (!"csv".equals(format) && !"xlsx".equals(format)) throw ApiException.unprocessable("형식을 고르세요.", "CSV 또는 Excel만 내보낼 수 있습니다.");
         var columns = In.strings(body, "columns");
@@ -72,20 +104,12 @@ public class ExportController {
         }
         boolean description = Boolean.TRUE.equals(In.bool(body, "includeDescription"));
 
-        var spec = QueryController.parse(body.get("spec"));
-        var flat = new QueryEngine.Spec(spec.filters(), spec.sort(), false, spec.includeSubprojects(), spec.text(), false);
-        var first = engine.run(ctx, flat, project, 1, 1000);
-        if (first.total() > LIMIT)
+        var sel = select(ctx, body);
+        if (sel.total() > LIMIT)
             throw ApiException.unprocessable("내보낼 작업이 너무 많습니다.", "한 번에 " + String.format("%,d", LIMIT) + "건까지 내보낼 수 있습니다. 필터로 나눠 내보내세요.");
-        var wps = new ArrayList<Dto.WorkPackage>();
-        first.rows().forEach(r -> wps.add(r.wp()));
-        for (int page = 2; wps.size() < first.total(); page++) {
-            var more = engine.run(ctx, flat, project, page, 1000).rows();
-            if (more.isEmpty()) break;
-            more.forEach(r -> wps.add(r.wp()));
-        }
-        // across projects: only items of projects where I may export
-        var allowed = wps.stream().filter(w -> s.project(w.project().id()).map(p -> ctx.can(p, "wp.export")).orElse(false)).toList();
+        if (sel.allowed().isEmpty() && sel.total() > 0)
+            throw ApiException.unprocessable("내보낼 수 있는 작업이 없습니다.", "목록의 작업이 모두 내보내기 권한이 없는 프로젝트에 있습니다.");
+        var allowed = sel.allowed();
 
         var zone = zone(ctx);
         var rows = new ArrayList<List<Object>>();

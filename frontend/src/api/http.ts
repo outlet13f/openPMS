@@ -134,6 +134,7 @@ export const httpApi: Api = {
     comment: (n, bodyHtml) => post(`/work-packages/${n}/comments`, { bodyHtml }),
     editComment: (id, bodyHtml) => patch(`/comments/${id}`, { bodyHtml }),
     export: (input) => download("/work-packages/export", input),
+    exportCount: (input) => post("/work-packages/export/count", input),
     shares: (n) => get(`/work-packages/${n}/shares`),
     share: (n, userId, role) => post(`/work-packages/${n}/shares`, { userId, role }),
     updateShare: (id, role) => patch(`/shares/${id}`, { role }),

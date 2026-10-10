@@ -1,6 +1,6 @@
 // S12 내보내기 in the fake data layer: CSV and a minimal XLSX (one sheet, inline strings, stored zip), from the
 // same query engine as the list. backend: query/ExportController.java writes the same columns and headers.
-import type { ColumnKey, ExportInput, WorkPackage } from "../types";
+import type { ColumnKey, ExportCount, ExportInput, WorkPackage } from "../types";
 import { EXPORT_LIMIT } from "../types";
 import { ApiError } from "../errors";
 import { db, type DbUser } from "./db";
@@ -156,22 +156,38 @@ function xlsx(rows: (string | number | null)[][]): Blob {
 
 const today = (zone: string) => new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(new Date()).replace(/-/g, "");
 
-export function exportWorkPackages(user: DbUser, input: ExportInput): { blob: Blob; fileName: string } {
+/** What a request would export: items matching the list, and of those the ones I may export (none loaded above the limit). */
+function select(user: DbUser, input: Pick<ExportInput, "spec" | "projectId">) {
   if (input.projectId) {
     const p = findProject(user, input.projectId);
     if (!can(user, p, "wp.export")) throw new ApiError(403, "내보낼 권한이 없습니다.");
   }
-  if (!["csv", "xlsx"].includes(input.format)) throw new ApiError(422, "형식을 고르세요.", "CSV 또는 Excel만 내보낼 수 있습니다.");
-  if (!input.columns.length) throw new ApiError(422, "열을 하나 이상 고르세요.");
-  const first = runQuery(user, { ...input.spec, hierarchy: false }, { projectId: input.projectId, page: 1, pageSize: 1000 });
-  if (first.total > EXPORT_LIMIT) throw new ApiError(422, "내보낼 작업이 너무 많습니다.", `한 번에 ${EXPORT_LIMIT.toLocaleString()}건까지 내보낼 수 있습니다. 필터로 나눠 내보내세요.`);
+  const spec = { ...input.spec, hierarchy: false };
+  const first = runQuery(user, spec, { projectId: input.projectId, page: 1, pageSize: 1000 });
+  if (first.total > EXPORT_LIMIT) return { total: first.total, allowed: [] };
   const wps = [...first.rows];
-  for (let page = 2; wps.length < first.total; page++) wps.push(...runQuery(user, { ...input.spec, hierarchy: false }, { projectId: input.projectId, page, pageSize: 1000 }).rows);
-  // across projects, only items of projects where I may export
+  for (let page = 2; wps.length < first.total; page++) wps.push(...runQuery(user, spec, { projectId: input.projectId, page, pageSize: 1000 }).rows);
+  // across projects only what I may export; items I only see through a share are left out (share roles do not export)
   const allowed = wps.map((r) => r.wp).filter((wp) => {
     const p = db.projects.find((x) => x.id === wp.project.id);
-    return !!p && can(user, p, "wp.export");
+    const item = db.workPackages.find((x) => x.id === wp.id);
+    return !!p && can(user, p, "wp.export", item);
   });
+  return { total: first.total, allowed };
+}
+
+export function exportCount(user: DbUser, input: Pick<ExportInput, "spec" | "projectId">): ExportCount {
+  const { total, allowed } = select(user, input);
+  const count = total > EXPORT_LIMIT ? 0 : allowed.length;
+  return { total, count, excluded: total > EXPORT_LIMIT ? 0 : total - count, limit: EXPORT_LIMIT };
+}
+
+export function exportWorkPackages(user: DbUser, input: ExportInput): { blob: Blob; fileName: string } {
+  if (!["csv", "xlsx"].includes(input.format)) throw new ApiError(422, "형식을 고르세요.", "CSV 또는 Excel만 내보낼 수 있습니다.");
+  if (!input.columns.length) throw new ApiError(422, "열을 하나 이상 고르세요.");
+  const { total, allowed } = select(user, input);
+  if (total > EXPORT_LIMIT) throw new ApiError(422, "내보낼 작업이 너무 많습니다.", `한 번에 ${EXPORT_LIMIT.toLocaleString()}건까지 내보낼 수 있습니다. 필터로 나눠 내보내세요.`);
+  if (!allowed.length && total > 0) throw new ApiError(422, "내보낼 수 있는 작업이 없습니다.", "목록의 작업이 모두 내보내기 권한이 없는 프로젝트에 있습니다.");
   const rows: (string | number | null)[][] = [
     [...input.columns.map(header), ...(input.includeDescription ? ["설명"] : [])],
     ...allowed.map((wp) => [...input.columns.map((c) => cell(wp, c, user.timeZone)), ...(input.includeDescription ? [plain(wp.descriptionHtml) || null] : [])]),
