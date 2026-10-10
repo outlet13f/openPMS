@@ -69,11 +69,12 @@ function GeneralSection() {
     status: (project.status ?? "none") as ProjectStatus | "none",
     statusExplanation: project.statusExplanation,
     isPublic: project.isPublic,
+    isTemplate: project.isTemplate,
   });
   const [archiving, setArchiving] = useState(false);
   const save = () =>
     void runToast(
-      m.update.mutateAsync({ name: v.name, descriptionHtml: textToHtml(v.description), status: v.status === "none" ? null : v.status, statusExplanation: v.statusExplanation, isPublic: v.isPublic }),
+      m.update.mutateAsync({ name: v.name, descriptionHtml: textToHtml(v.description), status: v.status === "none" ? null : v.status, statusExplanation: v.statusExplanation, isPublic: v.isPublic, isTemplate: v.isTemplate }),
       t("app.saved"),
     );
   return (
@@ -102,6 +103,7 @@ function GeneralSection() {
         </Field>
       </div>
       <Checkbox label={t("projectNew.isPublic")} description={t("projectNew.isPublicHint")} checked={v.isPublic} onCheckedChange={(c) => setV({ ...v, isPublic: c === true })} />
+      <Checkbox label={t("settings.isTemplate")} description={t("settings.isTemplateHint")} checked={v.isTemplate} onCheckedChange={(c) => setV({ ...v, isTemplate: c === true })} />
       <div>
         <Button variant="primary" icon={<Save />} loading={m.update.isPending} onClick={save}>
           {t("app.save")}

@@ -122,7 +122,7 @@ export interface Api {
     /** POST /projects */
     create(input: ProjectInput): Promise<Project>;
     /** PATCH /projects/{project} */
-    update(id: Id, patch: Partial<Pick<Project, "name" | "descriptionHtml" | "status" | "statusExplanation" | "isPublic" | "enabledModules">>): Promise<Project>;
+    update(id: Id, patch: Partial<Pick<Project, "name" | "descriptionHtml" | "status" | "statusExplanation" | "isPublic" | "isTemplate" | "enabledModules">>): Promise<Project>;
     /** PUT|DELETE /projects/{project}/favorite */
     setFavorite(id: Id, favorite: boolean): Promise<void>;
     /** GET /projects/{project}/overview */

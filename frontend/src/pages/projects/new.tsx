@@ -1,10 +1,11 @@
 // S04 새 프로젝트
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { Copy, FilePlus2 } from "lucide-react";
-import { isApiError } from "@/api";
-import { useCreateProject } from "@/api/hooks";
+import { isApiError, TEMPLATE_PARTS, type TemplatePart } from "@/api";
+import { useCreateProject, useProjects } from "@/api/hooks";
+import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Checkbox, RadioCards } from "@/components/ui/choice";
 import { Field, Input, Textarea } from "@/components/ui/field";
@@ -29,12 +30,21 @@ export function NewProjectPage() {
   const [touchedId, setTouchedId] = useState(false);
   const [description, setDescription] = useState("");
   const [isPublic, setIsPublic] = useState(false);
+  // S04 템플릿에서 시작: which template, and what to take over besides modules, types and project attributes
+  const templates = useProjects({ filter: "templates", pageSize: 100 });
+  const [templateId, setTemplateId] = useState("");
+  const [parts, setParts] = useState<TemplatePart[]>([...TEMPLATE_PARTS]);
+  const hasTemplates = (templates.data?.items.length ?? 0) > 0;
+  useEffect(() => {
+    if (mode === "template" && !templateId && templates.data?.items[0]) setTemplateId(templates.data.items[0].id);
+  }, [mode, templateId, templates.data]);
   const fieldErr = (f: string) => (isApiError(create.error) ? create.error.fieldErrors.find((e) => e.field === f)?.message : undefined);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      const p = await create.mutateAsync({ name, identifier, descriptionHtml: textToHtml(description), isPublic });
+      const fromTemplate = mode === "template" && templateId ? { templateId, copy: parts } : {};
+      const p = await create.mutateAsync({ name, identifier, descriptionHtml: textToHtml(description), isPublic, ...fromTemplate });
       toast({ tone: "success", title: t("projectNew.created"), description: p.name });
       navigate(`/projects/${p.identifier}`);
     } catch (err) {
@@ -53,9 +63,30 @@ export function NewProjectPage() {
           onValueChange={setMode}
           options={[
             { value: "blank", title: t("projectNew.blank"), description: t("projectNew.blankBody"), icon: <FilePlus2 /> },
-            { value: "template", title: t("projectNew.template"), description: t("projectNew.templateBody"), icon: <Copy />, disabled: true },
+            { value: "template", title: t("projectNew.template"), description: hasTemplates ? t("projectNew.templateBody") : t("projectNew.noTemplates"), icon: <Copy />, disabled: !hasTemplates },
           ]}
         />
+        {mode === "template" && hasTemplates && (
+          <div className="flex flex-col gap-4 rounded-md border border-border bg-surface p-4">
+            <Field label={t("projectNew.templatePick")} required error={fieldErr("template")}>
+              <Select value={templateId} onValueChange={setTemplateId} options={templates.data!.items.map((p) => ({ value: p.id, label: p.name }))} />
+            </Field>
+            <fieldset className="flex flex-col gap-2">
+              <legend className="mb-1 text-sm font-medium text-fg">{t("projectNew.copyLegend")}</legend>
+              <p className="text-xs text-fg-muted">{t("projectNew.copyAlways")}</p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {TEMPLATE_PARTS.map((part) => (
+                  <Checkbox
+                    key={part}
+                    label={t(`projectNew.parts.${part}`)}
+                    checked={parts.includes(part)}
+                    onCheckedChange={(c) => setParts((ps) => (c === true ? [...ps, part] : ps.filter((x) => x !== part)))}
+                  />
+                ))}
+              </div>
+            </fieldset>
+          </div>
+        )}
         {isApiError(create.error) && !create.error.fieldErrors.length && <Banner tone="danger">{create.error.message}</Banner>}
         <Field label={t("projectNew.name")} required error={fieldErr("name")}>
           <Input
@@ -80,7 +111,7 @@ export function NewProjectPage() {
             }}
           />
         </Field>
-        <Field label={t("projectNew.description")}>
+        <Field label={t("projectNew.description")} hint={mode === "template" ? t("projectNew.descriptionFromTemplate") : undefined}>
           <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
         <Checkbox label={t("projectNew.isPublic")} description={t("projectNew.isPublicHint")} checked={isPublic} onCheckedChange={(v) => setIsPublic(v === true)} />

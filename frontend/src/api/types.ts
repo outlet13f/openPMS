@@ -136,7 +136,8 @@ export interface Project extends ProjectRef {
 }
 
 export interface ProjectListParams {
-  filter?: "active" | "mine" | "favorite" | "archived";
+  /** templates: projects marked as templates (S04) */
+  filter?: "active" | "mine" | "favorite" | "archived" | "templates";
   status?: ProjectStatus;
   q?: string;
   page?: number;
@@ -149,8 +150,14 @@ export interface ProjectInput {
   descriptionHtml?: string;
   parentId?: Id | null;
   isPublic?: boolean;
+  /** S04: start from this template */
   templateId?: Id | null;
+  /** with a template: what to take over besides modules, types and project attributes */
+  copy?: TemplatePart[];
 }
+
+export const TEMPLATE_PARTS = ["members", "versions", "categories", "workPackages", "boards", "queries"] as const;
+export type TemplatePart = (typeof TEMPLATE_PARTS)[number];
 
 export interface ProjectOverview {
   project: Project;

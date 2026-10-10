@@ -24,6 +24,32 @@ test.describe("F10 프로젝트와 멤버", () => {
     await axe(page, "S23 멤버");
   });
 
+  test("F10-H2 a project marked as template starts a new project with its work and members", async ({ page }) => {
+    await page.goto("/projects/new");
+    await expect(page.getByRole("radio", { name: /템플릿에서 시작/ })).toBeDisabled();
+    await page.goto("/projects/web-platform/settings/general");
+    await page.getByRole("checkbox", { name: "템플릿으로 쓰기" }).click();
+    await page.getByRole("button", { name: "저장", exact: true }).click();
+    await expect(page.getByText("저장했습니다").first()).toBeVisible();
+
+    await page.goto("/projects/new");
+    await page.getByRole("radio", { name: /템플릿에서 시작/ }).click();
+    await expect(page.getByRole("combobox", { name: /^템플릿/ })).toContainText("웹 플랫폼 개편");
+    await expect(page.getByRole("checkbox", { name: "작업(계층·관계 포함)" })).toBeChecked();
+    await page.getByRole("checkbox", { name: "보드" }).click();
+    await axe(page, "S04 새 프로젝트 (템플릿)");
+    await page.getByLabel(/^프로젝트 이름/).fill("템플릿 프로젝트");
+    await page.getByLabel(/^식별자/).fill("from-template");
+    await page.getByRole("button", { name: "만들기", exact: true }).click();
+    await page.waitForURL(/\/projects\/from-template/);
+    const wps = await api<{ total: number }>(page, "return await api.workPackages.query({ projectId: 'from-template', page: 1, pageSize: 20, spec: { v: 1, filters: [], columns: ['subject'], sort: [], groupBy: null, hierarchy: false, sums: false, includeSubprojects: false } })");
+    expect(wps.total).toBeGreaterThan(5);
+    const boards = await api<unknown[]>(page, "return await api.boards.list('from-template')");
+    expect(boards).toHaveLength(0);
+    await page.goto("/projects/from-template/members");
+    await expect(page.getByRole("cell", { name: "박준호" }).first()).toBeVisible();
+  });
+
   test("F10-E1 a taken identifier is refused next to the field", async ({ page }) => {
     await page.goto("/projects/new");
     await page.getByLabel(/^프로젝트 이름/).fill("중복 시험");

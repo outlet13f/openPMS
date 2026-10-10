@@ -55,6 +55,73 @@ function normalizeOnce() {
 normalizeOnce();
 
 
+/** S04, same rules as the server's ProjectCopy: modules, types, fields always; the chosen parts; nobody is notified. */
+function copyTemplate(t: DbProject, p: DbProject, parts: Set<string>, user: DbUser) {
+  const now = nowIso();
+  Object.assign(p, { enabledModules: [...t.enabledModules], typeIds: [...t.typeIds], descriptionHtml: p.descriptionHtml || t.descriptionHtml });
+  for (const f of db.projectCustomFields.filter((x) => x.projectId === t.id)) db.projectCustomFields.push({ projectId: p.id, customFieldId: f.customFieldId });
+  if (parts.has("members"))
+    for (const m of db.members.filter((x) => x.projectId === t.id)) {
+      const same = db.members.find((x) => x.projectId === p.id && x.userId === m.userId && x.groupId === m.groupId);
+      if (same) same.roleIds = [...new Set([...same.roleIds, ...m.roleIds])];
+      else db.members.push({ ...m, id: newId("m"), projectId: p.id, roleIds: [...m.roleIds], createdAt: now });
+    }
+  const keep = (u: Id | null) => (u && isMember(u, p.id) ? u : null);
+  const ids = new Map<Id, Id>();
+  if (parts.has("versions"))
+    for (const v of db.versions.filter((x) => x.projectId === t.id)) {
+      const id = newId("v");
+      ids.set(v.id, id);
+      db.versions.push({ ...v, id, projectId: p.id });
+    }
+  if (parts.has("categories"))
+    for (const c of db.categories.filter((x) => x.projectId === t.id)) {
+      const id = newId("c");
+      ids.set(c.id, id);
+      db.categories.push({ ...c, id, projectId: p.id, defaultAssigneeId: keep(c.defaultAssigneeId) });
+    }
+  if (parts.has("workPackages")) {
+    const sources = db.workPackages.filter((w) => w.projectId === t.id).sort((a, b) => a.number - b.number);
+    const made = sources.map((w) => {
+      db.seq.wp += 1;
+      const c: DbWp = {
+        ...structuredClone(w), id: newId("wp"), number: db.seq.wp, projectId: p.id, authorId: user.id, parentId: null,
+        assigneeId: keep(w.assigneeId), responsibleId: keep(w.responsibleId), versionId: w.versionId ? (ids.get(w.versionId) ?? null) : null,
+        categoryId: w.categoryId ? (ids.get(w.categoryId) ?? null) : null, lockVersion: 0, createdAt: now, updatedAt: now,
+      };
+      ids.set(w.id, c.id);
+      db.workPackages.push(c);
+      return c;
+    });
+    sources.forEach((w, i) => (made[i].parentId = w.parentId ? (ids.get(w.parentId) ?? null) : null));
+    for (const r of db.relations.filter((x) => ids.has(x.fromId) && ids.has(x.toId) && sources.some((w) => w.id === x.fromId)))
+      db.relations.push({ ...r, id: newId("rel"), fromId: ids.get(r.fromId)!, toId: ids.get(r.toId)! });
+    for (const c of made) db.journals.push({ id: newId("j"), wpId: c.id, version: 1, userId: user.id, notesHtml: "", isInternal: false, changes: {}, cause: null, createdAt: now, updatedAt: now });
+  }
+  const remap = <T,>(v: T): T => {
+    let s = JSON.stringify(v);
+    for (const [a, b] of ids) s = s.split(a).join(b);
+    return JSON.parse(s) as T;
+  };
+  if (parts.has("boards"))
+    for (const b of db.boards.filter((x) => x.projectId === t.id && x.kind !== "subproject")) {
+      const columns = b.columns
+        .map((c) => ({ ...c, id: newId("col"), from: c.id, valueId: c.valueId && (b.kind === "version" || b.kind === "parent_child") ? (ids.get(c.valueId) ?? null) : b.kind === "assignee" ? keep(c.valueId) : c.valueId }))
+        .filter((c) => c.name !== null || c.valueId !== null);
+      const col = new Map(columns.map((c) => [c.from, c.id]));
+      const cards = parts.has("workPackages");
+      db.boards.push({
+        ...b, id: newId("b"), projectId: p.id, createdAt: now, filters: remap(b.filters ?? []),
+        columns: columns.map(({ from: _from, ...c }, i) => ({ ...c, position: i })),
+        order: cards ? Object.fromEntries(Object.entries(b.order).filter(([w]) => ids.has(w)).map(([w, n]) => [ids.get(w)!, n])) : {},
+        placed: cards && b.placed ? Object.fromEntries(Object.entries(b.placed).filter(([w, c]) => ids.has(w) && col.has(c)).map(([w, c]) => [ids.get(w)!, col.get(c)!])) : b.placed ? {} : undefined,
+      });
+    }
+  if (parts.has("queries"))
+    for (const q of db.queries.filter((x) => x.projectId === t.id && (x.isPublic || x.ownerId === user.id)))
+      db.queries.push({ ...q, id: newId("q"), projectId: p.id, ownerId: user.id, spec: remap(q.spec), createdAt: now });
+}
+
 function toMe(u: DbUser): Me {
   return clone({
     id: u.id,
@@ -676,6 +743,7 @@ export const fakeApi: Api = {
         else list = list.filter((p) => !p.archivedAt);
         if (f === "mine") list = list.filter((p) => isMember(user.id, p.id));
         if (f === "favorite") list = list.filter((p) => db.projectFavorites.some((x) => x.userId === user.id && x.projectId === p.id));
+        if (f === "templates") list = list.filter((p) => p.isTemplate);
         if (params.status) list = list.filter((p) => p.status === params.status);
         if (params.q) list = list.filter((p) => p.name.toLowerCase().includes(params.q!.toLowerCase()) || p.identifier.includes(params.q!.toLowerCase()));
         list.sort((a, b) => a.name.localeCompare(b.name, "ko"));
@@ -693,6 +761,8 @@ export const fakeApi: Api = {
         const identifier = input.identifier.trim();
         if (!/^[a-z][a-z0-9-]{0,99}$/.test(identifier)) throw fieldError("identifier", "영문 소문자로 시작하고 영문 소문자, 숫자, 하이픈만 쓸 수 있습니다.");
         if (db.projects.some((p) => p.identifier === identifier)) throw fieldError("identifier", "이미 사용 중인 식별자입니다.");
+        const template = input.templateId ? visibleProjects(user).find((p) => p.isTemplate && !p.archivedAt && (p.id === input.templateId || p.identifier === input.templateId)) : null;
+        if (input.templateId && !template) throw fieldError("template", "템플릿을 찾을 수 없습니다.");
         const now = nowIso();
         const p: DbProject = {
           id: newId("p"), identifier, name, descriptionHtml: input.descriptionHtml ?? "", status: null, statusExplanation: "",
@@ -702,6 +772,7 @@ export const fakeApi: Api = {
         };
         db.projects.push(p);
         db.members.push({ id: newId("m"), projectId: p.id, userId: user.id, groupId: null, roleIds: ["r-manager"], createdAt: now });
+        if (template) copyTemplate(template, p, new Set(input.copy ?? []), user);
         return toProject(p, user);
       }),
     update: (id, patch) =>

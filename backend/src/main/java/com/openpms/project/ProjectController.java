@@ -67,8 +67,10 @@ public class ProjectController {
 
     private final Current current;
     private final DSLContext db;
+    private final ProjectCopy copier;
 
-    public ProjectController(Current current, DSLContext db) {
+    public ProjectController(Current current, DSLContext db, ProjectCopy copier) {
+        this.copier = copier;
         this.current = current;
         this.db = db;
     }
@@ -112,6 +114,7 @@ public class ProjectController {
         var needle = q == null ? "" : q.trim().toLowerCase();
         var list = ctx.visibleProjects("project.view").stream()
                 .filter(p -> "archived".equals(filter) ? p.archivedAt() != null : p.archivedAt() == null)
+                .filter(p -> !"templates".equals(filter) || p.isTemplate())
                 .filter(p -> !"mine".equals(filter) || s.isMember(ctx.userId(), p.id()))
                 .filter(p -> !"favorite".equals(filter) || favs.contains(p.id()))
                 .filter(p -> status == null || status.isBlank() || status.equals(p.status()))
@@ -129,11 +132,24 @@ public class ProjectController {
         return toDto(ctx, ctx.findProject(id));
     }
 
+    /**
+     * A blank project, or one from a template ({templateId, copy: [members, versions, categories, workPackages, boards, queries]}):
+     * the template must be one the person can see; what is always and optionally taken over is in {@link ProjectCopy}.
+     */
     @PostMapping("/projects")
     @Transactional
     public ResponseEntity<Dto.Project> create(@RequestBody Map<String, Object> in) {
         var ctx = current.ctx();
         if (!ctx.isAdmin() && !ctx.globalPermissions().contains("global.create_projects")) throw ApiException.forbidden("프로젝트를 만들 권한이 없습니다.");
+        ProjectRow template = null;
+        var templateId = In.str(in, "templateId");
+        if (templateId != null && !templateId.isBlank()) {
+            template = ctx.visibleProjects("project.view").stream().filter(p -> p.isTemplate() && p.archivedAt() == null)
+                    .filter(p -> p.id().toString().equals(templateId) || p.identifier().equals(templateId)).findFirst()
+                    .orElseThrow(() -> ApiException.field("template", "템플릿을 찾을 수 없습니다."));
+        }
+        var parts = new HashSet<>(In.strings(in, "copy") == null ? List.<String>of() : In.strings(in, "copy"));
+        if (!ProjectCopy.PARTS.containsAll(parts)) throw ApiException.field("copy", "복사할 수 없는 항목이 있습니다.");
         var name = In.str(in, "name") == null ? "" : In.str(in, "name").trim();
         if (name.isEmpty()) throw ApiException.field("name", "프로젝트 이름을 입력하세요.");
         if (name.length() > 255) throw ApiException.field("name", "프로젝트 이름은 255자 이하로 입력하세요.");
@@ -159,6 +175,7 @@ public class ProjectController {
         for (var t : ctx.s().types()) if (t.isDefault()) db.insertInto(PROJECT_TYPES).set(PROJECT_TYPES.PROJECT_ID, p.getId()).set(PROJECT_TYPES.TYPE_ID, t.id()).execute();
         var m = db.insertInto(MEMBERS).set(MEMBERS.PROJECT_ID, p.getId()).set(MEMBERS.USER_ID, ctx.userId()).returning(MEMBERS.ID).fetchOne();
         db.insertInto(MEMBER_ROLES).set(MEMBER_ROLES.MEMBER_ID, m.getId()).set(MEMBER_ROLES.ROLE_ID, MANAGER_ROLE).execute();
+        if (template != null) copier.copy(ctx, template, p.getId(), parts, !html.isBlank());
         ctx.refresh();
         return ResponseEntity.status(HttpStatus.CREATED).body(toDto(ctx, ctx.findProject(p.getId())));
     }
@@ -187,6 +204,8 @@ public class ProjectController {
         }
         if (In.has(patch, "statusExplanation")) u = u.set(PROJECTS.STATUS_EXPLANATION, In.str(patch, "statusExplanation") == null ? "" : In.str(patch, "statusExplanation"));
         if (In.has(patch, "isPublic")) u = u.set(PROJECTS.IS_PUBLIC, Boolean.TRUE.equals(In.bool(patch, "isPublic")));
+        // 템플릿으로 쓰기: offered when someone creates a project
+        if (In.has(patch, "isTemplate")) u = u.set(PROJECTS.IS_TEMPLATE, Boolean.TRUE.equals(In.bool(patch, "isTemplate")));
         if (In.has(patch, "enabledModules")) {
             var mods = In.strings(patch, "enabledModules");
             if (mods == null || !MODULES.containsAll(mods)) throw ApiException.field("enabledModules", "알 수 없는 모듈입니다.");

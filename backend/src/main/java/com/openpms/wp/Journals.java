@@ -97,7 +97,7 @@ public class Journals {
         return j;
     }
 
-    static List<Object> listOf(Object a, Object b) {
+    public static List<Object> listOf(Object a, Object b) {
         var l = new ArrayList<>(2);
         l.add(a);
         l.add(b);
