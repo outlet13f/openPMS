@@ -51,7 +51,10 @@ interface FieldProps {
 }
 
 export function Field({ label, children, hint, error, required, layout = "stack", className }: FieldProps) {
-  const id = useId();
+  const generated = useId();
+  // an id the control already has wins: forms focus their first invalid field by it (BUG-002)
+  const own = isValidElement<{ id?: string }>(children) ? children.props.id : undefined;
+  const id = own ?? generated;
   const hintId = hint ? `${id}-hint` : undefined;
   const errorId = error ? `${id}-error` : undefined;
   const describedBy = [errorId, hintId].filter(Boolean).join(" ") || undefined;

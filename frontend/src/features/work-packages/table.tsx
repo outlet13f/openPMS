@@ -316,12 +316,15 @@ function InlineCreate({ projectId, typeId }: { projectId: string; typeId: string
   const [subject, setSubject] = useState("");
   const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLInputElement>(null);
+  const sending = useRef(false); // Enter pressed twice makes one item (BUG-001)
 
   const submit = async () => {
+    if (sending.current) return;
     if (!subject.trim()) {
       setError(t("wp.subjectRequired"));
       return;
     }
+    sending.current = true;
     try {
       const wp = await create.mutateAsync({ typeId, subject });
       toast({ tone: "success", title: t("wp.created", { number: wp.number }), description: wp.subject });
@@ -330,6 +333,8 @@ function InlineCreate({ projectId, typeId }: { projectId: string; typeId: string
       ref.current?.focus();
     } catch (err) {
       setError(isApiError(err) ? err.message : t("app.errorBody"));
+    } finally {
+      sending.current = false;
     }
   };
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {

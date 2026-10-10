@@ -1,5 +1,5 @@
 // S07 분할 상세, S09 새 작업 (both render inside the S06 split panel), S08 전체 화면.
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
@@ -98,6 +98,8 @@ export function NewPanelRoute({ base: hostBase }: { base?: string } = {}) {
   // custom field values typed so far; untouched fields show (and send) the field's default
   const [cf, setCf] = useState<Record<string, CustomValue>>({});
   const cfValue = (x: CustomField): CustomValue => (x.id in cf ? cf[x.id] : x.defaultValue);
+  // a double click (or Enter twice) reaches submit before the button shows it is busy: one request at a time (BUG-001)
+  const sending = useRef(false);
   useUnsavedWarning(!!v.subject?.trim() || (!!v.description && v.description !== form.data?.defaults.descriptionHtml));
   useDocumentTitle(form.data ? t("wp.newTitle", { type: form.data.type.name }) : undefined);
 
@@ -116,6 +118,8 @@ export function NewPanelRoute({ base: hostBase }: { base?: string } = {}) {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (sending.current) return;
+    sending.current = true;
     try {
       const wp = await create.mutateAsync({
         typeId: f.type.id,
@@ -137,6 +141,8 @@ export function NewPanelRoute({ base: hostBase }: { base?: string } = {}) {
       if (!isApiError(err)) console.error(err);
       const first = isApiError(err) ? err.fieldErrors[0]?.field : undefined;
       document.getElementById(`nw-${first ?? "subject"}`)?.focus();
+    } finally {
+      sending.current = false;
     }
   };
 

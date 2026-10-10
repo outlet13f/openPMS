@@ -265,6 +265,7 @@ export function RichTextEditor({ value, onChange, label, placeholder, people, on
         attributes: {
           role: "textbox",
           "aria-multiline": "true",
+          ...(people ? { "aria-autocomplete": "list" } : {}),
           "aria-label": label,
           ...(id ? { id } : {}),
           class: cn(richTextClasses, "min-h-[var(--rows)] px-3 py-2 outline-none"),
@@ -276,17 +277,17 @@ export function RichTextEditor({ value, onChange, label, placeholder, people, on
     [resetKey],
   );
 
-  // the list's state is announced through the text box (combobox pattern)
+  // the mention list is announced through the text box: aria-autocomplete + aria-activedescendant are what a textbox may
+  // carry (aria-expanded is not allowed on role=textbox, BUG-003)
   useEffect(() => {
     const dom = editor?.view.dom;
     if (!dom) return;
     const s = menu.state;
     if (s.open && s.items.length) {
-      dom.setAttribute("aria-expanded", "true");
       dom.setAttribute("aria-controls", listId);
       dom.setAttribute("aria-activedescendant", `${listId}-${s.active}`);
     } else {
-      dom.setAttribute("aria-expanded", "false");
+      dom.removeAttribute("aria-controls");
       dom.removeAttribute("aria-activedescendant");
     }
   }, [editor, menu.state, listId]);

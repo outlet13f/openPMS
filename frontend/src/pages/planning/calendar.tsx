@@ -272,6 +272,8 @@ export function CalendarPage() {
                 arg.el.setAttribute("aria-label", canMoveDates(wp) ? label : `${label}. ${t("planning.readOnly")}`);
                 arg.el.title = label;
               }}
+              // "+3 개" opens a popover: a button, not a bare <a> with aria-expanded (BUG-004)
+              moreLinkDidMount={(arg) => arg.el.setAttribute("role", "button")}
               dayHeaderContent={(arg) => {
                 // week view: "10.12" over "월" (the default "10. 12. (월)" wraps to three lines on phones)
                 const d = toIso(arg.date);

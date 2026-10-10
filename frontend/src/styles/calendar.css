@@ -54,6 +54,11 @@
   color: var(--pms-color-text-muted);
 }
 
+/* FullCalendar fades other months' day numbers to 30% (1.5:1); the muted colour already sets them apart (BUG-004) */
+.pms-calendar .fc-day-other .fc-daygrid-day-top {
+  opacity: 1;
+}
+
 .pms-calendar .fc-day-today .fc-daygrid-day-number {
   color: var(--pms-color-accent-subtle-text);
   font-weight: 700;

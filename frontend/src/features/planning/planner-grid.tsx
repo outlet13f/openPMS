@@ -171,7 +171,8 @@ function Bar({
         style={{ borderLeftColor: wp.type.color }}
       >
         <span className="shrink-0 text-fg-muted tabular-nums">#{wp.number}</span>
-        <span className={cn("truncate", wp._meta.overdue && "font-semibold text-danger")}>{wp.subject}</span>
+        {/* on the bar's grey the plain danger red is 4.48:1; the darker one passes (BUG-005) */}
+        <span className={cn("truncate", wp._meta.overdue && "font-semibold text-danger-hover")}>{wp.subject}</span>
         {resizable && (
           <>
             <span
