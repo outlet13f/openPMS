@@ -2,7 +2,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
-import { CalendarDays, CircleDot, Flag, GitBranch, ListPlus, Lock, Shapes, ShieldCheck, Users, UsersRound } from "lucide-react";
+import { CalendarDays, CircleDot, Flag, Gauge, GitBranch, ListPlus, Lock, Shapes, ShieldCheck, Users, UsersRound } from "lucide-react";
 import { useMe } from "@/api/hooks";
 import { EmptyState } from "@/components/ui/feedback";
 import { PageBody, PageHeader, useDocumentTitle } from "@/app/page";
@@ -27,6 +27,7 @@ export const ADMIN_SECTIONS = [
   { to: "/admin/workflows", key: "workflows", icon: <GitBranch /> },
   { to: "/admin/priorities", key: "priorities", icon: <Flag /> },
   { to: "/admin/custom-fields", key: "customFields", icon: <ListPlus /> },
+  { to: "/admin/progress", key: "progress", icon: <Gauge /> },
   { to: "/admin/users", key: "users", icon: <Users /> },
   { to: "/admin/groups", key: "groups", icon: <UsersRound /> },
   { to: "/admin/roles", key: "roles", icon: <ShieldCheck /> },

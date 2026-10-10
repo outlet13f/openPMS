@@ -18,7 +18,6 @@ import com.openpms.core.Snapshot.ProjectRow;
 import com.openpms.db.tables.records.WorkPackageSharesRecord;
 import com.openpms.db.tables.records.WorkPackagesRecord;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -223,6 +222,9 @@ public class WorkPackageService {
         w.setDueDate(dates.due());
         w.setDuration(dates.duration());
         w.setCustomValues(customFields.write(custom));
+        var status = s.status(w.getStatusId()).orElseThrow();
+        var progress = Progress.derive(s.settings().progress(), status.isClosed(), status.defaultDoneRatio(), null, null, null, false, false);
+        w.setDoneRatio(progress.doneRatio() == null ? null : progress.doneRatio().shortValue());
         w.setCreatedAt(now);
         w.setUpdatedAt(now);
         w.store();
@@ -378,7 +380,7 @@ public class WorkPackageService {
             set.put("dueDate", wp.getDueDate(), r.due(), () -> wp.setDueDate(r.due()));
             set.put("duration", wp.getDuration(), r.duration(), () -> wp.setDuration(r.duration()));
         }
-        progress(patch, wp, set);
+        progress(patch, wp, set, s);
         if (In.has(patch, "customValues")) {
             // against the type as patched: a type change in the same request decides which fields exist
             var r = customFields.apply(s, project.id(), wp.getTypeId(), customFields.read(wp.getCustomValues()), customInput(patch));
@@ -416,7 +418,9 @@ public class WorkPackageService {
     }
 
     /** P1: work, remaining work and % done (two given → the third follows). */
-    private static void progress(Map<String, Object> patch, WorkPackagesRecord wp, Setter set) {
+    /** P1–P3 with the S32 settings: typed values first, then what follows from them and from the (new) status. */
+    private static void progress(Map<String, Object> patch, WorkPackagesRecord wp, Setter set, Snapshot s) {
+        var settings = s.settings().progress();
         var hasWork = In.has(patch, "workHours");
         var hasRatio = In.has(patch, "doneRatio");
         var hasRemaining = In.has(patch, "remainingHours");
@@ -425,6 +429,9 @@ public class WorkPackageService {
             if (v != null && v.signum() < 0) throw ApiException.field("work", "0 이상으로 입력하세요.");
             set.put("workHours", wp.getWorkHours(), v, () -> wp.setWorkHours(v));
         }
+        var status = s.status(wp.getStatusId()).orElseThrow();
+        if ((hasRatio || hasRemaining) && Progress.locked(settings, status.isClosed()))
+            throw ApiException.unprocessable("완료 %는 상태를 따릅니다.", "진행률 설정(상태 기반, 또는 닫힘 상태면 100%) 때문에 완료 %와 남은 작업은 직접 바꿀 수 없습니다.");
         if (hasRatio) {
             var v = In.integer(patch, "doneRatio", "doneRatio");
             if (v != null && (v < 0 || v > 100)) throw ApiException.field("doneRatio", "0에서 100 사이로 입력하세요.");
@@ -436,11 +443,11 @@ public class WorkPackageService {
             if (v != null && v.signum() < 0) throw ApiException.field("remainingWork", "0 이상으로 입력하세요.");
             if (v != null && wp.getWorkHours() != null && v.compareTo(wp.getWorkHours()) > 0) throw ApiException.field("remainingWork", "남은 작업은 작업량보다 클 수 없습니다.");
             set.put("remainingHours", wp.getRemainingHours(), v, () -> wp.setRemainingHours(v));
-        } else if ((hasWork || hasRatio) && wp.getWorkHours() != null) {
-            int ratio = wp.getDoneRatio() == null ? 0 : wp.getDoneRatio();
-            var remaining = wp.getWorkHours().multiply(BigDecimal.valueOf(100 - ratio)).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-            set.put("remainingHours", wp.getRemainingHours(), remaining, () -> wp.setRemainingHours(remaining));
         }
+        var cur = wp.getDoneRatio() == null ? null : wp.getDoneRatio().intValue();
+        var next = Progress.derive(settings, status.isClosed(), status.defaultDoneRatio(), wp.getWorkHours(), cur, wp.getRemainingHours(), hasRemaining, hasWork || hasRatio);
+        set.put("doneRatio", cur, next.doneRatio(), () -> wp.setDoneRatio(next.doneRatio() == null ? null : next.doneRatio().shortValue()));
+        set.put("remainingHours", wp.getRemainingHours(), next.remainingHours(), () -> wp.setRemainingHours(next.remainingHours()));
     }
 
     private static Schedule.Node nodeOf(WorkPackagesRecord w, Snapshot s) {

@@ -9,6 +9,7 @@ import { clone, toProject, userRef } from "./dto";
 import { rescheduleAll } from "./scheduling";
 import { fieldError, HEX, run } from "./util";
 import { checkValue, toField } from "./custom-fields";
+import { deriveProgress, progressSettings } from "./progress";
 
 /* ---------- guards ---------- */
 
@@ -338,6 +339,26 @@ export const versionsApi: Api["versions"] = {
 
 export const adminApi: Api["admin"] = {
   customFields: customFieldsAdmin,
+  progress: {
+    get: () => run(() => (requireAdmin(sessionUser()), progressSettings())),
+    save: (input) =>
+      run(() => {
+        requireAdmin(sessionUser());
+        if (!["work", "status"].includes(input.mode)) throw fieldError("mode", "계산 방식을 고르세요.");
+        if (!["weighted", "simple_average"].includes(input.totals)) throw fieldError("totals", "합계 방식을 고르세요.");
+        db.settings = { ...db.settings, progressMode: input.mode, closedSets100: !!input.closedSets100, progressTotals: input.totals };
+        // every item follows the new rules; no journal entries (a setting changed, not the work)
+        let recalculated = 0;
+        for (const w of db.workPackages) {
+          const p = deriveProgress(w, { other: input.mode === "work" });
+          if (p.doneRatio !== w.doneRatio || p.remainingHours !== w.remainingHours) {
+            Object.assign(w, p);
+            recalculated++;
+          }
+        }
+        return { ...progressSettings(), recalculated };
+      }),
+  },
   types: {
     list: () => run(() => (requireAdmin(sessionUser()), db.types.slice().sort((a, b) => a.position - b.position).map(toType))),
     create: (input) =>

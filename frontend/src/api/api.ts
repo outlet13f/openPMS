@@ -1,5 +1,6 @@
 import type {
   Attachment,
+  ProgressSettings,
   ExportInput,
   SearchResults,
   SearchScope,
@@ -359,6 +360,12 @@ export interface Api {
       remove(id: Id): Promise<void>;
       /** PUT /admin/groups/{id}/members */
       setMembers(id: Id, userIds: Id[]): Promise<AdminGroup>;
+    };
+    progress: {
+      /** GET /admin/settings/progress */
+      get(): Promise<ProgressSettings>;
+      /** PUT /admin/settings/progress — recalculates every work package; returns how many changed */
+      save(input: ProgressSettings): Promise<ProgressSettings & { recalculated: number }>;
     };
     calendar: {
       /** GET /admin/settings/calendar */

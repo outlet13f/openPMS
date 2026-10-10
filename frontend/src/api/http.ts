@@ -229,6 +229,10 @@ export const httpApi: Api = {
       remove: (id) => del(`/admin/groups/${id}`),
       setMembers: (id, userIds) => put(`/admin/groups/${id}/members`, { userIds }),
     },
+    progress: {
+      get: () => get("/admin/settings/progress"),
+      save: (input) => put("/admin/settings/progress", input),
+    },
     calendar: {
       get: () => get("/admin/settings/calendar"),
       save: (input) => put("/admin/settings/calendar", input),

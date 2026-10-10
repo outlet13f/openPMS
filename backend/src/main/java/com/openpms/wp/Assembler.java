@@ -74,6 +74,29 @@ public class Assembler {
         return v == null ? null : v.doubleValue();
     }
 
+    /** P4/P5 for items with children: each item with all its descendants, in one recursive query. */
+    private Map<UUID, Dto.Totals> totals(Snapshot s, List<UUID> parents) {
+        var out = new HashMap<UUID, Dto.Totals>();
+        if (parents.isEmpty()) return out;
+        var items = new HashMap<UUID, List<Progress.Item>>();
+        db.resultQuery("""
+                with recursive t(root, id) as (
+                  select id, id from work_packages where id = any({0})
+                  union all
+                  select t.root, w.id from work_packages w join t on w.parent_id = t.id
+                )
+                select t.root, w.work_hours, w.remaining_hours, w.done_ratio, w.status_id from t join work_packages w on w.id = t.id""",
+                        org.jooq.impl.DSL.val(parents.toArray(UUID[]::new)))
+                .fetch().forEach(r -> {
+                    var status = s.status(r.get(4, UUID.class)).orElse(null);
+                    var ratio = r.get(3, Integer.class);
+                    items.computeIfAbsent(r.get(0, UUID.class), k -> new ArrayList<>())
+                            .add(new Progress.Item(r.get(1, BigDecimal.class), r.get(2, BigDecimal.class), ratio, status != null && status.excludedFromTotals()));
+                });
+        items.forEach((root, list) -> out.put(root, Progress.totals(s.settings().progress(), list)));
+        return out;
+    }
+
     public Dto.WorkPackage one(Ctx ctx, WorkPackagesRecord w) {
         return many(ctx, List.of(w)).get(0);
     }
@@ -104,6 +127,7 @@ public class Assembler {
         Map<UUID, WorkPackagesRecord> parents = new HashMap<>();
         if (!parentIds.isEmpty()) db.selectFrom(WORK_PACKAGES).where(WORK_PACKAGES.ID.in(parentIds)).fetch().forEach(p -> parents.put(p.getId(), p));
 
+        var totals = totals(s, rows.stream().filter(w -> childCount.getOrDefault(w.getId(), 0) > 0).map(WorkPackagesRecord::getId).toList());
         var out = new ArrayList<Dto.WorkPackage>(rows.size());
         for (var w : rows) {
             var project = s.project(w.getProjectId()).orElseThrow();
@@ -120,6 +144,8 @@ public class Assembler {
                     if (ctx.can(project, "wp.assign_versions")) editable.add("version");
                     if (ctx.can(project, "wp.manage_subtasks")) editable.add("parent");
                 }
+                // % and remaining work follow the status in status mode (or a closed status with closedSets100)
+                if (Progress.locked(s.settings().progress(), status.isClosed())) editable.removeAll(List.of("doneRatio", "remainingWork"));
                 editable.removeAll(derived);
                 if (!allowedStatusIds(ctx, w.getTypeId(), w.getStatusId(), w.getProjectId(), w.getAuthorId(), w.getAssigneeId()).isEmpty()) editable.add("status");
             }
@@ -138,7 +164,7 @@ public class Assembler {
                     w.getScheduleManually(), num(w.getWorkHours()), num(w.getRemainingHours()), w.getDoneRatio() == null ? null : w.getDoneRatio().intValue(),
                     watching.contains(w.getId()), watcherCount.getOrDefault(w.getId(), 0),
                     relationCount.getOrDefault(w.getId(), 0) + kids + (parent != null ? 1 : 0), attachmentCount.getOrDefault(w.getId(), 0),
-                    customFields.values(s, w), w.getLockVersion(), w.getCreatedAt(), w.getUpdatedAt(), meta));
+                    customFields.values(s, w), totals.get(w.getId()), w.getLockVersion(), w.getCreatedAt(), w.getUpdatedAt(), meta));
         }
         return out;
     }

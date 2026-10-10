@@ -33,6 +33,7 @@ import { fieldError, run } from "./util";
 import { activeFields, applyValues, fieldsInProjects, initialValues, toField } from "./custom-fields";
 import { accountApi, effectiveSetting } from "./notification-settings";
 import { exportWorkPackages } from "./export";
+import { deriveProgress, progressLocked } from "./progress";
 import { adminApi, categoriesApi, projectExtras, versionsApi } from "./admin";
 
 /* ---------- plumbing ---------- */
@@ -246,14 +247,30 @@ function applyPatch(user: DbUser, number: number, patch: WorkPackagePatch): Work
     set("dueDate", r.dueDate);
     set("duration", r.duration);
   }
-  if (patch.workHours !== undefined) set("workHours", patch.workHours);
-  if (patch.doneRatio !== undefined) set("doneRatio", patch.doneRatio);
-  if (patch.remainingHours !== undefined) set("remainingHours", patch.remainingHours);
-  else if ((patch.workHours !== undefined || patch.doneRatio !== undefined) && (next.workHours ?? wp.workHours) !== null) {
-    const work = (next.workHours ?? wp.workHours)!;
-    const ratio = next.doneRatio ?? wp.doneRatio ?? 0;
-    set("remainingHours", Math.round(work * (1 - ratio / 100) * 100) / 100);
+  // progress (P1–P3): typed values first, then what follows from them, the status and the S32 settings
+  if (patch.workHours !== undefined) {
+    if (patch.workHours !== null && patch.workHours < 0) throw fieldError("work", "0 이상으로 입력하세요.");
+    set("workHours", patch.workHours);
   }
+  const locked = progressLocked({ statusId: next.statusId ?? wp.statusId });
+  if (locked && (patch.doneRatio !== undefined || patch.remainingHours !== undefined))
+    throw new ApiError(422, "완료 %는 상태를 따릅니다.", "진행률 설정(상태 기반, 또는 닫힘 상태면 100%) 때문에 완료 %와 남은 작업은 직접 바꿀 수 없습니다.");
+  if (patch.doneRatio !== undefined) {
+    if (patch.doneRatio !== null && (patch.doneRatio < 0 || patch.doneRatio > 100)) throw fieldError("doneRatio", "0에서 100 사이로 입력하세요.");
+    set("doneRatio", patch.doneRatio);
+  }
+  if (patch.remainingHours !== undefined) {
+    const work = next.workHours !== undefined ? next.workHours : wp.workHours;
+    if (patch.remainingHours !== null && patch.remainingHours < 0) throw fieldError("remainingWork", "0 이상으로 입력하세요.");
+    if (patch.remainingHours !== null && work !== null && patch.remainingHours > work) throw fieldError("remainingWork", "남은 작업은 작업량보다 클 수 없습니다.");
+    set("remainingHours", patch.remainingHours);
+  }
+  const progress = deriveProgress(
+    { ...wp, ...next },
+    { remaining: patch.remainingHours !== undefined, other: patch.workHours !== undefined || patch.doneRatio !== undefined },
+  );
+  set("doneRatio", progress.doneRatio);
+  set("remainingHours", progress.remainingHours);
 
   if (patch.customValues) {
     const r = applyValues({ ...wp, ...next }, patch.customValues);
@@ -631,6 +648,7 @@ export const fakeApi: Api = {
           workHours: null, remainingHours: null, doneRatio: null, customValues, lockVersion: 0, createdAt: now, updatedAt: now,
         };
         Object.assign(base, resolveDates(base, { startDate: input.startDate, dueDate: input.dueDate }));
+        Object.assign(base, deriveProgress(base));
         db.workPackages.push(base);
         const j = writeJournal(base, user, { _created: [null, true] });
         fanOut(base, j, user);

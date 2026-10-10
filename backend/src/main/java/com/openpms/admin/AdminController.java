@@ -728,6 +728,45 @@ public class AdminController {
         schedules.apply(ctx, graph.rescheduleAll());
     }
 
+    /* ---------- progress tracking (S32) ---------- */
+
+    @GetMapping("/settings/progress")
+    public Dto.ProgressSettings progressSettings() {
+        var p = admin().s().settings().progress();
+        return new Dto.ProgressSettings(p.mode(), p.closedSets100(), p.totals(), null);
+    }
+
+    /** Saves the rules and recalculates every work package (no journals: a setting changed, not the work; times stay). */
+    @PutMapping("/settings/progress")
+    @Transactional
+    public Dto.ProgressSettings saveProgressSettings(@RequestBody Map<String, Object> in) {
+        var ctx = admin();
+        var mode = In.str(in, "mode");
+        var totals = In.str(in, "totals");
+        if (!"work".equals(mode) && !"status".equals(mode)) throw ApiException.field("mode", "계산 방식을 고르세요.");
+        if (!"weighted".equals(totals) && !"simple_average".equals(totals)) throw ApiException.field("totals", "합계 방식을 고르세요.");
+        boolean closed = Boolean.TRUE.equals(In.bool(in, "closedSets100"));
+        settings.put("progress.mode", "\"" + mode + "\"", ctx.userId());
+        settings.put("progress.closed_sets_100", String.valueOf(closed), ctx.userId());
+        settings.put("progress.totals", "\"" + totals + "\"", ctx.userId());
+        ctx.refresh();
+        var p = ctx.s().settings().progress();
+        db.execute("set local openpms.keep_updated_at = 'on'");
+        int changed = 0;
+        for (var w : db.selectFrom(WORK_PACKAGES).fetch()) {
+            var status = ctx.s().status(w.getStatusId()).orElseThrow();
+            var ratio = w.getDoneRatio() == null ? null : w.getDoneRatio().intValue();
+            var v = com.openpms.wp.Progress.derive(p, status.isClosed(), status.defaultDoneRatio(), w.getWorkHours(), ratio, w.getRemainingHours(), false, "work".equals(mode));
+            boolean sameRemaining = v.remainingHours() == null ? w.getRemainingHours() == null : w.getRemainingHours() != null && v.remainingHours().compareTo(w.getRemainingHours()) == 0;
+            if (java.util.Objects.equals(v.doneRatio(), ratio) && sameRemaining) continue;
+            w.setDoneRatio(v.doneRatio() == null ? null : v.doneRatio().shortValue());
+            w.setRemainingHours(v.remainingHours());
+            w.store();
+            changed++;
+        }
+        return new Dto.ProgressSettings(p.mode(), p.closedSets100(), p.totals(), changed);
+    }
+
     @GetMapping("/settings/calendar")
     public CalendarSettings calendar() {
         var ctx = admin();

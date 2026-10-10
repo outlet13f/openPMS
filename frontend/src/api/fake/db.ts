@@ -137,7 +137,15 @@ export interface Db {
   notifications: DbNotification[];
   projectFavorites: { userId: Id; projectId: Id }[];
   nonWorkingDays: { id: Id; date: IsoDate; name: string }[];
-  settings: { workingDays: number[]; hoursPerDay: number; journalAggregationMinutes: number };
+  settings: {
+    workingDays: number[];
+    hoursPerDay: number;
+    journalAggregationMinutes: number;
+    /** S32; absent = work / false / weighted */
+    progressMode?: "work" | "status";
+    closedSets100?: boolean;
+    progressTotals?: "weighted" | "simple_average";
+  };
 }
 
 const KEY = "openpms.fakedb";

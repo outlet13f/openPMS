@@ -79,7 +79,7 @@ public final class Snapshot {
 
     public record CategoryRow(UUID id, UUID projectId, String name, UUID defaultAssigneeId) {}
 
-    public record Settings(List<Integer> workingDays, int hoursPerDay, int journalAggregationMinutes) {}
+    public record Settings(List<Integer> workingDays, int hoursPerDay, int journalAggregationMinutes, com.openpms.wp.Progress.Settings progress) {}
 
     public record OptionRow(UUID id, String value, int position) {}
 
@@ -174,6 +174,15 @@ public final class Snapshot {
         List<Integer> working = List.of(1, 2, 3, 4, 5);
         int hours = 8;
         int aggregation = 5;
+        var progress = com.openpms.wp.Progress.Settings.DEFAULT;
+        try {
+            var mode = values.get("progress.mode") == null ? progress.mode() : this.json.readValue(values.get("progress.mode").data(), String.class);
+            var closed = values.get("progress.closed_sets_100") != null && Boolean.parseBoolean(values.get("progress.closed_sets_100").data().trim());
+            var totals = values.get("progress.totals") == null ? progress.totals() : this.json.readValue(values.get("progress.totals").data(), String.class);
+            progress = new com.openpms.wp.Progress.Settings(mode, closed, totals);
+        } catch (RuntimeException ignored) {
+            // keep the defaults for an unreadable value
+        }
         try {
             if (values.get("calendar.working_days") != null)
                 working = List.of(this.json.readValue(values.get("calendar.working_days").data(), Integer[].class));
@@ -182,7 +191,7 @@ public final class Snapshot {
         } catch (RuntimeException ignored) {
             // keep defaults for an unreadable value
         }
-        return new Settings(working, hours, aggregation);
+        return new Settings(working, hours, aggregation, progress);
     });
 
     private final Supplier<Map<UUID, Set<UUID>>> globalRoles = lazy(() -> {

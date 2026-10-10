@@ -1,7 +1,7 @@
 // Query hooks for administration (S27–S36) and project settings (S24–S26).
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { CalendarSettings, CustomFieldInput, Id, PriorityInput, RoleInput, StatusInput, Transition, TypeInput, UserInput, VersionInput } from "./types";
+import type { CalendarSettings, CustomFieldInput, Id, ProgressSettings, PriorityInput, RoleInput, StatusInput, Transition, TypeInput, UserInput, VersionInput } from "./types";
 
 export const ak = {
   customFields: ["admin", "custom-fields"] as const,
@@ -37,6 +37,11 @@ function useMut<A, R>(fn: (a: A) => Promise<R>) {
   const qc = useQueryClient();
   return useMutation({ mutationFn: fn, onSuccess: () => refreshEverything(qc) });
 }
+
+/* ---------- progress tracking (S32) ---------- */
+
+export const useProgressSettings = () => useQuery({ queryKey: ["admin", "progress"], queryFn: () => api.admin.progress.get() });
+export const useSaveProgressSettings = () => useMut((input: ProgressSettings) => api.admin.progress.save(input));
 
 /* ---------- custom fields (S34, S25) ---------- */
 

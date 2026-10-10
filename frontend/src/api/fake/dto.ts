@@ -4,6 +4,7 @@ import { formatDate, todayIso } from "@/lib/dates";
 import { db, type DbJournal, type DbProject, type DbUser, type DbWp } from "./db";
 import { allowedStatusIds, can, projectPermissions, shareRoleOf } from "./permissions";
 import { cfIdOf, cfText, customValuesOf } from "./custom-fields";
+import { progressLocked, totalsOf } from "./progress";
 
 export const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 
@@ -83,6 +84,8 @@ export function toWp(w: DbWp, user: DbUser): WorkPackage {
       : ["subject", "description", "type", "priority", "assignee", "responsible", "category", "dates", "work", "remainingWork", "doneRatio"];
     if (can(user, project, "wp.assign_versions") && !status.isReadonly) editable.push("version");
     if (can(user, project, "wp.manage_subtasks") && !status.isReadonly) editable.push("parent");
+    // % and remaining work follow the status in status mode (or a closed status with closedSets100)
+    if (progressLocked(w)) editable = editable.filter((f) => f !== "doneRatio" && f !== "remainingWork");
     editable = editable.filter((f) => !derived.includes(f));
     if (allowedStatusIds(user, w).length) editable.push("status");
   }
@@ -116,6 +119,7 @@ export function toWp(w: DbWp, user: DbUser): WorkPackage {
     relationCount: db.relations.filter((r) => r.fromId === w.id || r.toId === w.id).length + kids.length + (parent ? 1 : 0),
     attachmentCount: db.attachments.filter((a) => a.wpId === w.id).length,
     customValues: customValuesOf(w),
+    totals: totalsOf(w),
     lockVersion: w.lockVersion,
     createdAt: w.createdAt,
     updatedAt: w.updatedAt,

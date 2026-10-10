@@ -91,7 +91,13 @@ public final class Dto {
                               WorkPackageRef parent, int childCount, LocalDate startDate, LocalDate dueDate, Integer duration,
                               boolean ignoreNonWorkingDays, boolean scheduleManually, Double workHours, Double remainingHours, Integer doneRatio,
                               boolean watching, int watcherCount, int relationCount, int attachmentCount, Map<String, CustomValue> customValues,
-                              int lockVersion, OffsetDateTime createdAt, OffsetDateTime updatedAt, @JsonProperty("_meta") Meta meta) {}
+                              Totals totals, int lockVersion, OffsetDateTime createdAt, OffsetDateTime updatedAt, @JsonProperty("_meta") Meta meta) {}
+
+    /** P4/P5: an item and its descendants */
+    public record Totals(Double workHours, Double remainingHours, Integer doneRatio) {}
+
+    /** S32 */
+    public record ProgressSettings(String mode, boolean closedSets100, String totals, Integer recalculated) {}
 
     /* ---------- custom fields (S34, S25) ---------- */
 

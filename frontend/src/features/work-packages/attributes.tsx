@@ -112,6 +112,13 @@ export function Attributes({ wp }: { wp: WorkPackage }) {
         <Row label={t("wp.fields.doneRatio")}>
           <InlineText type="number" label={t("wp.fields.doneRatio")} disabled={!can("doneRatio")} value={wp.doneRatio?.toString() ?? ""} display={wp.doneRatio !== null ? `${wp.doneRatio}%` : undefined} onSave={(v) => ok({ doneRatio: num(v) === null ? null : Math.max(0, Math.min(100, Math.round(num(v)!))) })} />
         </Row>
+        {wp.totals && (
+          <div className="mt-1 rounded-md bg-surface px-2 py-1" title={t("wp.totals.hint")}>
+            <Row label={t("wp.totals.work")}>{wp.totals.workHours !== null ? t("wp.hoursUnit", { value: wp.totals.workHours }) : <span className="text-fg-muted">-</span>}</Row>
+            <Row label={t("wp.totals.remaining")}>{wp.totals.remainingHours !== null ? t("wp.hoursUnit", { value: wp.totals.remainingHours }) : <span className="text-fg-muted">-</span>}</Row>
+            <Row label={t("wp.totals.doneRatio")}>{wp.totals.doneRatio !== null ? `${wp.totals.doneRatio}%` : <span className="text-fg-muted">-</span>}</Row>
+          </div>
+        )}
       </Group>
 
       <Group title={t("wp.groups.details")}>

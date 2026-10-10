@@ -214,6 +214,7 @@ const ko = {
       duration: "기간", work: "작업량", remainingWork: "남은 작업", doneRatio: "완료 %", author: "작성자",
     },
     groups: { people: "사람", schedule: "일정", progress: "진행률", details: "세부 정보" },
+    totals: { work: "합계 작업량", remaining: "합계 남은 작업", doneRatio: "합계 완료 %", hint: "자신과 하위 작업(합계에서 빼는 상태 제외)" },
     hoursUnit: "{{value}}시간",
     daysUnit: "{{value}}일",
     unassigned: "담당자 없음",
@@ -346,6 +347,7 @@ const ko = {
       roles: "역할 및 권한",
       calendar: "근무일 및 휴무일",
       customFields: "사용자 정의 필드",
+      progress: "진행률 추적",
     },
     sectionHints: {
       types: "작업 유형과 색, 마일스톤 여부",
@@ -357,6 +359,7 @@ const ko = {
       roles: "역할마다 할 수 있는 일",
       calendar: "일정 계산에 쓰는 근무 요일과 공휴일",
       customFields: "작업에 더하는 회사 고유 항목",
+      progress: "완료 %를 계산하는 방식과 상위 작업의 합계",
     },
     types: {
       new: "유형 추가",
@@ -758,6 +761,24 @@ const ko = {
       forAll: "모든 프로젝트",
       detail: "{{format}} · 유형: {{types}}",
     },
+  },
+  progressSettings: {
+    mode: "계산 방식",
+    modes: { work: "작업량 기준", status: "상태 기준" },
+    modeHints: {
+      work: "완료 %를 직접 입력하거나, 작업량과 남은 작업 중 하나를 바꾸면 나머지를 계산합니다.",
+      status: "완료 %는 상태마다 정한 값(관리 › 상태)을 따르고 직접 바꿀 수 없습니다. 남은 작업은 작업량에서 계산합니다.",
+    },
+    closed: "닫힌 상태가 되면 완료 100%, 남은 작업 0으로",
+    closedHint: "완료·취소처럼 닫힌 상태의 작업은 진행률을 끝난 것으로 봅니다.",
+    totals: "상위 작업의 합계 완료 %",
+    totalsModes: { weighted: "작업량 가중", simple_average: "단순 평균" },
+    totalsHints: {
+      weighted: "(합계 작업량 − 합계 남은 작업) ÷ 합계 작업량. 큰 작업이 더 크게 반영됩니다.",
+      simple_average: "자신과 하위 작업의 완료 %를 평균합니다. 작업량이 없어도 됩니다.",
+    },
+    recalcNote: "저장하면 모든 작업의 완료 %와 남은 작업을 새 규칙으로 다시 계산합니다. 활동 기록은 남기지 않습니다.",
+    saved: "저장했습니다. 작업 {{count}}개를 다시 계산했습니다.",
   },
   export: {
     open: "내보내기",

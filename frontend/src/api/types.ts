@@ -267,6 +267,8 @@ export interface WorkPackage {
    * value null. `text` is the display form (option and user names, formatted dates).
    */
   customValues: Record<Id, { value: CustomValue; text: string }>;
+  /** P4/P5: this item and its descendants (statuses excluded from totals left out); null without children */
+  totals: { workHours: number | null; remainingHours: number | null; doneRatio: number | null } | null;
   lockVersion: number;
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
@@ -820,6 +822,17 @@ export interface AdminGroup {
   id: Id;
   name: string;
   members: UserRef[];
+}
+
+/**
+ * S32 진행률 추적 (architecture.md §3.4). work: % is typed, or follows from work and remaining work;
+ * status: % is the status's default and cannot be typed. closedSets100: a closed status means 100 % and 0 h left.
+ * totals: how a parent's total % is made — weighted by work, or the plain average of the items' %.
+ */
+export interface ProgressSettings {
+  mode: "work" | "status";
+  closedSets100: boolean;
+  totals: "weighted" | "simple_average";
 }
 
 export interface CalendarSettings {

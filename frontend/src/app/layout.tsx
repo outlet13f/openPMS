@@ -145,7 +145,7 @@ function ProjectSidebar({ identifier, onNavigate, onCollapse }: { identifier: st
 function AdminSidebar({ me, onNavigate, onCollapse }: { me: Me; onNavigate?: () => void; onCollapse?: () => void }) {
   const { t } = useTranslation();
   const groups: { title: string; keys: string[] }[] = [
-    { title: t("admin.groupTitles.workPackages"), keys: ["types", "statuses", "workflows", "priorities"] },
+    { title: t("admin.groupTitles.workPackages"), keys: ["types", "statuses", "workflows", "priorities", "customFields", "progress"] },
     { title: t("admin.groupTitles.people"), keys: ["users", "groups", "roles"] },
     { title: t("admin.groupTitles.calendar"), keys: ["calendar"] },
   ];
