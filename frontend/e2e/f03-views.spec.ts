@@ -1,0 +1,66 @@
+// F03 필터한 보기를 저장해 팀과 공유 (S06, S11)
+import { test, expect, login, resetDb, axe } from "./support";
+
+test.beforeAll(resetDb);
+
+test.describe("F03 보기 저장·공유", () => {
+  test.beforeEach(async ({ page }) => login(page, "seoyeon.kim@openpms.local"));
+
+  test("F03-H1 filter by priority, save as a public view, it shows in the sidebar", async ({ page }) => {
+    await page.goto("/projects/web-platform/work-packages");
+    await page.getByRole("button", { name: /^필터/ }).first().click();
+    const filters = page.getByRole("region", { name: "필터" });
+    await filters.getByRole("combobox", { name: "필터 추가" }).click();
+    await page.getByRole("option", { name: "우선순위", exact: true }).click();
+    await filters.getByRole("button", { name: "우선순위 값" }).click();
+    await page.getByRole("checkbox", { name: "긴급" }).click();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("link", { name: "검색 결과가 날짜순으로 정렬되지 않음" }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: "화면 설계 검토" })).toHaveCount(0);
+    await axe(page, "S06 필터 열림");
+    await page.getByRole("button", { name: "보기 메뉴" }).click();
+    await page.getByRole("menuitem", { name: "다른 이름으로 저장" }).click();
+    const dlg = page.getByRole("dialog");
+    await dlg.getByLabel(/^보기 이름/).fill("긴급 건");
+    await dlg.getByRole("checkbox").first().click();
+    await dlg.getByRole("button", { name: "저장" }).click();
+    await expect(page.getByText("보기를 저장했습니다").first()).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "프로젝트 메뉴" }).getByRole("link", { name: "긴급 건" })).toBeVisible();
+  });
+
+  test("F03-E1 a filter with no results says so", async ({ page }) => {
+    await page.goto("/projects/web-platform/work-packages");
+    await page.getByRole("button", { name: /^필터/ }).first().click();
+    await page.getByPlaceholder("제목이나 #번호로 찾기").fill("존재하지않는제목xyz");
+    await expect(page.getByText("조건에 맞는 작업이 없습니다").first()).toBeVisible();
+  });
+
+  test("F03-E2 the URL carries the view: a second tab shows the same list", async ({ page, context }) => {
+    await page.goto("/projects/web-platform/work-packages");
+    await page.getByRole("button", { name: /^필터/ }).first().click();
+    const filters = page.getByRole("region", { name: "필터" });
+    await filters.getByRole("combobox", { name: "필터 추가" }).click();
+    await page.getByRole("option", { name: "우선순위", exact: true }).click();
+    await filters.getByRole("button", { name: "우선순위 값" }).click();
+    const unfiltered = await page.getByText(/총 \d+건/).first().innerText();
+    await page.getByRole("checkbox", { name: "높음" }).click();
+    await page.keyboard.press("Escape");
+    await expect(page).toHaveURL(/[?&]q=/);
+    await expect(page.getByText(/총 \d+건/).first()).not.toHaveText(unfiltered);
+    const total = await page.getByText(/총 \d+건/).first().innerText();
+    const other = await context.newPage();
+    await other.goto(page.url());
+    await expect(other.getByText(total).first()).toBeVisible();
+    await other.close();
+  });
+
+  test("F03-N1 a member without public-view rights gets no public checkbox", async ({ page }) => {
+    await page.evaluate(async () => (await import("/src/api/index.ts" as string)).api.auth.logout());
+    await login(page, "junho.park@openpms.local");
+    await page.goto("/projects/web-platform/work-packages");
+    await page.getByRole("button", { name: "보기 메뉴" }).click();
+    await page.getByRole("menuitem", { name: "다른 이름으로 저장" }).click();
+    await expect(page.getByRole("dialog").getByLabel(/^보기 이름/)).toBeVisible();
+    await expect(page.getByRole("dialog").getByRole("checkbox")).toHaveCount(0);
+  });
+});

@@ -10,6 +10,7 @@
     "dev:api": "vite --mode api --port 5174",
     "prebuild": "npm run tokens",
     "build": "tsc -b && vite build",
+    "e2e": "playwright test",
     "typecheck": "tsc -b --noEmit",
     "preview": "vite preview",
     "contrast": "python ../replica/design/contrast.py ../replica/design/tokens.json"
@@ -42,6 +43,8 @@
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.64.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.6.4",
     "@types/react": "^19.3.0",
