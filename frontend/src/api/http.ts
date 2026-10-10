@@ -168,6 +168,10 @@ export const httpApi: Api = {
     get: (id) => get(`/boards/${id}`),
     remove: (id) => del(`/boards/${id}`),
     move: (id, input) => post(`/boards/${id}/moves`, input),
+    update: (id, p) => patch(`/boards/${id}`, p),
+    addColumn: (id, valueId) => post(`/boards/${id}/columns`, { valueId }),
+    updateColumn: (columnId, p) => patch(`/board-columns/${columnId}`, p),
+    removeColumn: (columnId) => del(`/board-columns/${columnId}`),
   },
   notifications: {
     list: (filter) => get("/notifications", { filter }),

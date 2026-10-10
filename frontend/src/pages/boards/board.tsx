@@ -1,4 +1,5 @@
 // S15 보드: drag cards between columns (changes status/assignee/version through the API, workflow enforced).
+// With board.manage: rename the board, add columns (a status, member or version not yet there), move and remove them.
 import { useEffect, useMemo, useState, type KeyboardEventHandler, type PointerEventHandler } from "react";
 import { Link, Outlet, useMatch, useNavigate, useParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -19,13 +20,14 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, MoreHorizontal, Plus, Trash2 } from "lucide-react";
-import { api, isApiError, type BoardColumn, type WorkPackage } from "@/api";
-import { invalidateWorkPackages, qk, useBoard, useBoardMutations } from "@/api/hooks";
+import { ArrowLeft, ArrowRight, Columns3, GripVertical, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { api, isApiError, type Board, type BoardColumn, type WorkPackage } from "@/api";
+import { invalidateWorkPackages, qk, useBoard, useBoardMutations, useFilterOptions } from "@/api/hooks";
+import { Field, Input } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { Counter } from "@/components/ui/badges";
 import { EmptyState, useToast } from "@/components/ui/feedback";
-import { Menu } from "@/components/ui/overlay";
+import { Dialog, Menu } from "@/components/ui/overlay";
 import { Skeleton } from "@/components/ui/spinner";
 import { WorkPackageCard } from "@/components/domain/work-package-card";
 import { cn } from "@/lib/cn";
@@ -105,7 +107,50 @@ function SortableCard({ wp, href, disabled }: { wp: WorkPackage; href: string; d
   );
 }
 
-function Column({ column, hrefOf, canDrag, addHref }: { column: BoardColumn; hrefOf: (wp: WorkPackage) => string; canDrag: boolean; addHref?: string }) {
+/** Renaming the board or a column without a value: one text field. */
+function NameDialog({ title, label, initial, onClose, onSave }: { title: string; label: string; initial: string; onClose: () => void; onSave: (name: string) => Promise<unknown> }) {
+  const { t } = useTranslation();
+  const [name, setName] = useState(initial);
+  const [error, setError] = useState<string | undefined>();
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    if (!name.trim()) return setError(t("boards.nameRequired"));
+    setBusy(true);
+    try {
+      await onSave(name.trim());
+      onClose();
+    } catch (e) {
+      setError(isApiError(e) ? (e.fieldErrors[0]?.message ?? e.message) : t("app.errorBody"));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={title}
+      footer={
+        <>
+          <Button onClick={onClose}>{t("app.cancel")}</Button>
+          <Button variant="primary" loading={busy} onClick={() => void save()}>
+            {t("app.save")}
+          </Button>
+        </>
+      }
+    >
+      <form onSubmit={(e) => (e.preventDefault(), void save())}>
+        <Field label={label} required error={error}>
+          <Input autoFocus maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+      </form>
+    </Dialog>
+  );
+}
+
+type ColumnActions = { left?: () => void; right?: () => void; rename?: () => void; remove: () => void };
+
+function Column({ column, hrefOf, canDrag, addHref, actions }: { column: BoardColumn; hrefOf: (wp: WorkPackage) => string; canDrag: boolean; addHref?: string; actions?: ColumnActions }) {
   const { t } = useTranslation();
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
   return (
@@ -116,11 +161,26 @@ function Column({ column, hrefOf, canDrag, addHref }: { column: BoardColumn; hre
           <span className="truncate">{column.title}</span>
           <Counter>{column.cards.length}</Counter>
         </h2>
-        {addHref && (
-          <Button asChild variant="ghost" size="sm" iconOnly aria-label={t("boards.addCard", { column: column.title })} icon={<Plus />}>
-            <Link to={addHref} />
-          </Button>
-        )}
+        <div className="flex shrink-0 items-center">
+          {addHref && (
+            <Button asChild variant="ghost" size="sm" iconOnly aria-label={t("boards.addCard", { column: column.title })} icon={<Plus />}>
+              <Link to={addHref} />
+            </Button>
+          )}
+          {actions && (
+            <Menu
+              align="end"
+              trigger={<Button variant="ghost" size="sm" iconOnly aria-label={t("boards.columnMenu", { column: column.title })} icon={<MoreHorizontal />} />}
+              items={[
+                ...(actions.left ? [{ label: t("boards.columnLeft"), icon: <ArrowLeft />, onSelect: actions.left }] : []),
+                ...(actions.right ? [{ label: t("boards.columnRight"), icon: <ArrowRight />, onSelect: actions.right }] : []),
+                ...(actions.rename ? [{ label: t("boards.columnRename"), icon: <Pencil />, onSelect: actions.rename }] : []),
+                { kind: "separator" as const },
+                { label: t("boards.columnRemove"), icon: <Trash2 />, danger: true, onSelect: actions.remove },
+              ]}
+            />
+          )}
+        </div>
       </header>
       <SortableContext items={column.cards.map((c) => cardId(c.number))} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className="flex min-h-24 flex-1 flex-col gap-2">
@@ -149,6 +209,8 @@ export function BoardPage() {
   const qc = useQueryClient();
   const board = useBoard(id!);
   const { remove } = useBoardMutations(project.id);
+  const options = useFilterOptions(project.id).data;
+  const [naming, setNaming] = useState<{ kind: "board" } | { kind: "column"; column: BoardColumn } | null>(null);
   const [columns, setColumns] = useState<BoardColumn[] | null>(null);
   const [active, setActive] = useState<WorkPackage | null>(null);
   const [origin, setOrigin] = useState<string | null>(null);
@@ -242,6 +304,39 @@ export function BoardPage() {
     }
   };
 
+  /** A change that answers with the whole board: show it, or say why not (and rethrow for a dialog to keep its error). */
+  const apply = async (p: Promise<Board>, done?: string) => {
+    try {
+      const saved = await p;
+      qc.setQueryData(qk.board(b.id), saved);
+      void qc.invalidateQueries({ queryKey: qk.boards(project.id) });
+      if (done) toast({ tone: "success", title: done });
+    } catch (err) {
+      toast({ tone: "danger", title: isApiError(err) ? err.title : t("app.errorTitle"), description: isApiError(err) && err.message !== err.title ? err.message : undefined });
+      throw err;
+    }
+  };
+  const quietly = (p: Promise<unknown>) => void p.catch(() => undefined);
+  const used = new Set(b.columns.map((c) => c.valueId).filter(Boolean));
+  const candidates =
+    b.kind === "status"
+      ? (options?.statuses ?? []).map((s) => ({ id: s.id, name: s.name }))
+      : b.kind === "assignee"
+        ? (options?.users ?? []).map((u) => ({ id: u.id, name: u.name }))
+        : b.kind === "version"
+          ? (options?.versions ?? []).map((v) => ({ id: v.id, name: v.name }))
+          : [];
+  const addable = candidates.filter((c) => !used.has(c.id));
+  const columnActions = (c: BoardColumn, i: number): ColumnActions | undefined =>
+    b.canManage
+      ? {
+          left: i > 0 ? () => quietly(apply(api.boards.updateColumn(c.id, { position: i - 1 }))) : undefined,
+          right: i < cols.length - 1 ? () => quietly(apply(api.boards.updateColumn(c.id, { position: i + 1 }))) : undefined,
+          rename: c.valueId ? undefined : () => setNaming({ kind: "column", column: c }),
+          remove: () => quietly(apply(api.boards.removeColumn(c.id), t("boards.columnRemoved", { column: c.title }))),
+        }
+      : undefined;
+
   const hrefOf = (wp: WorkPackage) => `${base}/details/${wp.number}/overview`;
   const canDrag = b.kind !== "basic";
   const addHref = can(project, "wp.create") ? `/projects/${project.identifier}/work-packages/new` : undefined;
@@ -254,11 +349,28 @@ export function BoardPage() {
           breadcrumbs={[{ label: project.name, href: `/projects/${project.identifier}` }, { label: t("nav.boards"), href: `/projects/${project.identifier}/boards` }, { label: b.name }]}
           actions={
             b.canManage && (
-              <Menu
-                align="end"
-                trigger={<Button iconOnly aria-label={t("app.more")} icon={<MoreHorizontal />} />}
-                items={[{ label: t("boards.delete"), icon: <Trash2 />, danger: true, onSelect: () => remove.mutate(b.id, { onSuccess: () => navigate(`/projects/${project.identifier}/boards`) }) }]}
-              />
+              <>
+                {b.kind !== "basic" && (
+                  <Menu
+                    align="end"
+                    trigger={
+                      <Button icon={<Columns3 />} disabled={!addable.length} title={addable.length ? undefined : t("boards.noColumnsToAdd")}>
+                        {t("boards.addColumn")}
+                      </Button>
+                    }
+                    items={addable.map((c) => ({ label: c.name, onSelect: () => quietly(apply(api.boards.addColumn(b.id, c.id), t("boards.columnAdded", { column: c.name }))) }))}
+                  />
+                )}
+                <Menu
+                  align="end"
+                  trigger={<Button iconOnly aria-label={t("boards.boardMenu")} icon={<MoreHorizontal />} />}
+                  items={[
+                    { label: t("boards.rename"), icon: <Pencil />, onSelect: () => setNaming({ kind: "board" }) },
+                    { kind: "separator" as const },
+                    { label: t("boards.delete"), icon: <Trash2 />, danger: true, onSelect: () => remove.mutate(b.id, { onSuccess: () => navigate(`/projects/${project.identifier}/boards`) }) },
+                  ]}
+                />
+              </>
             )
           }
         >
@@ -282,12 +394,24 @@ export function BoardPage() {
           }}
         >
           <div className="relative flex gap-3 overflow-x-auto pb-4">
-            {cols.map((c) => (
-              <Column key={c.id} column={c} hrefOf={hrefOf} canDrag={canDrag} addHref={addHref} />
+            {cols.map((c, i) => (
+              <Column key={c.id} column={c} hrefOf={hrefOf} canDrag={canDrag} addHref={addHref} actions={columnActions(c, i)} />
             ))}
           </div>
           <DragOverlay>{active ? <WorkPackageCard wp={toCard(active)} dragging className="w-[284px]" /> : null}</DragOverlay>
         </DndContext>
+        {naming?.kind === "board" && (
+          <NameDialog title={t("boards.rename")} label={t("boards.name")} initial={b.name} onClose={() => setNaming(null)} onSave={(name) => apply(api.boards.update(b.id, { name }), t("app.saved"))} />
+        )}
+        {naming?.kind === "column" && (
+          <NameDialog
+            title={t("boards.columnRename")}
+            label={t("boards.columnName")}
+            initial={naming.column.title}
+            onClose={() => setNaming(null)}
+            onSave={(name) => apply(api.boards.updateColumn(naming.column.id, { name }), t("app.saved"))}
+          />
+        )}
       </div>
       {details && (
         <aside

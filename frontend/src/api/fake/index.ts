@@ -384,6 +384,16 @@ function notificationSummary(n: (typeof db.notifications)[number], user: DbUser)
   return text;
 }
 
+/** A board I may change (S15): 404 when I cannot see it, 403 without board.manage. */
+function managedBoard(id: string) {
+  const user = sessionUser();
+  const b = db.boards.find((x) => x.id === id);
+  const p = b && db.projects.find((x) => x.id === b.projectId);
+  if (!b || !p || !can(user, p, "board.view")) throw new ApiError(404, "보드를 찾을 수 없습니다.");
+  requirePerm(user, p, "board.manage", "보드를 바꿀 권한이 없습니다.");
+  return { user, b };
+}
+
 /* ---------- the API ---------- */
 
 const PASSWORD_MIN = 10; // auth.password_min_length (backend default)
@@ -1090,6 +1100,60 @@ export const fakeApi: Api = {
         if (!b) throw new ApiError(404, "보드를 찾을 수 없습니다.");
         requirePerm(user, db.projects.find((x) => x.id === b.projectId)!, "board.manage");
         db.boards = db.boards.filter((x) => x.id !== id);
+      }),
+    update: (id, patch) =>
+      run(() => {
+        const { user, b } = managedBoard(id);
+        if (patch.name !== undefined) {
+          const name = patch.name.trim();
+          if (!name) throw fieldError("name", "보드 이름을 입력하세요.");
+          if (name.length > 100) throw fieldError("name", "보드 이름은 100자까지 입력할 수 있습니다.");
+          b.name = name;
+        }
+        if (patch.isPublic !== undefined) b.isPublic = patch.isPublic;
+        return toBoard(user, b);
+      }),
+    addColumn: (id, valueId) =>
+      run(() => {
+        const { user, b } = managedBoard(id);
+        const ok =
+          b.kind === "status" ? db.statuses.some((s) => s.id === valueId)
+          : b.kind === "assignee" ? projectUserIds(b.projectId).includes(valueId)
+          : b.kind === "version" ? db.versions.some((v) => v.id === valueId && v.projectId === b.projectId)
+          : false;
+        if (!ok) throw fieldError("valueId", "이 보드에 넣을 수 없는 값입니다.");
+        if (b.columns.some((c) => c.valueId === valueId)) throw fieldError("valueId", "이미 있는 열입니다.");
+        if (b.columns.length >= 30) throw fieldError("valueId", "열은 30개까지 만들 수 있습니다.");
+        b.columns.push({ id: newId("bc"), position: Math.max(-1, ...b.columns.map((c) => c.position)) + 1, name: null, valueId });
+        return toBoard(user, b);
+      }),
+    updateColumn: (columnId, patch) =>
+      run(() => {
+        const owner = db.boards.find((x) => x.columns.some((c) => c.id === columnId));
+        if (!owner) throw new ApiError(404, "열을 찾을 수 없습니다.");
+        const { user, b } = managedBoard(owner.id);
+        const cols = b.columns.slice().sort((x, y) => x.position - y.position);
+        const col = cols.find((c) => c.id === columnId)!;
+        if (patch.name !== undefined) {
+          if (col.valueId) throw fieldError("name", "상태·담당자·버전 열의 이름은 그 값의 이름을 따릅니다.");
+          const name = patch.name.trim();
+          if (!name || name.length > 60) throw fieldError("name", "열 이름을 1~60자로 입력하세요.");
+          col.name = name;
+        }
+        if (patch.position !== undefined) {
+          const rest = cols.filter((c) => c !== col);
+          rest.splice(Math.max(0, Math.min(patch.position, rest.length)), 0, col);
+          rest.forEach((c, i) => (c.position = i));
+        }
+        return toBoard(user, b);
+      }),
+    removeColumn: (columnId) =>
+      run(() => {
+        const owner = db.boards.find((x) => x.columns.some((c) => c.id === columnId));
+        if (!owner) throw new ApiError(404, "열을 찾을 수 없습니다.");
+        const { user, b } = managedBoard(owner.id);
+        b.columns = b.columns.filter((c) => c.id !== columnId);
+        return toBoard(user, b);
       }),
     move: (id, input) =>
       run(() => {

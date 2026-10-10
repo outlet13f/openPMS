@@ -30,6 +30,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -178,6 +179,97 @@ public class BoardController {
         ctx.require(ctx.s().project(b.getProjectId()).orElseThrow(), "board.manage");
         b.delete();
         return ResponseEntity.noContent().build();
+    }
+
+    private BoardsRecord managedBoard(Ctx ctx, UUID id) {
+        var b = visibleBoard(ctx, id);
+        ctx.require(ctx.s().project(b.getProjectId()).orElseThrow(), "board.manage", "보드를 바꿀 권한이 없습니다.");
+        return b;
+    }
+
+    /** Name and visibility (S15). */
+    @PatchMapping("/boards/{id}")
+    @Transactional
+    public Dto.Board update(@PathVariable UUID id, @RequestBody Map<String, Object> in) {
+        var ctx = current.ctx();
+        var b = managedBoard(ctx, id);
+        if (In.has(in, "name")) {
+            var name = In.str(in, "name") == null ? "" : In.str(in, "name").trim();
+            if (name.isEmpty()) throw ApiException.field("name", "보드 이름을 입력하세요.");
+            if (name.length() > 100) throw ApiException.field("name", "보드 이름은 100자까지 입력할 수 있습니다.");
+            b.setName(name);
+        }
+        if (In.has(in, "isPublic")) b.setIsPublic(Boolean.TRUE.equals(In.bool(in, "isPublic")));
+        b.store();
+        return toBoard(ctx, b);
+    }
+
+    /** Adds a column at the end: a status, a project member or a version of the project, not already on the board. */
+    @PostMapping("/boards/{id}/columns")
+    @Transactional
+    public Dto.Board addColumn(@PathVariable UUID id, @RequestBody Map<String, Object> in) {
+        var ctx = current.ctx();
+        var s = ctx.s();
+        var b = managedBoard(ctx, id);
+        var valueId = In.uuid(in, "valueId", "valueId");
+        if (valueId == null) throw ApiException.field("valueId", "추가할 열을 고르세요.");
+        boolean ok = switch (b.getKind()) {
+            case "status" -> s.status(valueId).isPresent();
+            case "assignee" -> s.projectUsers(b.getProjectId()).stream().anyMatch(u -> u.id().equals(valueId));
+            case "version" -> s.version(valueId).filter(v -> v.projectId().equals(b.getProjectId())).isPresent();
+            default -> false;
+        };
+        if (!ok) throw ApiException.field("valueId", "이 보드에 넣을 수 없는 값입니다.");
+        var cols = columns(b.getId(), b.getKind());
+        if (cols.stream().anyMatch(c -> valueId.equals(c.valueId()))) throw ApiException.field("valueId", "이미 있는 열입니다.");
+        if (cols.size() >= 30) throw ApiException.field("valueId", "열은 30개까지 만들 수 있습니다.");
+        var field = switch (b.getKind()) {
+            case "status" -> BOARD_COLUMNS.STATUS_ID;
+            case "assignee" -> BOARD_COLUMNS.USER_ID;
+            default -> BOARD_COLUMNS.VERSION_ID;
+        };
+        int last = cols.stream().mapToInt(Col::position).max().orElse(-1);
+        db.insertInto(BOARD_COLUMNS).set(BOARD_COLUMNS.BOARD_ID, b.getId()).set(BOARD_COLUMNS.POSITION, last + 1).set(field, valueId).execute();
+        return toBoard(ctx, b);
+    }
+
+    private BoardsRecord boardOfColumn(Ctx ctx, UUID columnId) {
+        var c = db.selectFrom(BOARD_COLUMNS).where(BOARD_COLUMNS.ID.eq(columnId)).fetchOne();
+        if (c == null) throw ApiException.notFound("열을 찾을 수 없습니다.");
+        return managedBoard(ctx, c.getBoardId());
+    }
+
+    /** Moves a column to a place (0 = first) and/or renames a column without a value (the 할 일 column of an empty board). */
+    @PatchMapping("/board-columns/{id}")
+    @Transactional
+    public Dto.Board updateColumn(@PathVariable UUID id, @RequestBody Map<String, Object> in) {
+        var ctx = current.ctx();
+        var b = boardOfColumn(ctx, id);
+        var cols = new ArrayList<>(columns(b.getId(), b.getKind()));
+        var col = cols.stream().filter(c -> c.id().equals(id)).findFirst().orElseThrow();
+        if (In.has(in, "name")) {
+            if (col.valueId() != null) throw ApiException.field("name", "상태·담당자·버전 열의 이름은 그 값의 이름을 따릅니다.");
+            var name = In.str(in, "name") == null ? "" : In.str(in, "name").trim();
+            if (name.isEmpty() || name.length() > 60) throw ApiException.field("name", "열 이름을 1~60자로 입력하세요.");
+            db.update(BOARD_COLUMNS).set(BOARD_COLUMNS.NAME, name).where(BOARD_COLUMNS.ID.eq(id)).execute();
+        }
+        var position = In.integer(in, "position", "position");
+        if (position != null) {
+            cols.remove(col);
+            cols.add(Math.max(0, Math.min(position, cols.size())), col);
+            for (int i = 0; i < cols.size(); i++) db.update(BOARD_COLUMNS).set(BOARD_COLUMNS.POSITION, i).where(BOARD_COLUMNS.ID.eq(cols.get(i).id())).execute();
+        }
+        return toBoard(ctx, b);
+    }
+
+    /** Removes a column; its work packages stay as they are. */
+    @DeleteMapping("/board-columns/{id}")
+    @Transactional
+    public Dto.Board removeColumn(@PathVariable UUID id) {
+        var ctx = current.ctx();
+        var b = boardOfColumn(ctx, id);
+        db.deleteFrom(BOARD_COLUMNS).where(BOARD_COLUMNS.ID.eq(id)).execute();
+        return toBoard(ctx, b);
     }
 
     /** Move a card: change the column's attribute through the normal work package rules, then place it before another card. */

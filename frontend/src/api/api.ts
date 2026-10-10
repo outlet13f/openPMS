@@ -256,6 +256,14 @@ export interface Api {
     get(id: Id): Promise<Board>;
     /** DELETE /boards/{id} */
     remove(id: Id): Promise<void>;
+    /** PATCH /boards/{id} (board.manage) — name, visibility */
+    update(id: Id, patch: { name?: string; isPublic?: boolean }): Promise<Board>;
+    /** POST /boards/{id}/columns {valueId} (board.manage) — a status, member or version not yet on the board, at the end */
+    addColumn(id: Id, valueId: Id): Promise<Board>;
+    /** PATCH /board-columns/{id} (board.manage) — move to a place (0 = first); rename only a column without a value */
+    updateColumn(columnId: Id, patch: { position?: number; name?: string }): Promise<Board>;
+    /** DELETE /board-columns/{id} (board.manage) — the column goes, its work packages stay */
+    removeColumn(columnId: Id): Promise<Board>;
     /** POST /boards/{id}/moves */
     move(id: Id, input: { number: number; toColumnId: Id; beforeNumber: number | null; lockVersion: number }): Promise<Board>;
   };

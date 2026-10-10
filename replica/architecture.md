@@ -398,9 +398,9 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | GET /boards/{id} | 보드 + 컬럼 + 컬럼별 카드 (쿼리 엔진 사용) | board.view + wp.view | - | board | S15 |
 | PATCH /boards/{id} | 이름, 공개, 보드 필터 | board.manage | 부분 | board | S15 |
 | DELETE /boards/{id} | 삭제 | board.manage | - | 204 | S14 |
-| POST /boards/{id}/columns | 컬럼 추가 | board.manage | name 또는 valueId | 201 column | S15 |
-| PATCH /board-columns/{id} | 순서·이름 변경 | board.manage | position, name | column | S15 |
-| DELETE /board-columns/{id} | 컬럼 삭제 (작업은 그대로) | board.manage | - | 204 | S15 |
+| POST /boards/{id}/columns | 컬럼 추가 | board.manage | name 또는 valueId | 201 column (구현: valueId만, 200 board 전체) | S15 |
+| PATCH /board-columns/{id} | 순서·이름 변경 | board.manage | position, name | column (구현: board 전체. 이름은 값 없는 열만) | S15 |
+| DELETE /board-columns/{id} | 컬럼 삭제 (작업은 그대로) | board.manage | - | 204 (구현: 200 board 전체) | S15 |
 | POST /boards/{id}/moves | 카드 이동: 보드 종류에 따라 작업 속성 변경(상태는 워크플로 검사) + 순서 저장 | wp.edit (basic 보드는 board.manage) | workPackageNumber, toColumnId, beforeNumber, lockVersion | card + WP / 409 / 422 | S15 F06 |
 
 #### 알림 — F09 (4)
