@@ -3,7 +3,7 @@ import { Fragment, useMemo, useRef, useState, type KeyboardEvent, type MouseEven
 import { Link, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, ChevronRight, EyeOff, ListPlus, ListX, Plus } from "lucide-react";
-import { Menu, type MenuEntry } from "@/components/ui/overlay";
+import { ContextMenu, Menu, type MenuEntry } from "@/components/ui/overlay";
 import type { ColumnKey, FilterOptions, QueryGroup, QueryRow, QuerySpec, WorkPackage } from "@/api";
 import { useCreateWorkPackage } from "@/api/hooks";
 import { Avatar, Principal } from "@/components/ui/avatar";
@@ -135,6 +135,7 @@ export function WorkPackageTable({
   createIn,
   checked,
   onCheck,
+  rowMenu,
 }: {
   rows: QueryRow[];
   /** a grouped list's groups (over every match, in order); rows carry groupKey */
@@ -151,6 +152,8 @@ export function WorkPackageTable({
   /** S06: rows checked for a bulk change; with onCheck the table shows a checkbox column */
   checked?: ReadonlySet<number>;
   onCheck?: (numbers: number[], on: boolean) => void;
+  /** S06 우클릭 메뉴: the actions for a row (on the checked rows when it is one of them) */
+  rowMenu?: (wp: WorkPackage) => MenuEntry[];
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -277,26 +280,7 @@ export function WorkPackageTable({
               const endsGroup = grouped && (i === visible.length - 1 || (visible[i + 1].groupKey ?? "") !== gk);
               const closed = grouped && closedGroups.has(gk);
               const groupName = group?.key === "" ? t("wp.grouping.empty") : (group?.label ?? "");
-              return (
-                <Fragment key={wp.id}>
-                {startsGroup && group && (
-                  <tr className="h-row border-b border-border bg-surface-sunken">
-                    <th scope="colgroup" colSpan={colCount} className="px-2 py-1 text-left text-sm font-semibold text-fg">
-                      <button
-                        type="button"
-                        aria-expanded={!closed}
-                        onClick={() => toggleGroup(gk)}
-                        className="inline-flex max-w-full items-center gap-1.5 rounded-sm px-1 py-0.5 hover:bg-surface-hover"
-                      >
-                        {closed ? <ChevronRight className="size-4 shrink-0" aria-hidden="true" /> : <ChevronDown className="size-4 shrink-0" aria-hidden="true" />}
-                        <span className="sr-only">{t("wp.grouping.toggle", { label: groupName })}: </span>
-                        <GroupLabel group={group} />
-                        <span className="rounded-full bg-bg px-1.5 text-xs font-normal text-fg-muted tabular-nums">{t("wp.grouping.count", { count: group.count })}</span>
-                      </button>
-                    </th>
-                  </tr>
-                )}
-                {!closed && (
+              const rowEl = (
                 <tr
                   aria-selected={isSel}
                   onClick={(e) => openRow(e, wp)}
@@ -352,7 +336,27 @@ export function WorkPackageTable({
                     </td>
                   ))}
                 </tr>
+              );
+              return (
+                <Fragment key={wp.id}>
+                {startsGroup && group && (
+                  <tr className="h-row border-b border-border bg-surface-sunken">
+                    <th scope="colgroup" colSpan={colCount} className="px-2 py-1 text-left text-sm font-semibold text-fg">
+                      <button
+                        type="button"
+                        aria-expanded={!closed}
+                        onClick={() => toggleGroup(gk)}
+                        className="inline-flex max-w-full items-center gap-1.5 rounded-sm px-1 py-0.5 hover:bg-surface-hover"
+                      >
+                        {closed ? <ChevronRight className="size-4 shrink-0" aria-hidden="true" /> : <ChevronDown className="size-4 shrink-0" aria-hidden="true" />}
+                        <span className="sr-only">{t("wp.grouping.toggle", { label: groupName })}: </span>
+                        <GroupLabel group={group} />
+                        <span className="rounded-full bg-bg px-1.5 text-xs font-normal text-fg-muted tabular-nums">{t("wp.grouping.count", { count: group.count })}</span>
+                      </button>
+                    </th>
+                  </tr>
                 )}
+                {!closed && (rowMenu && !context ? <ContextMenu items={rowMenu(wp)}>{rowEl}</ContextMenu> : rowEl)}
                 {endsGroup && !closed && spec.sums && group?.sums && sumsRow(`sum-${gk}`, t("wp.grouping.groupSum", { label: groupName }), group.sums)}
                 </Fragment>
               );

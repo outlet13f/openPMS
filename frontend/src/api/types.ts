@@ -588,7 +588,8 @@ export interface MoveInput {
 /** S06: one change for many items, all or nothing (422 lists "#n" with each reason). */
 export interface BulkInput {
   numbers: number[];
-  action: "update" | "delete" | "move";
+  /** copy: to targetProjectId (or the same project), keeping the hierarchy among the chosen items */
+  action: "update" | "delete" | "move" | "copy";
   changes?: Partial<Pick<WorkPackagePatch, "statusId" | "priorityId" | "assigneeId" | "responsibleId" | "versionId" | "categoryId" | "startDate" | "dueDate">>;
   targetProjectId?: Id;
 }

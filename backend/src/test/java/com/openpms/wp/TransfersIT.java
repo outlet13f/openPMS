@@ -99,4 +99,29 @@ class TransfersIT {
         postJson(s, "/work-packages/bulk", "{\"numbers\":" + numbers + ",\"action\":\"delete\"}").andExpect(status().isOk()).andExpect(jsonPath("$.count").value(4));
         assertThat(db.fetchExists(WORK_PACKAGES, WORK_PACKAGES.NUMBER.in(numbers))).isFalse();
     }
+    @Test
+    void aBulkCopyKeepsTheHierarchyAmongTheChosenAndIsAllOrNothing() throws Exception {
+        var s = login();
+        var rel = json.readTree(mvc.perform(get("/api/v1/work-packages/7/relations").session(s)).andReturn().getResponse().getContentAsString());
+        long child = rel.get("children").get(0).get("number").asLong();
+        long last = db.select(org.jooq.impl.DSL.max(WORK_PACKAGES.NUMBER)).from(WORK_PACKAGES).fetchOne().value1();
+        // the child is listed first: its parent is still copied first, and the child's copy hangs under the parent's copy
+        postJson(s, "/work-packages/bulk", "{\"numbers\":[" + child + ",7],\"action\":\"copy\"}").andExpect(status().isOk()).andExpect(jsonPath("$.count").value(2));
+        var copies = db.selectFrom(WORK_PACKAGES).where(WORK_PACKAGES.NUMBER.gt(last)).orderBy(WORK_PACKAGES.NUMBER).fetch();
+        try {
+            assertThat(copies).hasSize(2);
+            var parentCopy = copies.get(0);
+            assertThat(parentCopy.getSubject()).isEqualTo(db.select(WORK_PACKAGES.SUBJECT).from(WORK_PACKAGES).where(WORK_PACKAGES.NUMBER.eq(7L)).fetchOne(WORK_PACKAGES.SUBJECT));
+            assertThat(copies.get(1).getParentId()).isEqualTo(parentCopy.getId());
+            assertThat(projectOf(copies.get(1).getNumber())).isEqualTo("web-platform");
+            // #12 (기능) does not fit 모바일 앱: no copy at all
+            int before = db.fetchCount(WORK_PACKAGES);
+            postJson(s, "/work-packages/bulk", "{\"numbers\":[11,12],\"action\":\"copy\",\"targetProject\":\"mobile-app\"}")
+                    .andExpect(status().isUnprocessableContent()).andExpect(jsonPath("$.errors[0].field").value("#12"));
+            assertThat(db.fetchCount(WORK_PACKAGES)).isEqualTo(before);
+        } finally {
+            var numbers = copies.stream().map(w -> w.getNumber()).toList();
+            if (!numbers.isEmpty()) postJson(s, "/work-packages/bulk", "{\"numbers\":" + numbers + ",\"action\":\"delete\"}").andExpect(status().isOk());
+        }
+    }
 }

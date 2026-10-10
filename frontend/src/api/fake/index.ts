@@ -942,6 +942,21 @@ export const fakeApi: Api = {
         // all or nothing: the fake keeps no transaction, so it takes a copy to go back to
         const before = structuredClone(db);
         const failures: { field: string; message: string }[] = [];
+        // a copy takes chosen parents before their chosen children, and hangs the children's copies under the parents' copies
+        const copies = new Map<Id, number>();
+        if (input.action === "copy") {
+          const chosen = new Map(db.workPackages.filter((w) => numbers.includes(w.number)).map((w) => [w.id, w]));
+          const depth = (w: DbWp) => {
+            let d = 0;
+            for (let p = w.parentId; p && chosen.has(p) && d < 100; p = chosen.get(p)!.parentId) d++;
+            return d;
+          };
+          numbers.sort((a, b) => {
+            const wa = db.workPackages.find((w) => w.number === a);
+            const wb = db.workPackages.find((w) => w.number === b);
+            return (wa ? depth(wa) : 0) - (wb ? depth(wb) : 0) || a - b;
+          });
+        }
         for (const n of numbers) {
           try {
             if (input.action === "update") {
@@ -951,6 +966,11 @@ export const fakeApi: Api = {
               const { wp } = findWp(user, n);
               const target = findProject(user, input.targetProjectId ?? "");
               if (wp.projectId !== target.id) moveWp(user, n, { targetProjectId: target.id, lockVersion: wp.lockVersion });
+            } else if (input.action === "copy") {
+              const { wp, project } = findWp(user, n);
+              const target = input.targetProjectId ? findProject(user, input.targetProjectId) : project;
+              const made = copyWp(user, wp, target, wp.subject, wp.parentId ? (copies.get(wp.parentId) ?? null) : null);
+              copies.set(wp.id, made.number);
             } else if (db.workPackages.some((w) => w.number === n)) removeWp(user, n, "reparent");
           } catch (e) {
             if (!(e instanceof ApiError)) throw e;

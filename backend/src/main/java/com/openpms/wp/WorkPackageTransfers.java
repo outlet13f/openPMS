@@ -188,8 +188,9 @@ public class WorkPackageTransfers {
     public record BulkResult(int count) {}
 
     /**
-     * POST /work-packages/bulk {numbers, action: update|delete|move, changes?, targetProject?} — every item or none. Failures come back
-     * as a 422 listing each item ("#12") with its reason.
+     * POST /work-packages/bulk {numbers, action: update|delete|move|copy, changes?, targetProject?} — every item or none. Failures come back
+     * as a 422 listing each item ("#12") with its reason. A copy (to targetProject, or the same project) keeps the hierarchy among the
+     * chosen items: a chosen parent's copy becomes the parent of its chosen children's copies.
      */
     @Transactional
     public BulkResult bulk(Ctx ctx, Map<String, Object> in) {
@@ -201,7 +202,9 @@ public class WorkPackageTransfers {
         @SuppressWarnings("unchecked")
         var changes = in.get("changes") instanceof Map<?, ?> m ? (Map<String, Object>) m : Map.<String, Object>of();
         if ("update".equals(action) && changes.isEmpty()) throw ApiException.unprocessable("바꿀 내용을 고르세요.", null);
-        if (!List.of("update", "delete", "move").contains(action)) throw ApiException.unprocessable("알 수 없는 작업입니다.", action);
+        if (!List.of("update", "delete", "move", "copy").contains(action)) throw ApiException.unprocessable("알 수 없는 작업입니다.", action);
+        if ("copy".equals(action)) numbers = parentsFirst(numbers);
+        var copies = new HashMap<UUID, Long>(); // source id → number of its copy
         var allowed = List.of("statusId", "priorityId", "assigneeId", "responsibleId", "versionId", "categoryId", "startDate", "dueDate");
         for (var k : changes.keySet()) if (!allowed.contains(k)) throw ApiException.unprocessable("한꺼번에 바꿀 수 없는 항목입니다.", k);
 
@@ -221,6 +224,15 @@ public class WorkPackageTransfers {
                         var target = ctx.findProject(In.str(in, "targetProject") == null ? "" : In.str(in, "targetProject"));
                         if (!current.getProjectId().equals(target.id())) move(ctx, n, Map.of("targetProject", target.id().toString()));
                     }
+                    case "copy" -> {
+                        var source = service.find(ctx, n);
+                        var key = In.str(in, "targetProject");
+                        var target = key == null || key.isBlank() ? source.project() : ctx.findProject(key);
+                        var w = source.wp();
+                        var parentCopy = w.getParentId() == null ? null : copies.get(w.getParentId());
+                        var made = copyOne(ctx, w, target, w.getSubject(), parentCopy);
+                        copies.put(w.getId(), made.number());
+                    }
                     default -> {
                         if (db.fetchExists(WORK_PACKAGES, WORK_PACKAGES.NUMBER.eq(n))) service.remove(ctx, n, "reparent");
                     }
@@ -232,6 +244,22 @@ public class WorkPackageTransfers {
         if (!failures.isEmpty())
             throw new ApiException(422, "아무것도 바꾸지 않았습니다.", failures.size() + "건에서 문제가 있어 전체를 되돌렸습니다.", failures, null);
         return new BulkResult(numbers.size());
+    }
+
+    /** The chosen numbers with every chosen parent before its chosen children (the rest in number order). */
+    private List<Long> parentsFirst(List<Long> numbers) {
+        var rows = db.select(WORK_PACKAGES.ID, WORK_PACKAGES.NUMBER, WORK_PACKAGES.PARENT_ID).from(WORK_PACKAGES).where(WORK_PACKAGES.NUMBER.in(numbers)).fetch();
+        var byId = new HashMap<UUID, org.jooq.Record3<UUID, Long, UUID>>();
+        rows.forEach(r -> byId.put(r.value1(), r));
+        java.util.function.ToIntFunction<org.jooq.Record3<UUID, Long, UUID>> depth = r -> {
+            int d = 0;
+            for (var p = r.value3(); p != null && byId.containsKey(p) && d < 100; p = byId.get(p).value3()) d++;
+            return d;
+        };
+        var known = rows.stream().sorted(java.util.Comparator.comparingInt(depth).thenComparing(r -> r.value2())).map(r -> r.value2()).toList();
+        var out = new ArrayList<>(known);
+        numbers.stream().filter(n -> !known.contains(n)).forEach(out::add); // unknown numbers fail in the loop with their reason
+        return out;
     }
 
     private static String reason(ApiException e) {

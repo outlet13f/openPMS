@@ -2,8 +2,8 @@
 import { useState } from "react";
 import { Outlet, useMatch, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { Columns3, Download, Filter, FolderTree, Group, ListTodo, MoreHorizontal, Pencil, Plus, RotateCcw, Save, Sigma, Star, Trash2 } from "lucide-react";
-import { GROUPABLE_COLUMNS, type ColumnKey, type Project, type QuerySpec, type SavedQuery } from "@/api";
+import { Columns3, Download, Filter, FolderTree, Group, ListTodo, Maximize2, MoreHorizontal, PanelRight, Pencil, Plus, RotateCcw, Save, Sigma, Star, Trash2 } from "lucide-react";
+import { GROUPABLE_COLUMNS, type ColumnKey, type Project, type QuerySpec, type SavedQuery, type WorkPackage } from "@/api";
 import { isApiError } from "@/api";
 import { useFilterOptions, useSavedQueryMutations, useWpForm, useWpQuery } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ import { WorkPackageTable } from "@/features/work-packages/table";
 import { cfColumn, useColumnLabel } from "@/features/work-packages/custom-fields";
 import { FilterPanel } from "@/features/work-packages/filter-panel";
 import { ExportDialog } from "@/features/work-packages/export-dialog";
-import { BulkBar } from "@/features/work-packages/bulk-bar";
+import { BulkBar, useBulkActions } from "@/features/work-packages/bulk-bar";
 import { useListState } from "@/features/work-packages/view-state";
 
 const ALL_COLUMNS: ColumnKey[] = ["number", "subject", "type", "status", "priority", "assignee", "responsible", "author", "version", "startDate", "dueDate", "duration", "work", "remainingWork", "doneRatio", "updatedAt", "project"];
@@ -138,6 +138,22 @@ export function WorkPackagesPage() {
   const panelOpen = !!(details || creating);
   const selected = details ? Number(details.params.number) : undefined;
   useDocumentTitle(view ? `${view.name} · ${project?.name ?? t("wp.listTitle")}` : undefined);
+  const bulk = useBulkActions({ options, projectId: project?.id, onDone: () => setChecked(new Set()) });
+  /** S06 우클릭: the checked rows when the row is one of them, else the row itself */
+  const rowMenu = (wp: WorkPackage): MenuEntry[] => {
+    const numbers = checked.has(wp.number) ? [...checked] : [wp.number];
+    const full = `/projects/${wp.project.identifier}/work-packages/${wp.number}/activity`;
+    return [
+      ...(numbers.length === 1
+        ? [
+            { label: t("wp.openDetails"), icon: <PanelRight />, onSelect: () => navigate(project && wp.project.id === project.id ? `${base}/details/${wp.number}/overview${search}` : full) },
+            { label: t("wp.openFull"), icon: <Maximize2 />, onSelect: () => navigate(full) },
+            { kind: "separator" as const },
+          ]
+        : [{ kind: "label" as const, label: t("bulk.selected", { count: numbers.length }) }]),
+      ...bulk.menuItems(numbers),
+    ];
+  };
 
   if (state.views.isError) return <ErrorState error={state.views.error} onRetry={() => state.views.refetch()} />;
   const canCreate = !!project && can(project, "wp.create");
@@ -284,9 +300,9 @@ export function WorkPackagesPage() {
           </div>
         ) : (
           <div className={cn("transition-opacity", result.isPlaceholderData && "opacity-60")} aria-busy={result.isFetching}>
-            {checked.size > 0 && (
-              <BulkBar numbers={[...checked]} options={options} projectId={project?.id} onDone={() => setChecked(new Set())} onClear={() => setChecked(new Set())} />
-            )}
+            {checked.size > 0 && <BulkBar numbers={[...checked]} actions={bulk} onClear={() => setChecked(new Set())} />}
+            {bulk.refusals && <div className="mb-3">{bulk.refusals}</div>}
+            {bulk.dialogs}
             <WorkPackageTable
               checked={checked}
               onCheck={onCheck}
@@ -301,6 +317,7 @@ export function WorkPackagesPage() {
                 project && wp.project.id === project.id ? `${base}/details/${wp.number}/overview${search}` : `/projects/${wp.project.identifier}/work-packages/${wp.number}/activity`
               }
               createIn={canCreate && types[0] ? { projectId: project!.id, typeId: types[0].id } : null}
+              rowMenu={rowMenu}
             />
             <div className="mt-3">
               <Pagination page={page} pageSize={pageSize} total={result.data.total} onPage={state.setPage} onPageSize={state.setPageSize} />

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Dialog as D, DropdownMenu as M, Tooltip as Tip } from "radix-ui";
+import { ContextMenu as CM, Dialog as D, DropdownMenu as M, Tooltip as Tip } from "radix-ui";
 import { Check, ChevronRight, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "./button";
@@ -83,7 +83,10 @@ const itemCls = cn(
   "data-highlighted:bg-surface-hover data-disabled:text-fg-disabled [&_svg]:mt-0.5 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-fg-muted",
 );
 
-function renderEntries(entries: MenuEntry[]) {
+// The dropdown and the context menu share their parts (Radix gives both the same shape).
+type MenuParts = Pick<typeof M, "Separator" | "Label" | "Sub" | "SubTrigger" | "Portal" | "SubContent" | "CheckboxItem" | "Item">;
+
+function renderEntries(entries: MenuEntry[], M: MenuParts = DropdownParts) {
   return entries.map((e, i) => {
     if (e.kind === "separator") return <M.Separator key={i} className="my-1 h-px bg-border-muted" />;
     if (e.kind === "label") return <M.Label key={i} className="px-2 pt-2 pb-1 text-xs font-semibold text-fg-muted">{e.label}</M.Label>;
@@ -97,7 +100,7 @@ function renderEntries(entries: MenuEntry[]) {
           </M.SubTrigger>
           <M.Portal>
             <M.SubContent sideOffset={4} className="z-(--pms-z-dropdown) min-w-48 rounded-lg border border-border bg-bg p-1 shadow-pop">
-              {renderEntries(e.items)}
+              {renderEntries(e.items, M)}
             </M.SubContent>
           </M.Portal>
         </M.Sub>
@@ -124,6 +127,21 @@ function renderEntries(entries: MenuEntry[]) {
       </M.Item>
     );
   });
+}
+
+const DropdownParts: MenuParts = M;
+const ContextParts = CM as unknown as MenuParts;
+
+/** A menu on right click (or the context-menu key) over its child, e.g. a list row; the same entries as Menu. */
+export function ContextMenu({ items, children }: { items: MenuEntry[]; children: ReactNode }) {
+  return (
+    <CM.Root modal={false}>
+      <CM.Trigger asChild>{children}</CM.Trigger>
+      <CM.Portal>
+        <CM.Content className="z-(--pms-z-dropdown) w-56 rounded-lg border border-border bg-bg p-1 shadow-pop">{renderEntries(items, ContextParts)}</CM.Content>
+      </CM.Portal>
+    </CM.Root>
+  );
 }
 
 export function Menu({
