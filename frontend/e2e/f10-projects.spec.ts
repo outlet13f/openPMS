@@ -50,6 +50,30 @@ test.describe("F10 프로젝트와 멤버", () => {
     await expect(page.getByRole("cell", { name: "박준호" }).first()).toBeVisible();
   });
 
+  test("F10-H3 a subproject: pick the parent when creating it, change it in the settings", async ({ page }) => {
+    await page.goto("/projects/new");
+    await page.getByLabel(/^프로젝트 이름/).fill("하위 시험");
+    await page.getByLabel(/^식별자/).fill("sub-test");
+    await page.getByRole("combobox", { name: /^상위 프로젝트/ }).click();
+    await page.getByRole("option", { name: "웹 플랫폼 개편" }).click();
+    await page.getByRole("button", { name: "만들기", exact: true }).click();
+    await page.waitForURL(/\/projects\/sub-test/);
+    expect(await api<string | null>(page, "return (await api.projects.get('sub-test')).parent?.identifier ?? null")).toBe("web-platform");
+
+    // 웹 플랫폼 cannot go under its own subproject: the settings do not offer it
+    await page.goto("/projects/web-platform/settings/general");
+    await page.getByRole("combobox", { name: /^상위 프로젝트/ }).click();
+    await expect(page.getByRole("option", { name: "하위 시험" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+
+    await page.goto("/projects/sub-test/settings/general");
+    await page.getByRole("combobox", { name: /^상위 프로젝트/ }).click();
+    await page.getByRole("option", { name: "없음(최상위 프로젝트)" }).click();
+    await page.getByRole("button", { name: "저장", exact: true }).click();
+    await expect(page.getByText("저장했습니다").first()).toBeVisible();
+    expect(await api<string | null>(page, "return (await api.projects.get('sub-test')).parent?.identifier ?? null")).toBeNull();
+  });
+
   test("F10-E1 a taken identifier is refused next to the field", async ({ page }) => {
     await page.goto("/projects/new");
     await page.getByLabel(/^프로젝트 이름/).fill("중복 시험");

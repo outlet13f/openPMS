@@ -772,6 +772,10 @@ export const fakeApi: Api = {
         const identifier = input.identifier.trim();
         if (!/^[a-z][a-z0-9-]{0,99}$/.test(identifier)) throw fieldError("identifier", "영문 소문자로 시작하고 영문 소문자, 숫자, 하이픈만 쓸 수 있습니다.");
         if (db.projects.some((p) => p.identifier === identifier)) throw fieldError("identifier", "이미 사용 중인 식별자입니다.");
+        if (input.parentId) {
+          const parent = db.projects.find((x) => x.id === input.parentId);
+          if (!parent || !can(user, parent, "project.edit")) throw fieldError("parent", "상위 프로젝트를 찾을 수 없습니다.");
+        }
         const template = input.templateId ? visibleProjects(user).find((p) => p.isTemplate && !p.archivedAt && (p.id === input.templateId || p.identifier === input.templateId)) : null;
         if (input.templateId && !template) throw fieldError("template", "템플릿을 찾을 수 없습니다.");
         const now = nowIso();
@@ -791,6 +795,12 @@ export const fakeApi: Api = {
         const user = sessionUser();
         const p = findProject(user, id);
         requirePerm(user, p, patch.enabledModules ? "project.manage_modules" : "project.edit");
+        if (patch.parentId !== undefined && patch.parentId !== null) {
+          const parent = db.projects.find((x) => x.id === patch.parentId);
+          if (!parent || !can(user, parent, "project.edit")) throw fieldError("parent", "상위 프로젝트를 찾을 수 없습니다.");
+          for (let a: DbProject | undefined = parent; a; a = a.parentId ? db.projects.find((x) => x.id === a!.parentId) : undefined)
+            if (a.id === p.id) throw fieldError("parent", "자기 자신이나 하위 프로젝트를 상위로 정할 수 없습니다.");
+        }
         Object.assign(p, patch, { updatedAt: nowIso() });
         return toProject(p, user);
       }),

@@ -206,6 +206,18 @@ public class ProjectController {
         if (In.has(patch, "isPublic")) u = u.set(PROJECTS.IS_PUBLIC, Boolean.TRUE.equals(In.bool(patch, "isPublic")));
         // 템플릿으로 쓰기: offered when someone creates a project
         if (In.has(patch, "isTemplate")) u = u.set(PROJECTS.IS_TEMPLATE, Boolean.TRUE.equals(In.bool(patch, "isTemplate")));
+        // 상위 프로젝트: a project the person may edit, never the project itself or one below it; null makes it a top project
+        if (In.has(patch, "parentId")) {
+            var parentId = In.uuid(patch, "parentId", "parent");
+            if (parentId != null) {
+                var parent = ctx.s().project(parentId).orElse(null);
+                if (parent == null || !ctx.can(parent, "project.edit")) throw ApiException.field("parent", "상위 프로젝트를 찾을 수 없습니다.");
+                for (var a = parent; a != null; a = a.parentId() == null ? null : ctx.s().project(a.parentId()).orElse(null)) {
+                    if (a.id().equals(p.id())) throw ApiException.field("parent", "자기 자신이나 하위 프로젝트를 상위로 정할 수 없습니다.");
+                }
+            }
+            u = u.set(PROJECTS.PARENT_ID, parentId);
+        }
         if (In.has(patch, "enabledModules")) {
             var mods = In.strings(patch, "enabledModules");
             if (mods == null || !MODULES.containsAll(mods)) throw ApiException.field("enabledModules", "알 수 없는 모듈입니다.");

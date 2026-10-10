@@ -13,6 +13,7 @@ import { Field, Input, Textarea } from "@/components/ui/field";
 import { Banner, EmptyState } from "@/components/ui/feedback";
 import { Dialog, Menu } from "@/components/ui/overlay";
 import { Select } from "@/components/ui/select";
+import { useParentCandidates } from "@/features/work-packages/transfer-dialogs";
 import { Skeleton } from "@/components/ui/spinner";
 import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/dates";
@@ -70,11 +71,16 @@ function GeneralSection() {
     statusExplanation: project.statusExplanation,
     isPublic: project.isPublic,
     isTemplate: project.isTemplate,
+    parentId: project.parent?.id ?? "",
   });
+  const parents = useParentCandidates(project);
   const [archiving, setArchiving] = useState(false);
   const save = () =>
     void runToast(
-      m.update.mutateAsync({ name: v.name, descriptionHtml: textToHtml(v.description), status: v.status === "none" ? null : v.status, statusExplanation: v.statusExplanation, isPublic: v.isPublic, isTemplate: v.isTemplate }),
+      m.update.mutateAsync({ name: v.name, descriptionHtml: textToHtml(v.description), status: v.status === "none" ? null : v.status, statusExplanation: v.statusExplanation, isPublic: v.isPublic, isTemplate: v.isTemplate,
+        // only sent when changed: moving a project needs the right to edit the new parent too
+        ...(v.parentId !== (project.parent?.id ?? "") ? { parentId: v.parentId || null } : {}),
+      }),
       t("app.saved"),
     );
   return (
@@ -102,6 +108,17 @@ function GeneralSection() {
           <Input value={v.statusExplanation} maxLength={500} onChange={(e) => setV({ ...v, statusExplanation: e.target.value })} />
         </Field>
       </div>
+      <Field label={t("projectNew.parent")} hint={t("projectNew.parentHint")} error={fieldErrorOf(m.update.error, "parent")}>
+        <Select
+          value={v.parentId || "none"}
+          onValueChange={(p) => setV({ ...v, parentId: p === "none" ? "" : p })}
+          options={[
+            { value: "none", label: t("projectNew.noParent") },
+            ...(project.parent && !parents.some((p) => p.id === project.parent!.id) ? [{ value: project.parent.id, label: project.parent.name }] : []),
+            ...parents.map((p) => ({ value: p.id, label: p.name })),
+          ]}
+        />
+      </Field>
       <Checkbox label={t("projectNew.isPublic")} description={t("projectNew.isPublicHint")} checked={v.isPublic} onCheckedChange={(c) => setV({ ...v, isPublic: c === true })} />
       <Checkbox label={t("settings.isTemplate")} description={t("settings.isTemplateHint")} checked={v.isTemplate} onCheckedChange={(c) => setV({ ...v, isTemplate: c === true })} />
       <div>

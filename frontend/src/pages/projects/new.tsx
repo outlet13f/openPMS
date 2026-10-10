@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Copy, FilePlus2 } from "lucide-react";
 import { isApiError, TEMPLATE_PARTS, type TemplatePart } from "@/api";
 import { useCreateProject, useProjects } from "@/api/hooks";
+import { useParentCandidates } from "@/features/work-packages/transfer-dialogs";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Checkbox, RadioCards } from "@/components/ui/choice";
@@ -12,6 +13,8 @@ import { Field, Input, Textarea } from "@/components/ui/field";
 import { Banner, useToast } from "@/components/ui/feedback";
 import { PageBody, PageHeader, useDocumentTitle } from "@/app/page";
 import { textToHtml } from "@/lib/text";
+
+const NONE = "none";
 
 const slug = (name: string) =>
   /^[\x20-\x7e]+$/.test(name)
@@ -30,6 +33,8 @@ export function NewProjectPage() {
   const [touchedId, setTouchedId] = useState(false);
   const [description, setDescription] = useState("");
   const [isPublic, setIsPublic] = useState(false);
+  const parents = useParentCandidates();
+  const [parentId, setParentId] = useState(new URLSearchParams(window.location.search).get("parent") ?? "");
   // S04 템플릿에서 시작: which template, and what to take over besides modules, types and project attributes
   const templates = useProjects({ filter: "templates", pageSize: 100 });
   const [templateId, setTemplateId] = useState("");
@@ -44,7 +49,7 @@ export function NewProjectPage() {
     e.preventDefault();
     try {
       const fromTemplate = mode === "template" && templateId ? { templateId, copy: parts } : {};
-      const p = await create.mutateAsync({ name, identifier, descriptionHtml: textToHtml(description), isPublic, ...fromTemplate });
+      const p = await create.mutateAsync({ name, identifier, descriptionHtml: textToHtml(description), isPublic, parentId: parentId || null, ...fromTemplate });
       toast({ tone: "success", title: t("projectNew.created"), description: p.name });
       navigate(`/projects/${p.identifier}`);
     } catch (err) {
@@ -109,6 +114,13 @@ export function NewProjectPage() {
               setTouchedId(true);
               setIdentifier(e.target.value.toLowerCase());
             }}
+          />
+        </Field>
+        <Field label={t("projectNew.parent")} hint={t("projectNew.parentHint")} error={fieldErr("parent")}>
+          <Select
+            value={parentId || NONE}
+            onValueChange={(v) => setParentId(v === NONE ? "" : v)}
+            options={[{ value: NONE, label: t("projectNew.noParent") }, ...parents.map((p) => ({ value: p.id, label: p.name }))]}
           />
         </Field>
         <Field label={t("projectNew.description")} hint={mode === "template" ? t("projectNew.descriptionFromTemplate") : undefined}>

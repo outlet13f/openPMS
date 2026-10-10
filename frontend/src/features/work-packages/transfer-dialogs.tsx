@@ -15,6 +15,18 @@ import { Dialog } from "@/components/ui/overlay";
 import { Select } from "@/components/ui/select";
 
 /** Active projects where I may create work packages. */
+/** 상위 프로젝트 후보: active projects the person may edit, minus the project itself and those below it. */
+export function useParentCandidates(self?: { id: string }) {
+  const q = useProjects({ filter: "active", pageSize: 100 });
+  const all = q.data?.items ?? [];
+  const below = new Set<string>(self ? [self.id] : []);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const p of all) if (p.parent && below.has(p.parent.id) && !below.has(p.id)) (below.add(p.id), (grew = true));
+  }
+  return all.filter((p) => p.myPermissions.includes("project.edit") && !below.has(p.id));
+}
+
 export function useTargetProjects() {
   const q = useProjects({ filter: "active", pageSize: 100 });
   return (q.data?.items ?? []).filter((p) => p.myPermissions.includes("wp.create"));
