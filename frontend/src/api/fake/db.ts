@@ -19,6 +19,8 @@ export interface DbUser {
   prefs: Preferences;
   createdAt: IsoDateTime;
   lastLoginAt: IsoDateTime | null;
+  /** S31 global roles */
+  globalRoleIds?: Id[];
 }
 export interface DbRole { id: Id; name: string; scope: "project" | "global"; builtin: "non_member" | null; permissions: string[] }
 export interface DbProject {

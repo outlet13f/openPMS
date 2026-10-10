@@ -1,6 +1,7 @@
 package com.openpms.admin;
 
 import static com.openpms.db.Tables.BOARD_COLUMNS;
+import static com.openpms.db.Tables.GLOBAL_ROLE_ASSIGNMENTS;
 import static com.openpms.db.Tables.MEMBERS;
 import static com.openpms.db.Tables.MEMBER_ROLES;
 import static com.openpms.db.Tables.NON_WORKING_DAYS;
@@ -87,7 +88,7 @@ public class AdminController {
 
     /** lockedUntil: a temporary lock after too many failed sign-ins, while it lasts (status stays active). */
     public record AdminUser(UUID id, String name, String email, String status, boolean isAdmin, String locale, String timeZone,
-                            OffsetDateTime lastLoginAt, long projectCount, OffsetDateTime createdAt, OffsetDateTime lockedUntil) {}
+                            OffsetDateTime lastLoginAt, long projectCount, OffsetDateTime createdAt, OffsetDateTime lockedUntil, List<Dto.IdName> globalRoles) {}
 
     public record AdminGroup(UUID id, String name, List<Dto.UserRef> members) {}
 
@@ -570,8 +571,10 @@ public class AdminController {
     private AdminUser toUser(Ctx ctx, Snapshot.UserRow u, Map<UUID, OffsetDateTime> lockouts) {
         var s = ctx.s();
         long projects = s.projects().values().stream().filter(p -> s.isMember(u.id(), p.id())).count();
+        var globalRoles = s.globalRoleIds(u.id()).stream().map(id -> s.roles().stream().filter(r -> r.id().equals(id)).findFirst().orElse(null))
+                .filter(java.util.Objects::nonNull).sorted(Comparator.comparing(Snapshot.RoleRow::name, Text.KOREAN)).map(r -> new Dto.IdName(r.id(), r.name())).toList();
         return new AdminUser(u.id(), u.displayName(), u.email(), u.status(), u.isAdmin(), u.locale(), u.timeZone(), u.lastLoginAt(), projects, u.createdAt(),
-                "active".equals(u.status()) ? lockouts.get(u.id()) : null);
+                "active".equals(u.status()) ? lockouts.get(u.id()) : null, globalRoles);
     }
 
     private AdminUser toUser(Ctx ctx, Snapshot.UserRow u) {
@@ -651,6 +654,27 @@ public class AdminController {
             if ("locked".equals(st)) sessions.endAll(u.getId());
         }
         u.store();
+        ctx.refresh();
+        return toUser(ctx, ctx.s().user(id).orElseThrow());
+    }
+
+    /**
+     * 전역 역할 (S31·S35): the global roles a person holds, replaced as a whole. Only administrators may hand them out,
+     * since a global role grants rights across the instance (create projects, manage users).
+     */
+    @PutMapping("/users/{id}/global-roles")
+    @Transactional
+    public AdminUser setGlobalRoles(@PathVariable UUID id, @RequestBody Map<String, Object> in) {
+        var ctx = userManager();
+        if (!ctx.isAdmin()) throw ApiException.forbidden("관리자만 전역 역할을 줄 수 있습니다.");
+        var u = db.selectFrom(USERS).where(USERS.ID.eq(id), USERS.STATUS.ne("deleted")).fetchOne();
+        if (u == null) throw notFound("사용자");
+        var roleIds = In.uuids(in, "roleIds", "roleIds");
+        var global = ctx.s().roles().stream().filter(r -> "global".equals(r.scope())).map(Snapshot.RoleRow::id).toList();
+        if (!global.containsAll(roleIds)) throw ApiException.field("roleIds", "전역 역할만 줄 수 있습니다.");
+        db.deleteFrom(GLOBAL_ROLE_ASSIGNMENTS).where(GLOBAL_ROLE_ASSIGNMENTS.USER_ID.eq(id)).execute();
+        for (var r : new java.util.LinkedHashSet<>(roleIds))
+            db.insertInto(GLOBAL_ROLE_ASSIGNMENTS).set(GLOBAL_ROLE_ASSIGNMENTS.USER_ID, id).set(GLOBAL_ROLE_ASSIGNMENTS.ROLE_ID, r).execute();
         ctx.refresh();
         return toUser(ctx, ctx.s().user(id).orElseThrow());
     }

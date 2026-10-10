@@ -392,6 +392,8 @@ export interface Api {
       remove(id: Id): Promise<void>;
       /** POST /admin/users/{id}/resend-invitation */
       resendInvitation(id: Id): Promise<void>;
+      /** PUT /admin/users/{id}/global-roles — replaces the person's global roles (administrators only) */
+      setGlobalRoles(id: Id, roleIds: Id[]): Promise<AdminUser>;
     };
     groups: {
       /** GET /admin/groups */

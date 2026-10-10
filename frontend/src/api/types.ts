@@ -977,6 +977,8 @@ export interface AdminUser extends User {
   createdAt: IsoDateTime;
   /** Locked for a while after too many failed sign-ins; the status stays active. */
   lockedUntil: IsoDateTime | null;
+  /** S31 global roles this person holds (create projects, manage users, …) */
+  globalRoles: { id: Id; name: string }[];
 }
 export interface UserInput {
   name: string;

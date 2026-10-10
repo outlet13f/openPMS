@@ -1,9 +1,9 @@
 // S35 관리: 사용자, 그룹
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Lock, LockOpen, Mail, MoreHorizontal, Pencil, Plus, Search, Shield, ShieldOff, Trash2, UserPlus, Users } from "lucide-react";
+import { BadgeCheck, Lock, LockOpen, Mail, MoreHorizontal, Pencil, Plus, Search, Shield, ShieldOff, Trash2, UserPlus, Users } from "lucide-react";
 import type { AdminGroup, AdminUser } from "@/api";
-import { useAdminGroups, useAdminUsers, useGroupMutations, useUserMutations } from "@/api/admin-hooks";
+import { useAdminGroups, useAdminRoles, useAdminUsers, useGroupMutations, useUserMutations } from "@/api/admin-hooks";
 import { useMe } from "@/api/hooks";
 import { Avatar, Principal } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badges";
@@ -57,6 +57,55 @@ function InviteDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** S31 전역 역할: what this person may do across the instance (only administrators hand these out). */
+function GlobalRolesDialog({ user, onClose }: { user: AdminUser; onClose: () => void }) {
+  const { t } = useTranslation();
+  const roles = useAdminRoles();
+  const m = useUserMutations();
+  const runToast = useRunWithToast();
+  const [picked, setPicked] = useState(user.globalRoles.map((r) => r.id));
+  const global = (roles.data ?? []).filter((r) => r.scope === "global");
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="sm"
+      title={t("admin.users.globalRolesTitle", { name: user.name })}
+      description={t("admin.users.globalRolesHint")}
+      footer={
+        <>
+          <Button onClick={onClose}>{t("app.cancel")}</Button>
+          <Button
+            variant="primary"
+            loading={m.globalRoles.isPending}
+            onClick={async () => (await runToast(m.globalRoles.mutateAsync({ id: user.id, roleIds: picked }), t("app.saved"))) && onClose()}
+          >
+            {t("app.save")}
+          </Button>
+        </>
+      }
+    >
+      {roles.isPending ? (
+        <Skeleton className="h-24 w-full" />
+      ) : global.length === 0 ? (
+        <p className="text-sm text-fg-muted">{t("admin.users.noGlobalRoles")}</p>
+      ) : (
+        <div role="group" aria-label={t("admin.users.globalRoles")} className="flex flex-col gap-2">
+          {global.map((r) => (
+            <Checkbox
+              key={r.id}
+              label={r.name}
+              description={r.permissions.map((p) => t(`permissions.keys.${p.replace(".", "_")}` as "permissions.keys.wp_view")).join(", ")}
+              checked={picked.includes(r.id)}
+              onCheckedChange={(c) => setPicked((ps) => (c === true ? [...ps, r.id] : ps.filter((x) => x !== r.id)))}
+            />
+          ))}
+        </div>
+      )}
+    </Dialog>
+  );
+}
+
 export function AdminUsersPage() {
   const { t } = useTranslation();
   useDocumentTitle(t("admin.sections.users"));
@@ -73,6 +122,7 @@ export function AdminUsersPage() {
   const runToast = useRunWithToast();
   const [inviting, setInviting] = useState(false);
   const [removing, setRemoving] = useState<AdminUser | null>(null);
+  const [granting, setGranting] = useState<AdminUser | null>(null);
 
   const actions = (u: AdminUser): MenuEntry[] => {
     const self = u.id === me?.id;
@@ -80,6 +130,7 @@ export function AdminUsersPage() {
     if (u.status === "invited") items.push({ label: t("admin.users.resend"), icon: <Mail />, onSelect: () => void runToast(m.resend.mutateAsync(u.id), t("admin.users.resent")) });
     if (u.status === "active" && !self) items.push({ label: t("admin.users.lock"), icon: <Lock />, onSelect: () => void runToast(m.update.mutateAsync({ id: u.id, patch: { status: "locked" } }), t("admin.users.locked", { name: u.name })) });
     if (u.status === "locked" || u.lockedUntil) items.push({ label: t("admin.users.unlock"), icon: <LockOpen />, onSelect: () => void runToast(m.update.mutateAsync({ id: u.id, patch: { status: "active" } }), t("admin.users.unlocked", { name: u.name })) });
+    if (me?.isAdmin && u.status !== "deleted") items.push({ label: t("admin.users.globalRoles"), icon: <BadgeCheck />, onSelect: () => setGranting(u) });
     if (me?.isAdmin && !self)
       items.push(
         u.isAdmin
@@ -131,12 +182,13 @@ export function AdminUsersPage() {
             <EmptyState icon={<Users />} title={t("admin.users.empty")} />
           </div>
         ) : (
-          <AdminTable minWidth={760}>
+          <AdminTable minWidth={880}>
             <thead>
               <tr className={theadRow}>
                 <th scope="col" className={th}>{t("admin.users.name")}</th>
                 <th scope="col" className={th}>{t("admin.users.email")}</th>
                 <th scope="col" className={th}>{t("admin.users.status")}</th>
+                <th scope="col" className={th}>{t("admin.users.globalRoles")}</th>
                 <th scope="col" className={`${th} text-right`}>{t("admin.projects")}</th>
                 <th scope="col" className={th}>{t("admin.users.lastLogin")}</th>
                 <th scope="col" className={`${th} w-12`}><span className="sr-only">{t("app.more")}</span></th>
@@ -165,6 +217,17 @@ export function AdminUsersPage() {
                         <Badge tone={STATUS_TONE[u.status]}>{t(`admin.users.statuses.${u.status}`)}</Badge>
                       )}
                     </td>
+                    <td className="px-3">
+                      {u.globalRoles.length ? (
+                        <span className="flex flex-wrap gap-1">
+                          {u.globalRoles.map((r) => (
+                            <Badge key={r.id}>{r.name}</Badge>
+                          ))}
+                        </span>
+                      ) : (
+                        <span className="text-fg-muted">-</span>
+                      )}
+                    </td>
                     <td className="px-3 text-right tabular-nums">{u.projectCount}</td>
                     <td className="px-3 text-fg-muted">{u.lastLoginAt ? relativeTime(u.lastLoginAt) : "-"}</td>
                     <td className="px-2">
@@ -178,6 +241,7 @@ export function AdminUsersPage() {
         )}
       </AdminGuard>
       {inviting && <InviteDialog onClose={() => setInviting(false)} />}
+      {granting && <GlobalRolesDialog user={granting} onClose={() => setGranting(null)} />}
       <ConfirmDialog
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}

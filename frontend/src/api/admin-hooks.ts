@@ -143,6 +143,7 @@ export function useUserMutations() {
     update: useMut(({ id, patch }: { id: Id; patch: Parameters<typeof api.admin.users.update>[1] }) => api.admin.users.update(id, patch)),
     remove: useMut((id: Id) => api.admin.users.remove(id)),
     resend: useMut((id: Id) => api.admin.users.resendInvitation(id)),
+    globalRoles: useMut(({ id, roleIds }: { id: Id; roleIds: Id[] }) => api.admin.users.setGlobalRoles(id, roleIds)),
   };
 }
 

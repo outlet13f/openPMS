@@ -1,5 +1,5 @@
 // F11 관리자가 업무 규칙 구성 (S27 유형 → S29 워크플로, S30 상태)
-import { test, expect, login, resetDb, axe, api } from "./support";
+import { test, expect, login, logout, resetDb, axe, api } from "./support";
 
 test.beforeAll(resetDb);
 
@@ -50,6 +50,27 @@ test.describe("F11 관리", () => {
     await page.getByRole("menuitem", { name: "잠금 해제" }).click();
     await expect(page.getByText(/잠금을 풀었습니다/).first()).toBeVisible();
     await expect(row).toHaveCount(0);
+  });
+
+  test("F11-H2 a global role given to a person lets them create projects", async ({ page }) => {
+    await page.goto("/admin/users");
+    const row = page.getByRole("row").filter({ hasText: "haneul.lee@openpms.local" });
+    await row.getByRole("button", { name: /메뉴$/ }).click();
+    await page.getByRole("menuitem", { name: "전역 역할" }).click();
+    const dlg = page.getByRole("dialog", { name: "이하늘님의 전역 역할" });
+    await dlg.getByRole("checkbox", { name: /프로젝트 생성자/ }).click();
+    await axe(page, "S35 전역 역할");
+    await dlg.getByRole("button", { name: "저장" }).click();
+    await expect(dlg).toBeHidden();
+    await expect(row.getByText("프로젝트 생성자")).toBeVisible();
+
+    await logout(page);
+    await login(page, "haneul.lee@openpms.local");
+    await page.goto("/projects/new");
+    await page.getByLabel(/^프로젝트 이름/).fill("하늘의 프로젝트");
+    await page.getByLabel(/^식별자/).fill("haneul-project");
+    await page.getByRole("button", { name: "만들기", exact: true }).click();
+    await page.waitForURL(/\/projects\/haneul-project/);
   });
 
   test("F11-N1 a member cannot open administration", async ({ page }) => {

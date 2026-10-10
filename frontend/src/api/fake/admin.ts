@@ -64,7 +64,9 @@ const toRole = (r: (typeof db.roles)[number]): AdminRole =>
 const toUser = (u: DbUser): AdminUser =>
   clone({
     id: u.id, name: u.status === "deleted" ? "삭제된 사용자" : u.name, email: u.email, status: u.status, isAdmin: u.isAdmin, locale: u.locale, timeZone: u.timeZone,
-    lastLoginAt: u.lastLoginAt, createdAt: u.createdAt, lockedUntil: null, projectCount: db.projects.filter((p) => memberRoleIds(u.id, p.id).length > 0).length,
+    lastLoginAt: u.lastLoginAt, createdAt: u.createdAt, lockedUntil: null,
+    globalRoles: db.roles.filter((r) => r.scope === "global" && u.globalRoleIds?.includes(r.id)).map((r) => ({ id: r.id, name: r.name })).sort((a, b) => a.name.localeCompare(b.name, "ko")),
+    projectCount: db.projects.filter((p) => memberRoleIds(u.id, p.id).length > 0).length,
   });
 const toGroup = (g: (typeof db.groups)[number]): AdminGroup => clone({ id: g.id, name: g.name, members: g.memberIds.map((id) => userRef(id)!).filter(Boolean) });
 const toCategory = (c: (typeof db.categories)[number]): Category =>
@@ -822,6 +824,17 @@ export const adminApi: Api["admin"] = {
         if (!u) throw notFound("사용자");
         if (u.status !== "invited") throw new ApiError(422, "초대 대기 중인 사용자만 다시 보낼 수 있습니다.");
         invite(u, sessionUser().id);
+      }),
+    setGlobalRoles: (id, roleIds) =>
+      run(() => {
+        const me = sessionUser();
+        requireUserManager(me);
+        requireAdmin(me);
+        const u = db.users.find((x) => x.id === id && x.status !== "deleted");
+        if (!u) throw notFound("사용자");
+        if (roleIds.some((r) => db.roles.find((x) => x.id === r)?.scope !== "global")) throw fieldError("roleIds", "전역 역할만 줄 수 있습니다.");
+        u.globalRoleIds = [...new Set(roleIds)];
+        return toUser(u);
       }),
   },
 

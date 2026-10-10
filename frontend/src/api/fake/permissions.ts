@@ -70,7 +70,7 @@ export function can(user: DbUser, project: DbProject, perm: string, wp?: DbWp) {
 
 export function globalPermissions(user: DbUser): string[] {
   if (user.isAdmin) return ["global.create_projects", "global.manage_users"];
-  return [];
+  return [...new Set(db.roles.filter((r) => r.scope === "global" && user.globalRoleIds?.includes(r.id)).flatMap((r) => r.permissions))];
 }
 
 export function visibleProjects(user: DbUser, perm = "project.view"): DbProject[] {

@@ -243,6 +243,7 @@ export const httpApi: Api = {
       update: (id, p) => patch(`/admin/users/${id}`, p),
       remove: (id) => del(`/admin/users/${id}`),
       resendInvitation: (id) => post(`/admin/users/${id}/resend-invitation`),
+      setGlobalRoles: (id, roleIds) => put(`/admin/users/${id}/global-roles`, { roleIds }),
     },
     groups: {
       list: () => get("/admin/groups"),
