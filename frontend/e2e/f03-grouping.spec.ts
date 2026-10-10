@@ -7,6 +7,8 @@ test.describe("F03 그룹화와 합계", () => {
   test.beforeEach(async ({ page }) => login(page, "seoyeon.kim@openpms.local"));
 
   async function viewMenu(page: import("@playwright/test").Page, path: string[]) {
+    // the saved view arrives with the list: a change made before that would be replaced by it
+    await expect(page.getByRole("table").getByRole("row").nth(1)).toBeVisible();
     await page.getByRole("button", { name: "보기 메뉴" }).click();
     // by keyboard: a pointer moving from a submenu trigger to its items can close the submenu on the way
     for (const [i, name] of path.entries()) {

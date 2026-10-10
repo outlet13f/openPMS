@@ -98,6 +98,8 @@ export interface Api {
     updateProfile(input: ProfileInput): Promise<Me>;
     /** PUT /me/password — 422 on a wrong current password or a weak new one; my other sessions end */
     changePassword(currentPassword: string, newPassword: string): Promise<void>;
+    /** POST /me/password/setup — no password yet (SSO only): mails me a one-time link to make one; 422 when I have one */
+    sendPasswordSetup(): Promise<void>;
     /** POST /me/sessions/end-others — sign out everywhere but here */
     endOtherSessions(): Promise<void>;
     /** PUT /me/preferences — only the given keys change */

@@ -6,6 +6,7 @@ import { db, type DbProject, type DbUser, type DbWp } from "./db";
 import { can, memberRoleIds } from "./permissions";
 import { toWp } from "./dto";
 import { cfText, findField, opsFor, sortKey, valueOn } from "./custom-fields";
+import { progressSettings } from "./progress";
 
 function descendantsOf(projectId: string): string[] {
   const out = [projectId];
@@ -313,9 +314,18 @@ function summable(columns: ColumnKey[]): ColumnKey[] {
   });
 }
 
+/** Work adds up every listed item; % complete follows the progress settings, excluded statuses left out (as ∑ totals). */
 function accumulate(w: DbWp, cols: ColumnKey[], acc: Record<string, number>) {
   if (w.workHours !== null) acc.work = (acc.work ?? 0) + w.workHours;
   if (w.remainingHours !== null) acc.remainingWork = (acc.remainingWork ?? 0) + w.remainingHours;
+  if (cols.includes("doneRatio") && !db.statuses.find((s) => s.id === w.statusId)?.excludedFromTotals) {
+    if (w.workHours !== null) acc["%work"] = (acc["%work"] ?? 0) + w.workHours;
+    if (w.remainingHours !== null) acc["%remaining"] = (acc["%remaining"] ?? 0) + w.remainingHours;
+    if (w.doneRatio !== null) {
+      acc["%sum"] = (acc["%sum"] ?? 0) + w.doneRatio;
+      acc["%count"] = (acc["%count"] ?? 0) + 1;
+    }
+  }
   for (const c of cols) {
     const f = c.startsWith("cf:") ? db.customFields.find((x) => `cf:${x.id}` === c) : undefined;
     if (!f) continue;
@@ -329,8 +339,9 @@ function finish(acc: Record<string, number>, cols: ColumnKey[]): Record<string, 
   const out: Record<string, number | null> = {};
   for (const c of cols) {
     if (c === "doneRatio") {
-      const work = acc.work;
-      out[c] = !work ? null : Math.max(0, Math.round(((work - (acc.remainingWork ?? 0)) * 100) / work));
+      const work = acc["%work"];
+      if (progressSettings().totals === "weighted") out[c] = !work ? null : Math.max(0, Math.round(((work - (acc["%remaining"] ?? 0)) * 100) / work));
+      else out[c] = acc["%count"] ? Math.round(acc["%sum"] / acc["%count"]) : null;
     } else out[c] = acc[c] !== undefined ? Math.round(acc[c] * 100) / 100 : null;
   }
   return out;

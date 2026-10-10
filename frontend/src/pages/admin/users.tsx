@@ -14,7 +14,7 @@ import { EmptyState } from "@/components/ui/feedback";
 import { Dialog, Menu, type MenuEntry } from "@/components/ui/overlay";
 import { Skeleton } from "@/components/ui/spinner";
 import { cn } from "@/lib/cn";
-import { relativeTime } from "@/lib/dates";
+import { formatDateTime, relativeTime } from "@/lib/dates";
 import { ErrorState, PageBody, PageHeader, useDocumentTitle } from "@/app/page";
 import { AdminTable, ConfirmDialog, fieldErrorOf, tbodyRow, th, theadRow, useRunWithToast } from "@/features/admin/common";
 import { AdminGuard } from "./index";
@@ -79,7 +79,7 @@ export function AdminUsersPage() {
     const items: MenuEntry[] = [];
     if (u.status === "invited") items.push({ label: t("admin.users.resend"), icon: <Mail />, onSelect: () => void runToast(m.resend.mutateAsync(u.id), t("admin.users.resent")) });
     if (u.status === "active" && !self) items.push({ label: t("admin.users.lock"), icon: <Lock />, onSelect: () => void runToast(m.update.mutateAsync({ id: u.id, patch: { status: "locked" } }), t("admin.users.locked", { name: u.name })) });
-    if (u.status === "locked") items.push({ label: t("admin.users.unlock"), icon: <LockOpen />, onSelect: () => void runToast(m.update.mutateAsync({ id: u.id, patch: { status: "active" } }), t("admin.users.unlocked", { name: u.name })) });
+    if (u.status === "locked" || u.lockedUntil) items.push({ label: t("admin.users.unlock"), icon: <LockOpen />, onSelect: () => void runToast(m.update.mutateAsync({ id: u.id, patch: { status: "active" } }), t("admin.users.unlocked", { name: u.name })) });
     if (me?.isAdmin && !self)
       items.push(
         u.isAdmin
@@ -155,7 +155,16 @@ export function AdminUsersPage() {
                       </span>
                     </td>
                     <td className="px-3 text-fg-muted">{u.email}</td>
-                    <td className="px-3"><Badge tone={STATUS_TONE[u.status]}>{t(`admin.users.statuses.${u.status}`)}</Badge></td>
+                    <td className="px-3">
+                      {u.lockedUntil ? (
+                        <span className="inline-flex flex-col items-start gap-0.5">
+                          <Badge tone="warning">{t("admin.users.lockedOut")}</Badge>
+                          <span className="text-xs text-fg-muted">{t("admin.users.lockedUntil", { time: formatDateTime(u.lockedUntil) })}</span>
+                        </span>
+                      ) : (
+                        <Badge tone={STATUS_TONE[u.status]}>{t(`admin.users.statuses.${u.status}`)}</Badge>
+                      )}
+                    </td>
                     <td className="px-3 text-right tabular-nums">{u.projectCount}</td>
                     <td className="px-3 text-fg-muted">{u.lastLoginAt ? relativeTime(u.lastLoginAt) : "-"}</td>
                     <td className="px-2">

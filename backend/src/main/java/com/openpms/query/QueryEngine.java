@@ -351,7 +351,7 @@ public class QueryEngine {
 
     record Light(UUID id, long number, UUID parentId, UUID projectId, String subject, UUID typeId, UUID statusId, UUID priorityId, UUID assigneeId,
                  UUID responsibleId, UUID authorId, LocalDate startDate, LocalDate dueDate, OffsetDateTime updatedAt, JSONB customValues, UUID versionId,
-                 BigDecimal workHours, BigDecimal remainingHours) {}
+                 BigDecimal workHours, BigDecimal remainingHours, Integer doneRatio) {}
 
     /** Sort key of a custom field: empty (or not on for the item) sorts last. Parsed values are cached per run. */
     private Comparable<?> customSortValue(Snapshot s, Light w, String field, Map<UUID, Map<String, Object>> parsed) {
@@ -445,10 +445,22 @@ public class QueryEngine {
         }).distinct().toList();
     }
 
-    /** Adds one item to running totals ("work" and "remainingWork" are always kept: % complete needs them). */
+    /**
+     * Adds one item to running totals. Work and remaining work add up every listed item. % complete follows the
+     * progress rules (관리 · 진행률 추적) like an item's ∑ totals: items with a status excluded from totals are left
+     * out, and it is weighted by work or a plain average of the items' % ("%work", "%remaining", "%sum", "%count").
+     */
     private void accumulate(Snapshot s, Light w, List<String> cols, Map<String, BigDecimal> acc, Map<UUID, Map<String, Object>> parsed) {
         if (w.workHours() != null) acc.merge("work", w.workHours(), BigDecimal::add);
         if (w.remainingHours() != null) acc.merge("remainingWork", w.remainingHours(), BigDecimal::add);
+        if (cols.contains("doneRatio") && !s.status(w.statusId()).map(Snapshot.StatusRow::excludedFromTotals).orElse(false)) {
+            if (w.workHours() != null) acc.merge("%work", w.workHours(), BigDecimal::add);
+            if (w.remainingHours() != null) acc.merge("%remaining", w.remainingHours(), BigDecimal::add);
+            if (w.doneRatio() != null) {
+                acc.merge("%sum", BigDecimal.valueOf(w.doneRatio()), BigDecimal::add);
+                acc.merge("%count", BigDecimal.ONE, BigDecimal::add);
+            }
+        }
         for (var c : cols) {
             var id = CustomFields.idOf(c);
             if (id == null) continue;
@@ -464,15 +476,20 @@ public class QueryEngine {
         }
     }
 
-    /** The totals to show: the visible summable columns; % complete weighted by work, as the progress rules do. */
-    private static Map<String, BigDecimal> finish(Map<String, BigDecimal> acc, List<String> cols) {
+    /** The totals to show: the visible summable columns; % complete as the progress settings total it. */
+    private static Map<String, BigDecimal> finish(Snapshot s, Map<String, BigDecimal> acc, List<String> cols) {
         var out = new LinkedHashMap<String, BigDecimal>();
         for (var c : cols) {
             if (c.equals("doneRatio")) {
-                var work = acc.get("work");
-                var remaining = acc.getOrDefault("remainingWork", BigDecimal.ZERO);
-                out.put(c, work == null || work.signum() == 0 ? null
-                        : work.subtract(remaining).multiply(BigDecimal.valueOf(100)).divide(work, 0, java.math.RoundingMode.HALF_UP).max(BigDecimal.ZERO));
+                if ("weighted".equals(s.settings().progress().totals())) {
+                    var work = acc.get("%work");
+                    var remaining = acc.getOrDefault("%remaining", BigDecimal.ZERO);
+                    out.put(c, work == null || work.signum() == 0 ? null
+                            : work.subtract(remaining).multiply(BigDecimal.valueOf(100)).divide(work, 0, java.math.RoundingMode.HALF_UP).max(BigDecimal.ZERO));
+                } else {
+                    var count = acc.get("%count");
+                    out.put(c, count == null ? null : acc.get("%sum").divide(count, 0, java.math.RoundingMode.HALF_UP));
+                }
             } else {
                 out.put(c, acc.get(c));
             }
@@ -503,9 +520,10 @@ public class QueryEngine {
 
     private List<Light> fetchLight(Condition where) {
         return db.select(W.ID, W.NUMBER, W.PARENT_ID, W.PROJECT_ID, W.SUBJECT, W.TYPE_ID, W.STATUS_ID, W.PRIORITY_ID, W.ASSIGNEE_ID, W.RESPONSIBLE_ID,
-                        W.AUTHOR_ID, W.START_DATE, W.DUE_DATE, W.UPDATED_AT, W.CUSTOM_VALUES, W.VERSION_ID, W.WORK_HOURS, W.REMAINING_HOURS)
+                        W.AUTHOR_ID, W.START_DATE, W.DUE_DATE, W.UPDATED_AT, W.CUSTOM_VALUES, W.VERSION_ID, W.WORK_HOURS, W.REMAINING_HOURS, W.DONE_RATIO)
                 .from(W).where(where).fetch(r -> new Light(r.value1(), r.value2(), r.value3(), r.value4(), r.value5(), r.value6(), r.value7(), r.value8(),
-                        r.value9(), r.value10(), r.value11(), r.value12(), r.value13(), r.value14(), r.value15(), r.value16(), r.value17(), r.value18()));
+                        r.value9(), r.value10(), r.value11(), r.value12(), r.value13(), r.value14(), r.value15(), r.value16(), r.value17(), r.value18(),
+                        r.value19() == null ? null : r.value19().intValue()));
     }
 
     /** Projects in scope: one project (plus subprojects when asked) or every visible one. */
@@ -588,13 +606,13 @@ public class QueryEngine {
                 if (spec.sums()) accumulate(s, w, sumCols, accs.computeIfAbsent(g.key(), k -> new HashMap<>()), parsed);
             }
             groups = labels.values().stream().map(g -> new Dto.QueryGroup(g.key(), g.label(), g.color(), counts.get(g.key())[0],
-                    spec.sums() ? finish(accs.getOrDefault(g.key(), Map.of()), sumCols) : null)).toList();
+                    spec.sums() ? finish(s, accs.getOrDefault(g.key(), Map.of()), sumCols) : null)).toList();
         }
         Map<String, BigDecimal> sums = null;
         if (spec.sums()) {
             var acc = new HashMap<String, BigDecimal>();
             for (var w : matching) accumulate(s, w, sumCols, acc, parsed);
-            sums = finish(acc, sumCols);
+            sums = finish(s, acc, sumCols);
         }
 
         record Row(UUID id, int depth, boolean hasChildren, boolean context) {}

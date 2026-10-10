@@ -85,8 +85,9 @@ public class AdminController {
 
     public record Permission(String key, String scope, String group) {}
 
+    /** lockedUntil: a temporary lock after too many failed sign-ins, while it lasts (status stays active). */
     public record AdminUser(UUID id, String name, String email, String status, boolean isAdmin, String locale, String timeZone,
-                            OffsetDateTime lastLoginAt, long projectCount, OffsetDateTime createdAt) {}
+                            OffsetDateTime lastLoginAt, long projectCount, OffsetDateTime createdAt, OffsetDateTime lockedUntil) {}
 
     public record AdminGroup(UUID id, String name, List<Dto.UserRef> members) {}
 
@@ -561,21 +562,34 @@ public class AdminController {
 
     /* ---------- users ---------- */
 
-    private AdminUser toUser(Ctx ctx, Snapshot.UserRow u) {
-        var s = ctx.s();
-        long projects = s.projects().values().stream().filter(p -> s.isMember(u.id(), p.id())).count();
-        return new AdminUser(u.id(), u.displayName(), u.email(), u.status(), u.isAdmin(), u.locale(), u.timeZone(), u.lastLoginAt(), projects, u.createdAt());
+    /** Sign-in failures are not in the snapshot, so the running lockouts are read fresh. */
+    private Map<UUID, OffsetDateTime> lockouts() {
+        return db.select(USERS.ID, USERS.LOCKED_UNTIL).from(USERS).where(USERS.LOCKED_UNTIL.gt(OffsetDateTime.now())).fetchMap(USERS.ID, USERS.LOCKED_UNTIL);
     }
 
+    private AdminUser toUser(Ctx ctx, Snapshot.UserRow u, Map<UUID, OffsetDateTime> lockouts) {
+        var s = ctx.s();
+        long projects = s.projects().values().stream().filter(p -> s.isMember(u.id(), p.id())).count();
+        return new AdminUser(u.id(), u.displayName(), u.email(), u.status(), u.isAdmin(), u.locale(), u.timeZone(), u.lastLoginAt(), projects, u.createdAt(),
+                "active".equals(u.status()) ? lockouts.get(u.id()) : null);
+    }
+
+    private AdminUser toUser(Ctx ctx, Snapshot.UserRow u) {
+        return toUser(ctx, u, lockouts());
+    }
+
+    /** The 잠김 filter also finds people locked out for a while by failed sign-ins. */
     @GetMapping("/users")
     public List<AdminUser> listUsers(@RequestParam(required = false) String q, @RequestParam(required = false) String status) {
         var ctx = userManager();
         var needle = q == null ? "" : q.trim().toLowerCase();
+        var lockouts = lockouts();
         return ctx.s().users().values().stream()
                 .filter(u -> !"deleted".equals(u.status()) || "deleted".equals(status))
-                .filter(u -> status == null || status.isBlank() || status.equals(u.status()))
+                .filter(u -> status == null || status.isBlank() || status.equals(u.status())
+                        || "locked".equals(status) && "active".equals(u.status()) && lockouts.containsKey(u.id()))
                 .filter(u -> needle.isEmpty() || u.name().toLowerCase().contains(needle) || u.email().toLowerCase().contains(needle))
-                .sorted(Comparator.comparing(Snapshot.UserRow::name, Text.KOREAN)).map(u -> toUser(ctx, u)).toList();
+                .sorted(Comparator.comparing(Snapshot.UserRow::name, Text.KOREAN)).map(u -> toUser(ctx, u, lockouts)).toList();
     }
 
     private void sendInvitation(Ctx ctx, UUID userId, String email, String name) {

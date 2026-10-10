@@ -1,6 +1,7 @@
 package com.openpms.query;
 
 import static com.openpms.db.Tables.PROJECTS;
+import static com.openpms.db.Tables.STATUSES;
 import static com.openpms.db.Tables.WORK_PACKAGES;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -12,6 +13,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import com.openpms.common.SettingsRepo;
+import java.util.UUID;
+import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,7 +31,7 @@ import org.springframework.web.context.WebApplicationContext;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-/** S06 그룹화와 합계: groups cover every matching item in group order, sums add up, % complete is weighted by work. */
+/** S06 그룹화와 합계: groups cover every matching item in group order, sums add up, % complete totals as the progress settings say. */
 @SpringBootTest(properties = "openpms.jobs.enabled=false")
 @ActiveProfiles("dev")
 class GroupingIT {
@@ -35,6 +39,8 @@ class GroupingIT {
     WebApplicationContext context;
     @Autowired
     DSLContext db;
+    @Autowired
+    SettingsRepo settings;
 
     MockMvc mvc;
     final JsonMapper json = JsonMapper.builder().build();
@@ -91,17 +97,30 @@ class GroupingIT {
         assertThat(new ArrayList<>(seen)).isEqualTo(order);
     }
 
+    UUID project() {
+        return db.select(PROJECTS.ID).from(PROJECTS).where(PROJECTS.IDENTIFIER.eq("web-platform")).fetchOne(PROJECTS.ID);
+    }
+
+    /** Items whose status counts toward totals (취소 in the seed does not). */
+    Condition counted() {
+        return WORK_PACKAGES.PROJECT_ID.eq(project()).and(WORK_PACKAGES.STATUS_ID.in(DSL.select(STATUSES.ID).from(STATUSES).where(STATUSES.EXCLUDED_FROM_TOTALS.isFalse())));
+    }
+
     @Test
     void sumsAddUpAndPercentCompleteIsWeightedByWork() throws Exception {
         var r = query(spec("assignee", true, false), 5);
-        var project = db.select(PROJECTS.ID).from(PROJECTS).where(PROJECTS.IDENTIFIER.eq("web-platform")).fetchOne(PROJECTS.ID);
+        var project = project();
         var work = db.select(DSL.sum(WORK_PACKAGES.WORK_HOURS)).from(WORK_PACKAGES).where(WORK_PACKAGES.PROJECT_ID.eq(project)).fetchOne().value1();
         var remaining = db.select(DSL.sum(WORK_PACKAGES.REMAINING_HOURS)).from(WORK_PACKAGES).where(WORK_PACKAGES.PROJECT_ID.eq(project)).fetchOne().value1();
         var sums = r.get("sums");
         assertThat(dec(sums.get("work"))).isEqualByComparingTo(work == null ? BigDecimal.ZERO : work);
         assertThat(dec(sums.get("remainingWork"))).isEqualByComparingTo(remaining == null ? BigDecimal.ZERO : remaining);
-        if (work != null && work.signum() > 0) {
-            var expected = work.subtract(remaining == null ? BigDecimal.ZERO : remaining).multiply(BigDecimal.valueOf(100)).divide(work, 0, RoundingMode.HALF_UP);
+        // % complete leaves out the statuses excluded from totals, like an item's ∑
+        var countedWork = db.select(DSL.sum(WORK_PACKAGES.WORK_HOURS)).from(WORK_PACKAGES).where(counted()).fetchOne().value1();
+        var countedRemaining = db.select(DSL.sum(WORK_PACKAGES.REMAINING_HOURS)).from(WORK_PACKAGES).where(counted()).fetchOne().value1();
+        if (countedWork != null && countedWork.signum() > 0) {
+            var expected = countedWork.subtract(countedRemaining == null ? BigDecimal.ZERO : countedRemaining).multiply(BigDecimal.valueOf(100))
+                    .divide(countedWork, 0, RoundingMode.HALF_UP);
             assertThat(dec(sums.get("doneRatio"))).isEqualByComparingTo(expected);
         }
         // the group sums are over every item of the group, not just this page of 5
@@ -112,6 +131,18 @@ class GroupingIT {
         // the "no assignee" group comes last
         var groups = r.get("groups");
         for (int i = 0; i < groups.size() - 1; i++) assertThat(groups.get(i).get("key").asString()).isNotEmpty();
+    }
+
+    @Test
+    void withSimpleAverageTotalsPercentCompleteIsTheAverageOfTheItems() throws Exception {
+        settings.put("progress.totals", "\"simple\"", null);
+        try {
+            var sums = query(spec(null, true, false), 5).get("sums");
+            var avg = db.select(DSL.avg(WORK_PACKAGES.DONE_RATIO)).from(WORK_PACKAGES).where(counted(), WORK_PACKAGES.DONE_RATIO.isNotNull()).fetchOne().value1();
+            assertThat(dec(sums.get("doneRatio"))).isEqualByComparingTo(avg.setScale(0, RoundingMode.HALF_UP));
+        } finally {
+            settings.put("progress.totals", "\"weighted\"", null);
+        }
     }
 
     @Test

@@ -59,7 +59,7 @@ function checkPreferences(patch: Partial<Preferences>) {
 }
 
 /** The settings half of /me; profile and password live with the other user code in index.ts. */
-export const accountApi: Omit<Api["account"], "updateProfile" | "changePassword" | "endOtherSessions"> = {
+export const accountApi: Omit<Api["account"], "updateProfile" | "changePassword" | "sendPasswordSetup" | "endOtherSessions"> = {
   updatePreferences: (patch) =>
     run(() => {
       const user = sessionUser();

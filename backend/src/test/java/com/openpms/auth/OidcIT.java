@@ -3,6 +3,7 @@ package com.openpms.auth;
 import static com.openpms.db.Tables.OIDC_PROVIDERS;
 import static com.openpms.db.Tables.USERS;
 import static com.openpms.db.Tables.USER_IDENTITIES;
+import static com.openpms.db.Tables.USER_TOKENS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -224,6 +225,16 @@ class OidcIT {
         // no password: the form cannot sign this account in
         mvc.perform(post("/api/v1/auth/login").with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"email\":\"newcomer@sso.example\",\"password\":\"\"}")).andExpect(status().isUnauthorized());
+        // 계정 설정 says so and mails a link to make one (the reset page); someone with a password uses the change form
+        mvc.perform(get("/api/v1/auth/me").session(t)).andExpect(jsonPath("$.hasPassword").value(false)).andExpect(jsonPath("$.signInWith[0]").value("사내 계정"));
+        mvc.perform(post("/api/v1/me/password/setup").session(t).with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isAccepted());
+        assertThat(db.fetchCount(USER_TOKENS, USER_TOKENS.USER_ID.eq(u.getId()), USER_TOKENS.PURPOSE.eq("password_reset"), USER_TOKENS.USED_AT.isNull())).isEqualTo(1);
+        var haneul = new MockHttpSession();
+        mvc.perform(post("/api/v1/auth/login").session(haneul).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"haneul.lee@openpms.local\",\"password\":\"openpms!\"}")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.hasPassword").value(true)).andExpect(jsonPath("$.signInWith.length()").value(0));
+        mvc.perform(post("/api/v1/me/password/setup").session(haneul).with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnprocessableContent());
     }
 
     @Test

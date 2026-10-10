@@ -12,6 +12,13 @@ server:
   error:
     include-message: never
     include-stacktrace: never
+  # Behind the reverse proxy every request comes from the proxy's address. Take the client's address (and https) from
+  # X-Forwarded-For / X-Forwarded-Proto, but only when the request comes from a trusted proxy: by default this host
+  # (127.x, ::1) and Docker's bridge networks (172.16-31.x), which is how the proxy reaches the container in compose.yaml.
+  forward-headers-strategy: ${OPENPMS_FORWARD_HEADERS:native}
+  tomcat:
+    remoteip:
+      internal-proxies: '${OPENPMS_TRUSTED_PROXIES:127\.\d+\.\d+\.\d+|0:0:0:0:0:0:0:1|::1|172\.(1[6-9]|2[0-9]|3[01])\.\d+\.\d+}'
 
 spring:
   application:

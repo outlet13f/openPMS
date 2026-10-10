@@ -67,6 +67,8 @@ function toMe(u: DbUser): Me {
     globalPermissions: globalPermissions(u),
     preferences: u.prefs,
     theme: u.theme ?? "system",
+    hasPassword: !!u.password,
+    signInWith: [],
   });
 }
 
@@ -586,6 +588,13 @@ export const fakeApi: Api = {
         checkNewPassword(newPassword, "newPassword");
         if (newPassword === currentPassword) throw fieldError("newPassword", "지금 비밀번호와 다른 비밀번호를 정하세요.");
         user.password = newPassword;
+      }),
+    sendPasswordSetup: () =>
+      run(() => {
+        const u = sessionUser();
+        if (u.password) throw new ApiError(422, "이미 비밀번호가 있습니다.", "비밀번호 바꾸기를 쓰세요.");
+        revokeAll(u.id, "password_reset");
+        sendMail(u.email, "[openPMS] 비밀번호 만들기", `/password-reset?token=${issueToken(u.id, "password_reset", 60, null)}`);
       }),
     // the demo has one session per browser: nothing else to end
     endOtherSessions: () => run(() => void sessionUser()),

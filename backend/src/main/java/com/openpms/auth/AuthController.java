@@ -1,6 +1,8 @@
 package com.openpms.auth;
 
+import static com.openpms.db.Tables.OIDC_PROVIDERS;
 import static com.openpms.db.Tables.USERS;
+import static com.openpms.db.Tables.USER_IDENTITIES;
 import static com.openpms.db.Tables.USER_PREFERENCES;
 
 import com.openpms.api.Dto;
@@ -132,7 +134,11 @@ public class AuthController {
         var u = ctx.user();
         var p = db.selectFrom(USER_PREFERENCES).where(USER_PREFERENCES.USER_ID.eq(u.id())).fetchOne();
         var prefs = com.openpms.notification.AccountController.preferences(p);
-        return new Dto.Me(u.id(), u.name(), u.email(), u.status(), u.isAdmin(), u.locale(), u.timeZone(), ctx.globalPermissions(), prefs, u.theme());
+        boolean hasPassword = db.fetchExists(USERS, USERS.ID.eq(u.id()), USERS.PASSWORD_HASH.isNotNull());
+        var signInWith = db.select(OIDC_PROVIDERS.DISPLAY_NAME).from(USER_IDENTITIES).join(OIDC_PROVIDERS).on(OIDC_PROVIDERS.ID.eq(USER_IDENTITIES.PROVIDER_ID))
+                .where(USER_IDENTITIES.USER_ID.eq(u.id())).orderBy(OIDC_PROVIDERS.POSITION, OIDC_PROVIDERS.DISPLAY_NAME).fetch(OIDC_PROVIDERS.DISPLAY_NAME);
+        return new Dto.Me(u.id(), u.name(), u.email(), u.status(), u.isAdmin(), u.locale(), u.timeZone(), ctx.globalPermissions(), prefs, u.theme(),
+                hasPassword, signInWith);
     }
 
     /** Always 202, whether or not the address has an account (no enumeration). */
@@ -143,14 +149,32 @@ public class AuthController {
         if (!policy.current().resetEnabled()) throw ApiException.forbidden("비밀번호 재설정을 쓰지 않습니다. 관리자에게 문의하세요.");
         var u = byEmail(in.email());
         if (u != null && "active".equals(u.getStatus())) {
-            tokens.revokeAll(u.getId(), "password_reset"); // only the newest link works
-            var token = tokens.issue(u.getId(), "password_reset", Duration.ofMinutes(settings.integer("auth.password_reset_ttl_minutes", 60)), null);
-            mailer.send(u.getEmail(), "[openPMS] 비밀번호 재설정",
-                    u.getName() + "님,\n\n아래 링크에서 새 비밀번호를 정하세요. 링크는 한 번만 쓸 수 있고 곧 만료됩니다.\n\n"
-                            + mailer.link("/password-reset?token=" + token)
-                            + "\n\n직접 요청하지 않았다면 이 메일을 무시하세요. 비밀번호는 바뀌지 않습니다.");
+            sendPasswordLink(u.getId(), u.getEmail(), u.getName(), "[openPMS] 비밀번호 재설정",
+                    "아래 링크에서 새 비밀번호를 정하세요.", "직접 요청하지 않았다면 이 메일을 무시하세요. 비밀번호는 바뀌지 않습니다.");
         }
         return ResponseEntity.status(HttpStatus.ACCEPTED).build();
+    }
+
+    /** A one-time link to the reset page; only the newest link works. */
+    void sendPasswordLink(UUID userId, String email, String name, String subject, String lead, String tail) {
+        tokens.revokeAll(userId, "password_reset");
+        var token = tokens.issue(userId, "password_reset", Duration.ofMinutes(settings.integer("auth.password_reset_ttl_minutes", 60)), null);
+        mailer.send(email, subject, name + "님,\n\n" + lead + " 링크는 한 번만 쓸 수 있고 곧 만료됩니다.\n\n"
+                + mailer.link("/password-reset?token=" + token) + "\n\n" + tail);
+    }
+
+    /**
+     * Someone who came in through company SSO has no password. The link goes to their own address, so a borrowed
+     * session alone cannot add a way in; whether the administrator allows reset links does not matter here.
+     */
+    public void sendPasswordSetup(com.openpms.core.Ctx ctx) {
+        limiter.check("password-setup:" + ctx.userId(), 3);
+        if (db.fetchExists(USERS, USERS.ID.eq(ctx.userId()), USERS.PASSWORD_HASH.isNotNull()))
+            throw ApiException.unprocessable("이미 비밀번호가 있습니다.", "비밀번호 바꾸기를 쓰세요.");
+        var u = ctx.user();
+        sendPasswordLink(u.id(), u.email(), u.name(), "[openPMS] 비밀번호 만들기",
+                "아래 링크에서 비밀번호를 정하면 사내 계정(SSO) 없이 이메일과 비밀번호로도 로그인할 수 있습니다.",
+                "직접 요청하지 않았다면 이 메일을 무시하고 관리자에게 알려 주세요.");
     }
 
     private void checkPassword(String password) {

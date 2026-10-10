@@ -64,7 +64,7 @@ const toRole = (r: (typeof db.roles)[number]): AdminRole =>
 const toUser = (u: DbUser): AdminUser =>
   clone({
     id: u.id, name: u.status === "deleted" ? "삭제된 사용자" : u.name, email: u.email, status: u.status, isAdmin: u.isAdmin, locale: u.locale, timeZone: u.timeZone,
-    lastLoginAt: u.lastLoginAt, createdAt: u.createdAt, projectCount: db.projects.filter((p) => memberRoleIds(u.id, p.id).length > 0).length,
+    lastLoginAt: u.lastLoginAt, createdAt: u.createdAt, lockedUntil: null, projectCount: db.projects.filter((p) => memberRoleIds(u.id, p.id).length > 0).length,
   });
 const toGroup = (g: (typeof db.groups)[number]): AdminGroup => clone({ id: g.id, name: g.name, members: g.memberIds.map((id) => userRef(id)!).filter(Boolean) });
 const toCategory = (c: (typeof db.categories)[number]): Category =>

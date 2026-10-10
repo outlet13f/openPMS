@@ -86,6 +86,10 @@ export interface Me extends User {
   preferences: Preferences;
   /** S37: system follows the operating system */
   theme: Theme;
+  /** false for someone who has only signed in through company SSO */
+  hasPassword: boolean;
+  /** names of the SSO providers linked to me */
+  signInWith: string[];
 }
 
 /** S37 프로필: what I may change about myself (email is changed by an administrator). */
@@ -964,6 +968,8 @@ export interface AdminUser extends User {
   lastLoginAt: IsoDateTime | null;
   projectCount: number;
   createdAt: IsoDateTime;
+  /** Locked for a while after too many failed sign-ins; the status stays active. */
+  lockedUntil: IsoDateTime | null;
 }
 export interface UserInput {
   name: string;

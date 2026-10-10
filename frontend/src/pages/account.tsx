@@ -4,7 +4,7 @@ import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { usePasswordRules } from "@/api/hooks";
 import { DEFAULT_AUTH_SETTINGS, describeRules } from "@/api/password-policy";
-import { KeyRound, LogOut, Monitor, Moon, Save, Sun } from "lucide-react";
+import { KeyRound, LogOut, Mail, Monitor, Moon, Save, Sun } from "lucide-react";
 import { isApiError, type Theme } from "@/api";
 import { useAccountMutations, useMe } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
@@ -112,11 +112,38 @@ function Display() {
   );
 }
 
+/** Someone who came in through company SSO has no password: a link to their own address makes one. */
+function PasswordSetup({ email, providers }: { email: string; providers: string[] }) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const m = useAccountMutations();
+  return (
+    <Section title={t("account.passwordSetup")} hint={t("account.passwordSetupHint", { providers: providers.join(", ") || t("account.sso") })}>
+      <div>
+        <Button
+          icon={<Mail />}
+          loading={m.passwordSetup.isPending}
+          onClick={() =>
+            m.passwordSetup.mutate(undefined, {
+              onSuccess: () => toast({ tone: "success", title: t("account.passwordSetupSent", { email }) }),
+              onError: (e) => toast({ tone: "danger", title: isApiError(e) ? e.title : t("app.errorTitle"), description: isApiError(e) && e.message !== e.title ? e.message : undefined }),
+            })
+          }
+        >
+          {t("account.passwordSetupSend")}
+        </Button>
+      </div>
+    </Section>
+  );
+}
+
 function Password() {
   const { t } = useTranslation();
   const rules = usePasswordRules().data ?? DEFAULT_AUTH_SETTINGS;
   const toast = useToast();
   const m = useAccountMutations();
+  const me = useMe().data;
+  if (me && !me.hasPassword) return <PasswordSetup email={me.email} providers={me.signInWith} />;
   const [v, setV] = useState({ current: "", next: "", confirm: "" });
   const [mismatch, setMismatch] = useState(false);
   const submit = (e: FormEvent) => {
@@ -129,7 +156,10 @@ function Password() {
     );
   };
   return (
-    <Section title={t("account.password")} hint={t("account.passwordHint", { rules: describeRules(rules) })}>
+    <Section
+      title={t("account.password")}
+      hint={t("account.passwordHint", { rules: describeRules(rules) }) + (me?.signInWith.length ? " " + t("account.alsoSso", { providers: me.signInWith.join(", ") }) : "")}
+    >
       <form onSubmit={submit} noValidate className="flex max-w-form flex-col gap-4">
         <Field label={t("account.currentPassword")} required error={fieldErrorOf(m.password.error, "currentPassword")}>
           <Input type="password" autoComplete="current-password" value={v.current} onChange={(e) => setV({ ...v, current: e.target.value })} />

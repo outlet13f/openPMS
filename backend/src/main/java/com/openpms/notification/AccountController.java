@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 import org.jooq.DSLContext;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
@@ -119,6 +120,14 @@ public class AccountController {
         var session = req.getSession(false);
         if (session != null) sessions.endOthers(ctx.userId(), session.getId());
         return ResponseEntity.noContent().build();
+    }
+
+    /** No password yet (SSO only): mail myself a link to make one. */
+    @PostMapping("/password/setup")
+    @Transactional
+    public ResponseEntity<Void> passwordSetup() {
+        auth.sendPasswordSetup(current.ctx());
+        return ResponseEntity.status(HttpStatus.ACCEPTED).build();
     }
 
     @PostMapping("/sessions/end-others")

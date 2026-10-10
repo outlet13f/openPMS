@@ -55,8 +55,10 @@ public class DisplayFormats {
         return current();
     }
 
+    /** Read now, and again from time to time: another instance may change the settings (Dates.RELOAD_MS). */
     @EventListener(ApplicationReadyEvent.class)
     public void load() {
+        Dates.reloadWith(() -> apply(current()));
         apply(current());
     }
 

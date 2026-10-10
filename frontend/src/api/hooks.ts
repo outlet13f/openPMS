@@ -54,6 +54,7 @@ export function useAccountMutations() {
     preferences: useMutation({ mutationFn: (p: Partial<Preferences>) => api.account.updatePreferences(p), onSuccess: () => qc.invalidateQueries({ queryKey: qk.me }) }),
     profile: useMutation({ mutationFn: (input: ProfileInput) => api.account.updateProfile(input), onSuccess: (me) => qc.setQueryData(qk.me, me) }),
     password: useMutation({ mutationFn: ({ current, next }: { current: string; next: string }) => api.account.changePassword(current, next) }),
+    passwordSetup: useMutation({ mutationFn: () => api.account.sendPasswordSetup() }),
     endOthers: useMutation({ mutationFn: () => api.account.endOtherSessions() }),
     saveDefault: useMutation({ mutationFn: (s: NotificationSetting) => api.account.saveDefaultNotificationSetting(s), onSuccess: settings }),
     saveProject: useMutation({

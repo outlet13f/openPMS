@@ -90,9 +90,39 @@ public final class Dates {
     private static volatile boolean hour12 = false;
     private static volatile int weekStart = 7;
 
+    /*
+     * Another app instance may have changed the formats: they are read again from the database at most every
+     * RELOAD_MS, when a date is written. A change made here applies at once.
+     */
+    static final long RELOAD_MS = 30_000;
+    private static volatile Runnable reload = () -> {};
+    private static volatile long loadedAt = 0;
+
+    /** Read again the next time a date is written (tests). */
+    static void forget() {
+        loadedAt = 0;
+    }
+
+    /** DisplayFormats hands over how to read the settings again. */
+    public static void reloadWith(Runnable r) {
+        reload = r;
+    }
+
+    private static void fresh() {
+        long now = System.currentTimeMillis();
+        if (now - loadedAt < RELOAD_MS) return;
+        loadedAt = now; // one reader at a time; the others keep the formats they have
+        try {
+            reload.run();
+        } catch (RuntimeException e) {
+            // no database just now: keep the last formats and try again later
+        }
+    }
+
     /** The administrator's date format (DisplayFormats); 2026.10.21 until it is loaded. */
     public static void usePattern(String javaPattern) {
         pattern = java.time.format.DateTimeFormatter.ofPattern(javaPattern);
+        loadedAt = System.currentTimeMillis();
     }
 
     /** The administrator's clock (12 or 24 hours) and first weekday (ISO: Monday 1 … Sunday 7). */
@@ -103,6 +133,7 @@ public final class Dates {
 
     /** Date and time as the screens write them: "2026.10.21 15:05" or "2026.10.21 오후 3:05". */
     public static String formatDateTime(java.time.ZonedDateTime t) {
+        fresh();
         var time = hour12 ? (t.getHour() < 12 ? "오전 " : "오후 ") + (t.getHour() % 12 == 0 ? 12 : t.getHour() % 12) + ":%02d".formatted(t.getMinute())
                 : "%02d:%02d".formatted(t.getHour(), t.getMinute());
         return format(t.toLocalDate()) + " " + time;
@@ -110,10 +141,12 @@ public final class Dates {
 
     /** The first day of the week that contains d. */
     public static LocalDate startOfWeek(LocalDate d) {
+        fresh();
         return d.minusDays((d.getDayOfWeek().getValue() - weekStart + 7) % 7);
     }
 
     public static String format(LocalDate d) {
+        fresh();
         return d == null ? null : pattern.format(d);
     }
 }

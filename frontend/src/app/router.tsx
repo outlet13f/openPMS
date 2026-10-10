@@ -18,7 +18,6 @@ import { MembersPage } from "@/pages/projects/members";
 import { WorkPackagesPage } from "@/pages/work-packages/list";
 import { DetailsPanelRoute, FullViewRoute, NewPanelRoute } from "@/pages/work-packages/panels";
 import { NotificationDetailRoute, NotificationsPage } from "@/pages/notifications";
-import { DesignPage } from "@/pages/design-page";
 import { GanttDetailRoute, GanttPage } from "@/pages/gantt";
 import { AdminHomePage } from "@/pages/admin";
 import { AdminTypesPage } from "@/pages/admin/types";
@@ -46,6 +45,8 @@ import { Skeleton } from "@/components/ui/spinner";
 
 // FullCalendar is only needed on S17, so the calendar page is its own chunk.
 const CalendarPage = lazy(() => import("@/pages/planning/calendar").then((m) => ({ default: m.CalendarPage })));
+// The component catalogue is for the people building the app (help menu): signed in only, its own chunk.
+const DesignPage = lazy(() => import("@/pages/design-page").then((m) => ({ default: m.DesignPage })));
 
 function AdminStub() {
   const { t } = useTranslation();
@@ -67,7 +68,18 @@ export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
   { path: "/password-reset", element: <PasswordResetPage /> },
   { path: "/invitations/:token", element: <InvitationPage /> },
-  { path: "/design", element: <DesignPage /> },
+  {
+    path: "/design",
+    element: (
+      <RequireAuth>
+        {() => (
+          <Suspense fallback={<Skeleton className="h-96 w-full" />}>
+            <DesignPage />
+          </Suspense>
+        )}
+      </RequireAuth>
+    ),
+  },
   {
     path: "/",
     element: <Authed />,

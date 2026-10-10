@@ -36,6 +36,22 @@ test.describe("F11 관리", () => {
     await expect(page.getByText(/쓰고 있는|사용 중/).first()).toBeVisible();
   });
 
+  test("F11-E2 someone locked out by failed sign-ins shows as such and can be let in again", async ({ page }) => {
+    // five wrong passwords lock the account for a while (관리 · 인증); the status itself stays active
+    await api(page, "for (let i = 0; i < 5; i++) { try { await api.auth.login(args[0], 'wrong-' + i) } catch {} }", "doyoon.han@openpms.local");
+    await page.goto("/admin/users");
+    const row = page.getByRole("row").filter({ hasText: "doyoon.han@openpms.local" });
+    await expect(row.getByText("일시 잠김")).toBeVisible();
+    await expect(row.getByText(/로그인 실패가 많아 .+까지/)).toBeVisible();
+    await page.getByRole("button", { name: "잠김", exact: true }).click();
+    await expect(row).toBeVisible();
+    await axe(page, "S35 사용자 (일시 잠김)");
+    await row.getByRole("button", { name: /메뉴$/ }).click();
+    await page.getByRole("menuitem", { name: "잠금 해제" }).click();
+    await expect(page.getByText(/잠금을 풀었습니다/)).toBeVisible();
+    await expect(row).toHaveCount(0);
+  });
+
   test("F11-N1 a member cannot open administration", async ({ page }) => {
     await page.evaluate(async () => (await import("/src/api/index.ts" as string)).api.auth.logout());
     await login(page, "junho.park@openpms.local");

@@ -35,8 +35,9 @@ public final class Dto {
 
     public record NotificationSettings(@JsonProperty("default") NotificationSetting defaultSetting, List<ProjectNotificationSetting> projects) {}
 
+    /** hasPassword: false for someone who has only signed in through company SSO; signInWith: the SSO providers linked to me. */
     public record Me(UUID id, String name, String email, String status, boolean isAdmin, String locale, String timeZone,
-                     List<String> globalPermissions, Preferences preferences, String theme) {}
+                     List<String> globalPermissions, Preferences preferences, String theme, boolean hasPassword, List<String> signInWith) {}
 
     public record Role(UUID id, String name, String scope, String builtin, List<String> permissions) {}
 
