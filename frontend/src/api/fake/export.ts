@@ -1,5 +1,5 @@
 // S12 내보내기 in the fake data layer: CSV and a minimal XLSX (one sheet, inline strings, stored zip), from the
-// same query engine as the list. backend: export/ExportController.java writes the same columns and headers.
+// same query engine as the list. backend: query/ExportController.java writes the same columns and headers.
 import type { ColumnKey, ExportInput, WorkPackage } from "../types";
 import { EXPORT_LIMIT } from "../types";
 import { ApiError } from "../errors";

@@ -88,7 +88,7 @@ openPMS/
 
 ## 2. 스키마
 
-테이블 36개(자체) + 라이브러리 테이블 3개(spring_session, spring_session_attributes, scheduled_tasks). 전문은 `replica/schema.sql`.
+테이블 36개(자체) + 라이브러리 테이블 3개(spring_session, spring_session_attributes, scheduled_tasks). 전문은 `replica/schema.sql`(= Flyway V1). 구현 중 V4–V9로 바뀐 것(work_package_shares 테이블, user_preferences.last_digest_at·my_page_widgets, 알림 기본값, updated_at 트리거 예외, types.attribute_groups를 유형 양식으로 쓰며 기본값 '[]'로 초기화)은 `replica/review-2026-10-10.md` §2.3에 정리했습니다(V9는 그 뒤 추가).
 
 **접근 규칙: 데이터 계층 검사.** RLS는 쓰지 않습니다. 앱이 DB 계정 하나로 접속하기 때문입니다. 대신 모든 서비스 메서드가 `PermissionService`로 권한을 확인하고, 모든 목록 쿼리는 `VisibleProjects.condition(user, permission)` 조건을 반드시 포함합니다(§4.1). 보이지 않는 리소스에는 403이 아니라 404를 돌려줘 존재 여부가 드러나지 않게 합니다.
 
@@ -102,7 +102,7 @@ openPMS/
 | 사용자·인증 | users, user_preferences, user_tokens, user_groups, user_group_members, roles, global_role_assignments | 사용자(user_id) 또는 인스턴스(관리자) |
 | 프로젝트·멤버 | projects, project_favorites, members, member_roles | project_id, 즐겨찾기는 user_id |
 | 작업 설정 | types, project_types, statuses, workflows, priorities, versions, categories, custom_fields, custom_field_options, custom_field_types, project_custom_fields | 인스턴스(관리자), 버전·카테고리는 project_id |
-| 작업 패키지 | work_packages, relations, watchers, attachments, journals | project_id (작업 패키지를 통해) |
+| 작업 패키지 | work_packages, relations, watchers, attachments, journals, work_package_shares(V6 추가) | project_id (작업 패키지를 통해), 공유는 work_package_id + user_id |
 | 보기·보드 | queries, query_favorites, boards, board_columns, board_cards | owner_id / project_id |
 | 알림 | notifications, notification_settings | recipient_id / user_id |
 | 달력·설정 | non_working_days, settings | 인스턴스(관리자) |
@@ -136,6 +136,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | wp.manage_relations / wp.manage_subtasks / wp.assign_versions | 관계 / 부모·자식 / 버전 지정 |
 | wp.view_watchers / wp.add_watchers / wp.delete_watchers | 주시자 |
 | wp.export | 내보내기 |
+| wp.share | 작업 패키지를 멤버 아닌 사용자와 공유(V6 추가, 기본: 프로젝트 관리자) |
 | query.save / query.manage_public | 비공개 보기 저장 / 공개 보기 관리 |
 | board.view / board.manage | 보드 보기 / 보드·컬럼 관리 |
 | global.create_projects / global.manage_users | 전역 역할 전용 |

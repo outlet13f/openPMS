@@ -88,8 +88,10 @@ npm run build                # 운영 빌드(실제 API)를 backend 정적 리�
 
 | 항목 | 메모 |
 | --- | --- |
-| 계정 설정 API | S37 화면과 함께(비밀번호 변경, 이름·시간대). 알림 설정·메일 설정 API(`/me/notification-settings`, `/me/preferences`)는 완료 |
-| PDF 내보내기 | S12의 CSV·XLSX는 완료(`POST /work-packages/export`, Apache POI). PDF는 한글 글꼴 내장과 함께 |
+| ~~계정 설정 API~~ | 완료(S37: `PATCH /me`, `/me/password`, `/me/preferences`, `POST /me/sessions/end-others`) |
+| PDF 내보내기 | S12의 CSV·XLSX는 완료(`POST /work-packages/export`, Apache POI). PDF는 한글 글꼴 내장과 함께. 설계의 500행 초과 백그라운드 작업·`GET /exports/{id}`는 빼고 5000행 초과 422로 바꿈. 수식 주입 방어(`=` `+` `-` `@` 탭·CR로 시작하는 셀에 `'`)는 완료. **남은 일**: 전역 내보내기에서 공유받은 작업 포함(`ctx.can(p, wpId, "wp.export")`), JUnit 테스트(브라우저 점검만 있음) |
+| 초대 수락·비밀번호 재설정 화면 연결 | API(`/auth/invitations/{token}`, `/auth/password-reset*`)는 있으나 `Api` 인터페이스·S01 화면이 없어 첫 관리자 포함 초대받은 사용자가 UI로 계정을 활성화할 수 없음 |
+| 설계에 있으나 없는 경로 17개 | `replica/review-2026-10-10.md` §2 (프로젝트 복원·삭제, 작업 복사·이동·일괄, 보드 열 관리, `GET /queries/{id}`, `/home`, `/admin/settings/{section}` 5종 등) |
 | 사용자 정의 필드: 프로젝트·사용자 엔터티 | 작업 패키지 필드는 완료(`customfield/`). 프로젝트 특성·사용자 특성, 버전 형식은 없음 |
-| 진행률 합계(P2–P5) | 가짜 계층에도 없음 |
+| ~~진행률 합계(P2–P5)~~ | 완료(S32: `wp/Progress.java`·`fake/progress.ts`, `/admin/progress`, 저장 시 전체 재계산은 동기) |
 | 배포 파일 | Dockerfile·compose.yaml은 `/replica-deploy`에서 |
