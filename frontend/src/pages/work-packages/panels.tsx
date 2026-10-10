@@ -87,8 +87,9 @@ export function NewPanelRoute({ base: hostBase }: { base?: string } = {}) {
   const typeId = params.get("type") ?? undefined;
   const form = useWpForm(project.id, typeId);
   const create = useCreateWorkPackage(project.id);
-  const [v, setV] = useState<Partial<WorkPackageInput> & { description: string; parent: string }>(() => ({
-    description: "",
+  // description: undefined until typed in, and the type's template (S28) shows meanwhile; descriptionType: the type
+  // shown when typing began, so the editor is not rebuilt by the first keystroke
+  const [v, setV] = useState<Partial<WorkPackageInput> & { description?: string; descriptionType?: string; parent: string }>(() => ({
     parent: params.get("parent") ? `#${params.get("parent")}` : "",
     startDate: params.get("startDate") ?? undefined,
     dueDate: params.get("dueDate") ?? undefined,
@@ -97,7 +98,7 @@ export function NewPanelRoute({ base: hostBase }: { base?: string } = {}) {
   // custom field values typed so far; untouched fields show (and send) the field's default
   const [cf, setCf] = useState<Record<string, CustomValue>>({});
   const cfValue = (x: CustomField): CustomValue => (x.id in cf ? cf[x.id] : x.defaultValue);
-  useUnsavedWarning(!!v.subject?.trim() || !!v.description);
+  useUnsavedWarning(!!v.subject?.trim() || (!!v.description && v.description !== form.data?.defaults.descriptionHtml));
   useDocumentTitle(form.data ? t("wp.newTitle", { type: form.data.type.name }) : undefined);
 
   if (form.isPending)
@@ -119,7 +120,7 @@ export function NewPanelRoute({ base: hostBase }: { base?: string } = {}) {
       const wp = await create.mutateAsync({
         typeId: f.type.id,
         subject: v.subject ?? "",
-        descriptionHtml: v.description,
+        descriptionHtml: v.description ?? f.defaults.descriptionHtml,
         statusId: v.statusId || f.defaults.statusId,
         priorityId: v.priorityId || f.defaults.priorityId,
         assigneeId: v.assigneeId ?? null,
@@ -161,7 +162,7 @@ export function NewPanelRoute({ base: hostBase }: { base?: string } = {}) {
             <Input id="nw-subject" autoFocus maxLength={255} value={v.subject ?? ""} onChange={(e) => set("subject", e.target.value)} />
           </Field>
           <Field label={t("wp.fields.description")}>
-            <RichTextEditor value="" onChange={(html) => set("description", html)} label={t("wp.fields.description")} minRows={4} />
+            <RichTextEditor value={v.description ?? f.defaults.descriptionHtml} resetKey={v.descriptionType ?? f.type.id} onChange={(html) => setV((x) => ({ ...x, description: html, descriptionType: x.descriptionType ?? f.type.id }))} label={t("wp.fields.description")} minRows={4} />
           </Field>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label={t("wp.fields.status")}>

@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { GitBranch, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { GitBranch, LayoutList, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import type { AdminType, TypeInput } from "@/api";
 import { useAdminTypes, useTypeMutations } from "@/api/admin-hooks";
 import { Badge, TypeLabel } from "@/components/ui/badges";
@@ -134,7 +134,9 @@ export function AdminTypesPage() {
                     <OrderMenu items={types.data} item={ty} label={ty.name} onReorder={(ids) => void runToast(m.reorder.mutateAsync(ids))} />
                   </td>
                   <td className="px-3">
-                    <TypeLabel name={ty.name} color={ty.color} className="text-sm" />
+                    <Link to={`/admin/types/${ty.id}/form`} aria-label={t("typeForm.title", { name: ty.name })} className="rounded-sm hover:underline">
+                      <TypeLabel name={ty.name} color={ty.color} className="text-sm" />
+                    </Link>
                   </td>
                   <td className="px-3">{ty.isMilestone ? <Badge tone="success">{t("admin.yes")}</Badge> : <YesNo value={false} />}</td>
                   <td className="px-3"><YesNo value={ty.isDefault} /></td>
@@ -147,6 +149,7 @@ export function AdminTypesPage() {
                       trigger={<Button variant="ghost" size="sm" iconOnly aria-label={t("admin.actionsFor", { name: ty.name })} icon={<MoreHorizontal />} />}
                       items={[
                         { label: t("app.edit"), icon: <Pencil />, onSelect: () => setDialog({ open: true, editing: ty }) },
+                        { label: t("typeForm.heading"), icon: <LayoutList />, onSelect: () => navigate(`/admin/types/${ty.id}/form`) },
                         { label: t("admin.sections.workflows"), icon: <GitBranch />, onSelect: () => navigate(`/admin/workflows?type=${ty.id}`) },
                         { kind: "separator" },
                         { label: t("app.delete"), icon: <Trash2 />, danger: true, onSelect: () => setRemoving(ty) },

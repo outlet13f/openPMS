@@ -34,6 +34,7 @@ import { activeFields, applyValues, fieldsInProjects, initialValues, toField } f
 import { accountApi, effectiveSetting } from "./notification-settings";
 import { exportWorkPackages } from "./export";
 import { deriveProgress, progressLocked } from "./progress";
+import { DEFAULT_TYPE_FORM } from "../type-form";
 import { adminApi, categoriesApi, projectExtras, versionsApi } from "./admin";
 
 /* ---------- plumbing ---------- */
@@ -607,7 +608,7 @@ export const fakeApi: Api = {
           assignees: projectUserIds(p.id).map((id) => userRef(id)!).sort((a, b) => a.name.localeCompare(b.name, "ko")),
           versions: db.versions.filter((v) => v.projectId === p.id && v.status === "open").map((v) => ({ id: v.id, name: v.name })),
           categories: db.categories.filter((c) => c.projectId === p.id).map((c) => ({ id: c.id, name: c.name, defaultAssigneeId: c.defaultAssigneeId })),
-          defaults: { statusId: def.id, priorityId: db.priorities.find((x) => x.isDefault)!.id, descriptionHtml: "" },
+          defaults: { statusId: def.id, priorityId: db.priorities.find((x) => x.isDefault)!.id, descriptionHtml: type.descriptionTemplateHtml ?? "" },
           required: ["subject"],
           customFields: activeFields(p.id, type.id).map(toField),
         });
@@ -944,6 +945,7 @@ export const fakeApi: Api = {
           roles: db.roles.filter((r) => r.scope === "project" && !r.builtin).map((r) => ({ id: r.id, name: r.name })),
           projects: scope.map((x) => ({ id: x.id, name: x.name })),
           customFields: fieldsInProjects(scope.map((x) => x.id)),
+          typeForms: Object.fromEntries(db.types.map((t) => [t.id, t.form ?? DEFAULT_TYPE_FORM])),
         });
       }),
   },

@@ -595,6 +595,8 @@ export interface FilterOptions {
   projects: { id: Id; name: string }[];
   /** custom fields active somewhere in that scope: column and filter choices */
   customFields: CustomField[];
+  /** S28: each type's form, resolved (the default where none is set) */
+  typeForms: Record<Id, TypeForm>;
 }
 
 /* ---------- boards ---------- */
@@ -758,6 +760,9 @@ export interface ProjectCustomFields {
 /* ---------- administration (S27–S36) and project settings (S24–S26) ---------- */
 
 export interface AdminType extends WpType {
+  /** null = the default layout */
+  form: TypeForm | null;
+  descriptionTemplateHtml: string;
   isInRoadmap: boolean;
   workPackageCount: number;
   projectCount: number;
@@ -768,6 +773,22 @@ export interface TypeInput {
   isMilestone: boolean;
   isDefault: boolean;
   isInRoadmap: boolean;
+  /** S28: null = back to the default layout */
+  form?: TypeForm | null;
+  /** S28: the description new items of this type start with (sanitised HTML) */
+  descriptionTemplateHtml?: string;
+}
+
+/** S28 양식 구성: one group of the detail's attributes (built-in keys or "cf:<id>"), in order. */
+export interface AttributeGroup {
+  name: string;
+  attributes: string[];
+}
+
+/** A type's form. Custom fields in no group and not hidden show in an automatic last group ("추가 정보"). */
+export interface TypeForm {
+  groups: AttributeGroup[];
+  hidden: string[];
 }
 
 export interface AdminStatus extends Status {

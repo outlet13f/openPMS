@@ -21,6 +21,10 @@ import static com.openpms.db.Tables.WORK_PACKAGES;
 import static org.jooq.impl.DSL.count;
 
 import com.openpms.api.Dto;
+import com.openpms.common.Html;
+import tools.jackson.databind.json.JsonMapper;
+import org.jooq.JSONB;
+import com.openpms.wp.TypeForms;
 import com.openpms.auth.Sessions;
 import com.openpms.auth.Tokens;
 import com.openpms.common.ApiException;
@@ -68,8 +72,9 @@ public class AdminController {
     private static final Pattern HEX = Pattern.compile("^#[0-9a-fA-F]{6}$");
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
+    /** form: null = the default layout (S28) */
     public record AdminType(UUID id, String name, String color, boolean isMilestone, int position, boolean isDefault, boolean isInRoadmap,
-                            long workPackageCount, long projectCount) {}
+                            long workPackageCount, long projectCount, Dto.TypeForm form, String descriptionTemplateHtml) {}
 
     public record AdminStatus(UUID id, String name, String color, boolean isClosed, boolean isReadonly, int position, boolean isDefault,
                               int defaultDoneRatio, boolean excludedFromTotals, long workPackageCount) {}
@@ -113,7 +118,11 @@ public class AdminController {
     private final Mailer mailer;
     private final Sessions sessions;
 
-    public AdminController(Current current, DSLContext db, ScheduleStore schedules, SettingsRepo settings, Tokens tokens, Mailer mailer, Sessions sessions) {
+    private final JsonMapper json;
+
+    public AdminController(Current current, DSLContext db, ScheduleStore schedules, SettingsRepo settings, Tokens tokens, Mailer mailer, Sessions sessions,
+                           JsonMapper json) {
+        this.json = json;
         this.current = current;
         this.db = db;
         this.schedules = schedules;
@@ -187,7 +196,7 @@ public class AdminController {
         var pr = db.select(PROJECT_TYPES.TYPE_ID, count()).from(PROJECT_TYPES).groupBy(PROJECT_TYPES.TYPE_ID).fetchMap(PROJECT_TYPES.TYPE_ID, count());
         return db.selectFrom(TYPES).orderBy(TYPES.POSITION).fetch().stream().filter(t -> only == null || t.getId().equals(only))
                 .map(t -> new AdminType(t.getId(), t.getName(), t.getColor(), t.getIsMilestone(), t.getPosition(), t.getIsDefault(), t.getIsInRoadmap(),
-                        wp.getOrDefault(t.getId(), 0), pr.getOrDefault(t.getId(), 0)))
+                        wp.getOrDefault(t.getId(), 0), pr.getOrDefault(t.getId(), 0), TypeForms.read(json, t.getAttributeGroups()), t.getDescriptionTemplateHtml()))
                 .toList();
     }
 
@@ -229,6 +238,9 @@ public class AdminController {
         }
         if (In.has(in, "isDefault")) t.setIsDefault(Boolean.TRUE.equals(In.bool(in, "isDefault")));
         if (In.has(in, "isInRoadmap")) t.setIsInRoadmap(Boolean.TRUE.equals(In.bool(in, "isInRoadmap")));
+        // S28: the form (null = back to the default) and the description new items of this type start with
+        if (In.has(in, "form")) t.setAttributeGroups(in.get("form") == null ? JSONB.valueOf("[]") : TypeForms.write(json, TypeForms.parse(current.ctx().s(), in.get("form"))));
+        if (In.has(in, "descriptionTemplateHtml")) t.setDescriptionTemplateHtml(Html.sanitize(In.str(in, "descriptionTemplateHtml")));
         t.store();
         return types(id).get(0);
     }

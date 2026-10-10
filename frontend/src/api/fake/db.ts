@@ -2,7 +2,7 @@
 // Table shapes follow replica/schema.sql closely so the move to the real API is mechanical.
 // State survives reloads through localStorage (per browser, per user) and can be reset from the login page.
 
-import type { BoardKind, CustomField, CustomValue, Id, NotificationSetting, ShareRole, Theme, IsoDate, IsoDateTime, ModuleKey, NotificationReason, Preferences, ProjectStatus, QuerySpec, ViewKind } from "../types";
+import type { BoardKind, CustomField, CustomValue, Id, NotificationSetting, ShareRole, Theme, TypeForm, IsoDate, IsoDateTime, ModuleKey, NotificationReason, Preferences, ProjectStatus, QuerySpec, ViewKind } from "../types";
 import { buildSeed } from "./seed";
 
 export interface DbUser {
@@ -40,7 +40,7 @@ export interface DbProject {
 }
 /** A project member is a user or a group (exactly one of userId / groupId, like members_one_principal). */
 export interface DbMember { id: Id; projectId: Id; userId: Id | null; groupId: Id | null; roleIds: Id[]; createdAt: IsoDateTime }
-export interface DbType { id: Id; name: string; color: string; position: number; isMilestone: boolean; isDefault: boolean; isInRoadmap: boolean }
+export interface DbType { id: Id; name: string; color: string; position: number; isMilestone: boolean; isDefault: boolean; isInRoadmap: boolean; form?: TypeForm | null; descriptionTemplateHtml?: string }
 export interface DbStatus { id: Id; name: string; color: string; position: number; isDefault: boolean; isClosed: boolean; isReadonly: boolean; defaultDoneRatio: number; excludedFromTotals: boolean }
 export interface DbPriority { id: Id; name: string; color: string; position: number; isDefault: boolean; isActive: boolean }
 export interface DbWorkflow { typeId: Id; roleId: Id; from: Id; to: Id }

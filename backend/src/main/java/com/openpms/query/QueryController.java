@@ -1,5 +1,6 @@
 package com.openpms.query;
 
+import static com.openpms.db.Tables.TYPES;
 import static com.openpms.db.Tables.QUERIES;
 import static com.openpms.db.Tables.QUERY_FAVORITES;
 
@@ -108,7 +109,10 @@ public class QueryController {
                 s.roles().stream().filter(r -> "project".equals(r.scope()) && r.builtin() == null).map(r -> new Dto.IdName(r.id(), r.name())).toList(),
                 scope.stream().map(x -> new Dto.IdName(x.id(), x.name())).toList(),
                 // custom fields on in any project of the scope: column and filter choices
-                s.customFields().stream().filter(f -> scope.stream().anyMatch(x -> s.customFieldEnabledIn(f, x.id()))).map(customFields::dto).toList());
+                s.customFields().stream().filter(f -> scope.stream().anyMatch(x -> s.customFieldEnabledIn(f, x.id()))).map(customFields::dto).toList(),
+                // S28: each type's form, resolved (the default where none is set)
+                db.select(TYPES.ID, TYPES.ATTRIBUTE_GROUPS).from(TYPES).fetch().stream()
+                        .collect(java.util.stream.Collectors.toMap(r -> r.value1().toString(), r -> com.openpms.wp.TypeForms.resolve(json, r.value2()))));
     }
 
     /* ---------- saved views ---------- */

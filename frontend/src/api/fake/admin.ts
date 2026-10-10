@@ -1,6 +1,6 @@
 // Administration (S27–S36) and project settings (S24–S26) for the fake data layer.
 import type { Api } from "../api";
-import type { AdminCustomField, CustomField, CustomFieldInput, CustomValue, ProjectCustomFields, AdminGroup, AdminPriority, AdminRole, AdminStatus, AdminType, AdminUser, Category, Version } from "../types";
+import type { AdminCustomField, CustomField, CustomFieldInput, CustomValue, ProjectCustomFields, TypeForm, AdminGroup, AdminPriority, AdminRole, AdminStatus, AdminType, AdminUser, Category, Version } from "../types";
 import { ApiError } from "../errors";
 import { nowIso } from "@/lib/dates";
 import { db, newId, type DbUser } from "./db";
@@ -10,6 +10,7 @@ import { rescheduleAll } from "./scheduling";
 import { fieldError, HEX, run } from "./util";
 import { checkValue, toField } from "./custom-fields";
 import { deriveProgress, progressSettings } from "./progress";
+import { BUILT_IN_ATTRIBUTES } from "../type-form";
 
 /* ---------- guards ---------- */
 
@@ -52,7 +53,7 @@ function applyCalendarChange(actor: DbUser) {
 /* ---------- DTOs ---------- */
 
 const toType = (t: (typeof db.types)[number]): AdminType =>
-  clone({ ...t, workPackageCount: db.workPackages.filter((w) => w.typeId === t.id).length, projectCount: db.projects.filter((p) => p.typeIds.includes(t.id)).length });
+  clone({ ...t, form: t.form ?? null, descriptionTemplateHtml: t.descriptionTemplateHtml ?? "", workPackageCount: db.workPackages.filter((w) => w.typeId === t.id).length, projectCount: db.projects.filter((p) => p.typeIds.includes(t.id)).length });
 const toStatus = (s: (typeof db.statuses)[number]): AdminStatus => clone({ ...s, workPackageCount: db.workPackages.filter((w) => w.statusId === s.id).length });
 const toPriority = (p: (typeof db.priorities)[number]): AdminPriority => clone({ ...p, workPackageCount: db.workPackages.filter((w) => w.priorityId === p.id).length });
 const toRole = (r: (typeof db.roles)[number]): AdminRole =>
@@ -83,6 +84,34 @@ const PERMISSIONS: { key: string; scope: "project" | "global"; group: string }[]
 ];
 
 /* ---------- project settings ---------- */
+
+/* ---------- type forms (S28) ---------- */
+
+/** A form as sent → checked (messages as backend wp/TypeForms.parse). */
+function checkForm(form: TypeForm): TypeForm {
+  const groups = form.groups ?? [];
+  const hidden = form.hidden ?? [];
+  if (groups.length > 20) throw fieldError("form", "그룹은 20개까지 만들 수 있습니다.");
+  const seen = new Set<string>();
+  const names = new Set<string>();
+  const known = (a: string) => {
+    const cf = a.startsWith("cf:") ? a.slice(3) : null;
+    if (!(BUILT_IN_ATTRIBUTES as readonly string[]).includes(a) && !(cf && db.customFields.some((f) => f.id === cf))) throw fieldError("form", `알 수 없는 항목입니다: ${a}`);
+    if (seen.has(a)) throw fieldError("form", "같은 항목이 두 번 있습니다.");
+    seen.add(a);
+  };
+  const out = groups.map((g) => {
+    const name = (g.name ?? "").trim();
+    if (!name) throw fieldError("form", "그룹 이름을 입력하세요.");
+    if (name.length > 60) throw fieldError("form", "그룹 이름은 60자까지 입력할 수 있습니다.");
+    if (names.has(name)) throw fieldError("form", `같은 이름의 그룹이 있습니다: ${name}`);
+    names.add(name);
+    g.attributes.forEach(known);
+    return { name, attributes: [...g.attributes] };
+  });
+  hidden.forEach(known);
+  return { groups: out, hidden: [...hidden] };
+}
 
 /* ---------- custom fields (S34, S25) ---------- */
 
@@ -379,6 +408,7 @@ export const adminApi: Api["admin"] = {
         checkName(patch.name);
         checkColor(patch.color);
         unique(db.types, patch.name, id);
+        if (patch.form !== undefined) patch = { ...patch, form: patch.form === null ? null : checkForm(patch.form) };
         if (patch.isMilestone !== undefined && patch.isMilestone !== t.isMilestone && db.workPackages.some((w) => w.typeId === id))
           throw new ApiError(422, "쓰고 있는 유형은 마일스톤 여부를 바꿀 수 없습니다.", "작업의 날짜 규칙이 달라지기 때문입니다.");
         Object.assign(t, { ...patch, name: patch.name?.trim() ?? t.name });

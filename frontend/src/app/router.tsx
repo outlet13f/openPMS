@@ -29,6 +29,7 @@ import { SearchPage } from "@/pages/search";
 import { MyPage } from "@/pages/my-page";
 import { AdminCustomFieldsPage } from "@/pages/admin/custom-fields";
 import { AdminProgressPage } from "@/pages/admin/progress";
+import { AdminTypeFormPage } from "@/pages/admin/type-form";
 import { AdminPrioritiesPage, AdminStatusesPage } from "@/pages/admin/statuses";
 import { AdminWorkflowsPage } from "@/pages/admin/workflows";
 import { AdminRoleEditPage, AdminRolesPage } from "@/pages/admin/roles";
@@ -151,6 +152,7 @@ export const router = createBrowserRouter([
       },
       { path: "admin", element: <AdminHomePage /> },
       { path: "admin/types", element: <AdminTypesPage /> },
+      { path: "admin/types/:id/form", element: <AdminTypeFormPage /> },
       { path: "admin/custom-fields", element: <AdminCustomFieldsPage /> },
       { path: "admin/progress", element: <AdminProgressPage /> },
       { path: "admin/statuses", element: <AdminStatusesPage /> },

@@ -2,6 +2,7 @@ package com.openpms.wp;
 
 import static com.openpms.db.Tables.JOURNALS;
 import static com.openpms.db.Tables.RELATIONS;
+import static com.openpms.db.Tables.TYPES;
 import static com.openpms.db.Tables.WATCHERS;
 import static com.openpms.db.Tables.WORK_PACKAGE_SHARES;
 import static com.openpms.db.Tables.WORK_PACKAGES;
@@ -89,7 +90,9 @@ public class WorkPackageService {
                 s.projectUsers(p.id()).stream().map(u -> new Dto.UserRef(u.id(), u.name())).toList(),
                 s.versions().stream().filter(v -> v.projectId().equals(p.id()) && "open".equals(v.status())).map(v -> new Dto.IdName(v.id(), v.name())).toList(),
                 s.categories().stream().filter(c -> c.projectId().equals(p.id())).map(c -> new Dto.CategoryOption(c.id(), c.name(), c.defaultAssigneeId())).toList(),
-                new Dto.FormDefaults(def.id(), s.defaultPriority().id(), ""),
+                // S28: new items of this type start with the type's description template
+                new Dto.FormDefaults(def.id(), s.defaultPriority().id(),
+                        db.select(TYPES.DESCRIPTION_TEMPLATE_HTML).from(TYPES).where(TYPES.ID.eq(type.id())).fetchOne(TYPES.DESCRIPTION_TEMPLATE_HTML)),
                 List.of("subject"),
                 s.activeCustomFields(p.id(), type.id()).stream().map(customFields::dto).toList());
     }

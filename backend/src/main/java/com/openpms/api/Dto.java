@@ -93,6 +93,12 @@ public final class Dto {
                               boolean watching, int watcherCount, int relationCount, int attachmentCount, Map<String, CustomValue> customValues,
                               Totals totals, int lockVersion, OffsetDateTime createdAt, OffsetDateTime updatedAt, @JsonProperty("_meta") Meta meta) {}
 
+    /** S28: one group of the detail's attributes, in order (built-in keys or cf:<id>) */
+    public record AttributeGroup(String name, List<String> attributes) {}
+
+    /** S28: a type's form; custom fields in no group and not hidden show in an automatic last group */
+    public record TypeForm(List<AttributeGroup> groups, List<String> hidden) {}
+
     /** P4/P5: an item and its descendants */
     public record Totals(Double workHours, Double remainingHours, Integer doneRatio) {}
 
@@ -149,7 +155,7 @@ public final class Dto {
 
     public record FilterOptions(List<StatusRef> statuses, List<TypeRef> types, List<PriorityRef> priorities, List<UserRef> users,
                                 List<IdName> versions, List<IdName> categories, List<IdName> groups, List<IdName> roles, List<IdName> projects,
-                                List<CustomField> customFields) {}
+                                List<CustomField> customFields, Map<String, TypeForm> typeForms) {}
 
     /* ---------- boards ---------- */
 
