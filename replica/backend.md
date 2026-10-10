@@ -1,7 +1,7 @@
 # 백엔드 (openPMS)
 
 - 기준: `replica/architecture.md`, 화면 계약은 `frontend/src/api/api.ts`·`types.ts`, 동작 규칙은 가짜 계층(`frontend/src/api/fake`)
-- 작성: 2026-10-09 · 갱신: 2026-10-11 (그룹화·합계 2bb76a8, 보드 보강 88153b7, 날짜 형식 84f6e6c)
+- 작성: 2026-10-09 · 갱신: 2026-10-11 (그룹화·합계 2bb76a8, 보드 보강 88153b7, 날짜 형식 84f6e6c, 문서 점검 후속 384a2f9·31e39bd)
 - 스택: Spring Boot 4.1.1 · Java 21(가상 스레드) · jOOQ 3.21 · Flyway 12 · PostgreSQL 17 · Spring Session JDBC · Spring Security 7 · Gradle 9.7
 - 개발 환경: PC에 아무것도 설치하지 않고 Podman 컨테이너로만 빌드·실행합니다(`backend/scripts/dev.sh`).
 
@@ -26,17 +26,17 @@ npm run build                # 운영 빌드(실제 API)를 backend 정적 리�
 
 ## 구현 범위
 
-화면이 쓰는 경로 **전부**와 인증 흐름을 구현했습니다. 처음(2026-10-09) 약 95개였고, 2026-10-11 기준 컨트롤러 매핑은 153개입니다(dev 프로필 전용 `POST /dev/jobs/{name}` 제외). 경로 이름과 응답 모양은 `frontend/src/api/http.ts`와 같습니다.
+화면이 쓰는 경로 **전부**와 인증 흐름을 구현했습니다. 처음(2026-10-09) 약 95개였고, 2026-10-11(31e39bd) 기준 컨트롤러 매핑은 154개, dev 프로필 전용 `POST /dev/jobs/{name}`을 빼면 153개입니다(384a2f9의 `POST /me/password/setup` 포함. Spring Security가 처리하는 SSO 시작·콜백은 따로). 경로 이름과 응답 모양은 `frontend/src/api/http.ts`와 같습니다.
 
 | 영역 | 내용 |
 | --- | --- |
-| 인증 | 세션 로그인(HttpOnly 쿠키, Postgres 저장), SPA용 CSRF 쿠키, 실패 누적 잠금(설정: 5회·15분), IP별 요청 제한, 로그아웃, 비밀번호 재설정(메일 링크, 사용 후 모든 세션 종료), 초대 수락, 첫 관리자 초대. 사내 SSO(OIDC, V10, 커밋 a677079): `auth/OidcProviders`·`OidcLogin`·`OidcController`, Spring Security `oauth2Login`(PKCE·state·nonce·ID 토큰 서명·issuer), 공급자 토큰 저장 안 함, 연결된 sub → 같은 이메일 → 자동 생성 → 거부, 로그인 뒤에는 폼 로그인과 같은 세션 |
+| 인증 | 세션 로그인(HttpOnly 쿠키, Postgres 저장), SPA용 CSRF 쿠키, 실패 누적 잠금(설정: 5회·15분), IP별 요청 제한, 로그아웃, 비밀번호 재설정(메일 링크, 사용 후 모든 세션 종료), 초대 수락, 첫 관리자 초대. 사내 SSO(OIDC, V10, 커밋 a677079): `auth/OidcProviders`·`OidcLogin`·`OidcController`, Spring Security `oauth2Login`(PKCE·state·nonce·ID 토큰 서명·issuer), 공급자 토큰 저장 안 함, 연결된 sub → 같은 이메일 → 자동 생성 → 거부, 로그인 뒤에는 폼 로그인과 같은 세션. 384a2f9: 로그인 실패 잠금 중인 사람을 관리 · 사용자에 "일시 잠김"으로 보임(`AdminUser.lockedUntil`, 상태가 active이고 `locked_until`이 미래일 때만, 스냅샷이 아니라 매번 DB에서 읽음. "잠김" 필터도 찾음, `PATCH status=active`가 실패 횟수·`locked_until`을 지움). 프록시 뒤 클라이언트 주소: `server.forward-headers-strategy`(`OPENPMS_FORWARD_HEADERS`, 기본 native)와 `server.tomcat.remoteip.internal-proxies`(`OPENPMS_TRUSTED_PROXIES`, 기본 127.x·::1·172.16–31.x, 90006c2부터 Podman 네트워크 10.88–89.x도)로 믿는 프록시가 보낸 `X-Forwarded-For`·`X-Forwarded-Proto`만 씀 → 요청 제한이 사람마다. SSO로만 들어온 사람의 비밀번호 만들기: `POST /me/password/setup`(202, 비밀번호가 있으면 422, 사용자당 분당 3회)이 본인 주소로 `password_reset` 토큰 링크를 보냄. 재설정 허용 설정과 무관. `Me.hasPassword`, `Me.signInWith`(연결된 공급자 표시 이름) |
 | 권한 | 요청마다 역할 × 프로젝트 계산(직접 멤버 + 그룹 멤버 + 공개 프로젝트 비멤버 역할), 보관 프로젝트는 보기만, 꺼진 모듈의 권한 제외. 보이지 않는 리소스는 404 |
 | 작업 | 생성·수정(lock_version 409 + 현재 값), 읽기 전용 상태, 워크플로, 저널 5분 집계, 알림 대상 계산(멘션 > 담당 > 책임 > 주시), 코멘트(HTML 정화·@멘션), 주시, 관계, 삭제(하위 삭제·재배치) |
 | 일정 | S1–S8, S11을 순수 Java(`wp/Schedule.java`)로. advisory lock으로 직렬화, 바뀐 작업마다 원인이 담긴 저널 |
-| 목록 | 필터 29종을 SQL 조건으로, 한글 정렬, 계층(맥락 행·페이지별 조상), 타임라인 관계, 저장된 보기·기본 보기·즐겨찾기. 그룹화와 합계(2bb76a8): `QueryEngine.GROUPABLE`(유형·상태·우선순위·담당자·책임자·작성자·버전·프로젝트)과 목록·사용자·예/아니요 사용자 정의 필드로 그룹, 그룹 건수·그룹별 합계·전체 합계는 페이지가 아니라 조건에 맞는 전체 기준, 완료 % 합계는 작업량 가중, 그룹화하면 계층 끔. 응답 `Dto.QueryResult(groups, sums)`, 행마다 `QueryRow.groupKey`. 작업량·남은 작업 열(정렬·내보내기) |
+| 목록 | 필터 29종을 SQL 조건으로, 한글 정렬, 계층(맥락 행·페이지별 조상), 타임라인 관계, 저장된 보기·기본 보기·즐겨찾기. 그룹화와 합계(2bb76a8): `QueryEngine.GROUPABLE`(유형·상태·우선순위·담당자·책임자·작성자·버전·프로젝트)과 목록·사용자·예/아니요 사용자 정의 필드로 그룹, 그룹 건수·그룹별 합계·전체 합계는 페이지가 아니라 조건에 맞는 전체 기준, 그룹화하면 계층 끔. 완료 % 합계(384a2f9·31e39bd): 작업의 ∑ 합계처럼 관리 · 진행률 추적의 합계 방식(작업량 가중 또는 `simple_average`)을 따르고 합계 제외 상태(시드: 취소)를 뺌. 작업량·남은 작업 합계는 목록의 모든 작업을 더함. 가중 %에서 작업량은 있고 남은 작업이 비어 있는 작업은 시작 전(남은 작업 = 작업량)으로 셈(`Progress.totals`도 같음. 전에는 시드의 신규 그룹이 100%). 응답 `Dto.QueryResult(groups, sums)`, 행마다 `QueryRow.groupKey`. 작업량·남은 작업 열(정렬·내보내기) |
 | 보드 | 상태·담당자·버전·빈(기본) 보드, 카드 이동(워크플로 검사), 열 추가·순서·이름·빼기. 88153b7: 빈 보드에 기존 작업 넣기·빼기(`POST /boards/{id}/cards`, `DELETE /boards/{id}/cards/{number}`, 작업은 바뀌지 않음, `board.manage`), 열에서 새 작업(`POST /boards/{id}/cards/new`, 열의 상태·담당자·버전, 프로젝트 기본 유형), 보드 필터(`PATCH /boards/{id}`의 `filters`로 저장, `GET /boards/{id}?filters=`로 저장하지 않고 걸러 보기, 목록과 같은 필드·연산자 검사) |
-| 날짜 형식 | 84f6e6c: `common/DisplayFormats`. `GET /settings/display`(로그인), `PUT /admin/settings/display`(관리자), 설정 키 `calendar.date_format`·`calendar.time_format`·`calendar.week_starts_on`. 저장하면 `Dates.format`의 형식이 바로 바뀌어 활동 기록·사용자 정의 필드 값·메일의 날짜가 따라감. 시작할 때 저장된 값을 읽음. 요약 메일 항목 시각은 `Dates.formatDateTime`으로 날짜 형식·12시간제를 따르고, 필터 "이번 주"는 `Dates.startOfWeek`로 주 시작 요일을 따름. 내보내기 시각(`yyyy-MM-dd HH:mm`)만 고정 |
+| 날짜 형식 | 84f6e6c: `common/DisplayFormats`. `GET /settings/display`(로그인), `PUT /admin/settings/display`(관리자), 설정 키 `calendar.date_format`·`calendar.time_format`·`calendar.week_starts_on`. 저장하면 `Dates.format`의 형식이 바로 바뀌어 활동 기록·사용자 정의 필드 값·메일의 날짜가 따라감. 시작할 때 저장된 값을 읽음. 384a2f9: 날짜를 쓸 때 최대 30초마다(`Dates.RELOAD_MS`) DB에서 다시 읽어, 다른 인스턴스에서 저장한 값도 30초 안에 반영(같은 인스턴스에서 저장하면 바로). DB에 닿지 못하면 마지막 값을 씀. 요약 메일 항목 시각은 `Dates.formatDateTime`으로 날짜 형식·12시간제를 따르고, 필터 "이번 주"는 `Dates.startOfWeek`로 주 시작 요일을 따름. 내보내기 시각(`yyyy-MM-dd HH:mm`)만 고정 |
 | 그 밖 | 프로젝트·멤버·카테고리·버전·알림함·검색 제안·근무일 달력, 관리 전체(유형·상태·우선순위·워크플로·역할·사용자·그룹·근무일) |
 
 ## 검증
@@ -46,6 +46,7 @@ npm run build                # 운영 빌드(실제 API)를 backend 정적 리�
 - JUnit 27개: 일정 규칙 7개, 접근 권한 6개(두 번째 사용자는 다른 프로젝트의 작업·멤버·검색 결과를 하나도 받지 못함, 로그인 필요, CSRF 없으면 거부, 관리자 전용, 뷰어 수정 거부, 잠긴 계정). 예약 작업 5개(`JobsIT`: 시간대별 날짜 알림과 중복 방지, 기한 지남, 마일스톤·닫힌 작업·프로젝트별 설정·일시 중지·볼 권한, 요약 시각 계산, 멘션 1분 지연·요약 1회·읽은 알림 제외), 파일 정리 2개, 사용자 정의 필드 4개(`CustomFieldsIT`: 관리자 전용, 형식·선택지·비활성 필드 검사, 목록 필터·정렬, 삭제 때 작업 시각 유지), 작업 공유 1개(`SharingIT`: 프로젝트 밖 사람이 공유받은 작업만 보고 역할만큼만 함, 해제하면 다시 404), 알림 설정 2개(`NotificationSettingsIT`: 값 검사, fan-out이 담당 끄기·프로젝트 코멘트 구독을 따름).
 - 그 뒤 추가: 사내 SSO `OidcIT` 5개(테스트 안의 IdP로 왕복: 이메일 연결 뒤 sub로 찾기, 계정 없음·자동 생성, 잠김·미확인 이메일·이메일 없음, 다른 키 서명·남의 state, 관리 API와 시크릿 비공개). 2026-10-10 a677079 기준 JUnit 51개 모두 통과.
 - 2026-10-11 추가: 그룹화·합계 `GroupingIT` 3개(그룹 건수 합 = 전체, 행의 groupKey와 그룹 순서, 페이지보다 큰 합계와 작업량 가중 완료 %, 끈 상태에서 null), 보드 `BoardsIT` 3개(빈 보드에 넣기·순서·옮기기·빼기에도 작업은 그대로, 필터 저장과 저장하지 않고 걸러 보기·422, 열에서 만든 카드가 열의 값을 받음), 날짜 형식 `DisplaySettingsIT` 1개(누구나 읽고 관리자만 저장, 형식 검사 422, `Dates.format` 결과). 84f6e6c 기준 JUnit 58개 모두 통과.
+- 2026-10-11 문서 점검 후속(384a2f9·31e39bd): `LockoutIT` 1개(실패 5번 → 423, 목록에 active + `lockedUntil`, "잠김"·"활성" 필터 모두에 나옴, `PATCH status=active`로 풀리고 다시 로그인), `ClientAddressIT` 1개(무작위 포트의 실제 HTTP, 신뢰하는 프록시가 보낸 `X-Forwarded-For`로 사람마다 따로 세고, 앞에 가짜 주소를 붙여도 한도 유지), `DisplayFormatsReloadIT` 1개(다른 인스턴스가 쓴 설정 값을 다시 읽음), `GroupingIT`에 단순 평균 1개 추가(가중 케이스는 합계 제외 상태를 빼고 남은 작업이 비면 작업량으로 계산하도록 고침), `OidcIT` 확장(`hasPassword`·`signInWith`, 비밀번호 만들기 202·422), `ProgressTest` 확장(남은 작업 없음 = 시작 전). JUnit 62/62, e2e 84/84(F11-E2 추가), 전체 두 번 돌림.
 - 점검 중에 찾아 고친 문제: 세션 없는 로그인 요청의 500, 저널 필드 순서(jsonb가 키 순서를 바꿈), 멘션 직후 빠른 입력 시 글자 순서가 섞이던 프론트 버그.
 
 ## 결제
@@ -54,7 +55,7 @@ npm run build                # 운영 빌드(실제 API)를 backend 정적 리�
 
 ## 이메일과 작업
 
-- 메일은 Spring Mail로 사내 SMTP 릴레이를 씁니다(개발: Mailpit). 보내는 메일: 초대, 비밀번호 재설정, 멘션 알림, 하루 요약. 문구는 모두 새로 썼고 일반 텍스트입니다.
+- 메일은 Spring Mail로 사내 SMTP 릴레이를 씁니다(개발: Mailpit). 보내는 메일: 초대, 비밀번호 재설정, 비밀번호 만들기(SSO로만 들어온 사람, 384a2f9), 멘션 알림, 하루 요약. 문구는 모두 새로 썼고 일반 텍스트입니다.
 - 예약 작업은 db-scheduler(`scheduled_tasks` 테이블)로 돌립니다(`jobs/`). 인스턴스가 여럿이어도 한 번만 실행되고, 실패하면 다음 일정에 다시 돕니다.
 
 | 작업 | 일정 | 하는 일 |
@@ -87,7 +88,9 @@ npm run build                # 운영 빌드(실제 API)를 backend 정적 리�
 - [ ] SSO 클라이언트 시크릿 암호화 저장: 아직 없음
 - [x] 모든 경로에서 서버 검증(필드별 422, 형식 오류 400, 알 수 없는 ID 422/404). 입력 HTML은 OWASP 허용 목록으로 정화
 - [x] 모든 읽기·쓰기에서 권한 확인. 두 번째 사용자로 테스트(`AccessIT`). 작업 공유(V6)는 작업 하나의 권한을 프로젝트 역할 ∪ 공유 역할로 계산(`Ctx.can(project, wpId, perm)`), 공유받은 사람이 프로젝트에서 얻는 것은 `project.view`뿐(`SharingIT`)
-- [x] 로그인·비밀번호 재설정에 요청 제한(IP별, 메모리), 로그인 실패 누적 잠금
+- [x] 로그인·비밀번호 재설정에 요청 제한(클라이언트 주소별, 메모리), 로그인 실패 누적 잠금(관리 · 사용자에 "일시 잠김"과 끝나는 시각, `LockoutIT`). 비밀번호 변경은 사용자당 분당 10회, 비밀번호 만들기 링크는 사용자당 분당 3회
+- [x] 리버스 프록시 뒤 요청 제한(384a2f9): 클라이언트 주소는 믿는 프록시(`OPENPMS_TRUSTED_PROXIES`)가 보낸 `X-Forwarded-For`에서만. 전에는 프록시 뒤 모든 사람이 버킷 하나를 같이 씀(`replica/bugs.md` BUG-008, `ClientAddressIT`). 버킷은 인스턴스 메모리라 인스턴스를 늘리면 인스턴스마다 따로 셈
+- [x] SSO 전용 계정의 비밀번호 만들기는 본인 메일의 일회용 링크로만(빌린 세션만으로는 비밀번호를 더할 수 없음, `OidcIT`)
 - [ ] 웹훅 서명: 해당 없음(웹훅 없음)
 - [x] 업로드 크기·형식 제한: 25MB(설정 `attachments.max_bytes`) 초과 413, 내용으로 형식 판별(Tika, 확장자·브라우저 값 무시). 저장은 `/data/files`(DB 밖, 임의 UUID 이름). 내려받기는 `nosniff` + `CSP sandbox`, png·jpeg·gif·webp만 inline, 나머지는 `attachment`. 별도 도메인은 쓰지 않음(사내 단일 호스트) — 위 헤더로 같은 출처 실행을 막음. 권한 없는 사용자는 404
 - [x] URL·로그에 사용자 데이터 없음. 메일 본문(일회용 링크)은 로그에 남기지 않음. 예외: 첫 관리자 설정 링크는 설계대로 로그에 한 번 출력

@@ -35,7 +35,7 @@
 | 파일 형식 판별 | Apache Tika core | 업로드된 확장자를 믿지 않고 내용으로 형식을 확인합니다. |
 | HTML 정화 | OWASP Java HTML Sanitizer (허용 목록) | 코멘트와 설명의 XSS를 막습니다. |
 | 내보내기 | Apache Commons CSV, Apache POI (SXSSF 스트리밍), OpenPDF + Noto Sans KR 임베드 | PDF에 한글 폰트를 임베드해야 글자가 깨지지 않습니다. |
-| 로그인 제한 | Bucket4j (메모리) | 인스턴스가 하나라 메모리 버킷으로 충분합니다. |
+| 로그인 제한 | Bucket4j (메모리) | 인스턴스가 하나라 메모리 버킷으로 충분합니다. 구현(384a2f9): 키인 클라이언트 주소는 믿는 프록시가 보낸 `X-Forwarded-For`에서 꺼냅니다(Tomcat RemoteIpValve, §1 배포 구성). |
 | 호스팅 | 사내 서버의 Docker Compose (Podman 호환): `app` + `db` | 지금 OpenProject 운영 방식과 같습니다. TLS는 사내 리버스 프록시(nginx 등)에서 종료합니다. |
 | 관측 | Spring Boot Actuator (health, Prometheus 지표), JSON 로그를 stdout으로 | 사내 모니터링에 바로 연결합니다. |
 | 테스트 | JUnit 5 + Testcontainers(Postgres 17), jqwik(스케줄링 속성 기반 테스트), Playwright(E2E, `/replica-test`) | 실제 Postgres로 제약과 쿼리를 검증합니다. |
@@ -82,7 +82,7 @@ openPMS/
 호스트 cron: pg_dump -Fc 매일 + /data/files 백업, 복원 연습 월 1회
 ```
 
-환경 변수: `OPENPMS_BASE_URL`(메일 링크와 SSO 콜백 주소의 기준), `OPENPMS_DB_URL`·`_USER`·`_PASSWORD`, `OPENPMS_SMTP_HOST`·`_PORT`·`_USER`·`_PASSWORD`·`_STARTTLS`, `OPENPMS_MAIL_FROM`, `OPENPMS_FILES_DIR`, `OPENPMS_ADMIN_EMAIL`, `OPENPMS_SESSION_TIMEOUT`(기본 8h), `OPENPMS_SECURE_COOKIES`(기본 true), `OPENPMS_JOBS_ENABLED`(기본 true, dev 프로필은 false), `OPENPMS_PORT`(compose가 쓰는 호스트 포트, 기본 8090. 컨테이너 안 앱 포트는 8090이고 compose는 여기에 연결). 값과 뜻은 `replica/deploy.md` "환경 변수". SSO 공급자 설정은 환경 변수가 아니라 DB(`oidc_providers`)에 둡니다.
+환경 변수: `OPENPMS_BASE_URL`(메일 링크와 SSO 콜백 주소의 기준), `OPENPMS_DB_URL`·`_USER`·`_PASSWORD`, `OPENPMS_SMTP_HOST`·`_PORT`·`_USER`·`_PASSWORD`·`_STARTTLS`, `OPENPMS_MAIL_FROM`, `OPENPMS_FILES_DIR`, `OPENPMS_ADMIN_EMAIL`, `OPENPMS_SESSION_TIMEOUT`(기본 8h), `OPENPMS_SECURE_COOKIES`(기본 true), `OPENPMS_JOBS_ENABLED`(기본 true, dev 프로필은 false), `OPENPMS_PORT`(compose가 쓰는 호스트 포트, 기본 8090. 컨테이너 안 앱 포트는 8090이고 compose는 여기에 연결), `OPENPMS_FORWARD_HEADERS`(기본 native, 프록시 없이 쓸 때 none), `OPENPMS_TRUSTED_PROXIES`(`X-Forwarded-For`·`X-Forwarded-Proto`를 믿을 프록시 주소 정규식, 기본 127.x·::1·Docker 172.16–31.x·Podman 10.88–89.x, 384a2f9·90006c2. Docker 192.168.x 풀은 기본값 밖). 프록시는 두 헤더를 꼭 보내야 하고, 그래야 로그인 요청 제한이 사람마다 따로 셉니다. 값과 뜻은 `replica/deploy.md` "환경 변수". SSO 공급자 설정은 환경 변수가 아니라 DB(`oidc_providers`)에 둡니다.
 
 **첫 관리자**: 관리자 계정이 하나도 없고 `OPENPMS_ADMIN_EMAIL`이 설정돼 있으면, 시작할 때 그 이메일로 `invited` 상태의 관리자를 만들고 일회용 설정 링크(24시간)를 로그에 한 번 출력합니다. 기본 비밀번호는 없습니다.
 
@@ -205,7 +205,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | P2 | `status` 모드: % = 상태의 `default_done_ratio`이고 직접 입력할 수 없습니다. 남은 작업 = 작업량 × (1 − %)입니다. |
 | P3 | 닫힌 상태이고 `progress.closed_sets_100`이 켜져 있으면 % = 100, 남은 작업 = 0입니다. |
 | P4 | 합계: `total_work`와 `total_remaining`은 자신과 자손의 합입니다. `excluded_from_totals` 상태의 작업은 빼고, 자손이 바뀌면 조상 체인을 갱신합니다. |
-| P5 | `total_done_ratio`: `weighted`이면 (합계 작업량 − 합계 남은 작업) / 합계 작업량입니다. `simple_average`이면 자신과 자손의 % 평균입니다. |
+| P5 | `total_done_ratio`: `weighted`이면 (합계 작업량 − 합계 남은 작업) / 합계 작업량입니다. `simple_average`이면 자신과 자손의 % 평균입니다. 구현(31e39bd): `weighted`에서 작업량은 있고 남은 작업이 비어 있는 작업은 아직 시작하지 않은 것(남은 작업 = 작업량)으로 셉니다. 목록 합계의 완료 %도 같은 규칙입니다(§3.5). |
 
 ### 3.5 쿼리 엔진 (`query`)
 
@@ -247,7 +247,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 6. `groupBy`가 있으면 그룹 머리글과 그룹별 합계를 계산합니다.
 7. `sums`가 켜져 있으면 전체 합계를 계산합니다.
 
-구현(2bb76a8): 그룹화할 수 있는 열은 `QueryEngine.GROUPABLE`(type, status, priority, assignee, responsible, author, version, project)과 목록·사용자·예/아니요 사용자 정의 필드입니다. 그 밖의 열은 오류 없이 무시합니다. 그룹화하면 계층(5단계)은 쓰지 않고, 행은 그룹 순서(그 값의 순서, 값 없음은 맨 끝)로 정렬합니다. 그룹 건수와 합계는 페이지가 아니라 조건에 맞는 전체 기준입니다. 합계 대상은 보이는 열 중 작업량·남은 작업·완료 %·숫자 사용자 정의 필드이고, 완료 %는 작업량 가중(P5 `weighted`와 같은 식)입니다. 응답은 `QueryResult.groups`(key, label, color, count, sums)와 `QueryResult.sums`, 행마다 `groupKey`입니다. 끈 상태면 셋 다 null입니다.
+구현(2bb76a8): 그룹화할 수 있는 열은 `QueryEngine.GROUPABLE`(type, status, priority, assignee, responsible, author, version, project)과 목록·사용자·예/아니요 사용자 정의 필드입니다. 그 밖의 열은 오류 없이 무시합니다. 그룹화하면 계층(5단계)은 쓰지 않고, 행은 그룹 순서(그 값의 순서, 값 없음은 맨 끝)로 정렬합니다. 그룹 건수와 합계는 페이지가 아니라 조건에 맞는 전체 기준입니다. 합계 대상은 보이는 열 중 작업량·남은 작업·완료 %·숫자 사용자 정의 필드입니다. 작업량·남은 작업은 목록의 모든 작업을 더합니다. 완료 %는 384a2f9부터 작업의 ∑ 합계(P4·P5)처럼 `progress.totals`를 따르고(가중 또는 단순 평균) `excluded_from_totals` 상태(시드: 취소)를 뺍니다. 가중일 때 남은 작업이 비어 있으면 작업량으로 셉니다(31e39bd). 응답은 `QueryResult.groups`(key, label, color, count, sums)와 `QueryResult.sums`, 행마다 `groupKey`입니다. 끈 상태면 셋 다 null입니다.
 
 성능 목표(추정): 작업 1만 건인 프로젝트에서 p95 300ms 이하.
 
@@ -286,15 +286,15 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 - **작업 패키지 응답의 `_meta`**: `editableFields`, `allowedActions`(edit, delete, move, comment, manageRelations…), `derived`(파생 필드 목록)를 담습니다. 화면은 이 값으로 편집 가능 여부를 그리고, 권한 규칙을 프론트에 복제하지 않습니다.
 - 원본 앱의 내부 API는 참고하지 않습니다. 모든 경로는 openPMS가 정의한 것입니다.
 
-### 4.2 경로 (총 145개: 설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1)
+### 4.2 경로 (총 146개: 설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1 + 비밀번호 만들기 1)
 
-#### 인증·계정 (17)
+#### 인증·계정 (18)
 
 | method path | 하는 일 | 호출 가능 | 입력 | 출력 | 흐름 |
 | --- | --- | --- | --- | --- | --- |
-| POST /auth/login | 로그인, 세션 발급, 실패 횟수 누적·잠금 | 익명 | email, password | 200 me / 401 / 423 잠김 / 429 | S01 |
+| POST /auth/login | 로그인, 세션 발급, 실패 횟수 누적·잠금. 요청 제한은 클라이언트 주소별(믿는 프록시의 `X-Forwarded-For`, 384a2f9) | 익명 | email, password | 200 me / 401 / 423 잠김 / 429 | S01 |
 | POST /auth/logout | 세션 종료 | 로그인 | - | 204 | 공통 |
-| GET /auth/me | 현재 사용자, 환경설정, 전역 권한 | 로그인 | - | me | 공통 |
+| GET /auth/me | 현재 사용자, 환경설정, 전역 권한. 384a2f9: `hasPassword`(SSO로만 들어와 비밀번호가 없으면 false), `signInWith`(연결된 SSO 공급자 표시 이름) | 로그인 | - | me | 공통 S37 |
 | POST /auth/password-reset | 재설정 메일 발송 (가입 여부와 관계없이 항상 202) | 익명 | email | 202 | S01 |
 | POST /auth/password-reset/confirm | 토큰으로 비밀번호 변경 | 토큰 | token, newPassword | 204 / 410 만료 | S01 |
 | GET /auth/sso-providers | 켜진 SSO 공급자 목록(로그인 버튼) | 익명 | - | [{slug, displayName}] | S01 |
@@ -304,6 +304,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | POST /auth/invitations/{token}/accept | 이름·비밀번호 설정 후 활성화 (첫 관리자 설정도 같은 경로) | 토큰 | name, password | 200 me | F10 |
 | PATCH /me | 이름, 언어, 시간대, 테마 | 본인 | 부분 | me | S37 |
 | PUT /me/password | 비밀번호 변경 (다른 세션 만료) | 본인 | current, new | 204 / 422 | S37 |
+| POST /me/password/setup | 비밀번호가 없는 사람(SSO 전용)에게 비밀번호 만들기 링크를 본인 주소로 메일(재설정과 같은 `password_reset` 토큰, 재설정 화면). 재설정 허용 설정과 무관. 사용자당 분당 3회. 384a2f9 | 본인 | - | 202 / 422 이미 비밀번호 있음 / 429 | S37 |
 | PUT /me/preferences | 코멘트 정렬, 이탈 경고, 단축키, 요약 메일 시각 | 본인 | preferences | preferences | S37, S20 |
 | GET /me/notification-settings | 기본값과 프로젝트별 설정 | 본인 | - | settings[] | S20 |
 | PUT /me/notification-settings/default | 기본 알림 설정 저장 | 본인 | 설정 | setting | S20 |
@@ -441,10 +442,10 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | 상태 | GET·POST /admin/statuses, PATCH·DELETE /admin/statuses/{id}, PUT /admin/statuses/order | 5 | 쓰고 있는 상태는 삭제 시 409, 기본 상태는 하나만 | S30 |
 | 우선순위 | GET·POST /admin/priorities, PATCH·DELETE /admin/priorities/{id}, PUT /admin/priorities/order | 5 | 같은 규칙 | S36 |
 | 역할 | GET·POST /admin/roles, PATCH·DELETE /admin/roles/{id}, GET /admin/permissions | 5 | 권한 키 목록과 설명 | S31 |
-| 사용자 | GET·POST /admin/users, PATCH·DELETE /admin/users/{id}, POST /admin/users/{id}/resend-invitation | 5 | DELETE는 익명화 작업을 예약. PATCH로 잠금·해제, 관리자 지정 | S35 |
+| 사용자 | GET·POST /admin/users, PATCH·DELETE /admin/users/{id}, POST /admin/users/{id}/resend-invitation | 5 | DELETE는 익명화 작업을 예약. PATCH로 잠금·해제, 관리자 지정. 384a2f9: 응답 `lockedUntil`(로그인 실패 잠금 중이고 상태가 active일 때만, 아니면 null, 화면은 "일시 잠김"), `status=locked` 필터가 일시 잠김도 찾음, `PATCH status=active`가 실패 횟수와 `locked_until`을 지움 | S35 |
 | 그룹 | GET·POST /admin/groups, PATCH·DELETE /admin/groups/{id}, PUT /admin/groups/{id}/members | 5 | | S35 |
 | 사용자 정의 필드 | GET·POST /admin/custom-fields, PATCH·DELETE /admin/custom-fields/{id} | 4 | 옵션과 사용 유형은 PATCH 본문에 포함 | S34 |
-| 설정 | GET·PUT /admin/settings/{section} | 2 | section: calendar, progress, attachments, notifications, auth, mail, display. calendar나 progress를 바꾸면 재계산 작업을 예약. display(84f6e6c)는 PUT만 있고 읽기는 로그인한 누구나 `GET /settings/display`. 저장하면 서버가 쓰는 날짜(`Dates.format`: 활동 기록, 사용자 정의 필드 값, 메일)도 바로 바뀜. 요약 메일 항목의 시각도 날짜 형식과 12시간제를 따름(`Dates.formatDateTime`), 필터 "이번 주"는 주 시작 요일을 따름(`Dates.startOfWeek`). 내보내기 파일의 시각만 기계가 읽기 좋은 `yyyy-MM-dd HH:mm` 고정 | S32 S33 |
+| 설정 | GET·PUT /admin/settings/{section} | 2 | section: calendar, progress, attachments, notifications, auth, mail, display. calendar나 progress를 바꾸면 재계산 작업을 예약. display(84f6e6c)는 PUT만 있고 읽기는 로그인한 누구나 `GET /settings/display`. 저장하면 서버가 쓰는 날짜(`Dates.format`: 활동 기록, 사용자 정의 필드 값, 메일)도 바로 바뀜. 인스턴스가 여럿이면 다른 인스턴스는 날짜를 쓸 때 최대 30초마다 DB에서 다시 읽어 30초 안에 따라옴(`Dates.RELOAD_MS`, 384a2f9). 요약 메일 항목의 시각도 날짜 형식과 12시간제를 따름(`Dates.formatDateTime`), 필터 "이번 주"는 주 시작 요일을 따름(`Dates.startOfWeek`). 내보내기 파일의 시각만 기계가 읽기 좋은 `yyyy-MM-dd HH:mm` 고정 | S32 S33 |
 | 휴무일 | GET /admin/non-working-days?year, POST, DELETE /admin/non-working-days/{id} | 3 | 바꾸면 reschedule-all 예약 | S33 |
 | SSO 공급자 | GET·POST /admin/oidc-providers, PATCH·DELETE /admin/oidc-providers/{id} | 4 | V10. 관리자만(global.manage_users로는 안 됨). 발급자를 새로 넣거나 바꾸면 발견 문서를 읽어 확인(못 읽으면 422 issuer). 식별자는 만들 때만, 중복 422. 응답에 client_secret 없음(`secretSet`, `redirectUri`, `linkedUsers`만). PATCH에서 빈 시크릿은 기존 값 유지. DELETE는 연결만 지우고 계정은 남김 | 관리 로그인·비밀번호 |
 
@@ -471,6 +472,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | /my/page, /my/account, /my/notifications | S21, S37, S20 |
 | /search | S22 |
 | /admin/:section(/:id/:tab) | S27–S36 |
+| /design | 컴포넌트 견본(도움말 메뉴). 384a2f9부터 로그인 필요, 별도 청크로 지연 로딩 |
 
 S10–S12는 모달이라 라우트가 없습니다.
 
@@ -516,6 +518,8 @@ S10–S12는 모달이라 라우트가 없습니다.
   - 보드 순서는 실수 position을 씁니다. 간격이 1e-9보다 작아지면 그 컬럼만 다시 번호를 매깁니다.
   - 기본 상태·우선순위가 둘이 되는 것은 부분 유니크 인덱스로 막습니다.
 - **요청 제한**: 로그인은 IP·이메일당 분당 5회이고, 5회 실패하면 15분 잠깁니다. 비밀번호 재설정 요청은 이메일당 시간당 3회입니다. 그 밖의 사내 API는 제한하지 않습니다.
+  - 구현: 로그인은 클라이언트 주소당 분당 20회(`openpms.logins-per-minute`), 재설정 메일은 주소당 분당 5회, 비밀번호 변경은 사용자당 분당 10회, 비밀번호 만들기 링크는 사용자당 분당 3회. 실패 잠금은 설정(`auth.lockout_attempts`·`auth.lockout_minutes`, 기본 5회·15분)이고 관리 · 사용자에 "일시 잠김"으로 보입니다.
+  - 프록시 뒤(384a2f9): 앱이 보는 주소는 프록시라서, 믿는 프록시(`OPENPMS_TRUSTED_PROXIES`)가 보낸 `X-Forwarded-For`에서 클라이언트 주소를 꺼냅니다. 전에는 프록시 뒤의 모든 사람이 버킷 하나를 같이 썼습니다. 버킷은 인스턴스 메모리에 있어 인스턴스를 늘리면 인스턴스마다 따로 셉니다.
 - **파일 크기**: 기본 25MB입니다(원본 인스턴스는 5MB). Spring multipart 한도, 리버스 프록시의 `client_max_body_size`, `attachments.max_bytes`를 함께 맞춥니다.
   - 저장소 키는 uuid로 만들고 원본 파일명을 경로에 쓰지 않습니다.
   - SVG와 HTML은 inline으로 보여주지 않고 다운로드로만 제공합니다(XSS 방지).
@@ -613,7 +617,7 @@ S10–S12는 모달이라 라우트가 없습니다.
 ## 7. 요약
 
 - **스택**: Spring Boot 4 + Java 21 · jOOQ + Flyway · PostgreSQL 17 · React 19 + Vite + TanStack · db-scheduler · 사내 SMTP · Docker Compose 셀프 호스팅
-- **규모**: 테이블 36개(+ 라이브러리 3개), API 경로 145개(설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1), 작업 13종
+- **규모**: 테이블 36개(+ 라이브러리 3개), API 경로 146개(설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1 + 비밀번호 만들기 1), 작업 13종
 - **가장 위험한 세 가지**:
   1. 스케줄링 엔진: 근무일, lag, 자동 모드, 부모 파생, 전파, 순환 검출
   2. 쿼리 엔진: 필터 30여 종과 계층·그룹 합계를 권한 조건 아래에서 빠르게 처리

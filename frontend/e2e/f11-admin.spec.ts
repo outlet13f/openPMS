@@ -48,7 +48,7 @@ test.describe("F11 관리", () => {
     await axe(page, "S35 사용자 (일시 잠김)");
     await row.getByRole("button", { name: /메뉴$/ }).click();
     await page.getByRole("menuitem", { name: "잠금 해제" }).click();
-    await expect(page.getByText(/잠금을 풀었습니다/)).toBeVisible();
+    await expect(page.getByText(/잠금을 풀었습니다/).first()).toBeVisible();
     await expect(row).toHaveCount(0);
   });
 
