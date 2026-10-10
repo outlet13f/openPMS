@@ -17,6 +17,13 @@ function Form({ saved }: { saved: ProgressSettings }) {
   const toast = useToast();
   const save = useSaveProgressSettings();
   const [v, setV] = useState(saved);
+  // newer settings from the server replace the form only while it has no edits of its own (a save's refetch must not
+  // throw away what was changed after it was sent)
+  const [base, setBase] = useState(saved);
+  if (JSON.stringify(saved) !== JSON.stringify(base)) {
+    setBase(saved);
+    if (JSON.stringify(v) === JSON.stringify(base)) setV(saved);
+  }
   const dirty = JSON.stringify(v) !== JSON.stringify(saved);
   return (
     <div className="flex max-w-3xl flex-col gap-8">
@@ -63,7 +70,7 @@ export function AdminProgressPage() {
     <PageBody>
       <PageHeader title={t("admin.sections.progress")} breadcrumbs={[{ label: t("nav.admin"), href: "/admin" }, { label: t("admin.sections.progress") }]} />
       <AdminGuard>
-        {q.isPending ? <Skeleton className="h-64 w-full" /> : q.isError ? <ErrorState error={q.error} onRetry={() => q.refetch()} /> : <Form key={JSON.stringify(q.data)} saved={q.data} />}
+        {q.isPending ? <Skeleton className="h-64 w-full" /> : q.isError ? <ErrorState error={q.error} onRetry={() => q.refetch()} /> : <Form saved={q.data} />}
       </AdminGuard>
     </PageBody>
   );

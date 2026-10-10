@@ -25,10 +25,27 @@ import org.springframework.web.bind.annotation.RestController;
 public class WorkPackageController {
     private final Current current;
     private final WorkPackageService service;
+    private final WorkPackageTransfers transfers;
 
-    public WorkPackageController(Current current, WorkPackageService service) {
+    public WorkPackageController(Current current, WorkPackageService service, WorkPackageTransfers transfers) {
         this.current = current;
         this.service = service;
+        this.transfers = transfers;
+    }
+
+    @PostMapping("/work-packages/{number}/copy")
+    public ResponseEntity<Dto.WorkPackage> copy(@PathVariable long number, @RequestBody Map<String, Object> input) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(transfers.copy(current.ctx(), number, input));
+    }
+
+    @PostMapping("/work-packages/{number}/move")
+    public Dto.WorkPackage move(@PathVariable long number, @RequestBody Map<String, Object> input) {
+        return transfers.move(current.ctx(), number, input);
+    }
+
+    @PostMapping("/work-packages/bulk")
+    public WorkPackageTransfers.BulkResult bulk(@RequestBody Map<String, Object> input) {
+        return transfers.bulk(current.ctx(), input);
     }
 
     @GetMapping("/projects/{projectId}/work-packages/form")

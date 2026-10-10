@@ -21,6 +21,7 @@ import { WorkPackageTable } from "@/features/work-packages/table";
 import { cfColumn, useColumnLabel } from "@/features/work-packages/custom-fields";
 import { FilterPanel } from "@/features/work-packages/filter-panel";
 import { ExportDialog } from "@/features/work-packages/export-dialog";
+import { BulkBar } from "@/features/work-packages/bulk-bar";
 import { useListState } from "@/features/work-packages/view-state";
 
 const ALL_COLUMNS: ColumnKey[] = ["number", "subject", "type", "status", "priority", "assignee", "responsible", "author", "version", "startDate", "dueDate", "duration", "doneRatio", "updatedAt", "project"];
@@ -120,6 +121,17 @@ export function WorkPackagesPage() {
   const [saveAs, setSaveAs] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [exporting, setExporting] = useState(false);
+  // S06: rows checked for a bulk change; a different list or page starts empty
+  const [checked, setChecked] = useState<ReadonlySet<number>>(new Set());
+  const listKey = `${JSON.stringify(spec ?? null)}|${page}|${pageSize}`;
+  const [checkedFor, setCheckedFor] = useState(listKey);
+  if (checkedFor !== listKey) (setCheckedFor(listKey), setChecked(new Set()));
+  const onCheck = (numbers: number[], on: boolean) =>
+    setChecked((cur) => {
+      const next = new Set(cur);
+      numbers.forEach((n) => (on ? next.add(n) : next.delete(n)));
+      return next;
+    });
   const details = useMatch(`${base}/details/:number/*`);
   const creating = useMatch(`${base}/new`);
   const panelOpen = !!(details || creating);
@@ -250,7 +262,12 @@ export function WorkPackagesPage() {
           </div>
         ) : (
           <div className={cn("transition-opacity", result.isPlaceholderData && "opacity-60")} aria-busy={result.isFetching}>
+            {checked.size > 0 && (
+              <BulkBar numbers={[...checked]} options={options} projectId={project?.id} onDone={() => setChecked(new Set())} onClear={() => setChecked(new Set())} />
+            )}
             <WorkPackageTable
+              checked={checked}
+              onCheck={onCheck}
               rows={result.data.rows}
               spec={spec}
               onSpec={state.setSpec}

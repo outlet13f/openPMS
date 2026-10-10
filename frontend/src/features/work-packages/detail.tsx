@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Eye, EyeOff, Link2, Maximize2, MoreHorizontal, Pencil, Share2, Trash2, X } from "lucide-react";
+import { ArrowLeft, Copy, Eye, EyeOff, FolderInput, Link2, Maximize2, MoreHorizontal, Pencil, Share2, Trash2, X } from "lucide-react";
 import type { WorkPackage } from "@/api";
 import { useDeleteWorkPackage, useWatch, useWorkPackage } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import { RichText } from "@/components/domain/rich-text";
 import { FilesTab } from "./files";
 import { WatchersTab } from "./watchers";
 import { ShareDialog } from "./share-dialog";
+import { CopyDialog, MoveDialog } from "./transfer-dialogs";
 import { formatDate, relativeTime } from "@/lib/dates";
 import { RichTextEditor } from "@/components/domain/rich-text-editor";
 import { useUnsavedWarning } from "@/lib/use-unsaved-warning";
@@ -150,6 +151,7 @@ export function WorkPackageDetail({
   const { save } = useSaveWorkPackage();
   const [deleting, setDeleting] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [transfer, setTransfer] = useState<"copy" | "move" | null>(null);
   useDocumentTitle(q.data ? `#${q.data.number} ${q.data.subject}` : undefined);
   // Opening an item in the split panel moves focus into the panel, so keyboard and screen reader
   // users land on what they opened instead of staying in the table behind it.
@@ -213,6 +215,8 @@ export function WorkPackageDetail({
                   toast({ tone: "info", title: t("wp.linkCopied") });
                 },
               },
+              { label: t("transfer.copyMenu"), icon: <Copy />, onSelect: () => setTransfer("copy") },
+              ...(wp._meta.allowedActions.move ? [{ label: t("transfer.moveMenu"), icon: <FolderInput />, onSelect: () => setTransfer("move") }] : []),
               ...(wp._meta.allowedActions.delete ? [{ kind: "separator" as const }, { label: t("app.delete"), icon: <Trash2 />, danger: true, onSelect: () => setDeleting(true) }] : []),
             ]}
           />
@@ -295,6 +299,8 @@ export function WorkPackageDetail({
         </div>
       )}
       {sharing && <ShareDialog wp={wp} open onOpenChange={setSharing} />}
+      {transfer === "copy" && <CopyDialog wp={wp} onClose={() => setTransfer(null)} />}
+      {transfer === "move" && <MoveDialog wp={wp} onClose={() => setTransfer(null)} />}
       <DeleteDialog
         wp={wp}
         open={deleting}

@@ -100,6 +100,8 @@ export function WorkPackageTable({
   detailsHref,
   options,
   createIn,
+  checked,
+  onCheck,
 }: {
   rows: QueryRow[];
   spec: QuerySpec;
@@ -109,6 +111,9 @@ export function WorkPackageTable({
   options?: FilterOptions;
   /** Project id for the inline "새 작업 추가" row; omitted when the user cannot create here. */
   createIn?: { projectId: string; typeId: string } | null;
+  /** S06: rows checked for a bulk change; with onCheck the table shows a checkbox column */
+  checked?: ReadonlySet<number>;
+  onCheck?: (numbers: number[], on: boolean) => void;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -169,6 +174,17 @@ export function WorkPackageTable({
         <table className="w-max min-w-full border-collapse text-sm">
           <thead>
             <tr className="h-row border-b border-border bg-surface text-left text-xs font-semibold text-fg-muted">
+              {onCheck && (
+                <th scope="col" className="w-10 px-3">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-accent"
+                    aria-label={t("bulk.checkAll")}
+                    checked={visible.length > 0 && visible.every((r) => r.context || checked?.has(r.wp.number))}
+                    onChange={(e) => onCheck(visible.filter((r) => !r.context).map((r) => r.wp.number), e.target.checked)}
+                  />
+                </th>
+              )}
               {spec.columns.map((c) => {
                 const active = sort?.field === c;
                 const order = spec.sort.findIndex((s) => s.field === c);
@@ -209,6 +225,19 @@ export function WorkPackageTable({
                     context && "text-fg-muted",
                   )}
                 >
+                  {onCheck && (
+                    <td className="px-3 py-1">
+                      {!context && (
+                        <input
+                          type="checkbox"
+                          className="size-4 accent-accent"
+                          aria-label={t("bulk.check", { number: wp.number, subject: wp.subject })}
+                          checked={!!checked?.has(wp.number)}
+                          onChange={(e) => onCheck([wp.number], e.target.checked)}
+                        />
+                      )}
+                    </td>
+                  )}
                   {spec.columns.map((c) => (
                     <td key={c} className={cn("px-3 py-1", c === "subject" ? "min-w-64" : "whitespace-nowrap")}>
                       {c === "number" ? (

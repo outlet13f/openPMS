@@ -551,6 +551,32 @@ export interface ExportInput {
 }
 
 /** S12: what an export would contain, asked before downloading. */
+/** S08: copy a work package (the create rules apply in the target). */
+export interface CopyInput {
+  /** default: the same project */
+  targetProjectId?: Id;
+  /** default: the same subject */
+  subject?: string;
+  /** copy the subtree too, under the new item */
+  includeChildren: boolean;
+}
+
+/** S08: move to another project; the number stays, the subtree comes along. */
+export interface MoveInput {
+  targetProjectId: Id;
+  /** when the current type is not used there */
+  typeId?: Id;
+  lockVersion: number;
+}
+
+/** S06: one change for many items, all or nothing (422 lists "#n" with each reason). */
+export interface BulkInput {
+  numbers: number[];
+  action: "update" | "delete" | "move";
+  changes?: Partial<Pick<WorkPackagePatch, "statusId" | "priorityId" | "assigneeId" | "responsibleId" | "versionId" | "categoryId" | "startDate" | "dueDate">>;
+  targetProjectId?: Id;
+}
+
 export interface ExportCount {
   /** items matching the list */
   total: number;

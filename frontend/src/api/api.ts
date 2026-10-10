@@ -1,4 +1,4 @@
-import type { ExportCount, Invitation,
+import type { BulkInput, CopyInput, MoveInput, ExportCount, Invitation,
   Attachment,
   ProgressSettings,
   ExportInput,
@@ -184,6 +184,12 @@ export interface Api {
     update(number: number, patch: WorkPackagePatch): Promise<WorkPackage>;
     /** DELETE /work-packages/{number} */
     remove(number: number, children: "delete" | "reparent"): Promise<void>;
+    /** POST /work-packages/{number}/copy (wp.create in the target) — the new item */
+    copy(number: number, input: CopyInput): Promise<WorkPackage>;
+    /** POST /work-packages/{number}/move (wp.move here, wp.create there) */
+    move(number: number, input: MoveInput): Promise<WorkPackage>;
+    /** POST /work-packages/bulk — every item or none */
+    bulk(input: BulkInput): Promise<{ count: number }>;
     /** GET /work-packages/{number}/allowed-statuses */
     allowedStatuses(number: number): Promise<StatusRef[]>;
     /** GET /work-packages/autocomplete */

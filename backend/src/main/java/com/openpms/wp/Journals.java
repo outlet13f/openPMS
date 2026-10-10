@@ -177,14 +177,14 @@ public class Journals {
     /* ---------- DTOs ---------- */
 
     private static final Map<String, String> LABEL = Map.ofEntries(
-            Map.entry("subject", "제목"), Map.entry("descriptionHtml", "설명"), Map.entry("typeId", "유형"), Map.entry("statusId", "상태"),
+            Map.entry("subject", "제목"), Map.entry("projectId", "프로젝트"), Map.entry("descriptionHtml", "설명"), Map.entry("typeId", "유형"), Map.entry("statusId", "상태"),
             Map.entry("priorityId", "우선순위"), Map.entry("assigneeId", "담당자"), Map.entry("responsibleId", "책임자"), Map.entry("versionId", "버전"),
             Map.entry("categoryId", "카테고리"), Map.entry("parentId", "상위 작업"), Map.entry("startDate", "시작일"), Map.entry("dueDate", "완료일"),
             Map.entry("duration", "기간"), Map.entry("scheduleManually", "일정 방식"), Map.entry("ignoreNonWorkingDays", "근무일만 계산"),
             Map.entry("workHours", "작업량"), Map.entry("remainingHours", "남은 작업"), Map.entry("doneRatio", "완료 %"),
             Map.entry("attachment", "첨부 파일"));
 
-    private static final List<String> ORDER = List.of("subject", "descriptionHtml", "typeId", "statusId", "priorityId", "assigneeId", "responsibleId",
+    private static final List<String> ORDER = List.of("projectId", "subject", "descriptionHtml", "typeId", "statusId", "priorityId", "assigneeId", "responsibleId",
             "versionId", "categoryId", "parentId", "startDate", "dueDate", "duration", "scheduleManually", "ignoreNonWorkingDays", "workHours",
             "remainingHours", "doneRatio", "attachment");
 
@@ -212,6 +212,7 @@ public class Journals {
         return switch (field) {
             case "statusId" -> s.status(uuid(v)).map(Snapshot.StatusRow::name).orElse(null);
             case "typeId" -> s.type(uuid(v)).map(Snapshot.TypeRow::name).orElse(null);
+            case "projectId" -> s.project(uuid(v)).map(Snapshot.ProjectRow::name).orElse("삭제된 프로젝트");
             case "priorityId" -> s.priority(uuid(v)).map(Snapshot.PriorityRow::name).orElse(null);
             case "assigneeId", "responsibleId" -> Refs.user(s, uuid(v)).name();
             case "versionId" -> s.version(uuid(v)).map(Snapshot.VersionRow::name).orElse(null);

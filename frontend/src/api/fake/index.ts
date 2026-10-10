@@ -7,6 +7,7 @@ import type {
   Board,
   BoardColumn,
   Id,
+  MoveInput,
   Me,
   Member,
   NotificationGroup,
@@ -394,6 +395,132 @@ function managedBoard(id: string) {
   return { user, b };
 }
 
+/** POST /projects/{p}/work-packages (also what a copy goes through). */
+function createWp(user: DbUser, projectId: string, input: WorkPackageInput): WorkPackage {
+  const p = findProject(user, projectId);
+  requirePerm(user, p, "wp.create", "이 프로젝트에 작업을 만들 권한이 없습니다.");
+  const subject = input.subject?.trim() ?? "";
+  if (!subject) throw fieldError("subject", "제목을 입력하세요.");
+  if (subject.length > 255) throw fieldError("subject", "제목은 255자 이하로 입력하세요.");
+  if (!p.typeIds.includes(input.typeId)) throw fieldError("type", "이 프로젝트에서 쓰지 않는 유형입니다.");
+  if (input.assigneeId && !isMember(input.assigneeId, p.id)) throw fieldError("assignee", "프로젝트 멤버만 지정할 수 있습니다.");
+  if (input.statusId !== undefined && !db.statuses.some((x) => x.id === input.statusId)) throw fieldError("status", "알 수 없는 상태입니다.");
+  if (input.priorityId !== undefined && !db.priorities.some((x) => x.id === input.priorityId)) throw fieldError("priority", "알 수 없는 우선순위입니다.");
+  const category = input.categoryId ? db.categories.find((c) => c.id === input.categoryId) : null;
+  if (input.categoryId && category?.projectId !== p.id) throw fieldError("category", "이 프로젝트의 카테고리가 아닙니다.");
+  // a category's default assignee fills an empty assignee (settings S25)
+  const assigneeId = input.assigneeId ?? (category?.defaultAssigneeId && isMember(category.defaultAssigneeId, p.id) ? category.defaultAssigneeId : null);
+  let parentId: string | null = null;
+  if (input.parentNumber) {
+    requirePerm(user, p, "wp.manage_subtasks");
+    const parent = db.workPackages.find((w) => w.number === input.parentNumber);
+    if (!parent) throw fieldError("parent", "상위 작업을 찾을 수 없습니다.");
+    parentId = parent.id;
+  }
+  const customValues = initialValues(p.id, input.typeId, input.customValues);
+  const now = nowIso();
+  db.seq.wp += 1;
+  const base: DbWp = {
+    id: newId("wp"), number: db.seq.wp, projectId: p.id, typeId: input.typeId,
+    statusId: input.statusId ?? db.statuses.find((s) => s.isDefault)!.id,
+    priorityId: input.priorityId ?? db.priorities.find((x) => x.isDefault)!.id,
+    subject, descriptionHtml: input.descriptionHtml ?? "", authorId: user.id, assigneeId,
+    responsibleId: input.responsibleId ?? null, versionId: input.versionId ?? null, categoryId: category?.id ?? null, parentId,
+    startDate: null, dueDate: null, duration: null, ignoreNonWorkingDays: false, scheduleManually: true,
+    workHours: null, remainingHours: null, doneRatio: null, customValues, lockVersion: 0, createdAt: now, updatedAt: now,
+  };
+  Object.assign(base, resolveDates(base, { startDate: input.startDate, dueDate: input.dueDate }));
+  Object.assign(base, deriveProgress(base));
+  db.workPackages.push(base);
+  const j = writeJournal(base, user, { _created: [null, true] });
+  fanOut(base, j, user);
+  for (const c of propagate([base])) {
+    c.wp.lockVersion += 1;
+    writeJournal(c.wp, user, c.changes, "", c.cause);
+  }
+  return toWp(base, user);
+}
+
+/** DELETE /work-packages/{n}: children deleted too, or moved up to the grandparent. */
+function removeWp(user: DbUser, number: number, childrenMode: "delete" | "reparent") {
+  const { wp, project } = findWp(user, number);
+  requirePerm(user, project, "wp.delete", "이 작업을 삭제할 권한이 없습니다.");
+  const doomed = new Set([wp.id]);
+  if (childrenMode === "delete") {
+    for (let changed = true; changed; ) {
+      changed = false;
+      for (const w of db.workPackages) if (w.parentId && doomed.has(w.parentId) && !doomed.has(w.id)) (doomed.add(w.id), (changed = true));
+    }
+  } else db.workPackages.filter((w) => w.parentId === wp.id).forEach((w) => (w.parentId = wp.parentId));
+  db.workPackages = db.workPackages.filter((w) => !doomed.has(w.id));
+  db.attachments = db.attachments.filter((a) => !doomed.has(a.wpId));
+  db.relations = db.relations.filter((r) => !doomed.has(r.fromId) && !doomed.has(r.toId));
+  db.journals = db.journals.filter((j) => !doomed.has(j.wpId));
+  db.watchers = db.watchers.filter((x) => !doomed.has(x.wpId));
+  db.notifications = db.notifications.filter((x) => !doomed.has(x.wpId));
+}
+
+/** A copy goes through the create rules: what still fits the target (members, its versions and categories, its active fields). */
+function copyWp(user: DbUser, w: DbWp, target: DbProject, subject: string, parentNumber: number | null): WorkPackage {
+  if (!target.typeIds.includes(w.typeId)) throw fieldError("targetProject", `#${w.number}의 유형 '${db.types.find((t) => t.id === w.typeId)?.name ?? "?"}'을(를) ${target.name}에서 쓰지 않습니다.`);
+  const same = target.id === w.projectId;
+  const parent = parentNumber ?? (same && w.parentId && can(user, target, "wp.manage_subtasks") ? (db.workPackages.find((x) => x.id === w.parentId)?.number ?? null) : null);
+  const active = new Set(activeFields(target.id, w.typeId).map((f) => f.id));
+  const made = createWp(user, target.id, {
+    typeId: w.typeId,
+    subject,
+    descriptionHtml: w.descriptionHtml,
+    statusId: w.statusId,
+    priorityId: w.priorityId,
+    assigneeId: w.assigneeId && isMember(w.assigneeId, target.id) ? w.assigneeId : null,
+    responsibleId: w.responsibleId && isMember(w.responsibleId, target.id) ? w.responsibleId : null,
+    versionId: same && can(user, target, "wp.assign_versions") ? w.versionId : null,
+    categoryId: same ? w.categoryId : null,
+    parentNumber: parent,
+    startDate: w.startDate,
+    dueDate: w.dueDate,
+    customValues: Object.fromEntries(Object.entries(w.customValues ?? {}).filter(([k]) => active.has(k))),
+  });
+  return w.workHours === null ? made : applyPatch(user, made.number, { lockVersion: made.lockVersion, workHours: w.workHours });
+}
+
+function copyChildren(user: DbUser, sourceParentId: string, target: DbProject, newParentNumber: number) {
+  for (const kid of db.workPackages.filter((x) => x.parentId === sourceParentId).sort((a, b) => a.number - b.number)) {
+    const made = copyWp(user, kid, target, kid.subject, newParentNumber);
+    copyChildren(user, kid.id, target, made.number);
+  }
+}
+
+/** Keeps the number, takes the subtree along; the old project's version and category and non-members are cleared. */
+function moveWp(user: DbUser, number: number, input: MoveInput): WorkPackage {
+  const { wp: root, project } = findWp(user, number);
+  if (input.lockVersion !== undefined && input.lockVersion !== root.lockVersion) throw new ApiError(409, "다른 사람이 먼저 수정했습니다.", "최신 내용을 불러온 뒤 다시 옮기세요.");
+  if (!can(user, project, "wp.move", root)) throw new ApiError(403, "이 작업을 옮길 권한이 없습니다.");
+  if (!input.targetProjectId) throw fieldError("targetProject", "옮길 프로젝트를 고르세요.");
+  const target = findProject(user, input.targetProjectId);
+  requirePerm(user, target, "wp.create", "대상 프로젝트에 작업을 만들 권한이 없습니다.");
+  if (target.id === root.projectId) throw fieldError("targetProject", "지금 있는 프로젝트입니다.");
+  const typeId = input.typeId ?? root.typeId;
+  if (!target.typeIds.includes(typeId)) throw fieldError("type", "대상 프로젝트에서 쓰는 유형을 고르세요.");
+  const moving = [root];
+  for (let i = 0; i < moving.length; i++) moving.push(...db.workPackages.filter((x) => x.parentId === moving[i].id).sort((a, b) => a.number - b.number));
+  for (const w of moving.slice(1))
+    if (!target.typeIds.includes(w.typeId)) throw fieldError("type", `하위 작업 #${w.number}의 유형 '${db.types.find((t) => t.id === w.typeId)?.name ?? "?"}'을(를) 대상 프로젝트에서 쓰지 않습니다.`);
+  for (const w of moving) {
+    const changes: DbJournal["changes"] = { projectId: [w.projectId, target.id] };
+    w.projectId = target.id;
+    if (w === root && typeId !== w.typeId) (changes.typeId = [w.typeId, typeId]), (w.typeId = typeId);
+    if (w.versionId && db.versions.find((v) => v.id === w.versionId)?.projectId !== target.id) (changes.versionId = [w.versionId, null]), (w.versionId = null);
+    if (w.categoryId) (changes.categoryId = [w.categoryId, null]), (w.categoryId = null);
+    if (w.assigneeId && !isMember(w.assigneeId, target.id)) (changes.assigneeId = [w.assigneeId, null]), (w.assigneeId = null);
+    if (w.responsibleId && !isMember(w.responsibleId, target.id)) (changes.responsibleId = [w.responsibleId, null]), (w.responsibleId = null);
+    w.lockVersion += 1;
+    w.updatedAt = nowIso();
+    writeJournal(w, user, changes);
+  }
+  return toWp(root, user);
+}
+
 /* ---------- the API ---------- */
 
 const PASSWORD_MIN = 10; // auth.password_min_length (backend default)
@@ -665,72 +792,50 @@ export const fakeApi: Api = {
           customFields: activeFields(p.id, type.id).map(toField),
         });
       }),
-    create: (projectId, input: WorkPackageInput) =>
-      run(() => {
-        const user = sessionUser();
-        const p = findProject(user, projectId);
-        requirePerm(user, p, "wp.create", "이 프로젝트에 작업을 만들 권한이 없습니다.");
-        const subject = input.subject?.trim() ?? "";
-        if (!subject) throw fieldError("subject", "제목을 입력하세요.");
-        if (subject.length > 255) throw fieldError("subject", "제목은 255자 이하로 입력하세요.");
-        if (!p.typeIds.includes(input.typeId)) throw fieldError("type", "이 프로젝트에서 쓰지 않는 유형입니다.");
-        if (input.assigneeId && !isMember(input.assigneeId, p.id)) throw fieldError("assignee", "프로젝트 멤버만 지정할 수 있습니다.");
-        if (input.statusId !== undefined && !db.statuses.some((x) => x.id === input.statusId)) throw fieldError("status", "알 수 없는 상태입니다.");
-        if (input.priorityId !== undefined && !db.priorities.some((x) => x.id === input.priorityId)) throw fieldError("priority", "알 수 없는 우선순위입니다.");
-        const category = input.categoryId ? db.categories.find((c) => c.id === input.categoryId) : null;
-        if (input.categoryId && category?.projectId !== p.id) throw fieldError("category", "이 프로젝트의 카테고리가 아닙니다.");
-        // a category's default assignee fills an empty assignee (settings S25)
-        const assigneeId = input.assigneeId ?? (category?.defaultAssigneeId && isMember(category.defaultAssigneeId, p.id) ? category.defaultAssigneeId : null);
-        let parentId: string | null = null;
-        if (input.parentNumber) {
-          requirePerm(user, p, "wp.manage_subtasks");
-          const parent = db.workPackages.find((w) => w.number === input.parentNumber);
-          if (!parent) throw fieldError("parent", "상위 작업을 찾을 수 없습니다.");
-          parentId = parent.id;
-        }
-        const customValues = initialValues(p.id, input.typeId, input.customValues);
-        const now = nowIso();
-        db.seq.wp += 1;
-        const base: DbWp = {
-          id: newId("wp"), number: db.seq.wp, projectId: p.id, typeId: input.typeId,
-          statusId: input.statusId ?? db.statuses.find((s) => s.isDefault)!.id,
-          priorityId: input.priorityId ?? db.priorities.find((x) => x.isDefault)!.id,
-          subject, descriptionHtml: input.descriptionHtml ?? "", authorId: user.id, assigneeId,
-          responsibleId: input.responsibleId ?? null, versionId: input.versionId ?? null, categoryId: category?.id ?? null, parentId,
-          startDate: null, dueDate: null, duration: null, ignoreNonWorkingDays: false, scheduleManually: true,
-          workHours: null, remainingHours: null, doneRatio: null, customValues, lockVersion: 0, createdAt: now, updatedAt: now,
-        };
-        Object.assign(base, resolveDates(base, { startDate: input.startDate, dueDate: input.dueDate }));
-        Object.assign(base, deriveProgress(base));
-        db.workPackages.push(base);
-        const j = writeJournal(base, user, { _created: [null, true] });
-        fanOut(base, j, user);
-        for (const c of propagate([base])) {
-          c.wp.lockVersion += 1;
-          writeJournal(c.wp, user, c.changes, "", c.cause);
-        }
-        return toWp(base, user);
-      }),
+    create: (projectId, input: WorkPackageInput) => run(() => createWp(sessionUser(), projectId, input)),
     get: (number) => run(() => toWp(findWp(sessionUser(), number).wp, sessionUser())),
     update: (number, patch) => run(() => applyPatch(sessionUser(), number, patch)),
-    remove: (number, childrenMode) =>
+    remove: (number, childrenMode) => run(() => removeWp(sessionUser(), number, childrenMode)),
+    copy: (number, input) =>
       run(() => {
         const user = sessionUser();
         const { wp, project } = findWp(user, number);
-        requirePerm(user, project, "wp.delete", "이 작업을 삭제할 권한이 없습니다.");
-        const doomed = new Set([wp.id]);
-        if (childrenMode === "delete") {
-          for (let changed = true; changed; ) {
-            changed = false;
-            for (const w of db.workPackages) if (w.parentId && doomed.has(w.parentId) && !doomed.has(w.id)) (doomed.add(w.id), (changed = true));
+        const target = input.targetProjectId ? findProject(user, input.targetProjectId) : project;
+        const made = copyWp(user, wp, target, input.subject?.trim() || wp.subject, null);
+        if (input.includeChildren) copyChildren(user, wp.id, target, made.number);
+        return toWp(db.workPackages.find((w) => w.number === made.number)!, user);
+      }),
+    move: (number, input) => run(() => moveWp(sessionUser(), number, input)),
+    bulk: (input) =>
+      run(() => {
+        const user = sessionUser();
+        const numbers = [...new Set(input.numbers)];
+        if (!numbers.length) throw new ApiError(422, "작업을 고르세요.");
+        if (numbers.length > 200) throw new ApiError(422, "한 번에 200건까지 바꿀 수 있습니다.");
+        if (input.action === "update" && !Object.keys(input.changes ?? {}).length) throw new ApiError(422, "바꿀 내용을 고르세요.");
+        // all or nothing: the fake keeps no transaction, so it takes a copy to go back to
+        const before = structuredClone(db);
+        const failures: { field: string; message: string }[] = [];
+        for (const n of numbers) {
+          try {
+            if (input.action === "update") {
+              const { wp } = findWp(user, n);
+              applyPatch(user, n, { ...input.changes, lockVersion: wp.lockVersion });
+            } else if (input.action === "move") {
+              const { wp } = findWp(user, n);
+              const target = findProject(user, input.targetProjectId ?? "");
+              if (wp.projectId !== target.id) moveWp(user, n, { targetProjectId: target.id, lockVersion: wp.lockVersion });
+            } else if (db.workPackages.some((w) => w.number === n)) removeWp(user, n, "reparent");
+          } catch (e) {
+            if (!(e instanceof ApiError)) throw e;
+            failures.push({ field: `#${n}`, message: e.fieldErrors[0]?.message ?? (e.message !== e.title ? `${e.title} ${e.message}` : e.title) });
           }
-        } else db.workPackages.filter((w) => w.parentId === wp.id).forEach((w) => (w.parentId = wp.parentId));
-        db.workPackages = db.workPackages.filter((w) => !doomed.has(w.id));
-        db.attachments = db.attachments.filter((a) => !doomed.has(a.wpId));
-        db.relations = db.relations.filter((r) => !doomed.has(r.fromId) && !doomed.has(r.toId));
-        db.journals = db.journals.filter((j) => !doomed.has(j.wpId));
-        db.watchers = db.watchers.filter((x) => !doomed.has(x.wpId));
-        db.notifications = db.notifications.filter((x) => !doomed.has(x.wpId));
+        }
+        if (failures.length) {
+          Object.assign(db, before);
+          throw new ApiError(422, "아무것도 바꾸지 않았습니다.", `${failures.length}건에서 문제가 있어 전체를 되돌렸습니다.`, { fieldErrors: failures });
+        }
+        return { count: numbers.length };
       }),
     allowedStatuses: (number) =>
       run(() => {

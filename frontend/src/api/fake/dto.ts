@@ -148,6 +148,7 @@ export function toWp(w: DbWp, user: DbUser): WorkPackage {
 const FIELD_LABEL: Record<string, string> = {
   subject: "제목",
   descriptionHtml: "설명",
+  projectId: "프로젝트",
   typeId: "유형",
   statusId: "상태",
   priorityId: "우선순위",
@@ -174,6 +175,8 @@ function display(field: string, v: unknown): string | null {
       return db.statuses.find((s) => s.id === v)?.name ?? null;
     case "typeId":
       return db.types.find((s) => s.id === v)?.name ?? null;
+    case "projectId":
+      return db.projects.find((s) => s.id === v)?.name ?? "삭제된 프로젝트";
     case "priorityId":
       return db.priorities.find((s) => s.id === v)?.name ?? null;
     case "assigneeId":
