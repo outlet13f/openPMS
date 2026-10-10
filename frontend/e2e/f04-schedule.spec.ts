@@ -48,6 +48,33 @@ test.describe("F04 일정", () => {
     await axe(page, "S13 Gantt");
   });
 
+  test("F04-H2 Gantt: an item without dates gets its bar by dragging across its row", async ({ page }) => {
+    await page.goto("/projects/web-platform/gantt");
+    await page.getByRole("radiogroup", { name: "확대 단계" }).getByRole("radio", { name: "일", exact: true }).click();
+    expect(await dates(page, 15)).toMatchObject({ startDate: null, dueDate: null });
+    const chart = page.getByRole("group", { name: "Gantt 차트" });
+    const track = page.locator('[data-gantt-draw="15"]');
+    await track.scrollIntoViewIfNeeded();
+    const box = (await chart.boundingBox())!;
+    const row = (await track.boundingBox())!;
+    const x0 = box.x + 320 + 120;
+    const y = row.y + row.height / 2;
+    // day zoom: 32px a day; from the day pressed to three days later
+    await page.mouse.move(x0, y);
+    await page.mouse.down();
+    await page.mouse.move(x0 + 3 * 32 + 4, y, { steps: 6 });
+    await page.mouse.up();
+    await expect.poll(async () => (await dates(page, 15)).dueDate).not.toBeNull();
+    const d = await dates(page, 15);
+    expect((Date.parse(d.dueDate!) - Date.parse(d.startDate!)) / 86_400_000).toBe(3);
+    await expect(page.locator('[data-gantt-draw="15"]')).toHaveCount(0);
+    // keyboard: the row of another undated item has a button for the date dialog
+    await page.getByRole("button", { name: "#10 날짜 정하기" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("dialog", { name: "날짜" })).toBeVisible();
+    await axe(page, "S13 Gantt 날짜 대화상자");
+  });
+
   test("F04-N1 a milestone has one date", async ({ page }) => {
     const r = await api<string>(page, "const w = await api.workPackages.get(6); try { await api.workPackages.update(6, { lockVersion: w.lockVersion, startDate: '2026-11-02', dueDate: '2026-11-05' }) } catch (e) { return 'refused ' + e.status } const n = await api.workPackages.get(6); return n.startDate === n.dueDate ? 'one date' : 'two dates'");
     expect(["one date", "refused 422"]).toContain(r);

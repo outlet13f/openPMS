@@ -682,6 +682,8 @@ const ko = {
     },
   },
   gantt: {
+    drawHint: "날짜가 없습니다. 끌어서 막대를 그리면 그 기간이 시작일·완료일이 됩니다(누르기만 하면 하루)",
+    setDates: "#{{number}} 날짜 정하기",
     chart: "Gantt 차트",
     rows: "작업 일정",
     zoom: "확대 단계",

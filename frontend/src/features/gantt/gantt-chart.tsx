@@ -1,5 +1,7 @@
 // Gantt timeline (components.md "GanttTimeline"): hierarchy list on the left, bars on the right, sharing rows.
 // Drag a bar to move it, drag its ends to resize; Enter on a bar opens the date dialog (keyboard path).
+// An item without dates gets its bar by dragging across its row (a click gives one day); its row also has a
+// button for the date dialog, for the keyboard.
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
@@ -34,7 +36,7 @@ function useLeftWidth() {
   return wide ? 320 : 168;
 }
 
-type Drag = { number: number; mode: "move" | "start" | "end"; x0: number; start: string; due: string; delta: number };
+type Drag = { number: number; mode: "move" | "start" | "end" | "draw"; x0: number; start: string; due: string; delta: number };
 
 function useRange(rows: QueryResult["rows"]) {
   return useMemo(() => {
@@ -119,8 +121,22 @@ export function GanttChart({ result, zoom, detailsHref }: { result: QueryResult;
       setDrag({ ...drag, delta });
     }
   };
+  /** Drawing a new bar: from the day pressed to the day under the pointer, either way. */
+  const startDraw = (e: ReactPointerEvent<HTMLDivElement>, wp: WorkPackage) => {
+    if (e.button !== 0) return;
+    const day = addDays(from, Math.floor((e.clientX - e.currentTarget.getBoundingClientRect().left) / dayW));
+    e.currentTarget.setPointerCapture(e.pointerId);
+    moved.current = false;
+    setDrag({ number: wp.number, mode: "draw", x0: e.clientX, start: day, due: day, delta: 0 });
+  };
+  const drawn = (d: Drag, milestone: boolean) => {
+    const other = addDays(d.start, d.delta);
+    if (milestone) return { start: other, due: other };
+    return other < d.start ? { start: other, due: d.start } : { start: d.start, due: other };
+  };
   const preview = (wp: WorkPackage) => {
     if (!drag || drag.number !== wp.number) return { start: wp.startDate, due: wp.dueDate };
+    if (drag.mode === "draw") return drawn(drag, wp.type.isMilestone);
     const s = drag.mode === "end" ? drag.start : addDays(drag.start, drag.delta);
     let d = drag.mode === "start" ? drag.due : addDays(drag.due, drag.delta);
     if (d < s) d = s;
@@ -129,6 +145,11 @@ export function GanttChart({ result, zoom, detailsHref }: { result: QueryResult;
   const endDrag = async (wp: WorkPackage) => {
     const d = drag;
     setDrag(null);
+    if (d?.mode === "draw") {
+      const { start, due } = drawn(d, wp.type.isMilestone);
+      await save(wp, { startDate: start, dueDate: due, touched: ["startDate", "dueDate"] });
+      return;
+    }
     if (!d || d.delta === 0) return;
     const s = d.mode === "end" ? d.start : addDays(d.start, d.delta);
     const due = d.mode === "start" ? d.due : addDays(d.due, d.delta);
@@ -202,6 +223,8 @@ export function GanttChart({ result, zoom, detailsHref }: { result: QueryResult;
             const editable = wp._meta.editableFields.includes("dates") && !derived;
             const summary = wp.childCount > 0;
             const label = `#${wp.number} ${wp.subject}, ${formatDateRange(p.start, p.due) || t("wp.noDates")}${wp.duration ? `, ${t("wp.daysUnit", { value: wp.duration })}` : ""}`;
+            const drawable = editable && wp._meta.allowedActions.edit && (!wp.startDate || !wp.dueDate);
+            const drawing = drag?.mode === "draw" && drag.number === wp.number;
             return (
               <li key={wp.id} className={cn("flex border-b border-border-muted", context && "text-fg-muted")} style={{ height: ROW_H }}>
                 <div className="sticky left-0 z-10 flex min-w-0 items-center gap-1 border-r border-border bg-bg px-3 text-sm" style={{ width: LEFT_W, paddingLeft: 12 + depth * 16 }}>
@@ -224,7 +247,25 @@ export function GanttChart({ result, zoom, detailsHref }: { result: QueryResult;
                     {wp.subject}
                   </Link>
                 </div>
-                <div className="relative" style={{ width }} onPointerMove={onMove}>
+                <div
+                  className={cn("group/track relative", drawable && "cursor-crosshair")}
+                  style={{ width }}
+                  onPointerMove={onMove}
+                  onPointerDown={drawable ? (e) => startDraw(e, wp) : undefined}
+                  onPointerUp={drawing ? () => void endDrag(wp) : undefined}
+                  title={drawable ? t("gantt.drawHint") : undefined}
+                  data-gantt-draw={drawable ? wp.number : undefined}
+                >
+                  {drawable && !drawing && (
+                    <button
+                      type="button"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={() => setDialogWp(wp)}
+                      className="sr-only rounded-sm bg-bg px-2 text-xs text-fg-muted focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:shadow-card"
+                    >
+                      {t("gantt.setDates", { number: wp.number })}
+                    </button>
+                  )}
                   {p.start && p.due && (
                     <>
                       {wp.type.isMilestone ? (
@@ -262,7 +303,14 @@ export function GanttChart({ result, zoom, detailsHref }: { result: QueryResult;
                             editable && "cursor-grab active:cursor-grabbing",
                             drag?.number === wp.number && "shadow-drag ring-2 ring-focus-ring",
                           )}
-                          style={{ left: x(p.start), width: Math.max(dayW, x(p.due) - x(p.start) + dayW), top: (ROW_H - BAR_H) / 2, height: BAR_H, backgroundColor: wp.type.color }}
+                          style={{
+                            left: x(p.start),
+                            width: Math.max(dayW, x(p.due) - x(p.start) + dayW),
+                            top: (ROW_H - BAR_H) / 2,
+                            height: BAR_H,
+                            backgroundColor: wp.type.color,
+                            opacity: drawing ? 0.7 : undefined,
+                          }}
                         >
                           {editable && (
                             <>
