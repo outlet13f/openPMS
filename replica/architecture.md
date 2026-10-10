@@ -148,7 +148,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 
 ### 전역 설정 키 (`settings`)
 
-`calendar.working_days` `[1..5]`, `calendar.week_starts_on` `7`(일요일), `calendar.hours_per_day` `8`, `calendar.duration_format`, `progress.mode` `work|status`, `progress.totals` `weighted|simple_average`, `progress.closed_sets_100`, `attachments.max_bytes` (25MB), `journals.aggregation_minutes` `5`, `notifications.poll_seconds` `60`, `i18n.default_locale`, `i18n.default_time_zone`, `auth.*` (비밀번호 길이, 잠금 횟수·시간, 토큰 수명), `mail.from`.
+`calendar.working_days` `[1..5]`, `calendar.week_starts_on` `7`(일요일. 구현: `"default"`·`1` 월·`6` 토·`7` 일, ISO 요일), `calendar.date_format` `default`(한국어: 2026.10.21)·`YYYY.MM.DD`·`YYYY-MM-DD`·`YYYY/MM/DD`·`YYYY년 M월 D일`·`DD.MM.YYYY`·`MM/DD/YYYY`, `calendar.time_format` `default`(24시간)·`24h`·`12h`, `calendar.hours_per_day` `8`, `calendar.duration_format`, `progress.mode` `work|status`, `progress.totals` `weighted|simple_average`, `progress.closed_sets_100`, `attachments.max_bytes` (25MB), `journals.aggregation_minutes` `5`, `notifications.poll_seconds` `60`, `i18n.default_locale`, `i18n.default_time_zone`, `auth.*` (비밀번호 길이, 잠금 횟수·시간, 토큰 수명), `mail.from`.
 
 ---
 
@@ -247,6 +247,8 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 6. `groupBy`가 있으면 그룹 머리글과 그룹별 합계를 계산합니다.
 7. `sums`가 켜져 있으면 전체 합계를 계산합니다.
 
+구현(2bb76a8): 그룹화할 수 있는 열은 `QueryEngine.GROUPABLE`(type, status, priority, assignee, responsible, author, version, project)과 목록·사용자·예/아니요 사용자 정의 필드입니다. 그 밖의 열은 오류 없이 무시합니다. 그룹화하면 계층(5단계)은 쓰지 않고, 행은 그룹 순서(그 값의 순서, 값 없음은 맨 끝)로 정렬합니다. 그룹 건수와 합계는 페이지가 아니라 조건에 맞는 전체 기준입니다. 합계 대상은 보이는 열 중 작업량·남은 작업·완료 %·숫자 사용자 정의 필드이고, 완료 %는 작업량 가중(P5 `weighted`와 같은 식)입니다. 응답은 `QueryResult.groups`(key, label, color, count, sums)와 `QueryResult.sums`, 행마다 `groupKey`입니다. 끈 상태면 셋 다 null입니다.
+
 성능 목표(추정): 작업 1만 건인 프로젝트에서 p95 300ms 이하.
 
 ### 3.6 저널과 알림
@@ -284,7 +286,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 - **작업 패키지 응답의 `_meta`**: `editableFields`, `allowedActions`(edit, delete, move, comment, manageRelations…), `derived`(파생 필드 목록)를 담습니다. 화면은 이 값으로 편집 가능 여부를 그리고, 권한 규칙을 프론트에 복제하지 않습니다.
 - 원본 앱의 내부 API는 참고하지 않습니다. 모든 경로는 openPMS가 정의한 것입니다.
 
-### 4.2 경로 (총 141개: 설계 134 + 사내 SSO 7)
+### 4.2 경로 (총 145개: 설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1)
 
 #### 인증·계정 (17)
 
@@ -376,7 +378,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 
 | method path | 하는 일 | 호출 가능 | 입력 | 출력 | 흐름 |
 | --- | --- | --- | --- | --- | --- |
-| POST /work-packages/query | 쿼리 실행 (읽기 전용. spec이 복잡해서 POST) | 로그인 (결과는 wp.view 가능한 프로젝트로 제한) | spec, projectId, page | rows, ancestors, groups, sums, total | S06 S13 S15 S17 S18 S21 F03 |
+| POST /work-packages/query | 쿼리 실행 (읽기 전용. spec이 복잡해서 POST) | 로그인 (결과는 wp.view 가능한 프로젝트로 제한) | spec, projectId, page | rows(행마다 groupKey), ancestors, groups, sums, total (§3.5) | S06 S13 S15 S17 S18 S21 F03 |
 | GET /work-packages/filters | 쓸 수 있는 필터·연산자·값 (사용자 정의 필드 포함) | wp.view | projectId | filters[] | S06 S11 |
 | GET /queries | 기본 보기 + 비공개 + 공개 + 즐겨찾기 | wp.view | projectId, view | queries[] | S06 S13 |
 | POST /queries | 보기 저장 | query.save (공개: query.manage_public) | name, view, isPublic, spec | 201 query | F03 |
@@ -388,26 +390,30 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | POST /work-packages/export | 내보내기. 500행 이하는 바로 스트리밍, 그보다 많으면 작업 예약 | wp.export | spec, format(csv\|xlsx\|pdf), pdfKind, columns | 파일 / 202 jobId | S12 |
 | GET /exports/{jobId} | 내보내기 상태와 다운로드 (24시간 보관) | 요청자 | - | status / 파일 | S12 |
 
-#### 일정·Gantt — F04 (2, 나머지는 위의 query와 PATCH를 씀)
+#### 일정·Gantt·날짜 형식 — F04 (3, 나머지는 위의 query와 PATCH를 씀)
 
 | method path | 하는 일 | 호출 가능 | 입력 | 출력 | 흐름 |
 | --- | --- | --- | --- | --- | --- |
 | POST /work-packages/{number}/schedule-preview | 날짜 변경 미리 보기 (저장 안 함): 계산된 날짜·기간, 영향받는 작업 | wp.edit | startDate, dueDate, duration, scheduleManually, ignoreNonWorkingDays, touched[] | preview | S10 S13 F04 |
 | GET /calendar/non-working-days | 근무 요일과 기간 내 휴무일 (Gantt 음영, 날짜 선택기 비활성) | 로그인 | from, to | {workingDays, days[]} | S10 S13 S17 S18 |
+| GET /settings/display | 날짜 형식·시간 형식·주 시작 요일 (화면이 로그인 직후 읽어 모든 날짜·시각, 캘린더·팀 플래너·날짜 선택 달력의 첫 열, Gantt 주 눈금에 씀). 84f6e6c | 로그인 | - | {dateFormat, timeFormat, weekStart} | 공통 S10 S13 S17 S18 S33 |
 
-#### 보드 — F06 (9)
+#### 보드 — F06 (12)
 
 | method path | 하는 일 | 호출 가능 | 입력 | 출력 | 흐름 |
 | --- | --- | --- | --- | --- | --- |
 | GET /projects/{project}/boards | 보드 목록 | board.view | - | boards[] | S14 |
 | POST /projects/{project}/boards | 생성 (종류별 기본 컬럼: 상태 보드는 열린 상태들 등) | board.manage | name, kind | 201 board | S16 F06 |
-| GET /boards/{id} | 보드 + 컬럼 + 컬럼별 카드 (쿼리 엔진 사용) | board.view + wp.view | - | board | S15 |
-| PATCH /boards/{id} | 이름, 공개, 보드 필터 | board.manage | 부분 | board | S15 |
+| GET /boards/{id} | 보드 + 컬럼 + 컬럼별 카드 (쿼리 엔진 사용). `filters`를 주면 저장하지 않고 그 필터로 걸러 봄 | board.view + wp.view | filters? (JSON, 목록과 같은 형식) | board (+ 저장된 filters, canManage) / 422 형식 오류 | S15 |
+| PATCH /boards/{id} | 이름, 공개, 보드 필터(모든 열에 적용, 모두에게) | board.manage | name, isPublic, filters | board / 422(모르는 필드·연산자) | S15 |
 | DELETE /boards/{id} | 삭제 | board.manage | - | 204 | S14 |
-| POST /boards/{id}/columns | 컬럼 추가 | board.manage | name 또는 valueId | 201 column (구현: valueId만, 200 board 전체) | S15 |
+| POST /boards/{id}/columns | 컬럼 추가 (최대 30) | board.manage | name 또는 valueId | 201 column (구현: 기본 보드는 name(1~60자), 나머지는 valueId. 200 board 전체) | S15 |
 | PATCH /board-columns/{id} | 순서·이름 변경 | board.manage | position, name | column (구현: board 전체. 이름은 값 없는 열만) | S15 |
 | DELETE /board-columns/{id} | 컬럼 삭제 (작업은 그대로) | board.manage | - | 204 (구현: 200 board 전체) | S15 |
-| POST /boards/{id}/moves | 카드 이동: 보드 종류에 따라 작업 속성 변경(상태는 워크플로 검사) + 순서 저장 | wp.edit (basic 보드는 board.manage) | workPackageNumber, toColumnId, beforeNumber, lockVersion | card + WP / 409 / 422 | S15 F06 |
+| POST /boards/{id}/moves | 카드 이동: 보드 종류에 따라 작업 속성 변경(상태는 워크플로 검사) + 순서 저장 | wp.edit (basic 보드는 board.manage) | workPackageNumber, toColumnId, beforeNumber, lockVersion | card + WP / 409 / 422 (구현: 입력 이름은 `number`, 200 board 전체. 기본 보드는 작업을 바꾸지 않고 보드에 없는 카드면 404) | S15 F06 |
+| POST /boards/{id}/cards | 기본 보드: 그 프로젝트의 기존 작업을 열 맨 끝에 넣음(다른 열에 있으면 옮김). 작업은 바뀌지 않음. 88153b7 | board.manage | columnId, number | 200 board / 422(기본 보드 아님, 다른 프로젝트) | S15 |
+| DELETE /boards/{id}/cards/{number} | 기본 보드: 카드를 보드에서 뺌. 작업은 그대로. 88153b7 | board.manage | - | 200 board | S15 |
+| POST /boards/{id}/cards/new | 열에서 새 작업 만들기: 그 열의 상태·담당자·버전을 넣고 유형은 프로젝트 기본(typeId로 바꿀 수 있음). 기본 보드면 그 열에 넣음. 보통의 생성 규칙·권한을 그대로 거침. 88153b7 | wp.create (basic 보드는 board.manage도) | columnId, subject, typeId? | 201 {board, workPackage} / 422 | S15 |
 
 #### 알림 — F09 (4)
 
@@ -438,7 +444,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | 사용자 | GET·POST /admin/users, PATCH·DELETE /admin/users/{id}, POST /admin/users/{id}/resend-invitation | 5 | DELETE는 익명화 작업을 예약. PATCH로 잠금·해제, 관리자 지정 | S35 |
 | 그룹 | GET·POST /admin/groups, PATCH·DELETE /admin/groups/{id}, PUT /admin/groups/{id}/members | 5 | | S35 |
 | 사용자 정의 필드 | GET·POST /admin/custom-fields, PATCH·DELETE /admin/custom-fields/{id} | 4 | 옵션과 사용 유형은 PATCH 본문에 포함 | S34 |
-| 설정 | GET·PUT /admin/settings/{section} | 2 | section: calendar, progress, attachments, notifications, auth, mail. calendar나 progress를 바꾸면 재계산 작업을 예약 | S32 S33 |
+| 설정 | GET·PUT /admin/settings/{section} | 2 | section: calendar, progress, attachments, notifications, auth, mail, display. calendar나 progress를 바꾸면 재계산 작업을 예약. display(84f6e6c)는 PUT만 있고 읽기는 로그인한 누구나 `GET /settings/display`. 저장하면 서버가 쓰는 날짜(`Dates.format`: 활동 기록, 사용자 정의 필드 값, 메일)도 바로 바뀜. 요약 메일 항목의 시각도 날짜 형식과 12시간제를 따름(`Dates.formatDateTime`), 필터 "이번 주"는 주 시작 요일을 따름(`Dates.startOfWeek`). 내보내기 파일의 시각만 기계가 읽기 좋은 `yyyy-MM-dd HH:mm` 고정 | S32 S33 |
 | 휴무일 | GET /admin/non-working-days?year, POST, DELETE /admin/non-working-days/{id} | 3 | 바꾸면 reschedule-all 예약 | S33 |
 | SSO 공급자 | GET·POST /admin/oidc-providers, PATCH·DELETE /admin/oidc-providers/{id} | 4 | V10. 관리자만(global.manage_users로는 안 됨). 발급자를 새로 넣거나 바꾸면 발견 문서를 읽어 확인(못 읽으면 422 issuer). 식별자는 만들 때만, 중복 422. 응답에 client_secret 없음(`secretSet`, `redirectUri`, `linkedUsers`만). PATCH에서 빈 시크릿은 기존 값 유지. DELETE는 연결만 지우고 계정은 남김 | 관리 로그인·비밀번호 |
 
@@ -607,7 +613,7 @@ S10–S12는 모달이라 라우트가 없습니다.
 ## 7. 요약
 
 - **스택**: Spring Boot 4 + Java 21 · jOOQ + Flyway · PostgreSQL 17 · React 19 + Vite + TanStack · db-scheduler · 사내 SMTP · Docker Compose 셀프 호스팅
-- **규모**: 테이블 36개(+ 라이브러리 3개), API 경로 141개(설계 134 + 사내 SSO 7), 작업 13종
+- **규모**: 테이블 36개(+ 라이브러리 3개), API 경로 145개(설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1), 작업 13종
 - **가장 위험한 세 가지**:
   1. 스케줄링 엔진: 근무일, lag, 자동 모드, 부모 파생, 전파, 순환 검출
   2. 쿼리 엔진: 필터 30여 종과 계층·그룹 합계를 권한 조건 아래에서 빠르게 처리
