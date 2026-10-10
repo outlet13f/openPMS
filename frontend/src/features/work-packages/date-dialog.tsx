@@ -1,21 +1,51 @@
 // S10 날짜 대화상자 (components.md "DatePicker"): mode, working days, start · due · duration with "오늘",
 // and the two-month calendar. Clicks fill start, then due (the field marked as next); the third value comes
-// from the server's schedule preview.
+// from the server's schedule preview. Tabs beside 날짜 list the predecessors, successors and children with their
+// dates (what drives or follows this item's schedule); in automatic mode a banner names the predecessor it waits for.
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { CalendarClock, Pin } from "lucide-react";
-import { api, type WorkPackage, type WorkPackagePatch } from "@/api";
+import { api, type RelationGroups, type WorkPackage, type WorkPackagePatch } from "@/api";
+import { useRelations } from "@/api/hooks";
+import { StatusPill, TypeLabel } from "@/components/ui/badges";
+import { Tabs } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Checkbox, Segmented } from "@/components/ui/choice";
 import { Field, Input } from "@/components/ui/field";
 import { Banner } from "@/components/ui/feedback";
 import { Dialog } from "@/components/ui/overlay";
-import { formatDateRange, todayIso } from "@/lib/dates";
+import { formatDate, formatDateRange, todayIso } from "@/lib/dates";
 import { useSaveWorkPackage } from "./use-save";
 import { TwoMonthCalendar } from "./two-month-calendar";
 
 type Touched = NonNullable<WorkPackagePatch["touched"]>;
+type Related = RelationGroups["children"][number];
+
+/** One related item: number, type, subject, status, its dates (and the gap for a predecessor or successor). */
+function RelatedList({ items, empty, lag, onOpen }: { items: { wp: Related; lag?: number }[]; empty: string; lag?: boolean; onOpen: () => void }) {
+  const { t } = useTranslation();
+  if (items.length === 0) return <p className="py-6 text-center text-sm text-fg-muted">{empty}</p>;
+  return (
+    <ul className="flex flex-col divide-y divide-border-muted rounded-md border border-border">
+      {items.map(({ wp: r, lag: gap }) => (
+        <li key={r.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-sm">
+          <span className="text-xs text-fg-muted tabular-nums">#{r.number}</span>
+          <TypeLabel name={r.type.name} color={r.type.color} />
+          <Link to={`/projects/${r.project.identifier}/work-packages/${r.number}/activity`} onClick={onOpen} className="min-w-0 flex-1 truncate hover:underline">
+            {r.subject}
+          </Link>
+          <StatusPill size="sm" name={r.status.name} color={r.status.color} />
+          <span className="w-full text-xs text-fg-muted tabular-nums sm:w-auto">
+            {formatDateRange(r.startDate, r.dueDate) || t("wp.noDates")}
+            {lag && gap ? ` · ${t("dates.lag", { count: gap })}` : ""}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export function DateDialog({ wp, open, onOpenChange }: { wp: WorkPackage; open: boolean; onOpenChange: (o: boolean) => void }) {
   const { t } = useTranslation();
@@ -28,6 +58,13 @@ export function DateDialog({ wp, open, onOpenChange }: { wp: WorkPackage; open: 
   const [touched, setTouched] = useState<Touched>([]);
   /** Which date the next calendar click sets. */
   const [next, setNext] = useState<"start" | "due">("start");
+  const [tab, setTab] = useState("dates");
+  const rel = useRelations(wp.number, open).data;
+  const predecessors = (rel?.relations ?? []).filter((r) => r.type === "follows");
+  const successors = (rel?.relations ?? []).filter((r) => r.type === "precedes");
+  const children = rel?.children ?? [];
+  /** In automatic mode the start waits for the predecessor that finishes last (plus its gap). */
+  const drivingPredecessor = [...predecessors].filter((r) => r.other.dueDate).sort((a, b) => (a.other.dueDate! < b.other.dueDate! ? 1 : -1))[0];
 
   useEffect(() => {
     if (!open) return;
@@ -38,6 +75,7 @@ export function DateDialog({ wp, open, onOpenChange }: { wp: WorkPackage; open: 
     setDuration(wp.duration?.toString() ?? "");
     setTouched([]);
     setNext("start");
+    setTab("dates");
   }, [open, wp]);
 
   const derived = mode === "auto" && wp.childCount > 0;
@@ -109,7 +147,48 @@ export function DateDialog({ wp, open, onOpenChange }: { wp: WorkPackage; open: 
         </>
       }
     >
+      <Tabs
+        aria-label={t("dates.tabs")}
+        value={tab}
+        onValueChange={setTab}
+        items={[
+          { value: "dates", label: t("wp.fields.dates"), content: datesTab() },
+          {
+            value: "predecessors",
+            label: t("dates.predecessors"),
+            count: predecessors.length,
+            content: <RelatedList lag items={predecessors.map((r) => ({ wp: r.other, lag: r.lag }))} empty={t("dates.noPredecessors")} onOpen={() => onOpenChange(false)} />,
+          },
+          {
+            value: "successors",
+            label: t("dates.successors"),
+            count: successors.length,
+            content: <RelatedList lag items={successors.map((r) => ({ wp: r.other, lag: r.lag }))} empty={t("dates.noSuccessors")} onOpen={() => onOpenChange(false)} />,
+          },
+          {
+            value: "children",
+            label: t("relations.children"),
+            count: children.length,
+            content: <RelatedList items={children.map((c) => ({ wp: c }))} empty={t("dates.noChildren")} onOpen={() => onOpenChange(false)} />,
+          },
+        ]}
+      />
+    </Dialog>
+  );
+
+  function datesTab() {
+    return (
       <div className="flex flex-col gap-4">
+        {mode === "auto" && !derived && drivingPredecessor && (
+          <Banner tone="info">
+            <span>
+              {t("dates.waitsFor", { number: drivingPredecessor.other.number, subject: drivingPredecessor.other.subject, date: formatDate(drivingPredecessor.other.dueDate) })}{" "}
+              <Button variant="link" size="sm" className="h-auto p-0 align-baseline" onClick={() => setTab("predecessors")}>
+                {t("dates.showPredecessors")}
+              </Button>
+            </span>
+          </Banner>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Segmented
             aria-label={t("dates.mode")}
@@ -183,6 +262,6 @@ export function DateDialog({ wp, open, onOpenChange }: { wp: WorkPackage; open: 
           </div>
         )}
       </div>
-    </Dialog>
-  );
+    );
+  }
 }

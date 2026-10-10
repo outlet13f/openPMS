@@ -23,6 +23,33 @@ test.describe("F04 일정", () => {
     expect(await dates(page, 5)).toEqual({ startDate: "2026-11-02", dueDate: "2026-11-06", duration: 5 });
   });
 
+  test("F04-H3 date dialog tabs: predecessors, successors and children with their dates", async ({ page }) => {
+    // seed: #4 precedes #5 precedes #6 (#5 is scheduled automatically); #1 has children
+    await page.goto("/projects/web-platform/work-packages/5/activity");
+    await page.getByRole("button", { name: /^날짜:/ }).first().click();
+    const d = page.getByRole("dialog", { name: "날짜" });
+    await expect(d.getByText(/자동 일정: #4 결제 API 연동\(완료 .+\)이 끝난 뒤에 시작합니다/)).toBeVisible();
+    await d.getByRole("button", { name: "선행 작업 보기" }).click();
+    await expect(d.getByRole("tab", { name: /^선행/ })).toHaveAttribute("aria-selected", "true");
+    await expect(d.getByRole("tabpanel").getByRole("link", { name: "결제 API 연동" })).toBeVisible();
+    await axe(page, "S10 날짜 대화상자 · 선행");
+    await d.getByRole("tab", { name: /^후속/ }).click();
+    await expect(d.getByRole("tabpanel").getByRole("link", { name: "3분기 릴리스" })).toBeVisible(); // seed: #5 precedes #6
+    await d.getByRole("button", { name: "취소" }).click();
+
+    await page.goto("/projects/web-platform/work-packages/4/activity");
+    await page.getByRole("button", { name: /^날짜:/ }).first().click();
+    await d.getByRole("tab", { name: /^후속/ }).click();
+    await d.getByRole("tabpanel").getByRole("link", { name: "릴리스 노트 초안 작성" }).click();
+    await expect(d).toBeHidden();
+    await expect(page).toHaveURL(/\/work-packages\/5\/activity/);
+
+    await page.goto("/projects/web-platform/work-packages/1/activity");
+    await page.getByRole("button", { name: /^날짜:/ }).first().click();
+    await d.getByRole("tab", { name: /^하위/ }).click();
+    await expect(d.getByRole("tabpanel").getByRole("listitem").first()).toBeVisible();
+  });
+
   test("F04-E1 a successor moves when its predecessor ends later", async ({ page }) => {
     // seed: #4 precedes #5; pushing #4 past #5's start moves #5
     const before = await dates(page, 5);

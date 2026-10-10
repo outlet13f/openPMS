@@ -117,7 +117,7 @@ export const useWorkPackage = (n: number | undefined) =>
   useQuery({ queryKey: qk.wp(n ?? 0), queryFn: () => api.workPackages.get(n!), enabled: !!n });
 
 export const useActivities = (n: number) => useQuery({ queryKey: qk.wpActivities(n), queryFn: () => api.workPackages.activities(n) });
-export const useRelations = (n: number) => useQuery({ queryKey: qk.wpRelations(n), queryFn: () => api.workPackages.relations(n) });
+export const useRelations = (n: number, enabled = true) => useQuery({ queryKey: qk.wpRelations(n), queryFn: () => api.workPackages.relations(n), enabled });
 export const useAllowedStatuses = (n: number, enabled: boolean) =>
   useQuery({ queryKey: qk.wpStatuses(n), queryFn: () => api.workPackages.allowedStatuses(n), enabled });
 
