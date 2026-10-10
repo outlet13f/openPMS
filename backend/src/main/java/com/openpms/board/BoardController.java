@@ -410,6 +410,7 @@ public class BoardController {
     public Dto.Board removeCard(@PathVariable UUID id, @PathVariable long number) {
         var ctx = current.ctx();
         var b = managedBoard(ctx, id);
+        if (!"basic".equals(b.getKind())) throw ApiException.unprocessable("기본 보드에서만 카드를 뺄 수 있습니다.", null);
         var wp = workPackages.find(ctx, number).wp();
         db.deleteFrom(BOARD_CARDS).where(BOARD_CARDS.BOARD_ID.eq(b.getId()), BOARD_CARDS.WORK_PACKAGE_ID.eq(wp.getId())).execute();
         return toBoard(ctx, b);

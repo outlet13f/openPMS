@@ -154,6 +154,7 @@ class BoardsIT {
                     .andExpect(status().isUnprocessableContent());
             // not a basic board: cards come from the attribute, they are not put there by hand
             send(admin, post("/api/v1/boards/" + id + "/cards"), "{\"columnId\":\"" + target.get("id").asString() + "\",\"number\":3}").andExpect(status().isUnprocessableContent());
+            send(admin, delete("/api/v1/boards/" + id + "/cards/3"), "").andExpect(status().isUnprocessableContent());
         } finally {
             if (number != null) send(admin, delete("/api/v1/work-packages/" + number), "").andExpect(status().is2xxSuccessful());
             send(admin, delete("/api/v1/boards/" + id), "").andExpect(status().isNoContent());

@@ -64,6 +64,10 @@ class ExportIT {
             var csv = post_(admin, "/work-packages/export", "{\"spec\":" + spec("#15") + ",\"format\":\"csv\",\"columns\":[\"subject\",\"number\"],\"title\":\"t\"}")
                     .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
             assertThat(csv).contains("'=1+1,15").doesNotContain("\n=1+1");
+            // the list's work columns (2bb76a8) export too, as numbers
+            var work = post_(admin, "/work-packages/export", "{\"spec\":" + spec("#3") + ",\"format\":\"csv\",\"columns\":[\"number\",\"work\",\"remainingWork\"],\"title\":\"t\"}")
+                    .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+            assertThat(work).contains("번호,작업량(시간),남은 작업(시간)");
         } finally {
             db.update(WORK_PACKAGES).set(WORK_PACKAGES.SUBJECT, old).where(WORK_PACKAGES.NUMBER.eq(15L)).execute();
         }

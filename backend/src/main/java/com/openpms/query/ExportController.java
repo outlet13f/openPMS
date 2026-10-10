@@ -39,11 +39,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class ExportController {
     static final int LIMIT = 5000;
     private static final List<String> BUILT_IN = List.of("number", "subject", "type", "status", "priority", "assignee", "responsible", "author", "version",
-            "startDate", "dueDate", "duration", "doneRatio", "updatedAt", "project");
+            "startDate", "dueDate", "duration", "work", "remainingWork", "doneRatio", "updatedAt", "project");
     private static final Map<String, String> HEADERS = Map.ofEntries(
             Map.entry("number", "번호"), Map.entry("subject", "제목"), Map.entry("type", "유형"), Map.entry("status", "상태"), Map.entry("priority", "우선순위"),
             Map.entry("assignee", "담당자"), Map.entry("responsible", "책임자"), Map.entry("author", "작성자"), Map.entry("version", "버전"),
-            Map.entry("startDate", "시작일"), Map.entry("dueDate", "완료일"), Map.entry("duration", "기간(일)"), Map.entry("doneRatio", "완료 %"),
+            Map.entry("startDate", "시작일"), Map.entry("dueDate", "완료일"), Map.entry("duration", "기간(일)"), Map.entry("work", "작업량(시간)"),
+            Map.entry("remainingWork", "남은 작업(시간)"), Map.entry("doneRatio", "완료 %"),
             Map.entry("updatedAt", "최근 수정"), Map.entry("project", "프로젝트"));
     private static final DateTimeFormatter LOCAL = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 

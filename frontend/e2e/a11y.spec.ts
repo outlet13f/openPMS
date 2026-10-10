@@ -18,7 +18,7 @@ const SCREENS: [string, string, RegExp | string][] = [
   ["S28 양식 구성", "/admin/types", /유형/],
   ["S31 역할", "/admin/roles", /역할/],
   ["S32 진행률", "/admin/progress", /진행률/],
-  ["S33 근무일", "/admin/calendar", /근무/],
+  ["S33 달력과 날짜", "/admin/calendar", /근무/],
   ["S34 사용자 정의 필드", "/admin/custom-fields", /사용자 정의 필드/],
   ["S35 사용자", "/admin/users", /사용자/],
   ["S36 우선순위", "/admin/priorities", /우선순위/],

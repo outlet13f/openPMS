@@ -9,7 +9,7 @@ import { runQuery } from "./query";
 
 const HEADERS: Record<string, string> = {
   number: "번호", subject: "제목", type: "유형", status: "상태", priority: "우선순위", assignee: "담당자", responsible: "책임자",
-  author: "작성자", version: "버전", startDate: "시작일", dueDate: "완료일", duration: "기간(일)", doneRatio: "완료 %", updatedAt: "최근 수정",
+  author: "작성자", version: "버전", startDate: "시작일", dueDate: "완료일", duration: "기간(일)", work: "작업량(시간)", remainingWork: "남은 작업(시간)", doneRatio: "완료 %", updatedAt: "최근 수정",
   project: "프로젝트",
 };
 
