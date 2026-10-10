@@ -371,6 +371,13 @@ const ko = {
       status_changed: "상태", priority_changed: "우선순위", dates_changed: "날짜", date_alert_start: "시작일 알림", date_alert_due: "완료일 알림", date_alert_overdue: "기한 지남",
     },
     selectPrompt: "왼쪽에서 알림을 고르면 작업 내용이 여기에 열립니다.",
+    byReason: "이유로 거르기",
+    byProject: "프로젝트로 거르기",
+    allReasons: "모든 이유",
+    allProjects: "모든 프로젝트",
+    reasonFilters: { mentioned: "언급", assigned: "담당", responsible: "책임", watched: "주시", shared: "공유", date_alert: "날짜 알림", other: "그 밖의 변경" },
+    clearFilters: "필터 지우기",
+    noMatch: "조건에 맞는 알림이 없습니다",
   },
   admin: {
     onlyAdmins: "관리자만 볼 수 있는 화면입니다.",
