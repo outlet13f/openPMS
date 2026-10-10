@@ -159,7 +159,8 @@ export function WorkPackagesPage() {
           items: allColumns.filter((c) => c !== "subject").map((c) => ({
             label: columnLabel(c),
             checked: spec.columns.includes(c),
-            onSelect: () => state.setSpec({ ...spec, columns: spec.columns.includes(c) ? spec.columns.filter((x) => x !== c) : allColumns.filter((x) => x === c || spec.columns.includes(x)) }),
+            onSelect: () =>
+              state.setSpec((s) => ({ ...s, columns: s.columns.includes(c) ? s.columns.filter((x) => x !== c) : allColumns.filter((x) => x === c || s.columns.includes(x)) })),
           })),
         },
         {
@@ -167,16 +168,16 @@ export function WorkPackagesPage() {
           label: t("wp.grouping.menu"),
           icon: <Group />,
           items: [
-            { label: t("wp.grouping.none"), checked: !spec.groupBy, onSelect: () => state.setSpec({ ...spec, groupBy: null }) },
+            { label: t("wp.grouping.none"), checked: !spec.groupBy, onSelect: () => state.setSpec((s) => ({ ...s, groupBy: null })) },
             ...groupColumns.map((c) => ({
               label: columnLabel(c),
               checked: spec.groupBy === c,
               // grouped lists are flat, as in the original
-              onSelect: () => state.setSpec({ ...spec, groupBy: c, hierarchy: false }),
+              onSelect: () => state.setSpec((s) => ({ ...s, groupBy: c, hierarchy: false })),
             })),
           ],
         },
-        { label: t("wp.grouping.sums"), icon: <Sigma />, checked: spec.sums, onSelect: () => state.setSpec({ ...spec, sums: !spec.sums }) },
+        { label: t("wp.grouping.sums"), icon: <Sigma />, checked: spec.sums, onSelect: () => state.setSpec((s) => ({ ...s, sums: !s.sums })) },
         ...(view && view.kind !== "default"
           ? [
               { kind: "separator" as const },
@@ -232,7 +233,7 @@ export function WorkPackagesPage() {
                 {t("wp.filters")} {filterCount > 0 && <Counter>{filterCount}</Counter>}
               </Button>
               {project && spec && (
-                <Button aria-pressed={spec.includeSubprojects} icon={<FolderTree />} onClick={() => state.setSpec({ ...spec, includeSubprojects: !spec.includeSubprojects })}>
+                <Button aria-pressed={spec.includeSubprojects} icon={<FolderTree />} onClick={() => state.setSpec((s) => ({ ...s, includeSubprojects: !s.includeSubprojects }))}>
                   <span className="hidden xl:inline">{t("wp.includeSubprojects")}</span>
                   <span className="sr-only xl:hidden">{t("wp.includeSubprojects")}</span>
                 </Button>
@@ -242,7 +243,7 @@ export function WorkPackagesPage() {
                   aria-pressed={spec.hierarchy}
                   icon={<ListTodo />}
                   title={spec.groupBy ? t("wp.grouping.noHierarchy") : undefined}
-                  onClick={() => state.setSpec({ ...spec, hierarchy: !spec.hierarchy, groupBy: spec.hierarchy ? spec.groupBy : null })}
+                  onClick={() => state.setSpec((s) => ({ ...s, hierarchy: !s.hierarchy, groupBy: s.hierarchy ? s.groupBy : null }))}
                 >
                   <span className="hidden xl:inline">{t("wp.hierarchy")}</span>
                   <span className="sr-only xl:hidden">{t("wp.hierarchy")}</span>

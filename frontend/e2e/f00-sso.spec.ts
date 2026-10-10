@@ -88,7 +88,7 @@ test.describe.serial("F00 SSO", () => {
     await expect(page.getByLabel("현재 비밀번호")).toHaveCount(0);
     await expect(page.getByText(/사내 계정\(으\)로 로그인하고 있어 비밀번호가 없습니다/)).toBeVisible();
     await page.getByRole("button", { name: "비밀번호 만들기 링크 받기" }).click();
-    await expect(page.getByText(/\(으\)로 링크를 보냈습니다/)).toBeVisible();
+    await expect(page.getByText(/\(으\)로 링크를 보냈습니다/).first()).toBeVisible();
     await axe(page, "S37 계정 설정 (SSO)");
   });
 });

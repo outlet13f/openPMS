@@ -45,7 +45,10 @@ public final class Progress {
 
     public record Item(BigDecimal work, BigDecimal remaining, Integer ratio, boolean excluded) {}
 
-    /** P4/P5 over an item and its descendants (excluded statuses left out). */
+    /**
+     * P4/P5 over an item and its descendants (excluded statuses left out). For the weighted %, an item with work but
+     * no remaining work recorded has done nothing yet (remaining = work), as the work mode would derive it.
+     */
     public static com.openpms.api.Dto.Totals totals(Settings s, List<Item> items) {
         var counted = items.stream().filter(i -> !i.excluded()).toList();
         var works = counted.stream().filter(i -> i.work() != null).toList();
@@ -54,8 +57,9 @@ public final class Progress {
         BigDecimal rem = rems.isEmpty() ? null : rems.stream().map(Item::remaining).reduce(BigDecimal.ZERO, BigDecimal::add);
         Integer ratio;
         if ("weighted".equals(s.totals())) {
+            var left = works.stream().map(i -> i.remaining() == null ? i.work() : i.remaining()).reduce(BigDecimal.ZERO, BigDecimal::add);
             ratio = work == null || work.signum() == 0 ? null
-                    : work.subtract(rem == null ? BigDecimal.ZERO : rem).multiply(BigDecimal.valueOf(100)).divide(work, 0, RoundingMode.HALF_UP).intValue();
+                    : work.subtract(left).multiply(BigDecimal.valueOf(100)).divide(work, 0, RoundingMode.HALF_UP).intValue();
         } else {
             var rs = counted.stream().filter(i -> i.ratio() != null).toList();
             ratio = rs.isEmpty() ? null : (int) Math.round(rs.stream().mapToInt(Item::ratio).average().orElse(0));

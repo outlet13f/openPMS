@@ -49,7 +49,9 @@ export function totalsOf(w: DbWp): { workHours: number | null; remainingHours: n
   const rems = counted.filter((x) => x.remainingHours !== null);
   const remaining = rems.length ? round2(rems.reduce((n, x) => n + x.remainingHours!, 0)) : null;
   let ratio: number | null;
-  if (progressSettings().totals === "weighted") ratio = work ? Math.round(((work - (remaining ?? 0)) / work) * 100) : null;
+  // no remaining work recorded: nothing done yet (as the work mode would derive it)
+  const left = works.reduce((n, x) => n + (x.remainingHours ?? x.workHours!), 0);
+  if (progressSettings().totals === "weighted") ratio = work ? Math.round(((work - left) / work) * 100) : null;
   else {
     const rs = counted.filter((x) => x.doneRatio !== null);
     ratio = rs.length ? Math.round(rs.reduce((n, x) => n + x.doneRatio!, 0) / rs.length) : null;

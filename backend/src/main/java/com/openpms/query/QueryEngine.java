@@ -454,8 +454,11 @@ public class QueryEngine {
         if (w.workHours() != null) acc.merge("work", w.workHours(), BigDecimal::add);
         if (w.remainingHours() != null) acc.merge("remainingWork", w.remainingHours(), BigDecimal::add);
         if (cols.contains("doneRatio") && !s.status(w.statusId()).map(Snapshot.StatusRow::excludedFromTotals).orElse(false)) {
-            if (w.workHours() != null) acc.merge("%work", w.workHours(), BigDecimal::add);
-            if (w.remainingHours() != null) acc.merge("%remaining", w.remainingHours(), BigDecimal::add);
+            if (w.workHours() != null) {
+                acc.merge("%work", w.workHours(), BigDecimal::add);
+                // no remaining work recorded: nothing done yet (Progress.totals)
+                acc.merge("%remaining", w.remainingHours() == null ? w.workHours() : w.remainingHours(), BigDecimal::add);
+            }
             if (w.doneRatio() != null) {
                 acc.merge("%sum", BigDecimal.valueOf(w.doneRatio()), BigDecimal::add);
                 acc.merge("%count", BigDecimal.ONE, BigDecimal::add);

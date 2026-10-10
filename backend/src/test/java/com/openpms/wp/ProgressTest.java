@@ -44,5 +44,9 @@ class ProgressTest {
         assertThat(w.remainingHours()).isEqualTo(20.0);
         assertThat(w.doneRatio()).isEqualTo(60);
         assertThat(Progress.totals(new Progress.Settings("work", false, "simple_average"), items).doneRatio()).isEqualTo(75);
+        // work without remaining work recorded: nothing done yet, not all of it
+        var unrecorded = List.of(new Progress.Item(new BigDecimal("8"), null, null, false), new Progress.Item(new BigDecimal("8"), new BigDecimal("4"), 50, false));
+        assertThat(Progress.totals(WORK, unrecorded).doneRatio()).isEqualTo(25);
+        assertThat(Progress.totals(WORK, unrecorded).remainingHours()).isEqualTo(4.0);
     }
 }

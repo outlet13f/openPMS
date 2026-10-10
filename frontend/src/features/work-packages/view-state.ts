@@ -2,7 +2,7 @@
 //   ?view=<saved query id>   which saved/default view is the starting point
 //   ?q=<base64url spec>      unsaved changes on top of it (filters, sort, columns…)
 //   ?page=&size=             pagination
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router";
 import type { QuerySpec, SavedQuery } from "@/api";
 import { useSavedQueries } from "@/api/hooks";
@@ -35,16 +35,24 @@ export function useListState(projectId: string | undefined) {
   const page = Math.max(1, Number(params.get("page") ?? 1) || 1);
   const pageSize = [20, 100].includes(Number(params.get("size"))) ? Number(params.get("size")) : 20;
 
+  // The router applies a URL change in a transition: two quick changes (menu, menu again) must build on each other,
+  // not both on the spec of the last render. An updater gets the latest spec, changes made since included.
+  const latest = useRef(spec);
+  latest.current = spec;
   const setSpec = useCallback(
-    (next: QuerySpec) =>
+    (next: QuerySpec | ((prev: QuerySpec) => QuerySpec)) => {
+      const value = typeof next === "function" ? (latest.current ? next(latest.current) : null) : next;
+      if (!value) return;
+      latest.current = value;
       setParams(
         (p) => {
-          p.set("q", encodeSpec(next));
+          p.set("q", encodeSpec(value));
           p.delete("page");
           return p;
         },
         { replace: true },
-      ),
+      );
+    },
     [setParams],
   );
   const resetToView = useCallback((id?: string) => setParams((p) => (p.delete("q"), p.delete("page"), id && p.set("view", id), p)), [setParams]);

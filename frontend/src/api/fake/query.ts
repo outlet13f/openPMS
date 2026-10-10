@@ -319,8 +319,10 @@ function accumulate(w: DbWp, cols: ColumnKey[], acc: Record<string, number>) {
   if (w.workHours !== null) acc.work = (acc.work ?? 0) + w.workHours;
   if (w.remainingHours !== null) acc.remainingWork = (acc.remainingWork ?? 0) + w.remainingHours;
   if (cols.includes("doneRatio") && !db.statuses.find((s) => s.id === w.statusId)?.excludedFromTotals) {
-    if (w.workHours !== null) acc["%work"] = (acc["%work"] ?? 0) + w.workHours;
-    if (w.remainingHours !== null) acc["%remaining"] = (acc["%remaining"] ?? 0) + w.remainingHours;
+    if (w.workHours !== null) {
+      acc["%work"] = (acc["%work"] ?? 0) + w.workHours;
+      acc["%remaining"] = (acc["%remaining"] ?? 0) + (w.remainingHours ?? w.workHours); // nothing recorded: not started
+    }
     if (w.doneRatio !== null) {
       acc["%sum"] = (acc["%sum"] ?? 0) + w.doneRatio;
       acc["%count"] = (acc["%count"] ?? 0) + 1;

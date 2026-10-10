@@ -117,7 +117,9 @@ class GroupingIT {
         assertThat(dec(sums.get("remainingWork"))).isEqualByComparingTo(remaining == null ? BigDecimal.ZERO : remaining);
         // % complete leaves out the statuses excluded from totals, like an item's ∑
         var countedWork = db.select(DSL.sum(WORK_PACKAGES.WORK_HOURS)).from(WORK_PACKAGES).where(counted()).fetchOne().value1();
-        var countedRemaining = db.select(DSL.sum(WORK_PACKAGES.REMAINING_HOURS)).from(WORK_PACKAGES).where(counted()).fetchOne().value1();
+        // work without remaining work recorded counts as not started
+        var countedRemaining = db.select(DSL.sum(DSL.coalesce(WORK_PACKAGES.REMAINING_HOURS, WORK_PACKAGES.WORK_HOURS))).from(WORK_PACKAGES)
+                .where(counted(), WORK_PACKAGES.WORK_HOURS.isNotNull()).fetchOne().value1();
         if (countedWork != null && countedWork.signum() > 0) {
             var expected = countedWork.subtract(countedRemaining == null ? BigDecimal.ZERO : countedRemaining).multiply(BigDecimal.valueOf(100))
                     .divide(countedWork, 0, RoundingMode.HALF_UP);
@@ -135,7 +137,7 @@ class GroupingIT {
 
     @Test
     void withSimpleAverageTotalsPercentCompleteIsTheAverageOfTheItems() throws Exception {
-        settings.put("progress.totals", "\"simple\"", null);
+        settings.put("progress.totals", "\"simple_average\"", null);
         try {
             var sums = query(spec(null, true, false), 5).get("sums");
             var avg = db.select(DSL.avg(WORK_PACKAGES.DONE_RATIO)).from(WORK_PACKAGES).where(counted(), WORK_PACKAGES.DONE_RATIO.isNotNull()).fetchOne().value1();
