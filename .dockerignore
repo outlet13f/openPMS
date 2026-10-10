@@ -1,0 +1,18 @@
+# only sources go into the build context: no dependencies, build output, secrets or reference material
+.git
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+backend/build
+backend/.gradle
+backend/src/main/resources/static
+.env
+**/.env
+**/.env.*
+!backend/.env.example
+!.env.example
+# not a secret: it switches the shipped web app to the real API
+!frontend/.env.production
+replica/screens
+replica/diffs
+replica/clone-screens

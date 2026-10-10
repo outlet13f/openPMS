@@ -48,6 +48,7 @@ public class FirstAdmin implements ApplicationRunner {
         } else {
             db.update(USERS).set(USERS.IS_ADMIN, true).where(USERS.ID.eq(user.getId())).execute();
         }
+        tokens.revokeAll(user.getId(), "invitation"); // each start prints a fresh link; the older ones stop working
         var token = tokens.issue(user.getId(), "invitation", Duration.ofHours(24), null);
         // printed once, on purpose: this is how the first administrator gets in on a fresh server
         log.warn("No administrator yet. Set up {} within 24 hours: {}", email, mailer.link("/invitations/" + token));

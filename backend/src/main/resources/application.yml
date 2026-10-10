@@ -38,6 +38,10 @@ spring:
     password: ${OPENPMS_SMTP_PASSWORD:}
     properties:
       mail.smtp.starttls.enable: ${OPENPMS_SMTP_STARTTLS:false}
+      # an unreachable relay must not hold a thread forever (the default is no timeout)
+      mail.smtp.connectiontimeout: 10000
+      mail.smtp.timeout: 10000
+      mail.smtp.writetimeout: 10000
   jackson:
     default-property-inclusion: always
   servlet:
@@ -55,6 +59,10 @@ management:
     health:
       probes:
         enabled: true
+  health:
+    # the app keeps working while the mail relay is down (a failed send is logged, notification mail retried by jobs)
+    mail:
+      enabled: false
 
 openpms:
   base-url: ${OPENPMS_BASE_URL:http://localhost:8090}

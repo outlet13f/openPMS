@@ -1,0 +1,41 @@
+# openPMS on a company server: the app and PostgreSQL 17. Settings come from .env next to this file (copy .env.example).
+#   docker compose up -d --build      first start; the log prints a one-time setup link for OPENPMS_ADMIN_EMAIL
+#   docker compose logs -f app
+# The app listens on 127.0.0.1:8090 only: put the company's reverse proxy (TLS) in front of it.
+# Backups: docker compose exec db pg_dump -U openpms -Fc openpms > openpms-$(date +%F).dump, plus the "files" volume.
+
+services:
+  db:
+    image: docker.io/library/postgres:17
+    environment:
+      POSTGRES_DB: openpms
+      POSTGRES_USER: openpms
+      POSTGRES_PASSWORD: ${OPENPMS_DB_PASSWORD:?set OPENPMS_DB_PASSWORD in .env}
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openpms -d openpms"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    build: .
+    image: openpms:latest
+    env_file: .env
+    environment:
+      OPENPMS_DB_URL: jdbc:postgresql://db:5432/openpms
+      OPENPMS_DB_USER: openpms
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${OPENPMS_PORT:-8090}:8090"
+    volumes:
+      - files:/data/files
+    restart: unless-stopped
+
+volumes:
+  db:
+  files:
