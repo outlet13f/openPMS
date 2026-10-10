@@ -139,6 +139,7 @@ public class AuthController {
         limiter.check("reset:" + req.getRemoteAddr(), 5);
         var u = byEmail(in.email());
         if (u != null && "active".equals(u.getStatus())) {
+            tokens.revokeAll(u.getId(), "password_reset"); // only the newest link works
             var token = tokens.issue(u.getId(), "password_reset", Duration.ofMinutes(settings.integer("auth.password_reset_ttl_minutes", 60)), null);
             mailer.send(u.getEmail(), "[openPMS] 비밀번호 재설정",
                     u.getName() + "님,\n\n아래 링크에서 새 비밀번호를 정하세요. 링크는 한 번만 쓸 수 있고 곧 만료됩니다.\n\n"
@@ -161,7 +162,7 @@ public class AuthController {
         checkPassword(in.newPassword());
         db.update(USERS).set(USERS.PASSWORD_HASH, encoder.encode(in.newPassword())).set(USERS.FAILED_LOGIN_COUNT, 0).setNull(USERS.LOCKED_UNTIL)
                 .where(USERS.ID.eq(t.getUserId())).execute();
-        tokens.markUsed(t);
+        tokens.revokeAll(t.getUserId(), "password_reset");
         sessions.endAll(t.getUserId()); // a reset signs the account out everywhere
         return ResponseEntity.noContent().build();
     }
@@ -187,7 +188,7 @@ public class AuthController {
                 .where(USERS.ID.eq(t.getUserId()), USERS.STATUS.eq("invited")).execute();
         if (n == 0) throw new ApiException(410, "링크가 만료됐거나 이미 사용됐습니다.");
         db.insertInto(USER_PREFERENCES).set(USER_PREFERENCES.USER_ID, t.getUserId()).onConflictDoNothing().execute();
-        tokens.markUsed(t);
+        tokens.revokeAll(t.getUserId(), "invitation");
         signIn(t.getUserId(), req, res);
         return me();
     }

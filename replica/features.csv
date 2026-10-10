@@ -1,7 +1,7 @@
 ﻿feature,area,priority,original,clone,notes
-이메일·비밀번호 로그인/로그아웃,인증,must,yes,yes,"S01 | 빌드: S01, 실제 API(세션·CSRF·실패 누적 잠금·요청 제한). 비밀번호 재설정은 API·메일까지, 화면은 준비 중"
+이메일·비밀번호 로그인/로그아웃,인증,must,yes,yes,"S01 | 빌드: S01, 실제 API(세션·CSRF·실패 누적 잠금·요청 제한). 비밀번호 재설정: 요청(없는 주소도 같은 답) → 메일 링크 → 새 비밀번호, 모든 세션 종료. 가장 최근 링크만 유효"
 사내 SSO(OIDC) 로그인,인증,should,yes,no,원본 관리 메뉴에 OpenID 공급자 있음. 사내 도구에 중요
-이메일로 사용자 초대(invited 상태),인증,should,yes,partial,"S23·S35 | 빌드: 관리에서 초대 → 일회용 링크 메일 발송, 수락 API. 수락 화면은 준비 중"
+이메일로 사용자 초대(invited 상태),인증,should,yes,yes,"S23·S35 | 빌드: 관리에서 초대 → 일회용 링크 메일 발송 → 수락 화면(이름·비밀번호, 바로 로그인). 다시 보내면 이전 링크는 무효. 프로젝트 안에서 초대(`POST /projects/{p}/invitations`)는 없음"
 사용자 잠금/활성 상태 관리,인증,must,yes,yes,"S35 | 빌드: S35 잠금·해제, 잠긴 계정 로그인 거부"
 계정 설정: 언어·시간대·테마,계정,should,yes,yes,"S37 | 빌드: 이름·시간대·테마(시스템·라이트·다크), 최신 활동 위로, 이탈 경고, 비밀번호 변경(다른 기기 로그아웃), 다른 기기 로그아웃. 다크 테마는 토큰(color-dark)에서 생성, AA 대비 통과. 언어는 한국어만(번역 없음)"
 한국어 UI와 다국어(i18n) 구조,공통,must,yes,yes,"사내 기본 언어 ko. 번역 문자열은 새로 작성 | 빌드: react-i18next, 타입 검사되는 키. ko만"
@@ -100,7 +100,7 @@ Gantt 막대 드래그 이동·크기 조절,Gantt,must,yes,yes,F04 | 빌드: �
 Gantt 날짜 없는 항목에 막대 그려 날짜 지정,Gantt,should,yes,no,
 Gantt 줌 인·아웃·자동 줌,Gantt,must,yes,yes,"S13 | 빌드: 자동(기본, 기간에 따라 일·주·월)·일·주·월"
 Gantt 라벨 위치 설정(왼쪽·오른쪽·먼 오른쪽),Gantt,could,yes,no,query_props tll
-전역 Gantt(여러 프로젝트),Gantt,could,yes,no,전역 메뉴 Gantt 차트
+전역 Gantt(여러 프로젝트),Gantt,could,yes,yes,"전역 메뉴 Gantt 차트 | 빌드: /gantt, 볼 수 있는 모든 프로젝트, 저장된 보기·필터·확대. 행을 누르면 그 프로젝트의 작업 화면으로(전역 목록과 같음). 원본의 프로젝트별 묶음 표시는 없음"
 보드 목록·생성·삭제,보드,must,yes,yes,S14·S16 | 빌드: S14·S16
 상태(칸반) 보드,보드,must,yes,yes,S15 | 빌드: S15
 카드 드래그로 속성 변경(워크플로 준수),보드,must,yes,yes,"F06 | 빌드: 마우스·키보드, 거부 시 원위치"

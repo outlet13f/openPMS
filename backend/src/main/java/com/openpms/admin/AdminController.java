@@ -577,6 +577,7 @@ public class AdminController {
     }
 
     private void sendInvitation(Ctx ctx, UUID userId, String email, String name) {
+        tokens.revokeAll(userId, "invitation"); // a resent invitation replaces the earlier link
         var token = tokens.issue(userId, "invitation", Duration.ofHours(settings.integer("auth.invitation_ttl_hours", 168)), ctx.userId());
         mailer.send(email, "[openPMS] 초대장이 도착했습니다",
                 name + "님,\n\n" + ctx.user().name() + "님이 openPMS에 초대했습니다. 아래 링크에서 비밀번호를 정하면 바로 쓸 수 있습니다.\n\n"

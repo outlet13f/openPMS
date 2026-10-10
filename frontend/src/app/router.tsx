@@ -1,9 +1,8 @@
-// Every screen in replica/recon.md gets a route (architecture.md §4.3). Screens not built yet render
-// a StubPage naming their S-ID; replica/build-log.md tracks which is which.
+// Every screen in replica/recon.md gets a route (architecture.md §4.3). Admin sections not built yet render
+// a StubPage; replica/build-log.md tracks what is missing.
 import { lazy, Suspense, type ReactElement } from "react";
 import { createBrowserRouter, Navigate, useParams } from "react-router";
 import { useTranslation } from "react-i18next";
-import type { ParseKeys } from "i18next";
 import type { Me } from "@/api";
 import { useMe } from "@/api/hooks";
 import { RequireAuth } from "./auth";
@@ -30,6 +29,7 @@ import { MyPage } from "@/pages/my-page";
 import { AdminCustomFieldsPage } from "@/pages/admin/custom-fields";
 import { AdminProgressPage } from "@/pages/admin/progress";
 import { AdminTypeFormPage } from "@/pages/admin/type-form";
+import { InvitationPage, PasswordResetPage } from "@/pages/auth-links";
 import { AdminPrioritiesPage, AdminStatusesPage } from "@/pages/admin/statuses";
 import { AdminWorkflowsPage } from "@/pages/admin/workflows";
 import { AdminRoleEditPage, AdminRolesPage } from "@/pages/admin/roles";
@@ -45,11 +45,6 @@ import { Skeleton } from "@/components/ui/spinner";
 
 // FullCalendar is only needed on S17, so the calendar page is its own chunk.
 const CalendarPage = lazy(() => import("@/pages/planning/calendar").then((m) => ({ default: m.CalendarPage })));
-
-function Stub({ id, nameKey }: { id: string; nameKey: ParseKeys }) {
-  const { t } = useTranslation();
-  return <StubPage id={id} name={t(nameKey) as string} />;
-}
 
 function AdminStub() {
   const { t } = useTranslation();
@@ -69,8 +64,8 @@ function MeRoute({ render }: { render: (me: Me) => ReactElement }) {
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
-  { path: "/password-reset", element: <Stub id="S01" nameKey="stubs.passwordReset" /> },
-  { path: "/invitations/:token", element: <Stub id="S01" nameKey="stubs.invitation" /> },
+  { path: "/password-reset", element: <PasswordResetPage /> },
+  { path: "/invitations/:token", element: <InvitationPage /> },
   { path: "/design", element: <DesignPage /> },
   {
     path: "/",
@@ -87,7 +82,7 @@ export const router = createBrowserRouter([
       },
       { path: "search", element: <SearchPage /> },
       { path: "work-packages", element: <WorkPackagesPage /> },
-      { path: "gantt", element: <Stub id="S13" nameKey="nav.gantt" /> },
+      { path: "gantt", element: <GanttPage /> },
       { path: "projects", element: <MeRoute render={(me) => <ProjectsPage me={me} />} /> },
       { path: "projects/new", element: <NewProjectPage /> },
       {

@@ -299,6 +299,8 @@ export function buildSeed(schema: number): Db {
     projectFavorites: [{ userId: "u-seoyeon", projectId: "p-web" }],
     attachments: [],
     shares: [],
+    tokens: [],
+    outbox: [],
     notificationSettings: [],
     customFields,
     projectCustomFields: [

@@ -107,6 +107,11 @@ export interface DbNotification { id: Id; recipientId: Id; wpId: Id; journalId: 
 /** Demo only: bytes live in the browser as a data URL, so the fake layer keeps files small. */
 export interface DbAttachment { id: Id; wpId: Id; fileName: string; contentType: string; byteSize: number; authorId: Id; createdAt: IsoDateTime; dataUrl: string }
 
+/** One-time link (S01). */
+export interface DbToken { token: string; userId: Id; purpose: "invitation" | "password_reset"; expiresAt: IsoDateTime; usedAt: IsoDateTime | null; createdBy: Id | null }
+/** Demo only: mail the real backend would send (shown on the login page in fake mode). */
+export interface DbMail { id: Id; to: string; subject: string; link: string; sentAt: IsoDateTime }
+
 export interface Db {
   schema: number;
   seq: { wp: number; id: number };
@@ -128,6 +133,8 @@ export interface Db {
   watchers: { wpId: Id; userId: Id }[];
   attachments: DbAttachment[];
   notificationSettings: ({ userId: Id; projectId: Id | null } & NotificationSetting)[];
+  tokens: DbToken[];
+  outbox: DbMail[];
   shares: { id: Id; wpId: Id; userId: Id; role: ShareRole; createdBy: Id | null; createdAt: IsoDateTime }[];
   customFields: CustomField[];
   projectCustomFields: { projectId: Id; customFieldId: Id }[];
@@ -149,7 +156,7 @@ export interface Db {
 }
 
 const KEY = "openpms.fakedb";
-const SCHEMA = 11;
+const SCHEMA = 12;
 
 function load(): Db {
   try {

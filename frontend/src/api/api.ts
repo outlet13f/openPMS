@@ -1,4 +1,4 @@
-import type {
+import type { Invitation,
   Attachment,
   ProgressSettings,
   ExportInput,
@@ -76,6 +76,14 @@ export interface Api {
     logout(): Promise<void>;
     /** GET /auth/me — null when not signed in (401). */
     me(): Promise<Me | null>;
+    /** POST /auth/password-reset — sends a link if the address has an active account; answers the same either way. */
+    requestPasswordReset(email: string): Promise<void>;
+    /** POST /auth/password-reset/confirm — 410 when the link is expired or used. Signs the account out everywhere. */
+    confirmPasswordReset(token: string, newPassword: string): Promise<void>;
+    /** GET /auth/invitations/{token} — 410 when expired, used or unknown. */
+    invitation(token: string): Promise<Invitation>;
+    /** POST /auth/invitations/{token}/accept — activates the account and signs it in. */
+    acceptInvitation(token: string, input: { name: string; password: string }): Promise<Me>;
   };
 
   /** My own settings (architecture.md §4.2 "/me"). */

@@ -767,6 +767,13 @@ export interface AdminType extends WpType {
   workPackageCount: number;
   projectCount: number;
 }
+/** S01: what an invitation link shows before it is accepted. */
+export interface Invitation {
+  email: string;
+  name: string;
+  invitedBy: string | null;
+}
+
 export interface TypeInput {
   name: string;
   color: string;

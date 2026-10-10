@@ -1,11 +1,11 @@
 // S01 로그인
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { LogIn } from "lucide-react";
 import { api, API_MODE, isApiError } from "@/api";
-import { fakeAccounts, resetFakeDb } from "@/api/fake";
+import { fakeAccounts, fakeOutbox, resetFakeDb } from "@/api/fake";
 import { qk, useMe } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
@@ -55,6 +55,45 @@ export function LoginPage() {
   };
 
   return (
+    <AuthShell
+      after={
+        API_MODE === "fake" && (
+          <>
+            <DevOutbox />
+            <DemoAccounts onPick={(e, p) => (setEmail(e), setPassword(p), setError(null))} />
+          </>
+        )
+      }
+    >
+      <h1 className="text-xl text-fg">{t("auth.title")}</h1>
+      <p className="mt-1 text-sm text-fg-muted">{t("auth.subtitle")}</p>
+      {error && (
+        <div className="mt-4">
+          <Banner tone="danger">{error}</Banner>
+        </div>
+      )}
+      <form className="mt-5 flex flex-col gap-4" onSubmit={submit} noValidate>
+        <Field label={t("auth.email")} required error={fieldErrors.email}>
+          <Input id="login-email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
+        </Field>
+        <Field label={t("auth.password")} required error={fieldErrors.password}>
+          <Input id="login-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        </Field>
+        <Button type="submit" variant="primary" size="lg" loading={busy} icon={<LogIn />}>
+          {t("auth.submit")}
+        </Button>
+        <Link to="/password-reset" className="self-center text-sm text-accent hover:underline">
+          {t("auth.forgot")}
+        </Link>
+      </form>
+    </AuthShell>
+  );
+}
+
+/** The signed-out page frame (S01): name, one card, and whatever goes under it. */
+export function AuthShell({ children, after }: { children: ReactNode; after?: ReactNode }) {
+  const { t } = useTranslation();
+  return (
     <div className="flex min-h-dvh flex-col items-center justify-center bg-surface px-content py-10">
       <div className="mb-6 flex items-center gap-2 text-lg font-bold text-fg">
         <span aria-hidden="true" className="inline-flex size-8 items-center justify-center rounded-md bg-header-bg text-sm font-black text-header-fg">
@@ -62,32 +101,38 @@ export function LoginPage() {
         </span>
         {t("app.name")}
       </div>
-      <main className="w-full max-w-modal-sm rounded-lg border border-border bg-bg p-6 shadow-card">
-        <h1 className="text-xl text-fg">{t("auth.title")}</h1>
-        <p className="mt-1 text-sm text-fg-muted">{t("auth.subtitle")}</p>
-        {error && (
-          <div className="mt-4">
-            <Banner tone="danger">{error}</Banner>
-          </div>
-        )}
-        <form className="mt-5 flex flex-col gap-4" onSubmit={submit} noValidate>
-          <Field label={t("auth.email")} required error={fieldErrors.email}>
-            <Input id="login-email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
-          </Field>
-          <Field label={t("auth.password")} required error={fieldErrors.password}>
-            <Input id="login-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
-          </Field>
-          <Button type="submit" variant="primary" size="lg" loading={busy} icon={<LogIn />}>
-            {t("auth.submit")}
-          </Button>
-          <Link to="/password-reset" className="self-center text-sm text-accent hover:underline">
-            {t("auth.forgot")}
-          </Link>
-        </form>
-      </main>
-
-      {API_MODE === "fake" && <DemoAccounts onPick={(e, p) => (setEmail(e), setPassword(p), setError(null))} />}
+      <main className="w-full max-w-modal-sm rounded-lg border border-border bg-bg p-6 shadow-card">{children}</main>
+      {after}
     </div>
+  );
+}
+
+/** Fake mode only: the mail the real backend would have sent, so invitation and reset links can be opened. */
+export function DevOutbox() {
+  const { t } = useTranslation();
+  const mails = fakeOutbox();
+  if (!mails.length) return null;
+  return (
+    <section aria-labelledby="outbox-h" className="mt-6 w-full max-w-modal-sm rounded-lg border border-dashed border-border-input bg-bg p-4">
+      <h2 id="outbox-h" className="text-sm font-semibold text-fg">{t("auth.outboxTitle")}</h2>
+      <p className="mt-1 text-xs text-fg-muted">{t("auth.outboxBody")}</p>
+      <ul className="mt-3 flex flex-col divide-y divide-border-muted">
+        {mails.map((m) => (
+          <li key={m.id} className="flex items-center justify-between gap-3 py-2">
+            <span className="min-w-0 text-sm">
+              <span id={`mail-${m.id}`}>
+                <span className="block truncate font-medium text-fg">{m.subject}</span>
+                <span className="block truncate text-xs text-fg-muted">{m.to}</span>
+              </span>
+            </span>
+            {/* described by, not named by, the subject: a label naming 비밀번호 would collide with the form's field */}
+            <Link to={m.link} className="shrink-0 text-sm text-accent hover:underline" aria-describedby={`mail-${m.id}`}>
+              {t("auth.outboxOpen")}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

@@ -1,4 +1,5 @@
-// S13 Gantt 차트 (project): saved views from the sidebar, filters, zoom, split detail panel.
+// S13 Gantt 차트: saved views from the sidebar, filters, zoom, split detail panel. Without a project (/gantt) it spans
+// every project the user can see, and a bar opens the item in its project, as the global list does.
 import { useState } from "react";
 import { Outlet, useMatch, useParams } from "react-router";
 import { useTranslation } from "react-i18next";
@@ -10,7 +11,7 @@ import { Segmented } from "@/components/ui/choice";
 import { EmptyState } from "@/components/ui/feedback";
 import { Skeleton } from "@/components/ui/spinner";
 import { ErrorState, PageHeader, useDocumentTitle } from "@/app/page";
-import { useCurrentProject } from "@/app/project";
+import { useCurrentProject, useOptionalProject } from "@/app/project";
 import { FilterPanel } from "@/features/work-packages/filter-panel";
 import { useListState } from "@/features/work-packages/view-state";
 import { WorkPackageDetail, asDetailTab } from "@/features/work-packages/detail";
@@ -18,14 +19,14 @@ import { GanttChart, type Zoom } from "@/features/gantt/gantt-chart";
 
 export function GanttPage() {
   const { t } = useTranslation();
-  const project = useCurrentProject();
-  const state = useListState(project.id);
+  const project = useOptionalProject();
+  const state = useListState(project?.id);
   const [zoom, setZoom] = useState<Zoom>("auto");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const spec = state.spec ? { ...state.spec, timeline: { visible: true, zoom } } : undefined;
-  const result = useWpQuery(spec, project.id, 1, 200);
-  const options = useFilterOptions(project.id).data;
-  const base = `/projects/${project.identifier}/gantt`;
+  const result = useWpQuery(spec, project?.id, 1, 200);
+  const options = useFilterOptions(project?.id).data;
+  const base = project ? `/projects/${project.identifier}/gantt` : "/gantt";
   const details = useMatch(`${base}/details/:number/*`);
   useDocumentTitle(state.view ? `${t("nav.gantt")} · ${state.view.name}` : t("nav.gantt"));
   const filterCount = (state.spec?.filters.length ?? 0) + (state.spec?.text ? 1 : 0);
@@ -40,7 +41,7 @@ export function GanttPage() {
     <div className="flex min-h-full">
       <div className="min-w-0 flex-1 px-content pb-10 md:px-8">
         <PageHeader
-          breadcrumbs={[{ label: project.name, href: `/projects/${project.identifier}` }, { label: t("nav.gantt") }]}
+          breadcrumbs={project ? [{ label: project.name, href: `/projects/${project.identifier}` }, { label: t("nav.gantt") }] : [{ label: t("nav.gantt") }]}
           title={
             <span className="inline-flex items-center gap-2">
               {state.view?.name ?? t("nav.gantt")}
@@ -82,7 +83,9 @@ export function GanttPage() {
           </div>
         ) : (
           <>
-            <GanttChart result={result.data} zoom={zoom} detailsHref={(wp) => `${base}/details/${wp.number}/overview${state.search}`} />
+            <GanttChart result={result.data} zoom={zoom} detailsHref={(wp) =>
+                project && wp.project.id === project.id ? `${base}/details/${wp.number}/overview${state.search}` : `/projects/${wp.project.identifier}/work-packages/${wp.number}/activity`
+              } />
             <p className="mt-2 text-xs text-fg-muted">{t("gantt.help")}</p>
           </>
         )}

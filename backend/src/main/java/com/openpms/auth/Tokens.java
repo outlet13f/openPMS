@@ -57,7 +57,9 @@ public class Tokens {
         return r;
     }
 
-    public void markUsed(UserTokensRecord r) {
-        db.update(USER_TOKENS).set(USER_TOKENS.USED_AT, OffsetDateTime.now()).where(USER_TOKENS.ID.eq(r.getId())).execute();
+    /** Ends every open link of this kind for the user (a new one replaces them; a used one closes the rest). */
+    public void revokeAll(UUID userId, String purpose) {
+        db.update(USER_TOKENS).set(USER_TOKENS.USED_AT, OffsetDateTime.now())
+                .where(USER_TOKENS.USER_ID.eq(userId), USER_TOKENS.PURPOSE.eq(purpose), USER_TOKENS.USED_AT.isNull()).execute();
     }
 }

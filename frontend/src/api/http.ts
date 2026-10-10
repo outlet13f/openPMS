@@ -73,6 +73,10 @@ export const httpApi: Api = {
         throw e;
       }
     },
+    requestPasswordReset: (email) => post("/auth/password-reset", { email }),
+    confirmPasswordReset: (token, newPassword) => post("/auth/password-reset/confirm", { token, newPassword }),
+    invitation: (token) => get(`/auth/invitations/${encodeURIComponent(token)}`),
+    acceptInvitation: (token, input) => post(`/auth/invitations/${encodeURIComponent(token)}/accept`, input),
   },
   account: {
     updateProfile: (input) => patch("/me", input),

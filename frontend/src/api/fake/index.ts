@@ -35,6 +35,7 @@ import { accountApi, effectiveSetting } from "./notification-settings";
 import { exportWorkPackages } from "./export";
 import { deriveProgress, progressLocked } from "./progress";
 import { DEFAULT_TYPE_FORM } from "../type-form";
+import { issueToken, revokeAll, sendMail, tokenGone, validToken } from "./tokens";
 import { adminApi, categoriesApi, projectExtras, versionsApi } from "./admin";
 
 /* ---------- plumbing ---------- */
@@ -386,6 +387,10 @@ function notificationSummary(n: (typeof db.notifications)[number], user: DbUser)
 /* ---------- the API ---------- */
 
 const PASSWORD_MIN = 10; // auth.password_min_length (backend default)
+function checkNewPassword(password: string, field: string) {
+  if ((password ?? "").length < PASSWORD_MIN) throw fieldError(field, `비밀번호는 ${PASSWORD_MIN}자 이상이어야 합니다.`);
+  if (password.length > 128) throw fieldError(field, "비밀번호는 128자 이하로 정하세요.");
+}
 
 export const fakeApi: Api = {
   account: {
@@ -440,6 +445,43 @@ export const fakeApi: Api = {
       run(() => {
         const u = db.users.find((x) => x.id === db.sessionUserId && x.status === "active");
         return u ? toMe(u) : null;
+      }),
+    requestPasswordReset: (email) =>
+      run(() => {
+        const u = db.users.find((x) => x.email.toLowerCase() === email.trim().toLowerCase());
+        if (u?.status !== "active") return; // the same answer either way (no enumeration)
+        revokeAll(u.id, "password_reset"); // only the newest link works
+        const token = issueToken(u.id, "password_reset", 60, null);
+        sendMail(u.email, "[openPMS] 비밀번호 재설정", `/password-reset?token=${token}`);
+      }),
+    confirmPasswordReset: (token, newPassword) =>
+      run(() => {
+        const t = validToken(token, "password_reset");
+        checkNewPassword(newPassword, "newPassword");
+        const u = db.users.find((x) => x.id === t.userId)!;
+        u.password = newPassword;
+        revokeAll(u.id, "password_reset");
+        if (db.sessionUserId === u.id) db.sessionUserId = null; // a reset signs the account out everywhere
+      }),
+    invitation: (token) =>
+      run(() => {
+        const t = validToken(token, "invitation");
+        const u = db.users.find((x) => x.id === t.userId);
+        if (u?.status !== "invited") throw tokenGone();
+        return { email: u.email, name: u.name, invitedBy: db.users.find((x) => x.id === t.createdBy)?.name ?? null };
+      }),
+    acceptInvitation: (token, input) =>
+      run(() => {
+        const t = validToken(token, "invitation");
+        const name = (input.name ?? "").trim();
+        if (!name || name.length > 100) throw fieldError("name", "이름을 1~100자로 입력하세요.");
+        checkNewPassword(input.password, "password");
+        const u = db.users.find((x) => x.id === t.userId);
+        if (u?.status !== "invited") throw tokenGone();
+        Object.assign(u, { name, password: input.password, status: "active", lastLoginAt: nowIso() });
+        revokeAll(u.id, "invitation");
+        db.sessionUserId = u.id;
+        return toMe(u);
       }),
   },
 
@@ -1188,4 +1230,5 @@ function snippetAround(text: string, needle: string, radius = 50) {
 }
 
 export { resetFakeDb } from "./db";
+export const fakeOutbox = () => db.outbox.slice();
 export const fakeAccounts = () => db.users.map((u) => ({ email: u.email, name: u.name, password: u.password, status: u.status, isAdmin: u.isAdmin }));

@@ -73,6 +73,11 @@ class JobsIT {
         db.deleteFrom(NOTIFICATION_SETTINGS).where(NOTIFICATION_SETTINGS.USER_ID.eq(junho)).execute();
         db.update(USERS).set(USERS.TIME_ZONE, "Asia/Seoul").where(USERS.ID.eq(junho)).execute();
         db.update(USER_PREFERENCES).setNull(USER_PREFERENCES.REMINDERS_PAUSED_UNTIL).where(USER_PREFERENCES.USER_ID.eq(junho)).execute();
+        // 이하늘 is a watcher and mention recipient here; NotificationSettingsIT changes their preferences in the same database
+        var haneul = user("haneul.lee@openpms.local");
+        db.update(USER_PREFERENCES).setNull(USER_PREFERENCES.REMINDERS_PAUSED_UNTIL).set(USER_PREFERENCES.IMMEDIATE_ON_MENTION, true)
+                .where(USER_PREFERENCES.USER_ID.eq(haneul)).execute();
+        db.deleteFrom(NOTIFICATION_SETTINGS).where(NOTIFICATION_SETTINGS.USER_ID.eq(haneul), NOTIFICATION_SETTINGS.PROJECT_ID.isNotNull()).execute();
     }
 
     @Test

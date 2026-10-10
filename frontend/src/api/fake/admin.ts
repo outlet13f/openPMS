@@ -11,6 +11,7 @@ import { fieldError, HEX, run } from "./util";
 import { checkValue, toField } from "./custom-fields";
 import { deriveProgress, progressSettings } from "./progress";
 import { BUILT_IN_ATTRIBUTES } from "../type-form";
+import { issueToken, revokeAll, sendMail } from "./tokens";
 
 /* ---------- guards ---------- */
 
@@ -84,6 +85,14 @@ const PERMISSIONS: { key: string; scope: "project" | "global"; group: string }[]
 ];
 
 /* ---------- project settings ---------- */
+
+/* ---------- invitations (S01) ---------- */
+
+/** Earlier links stop working; the new one lasts auth.invitation_ttl_hours (168). */
+function invite(u: DbUser, by: string) {
+  revokeAll(u.id, "invitation");
+  sendMail(u.email, "[openPMS] 초대", `/invitations/${issueToken(u.id, "invitation", 168 * 60, by)}`);
+}
 
 /* ---------- type forms (S28) ---------- */
 
@@ -609,6 +618,7 @@ export const adminApi: Api["admin"] = {
           prefs: { commentsNewestFirst: false, warnOnUnsaved: true, keyboardShortcuts: true, immediateOnMention: true, digestEnabled: true, digestTimes: ["08:00"], remindersPausedUntil: null, myPageWidgets: ["assigned", "created"] }, createdAt: nowIso(), lastLoginAt: null,
         };
         db.users.push(u);
+        invite(u, sessionUser().id);
         return toUser(u);
       }),
     update: (id, patch) =>
@@ -658,6 +668,7 @@ export const adminApi: Api["admin"] = {
         const u = db.users.find((x) => x.id === id);
         if (!u) throw notFound("사용자");
         if (u.status !== "invited") throw new ApiError(422, "초대 대기 중인 사용자만 다시 보낼 수 있습니다.");
+        invite(u, sessionUser().id);
       }),
   },
 
