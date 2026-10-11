@@ -1,7 +1,7 @@
 # 백엔드 (openPMS)
 
 - 기준: `replica/architecture.md`, 화면 계약은 `frontend/src/api/api.ts`·`types.ts`, 동작 규칙은 가짜 계층(`frontend/src/api/fake`)
-- 작성: 2026-10-09 · 갱신: 2026-10-11 (그룹화·합계 2bb76a8, 보드 보강 88153b7, 날짜 형식 84f6e6c, 문서 점검 후속 384a2f9·31e39bd)
+- 작성: 2026-10-09 · 갱신: 2026-10-11 (그룹화·합계 2bb76a8, 보드 보강 88153b7, 날짜 형식 84f6e6c, 문서 점검 후속 384a2f9·31e39bd, 남은 should a3aee0b·0af87f8·388400b·d0023b1·5d641d1)
 - 스택: Spring Boot 4.1.1 · Java 21(가상 스레드) · jOOQ 3.21 · Flyway 12 · PostgreSQL 17 · Spring Session JDBC · Spring Security 7 · Gradle 9.7
 - 개발 환경: PC에 아무것도 설치하지 않고 Podman 컨테이너로만 빌드·실행합니다(`backend/scripts/dev.sh`).
 
@@ -26,18 +26,19 @@ npm run build                # 운영 빌드(실제 API)를 backend 정적 리�
 
 ## 구현 범위
 
-화면이 쓰는 경로 **전부**와 인증 흐름을 구현했습니다. 처음(2026-10-09) 약 95개였고, 2026-10-11(31e39bd) 기준 컨트롤러 매핑은 154개, dev 프로필 전용 `POST /dev/jobs/{name}`을 빼면 153개입니다(384a2f9의 `POST /me/password/setup` 포함. Spring Security가 처리하는 SSO 시작·콜백은 따로). 경로 이름과 응답 모양은 `frontend/src/api/http.ts`와 같습니다.
+화면이 쓰는 경로 **전부**와 인증 흐름을 구현했습니다. 처음(2026-10-09) 약 95개였고, 2026-10-11(5d641d1) 기준 컨트롤러 매핑은 156개, dev 프로필 전용 `POST /dev/jobs/{name}`을 빼면 155개입니다(0af87f8의 `PUT /admin/users/{id}/global-roles` 포함. Spring Security가 처리하는 SSO 콜백은 따로). 센 방법: `backend/src/main/java`에서 줄 머리의 `@GetMapping`·`@PostMapping`·`@PutMapping`·`@PatchMapping`·`@DeleteMapping`(패키지 이름을 붙여 쓴 `@org.springframework…PutMapping` 포함)을 셈. 매핑 하나에 경로가 둘인 곳은 없음. 이 문서의 이전 숫자(31e39bd 154개·153개)는 `MiscController`의 패키지 이름을 붙인 `PutMapping`(`PUT /admin/settings/display`)을 빠뜨린 것으로, 그때도 155개·154개였습니다. 템플릿·상위 프로젝트·일괄 복사·새 보드 종류는 기존 경로의 입력만 늘렸습니다. 경로 이름과 응답 모양은 `frontend/src/api/http.ts`와 같습니다.
 
 | 영역 | 내용 |
 | --- | --- |
 | 인증 | 세션 로그인(HttpOnly 쿠키, Postgres 저장), SPA용 CSRF 쿠키, 실패 누적 잠금(설정: 5회·15분), IP별 요청 제한, 로그아웃, 비밀번호 재설정(메일 링크, 사용 후 모든 세션 종료), 초대 수락, 첫 관리자 초대. 사내 SSO(OIDC, V10, 커밋 a677079): `auth/OidcProviders`·`OidcLogin`·`OidcController`, Spring Security `oauth2Login`(PKCE·state·nonce·ID 토큰 서명·issuer), 공급자 토큰 저장 안 함, 연결된 sub → 같은 이메일 → 자동 생성 → 거부, 로그인 뒤에는 폼 로그인과 같은 세션. 384a2f9: 로그인 실패 잠금 중인 사람을 관리 · 사용자에 "일시 잠김"으로 보임(`AdminUser.lockedUntil`, 상태가 active이고 `locked_until`이 미래일 때만, 스냅샷이 아니라 매번 DB에서 읽음. "잠김" 필터도 찾음, `PATCH status=active`가 실패 횟수·`locked_until`을 지움). 프록시 뒤 클라이언트 주소: `server.forward-headers-strategy`(`OPENPMS_FORWARD_HEADERS`, 기본 native)와 `server.tomcat.remoteip.internal-proxies`(`OPENPMS_TRUSTED_PROXIES`, 기본 127.x·::1·172.16–31.x, 90006c2부터 Podman 네트워크 10.88–89.x도)로 믿는 프록시가 보낸 `X-Forwarded-For`·`X-Forwarded-Proto`만 씀 → 요청 제한이 사람마다. SSO로만 들어온 사람의 비밀번호 만들기: `POST /me/password/setup`(202, 비밀번호가 있으면 422, 사용자당 분당 3회)이 본인 주소로 `password_reset` 토큰 링크를 보냄. 재설정 허용 설정과 무관. `Me.hasPassword`, `Me.signInWith`(연결된 공급자 표시 이름) |
-| 권한 | 요청마다 역할 × 프로젝트 계산(직접 멤버 + 그룹 멤버 + 공개 프로젝트 비멤버 역할), 보관 프로젝트는 보기만, 꺼진 모듈의 권한 제외. 보이지 않는 리소스는 404 |
-| 작업 | 생성·수정(lock_version 409 + 현재 값), 읽기 전용 상태, 워크플로, 저널 5분 집계, 알림 대상 계산(멘션 > 담당 > 책임 > 주시), 코멘트(HTML 정화·@멘션), 주시, 관계, 삭제(하위 삭제·재배치) |
+| 권한 | 요청마다 역할 × 프로젝트 계산(직접 멤버 + 그룹 멤버 + 공개 프로젝트 비멤버 역할), 보관 프로젝트는 보기만, 꺼진 모듈의 권한 제외. 보이지 않는 리소스는 404. 전역 역할 배정(0af87f8): `PUT /admin/users/{id}/global-roles {roleIds}`가 `global_role_assignments`를 그 사람 몫 전체 교체(관리자만, 사용자 관리 권한만으로는 403, `scope='global'`이 아닌 역할은 422 `roleIds`), `AdminUser.globalRoles`(이름순 `{id, name}`). 전역 권한은 요청마다 계산하므로 바로 적용 |
+| 작업 | 생성·수정(lock_version 409 + 현재 값), 읽기 전용 상태, 워크플로, 저널 5분 집계, 알림 대상 계산(멘션 > 담당 > 책임 > 주시), 코멘트(HTML 정화·@멘션), 주시, 관계, 삭제(하위 삭제·재배치). 일괄 복사(d0023b1): `POST /work-packages/bulk`의 `action: copy`(`targetProject` 없으면 같은 프로젝트). 고른 작업 중 상위를 먼저 복사하도록 깊이순으로 정렬(`parentsFirst`)하고, 고른 상위의 사본을 고른 하위 사본의 상위로. 다른 일괄 작업처럼 한 건이라도 실패하면 422 + `#번호`별 이유, 전부 되돌림 |
 | 일정 | S1–S8, S11을 순수 Java(`wp/Schedule.java`)로. advisory lock으로 직렬화, 바뀐 작업마다 원인이 담긴 저널 |
 | 목록 | 필터 29종을 SQL 조건으로, 한글 정렬, 계층(맥락 행·페이지별 조상), 타임라인 관계, 저장된 보기·기본 보기·즐겨찾기. 그룹화와 합계(2bb76a8): `QueryEngine.GROUPABLE`(유형·상태·우선순위·담당자·책임자·작성자·버전·프로젝트)과 목록·사용자·예/아니요 사용자 정의 필드로 그룹, 그룹 건수·그룹별 합계·전체 합계는 페이지가 아니라 조건에 맞는 전체 기준, 그룹화하면 계층 끔. 완료 % 합계(384a2f9·31e39bd): 작업의 ∑ 합계처럼 관리 · 진행률 추적의 합계 방식(작업량 가중 또는 `simple_average`)을 따르고 합계 제외 상태(시드: 취소)를 뺌. 작업량·남은 작업 합계는 목록의 모든 작업을 더함. 가중 %에서 작업량은 있고 남은 작업이 비어 있는 작업은 시작 전(남은 작업 = 작업량)으로 셈(`Progress.totals`도 같음. 전에는 시드의 신규 그룹이 100%). 응답 `Dto.QueryResult(groups, sums)`, 행마다 `QueryRow.groupKey`. 작업량·남은 작업 열(정렬·내보내기) |
-| 보드 | 상태·담당자·버전·빈(기본) 보드, 카드 이동(워크플로 검사), 열 추가·순서·이름·빼기. 88153b7: 빈 보드에 기존 작업 넣기·빼기(`POST /boards/{id}/cards`, `DELETE /boards/{id}/cards/{number}`, 작업은 바뀌지 않음, `board.manage`), 열에서 새 작업(`POST /boards/{id}/cards/new`, 열의 상태·담당자·버전, 프로젝트 기본 유형), 보드 필터(`PATCH /boards/{id}`의 `filters`로 저장, `GET /boards/{id}?filters=`로 저장하지 않고 걸러 보기, 목록과 같은 필드·연산자 검사) |
+| 보드 | 상태·담당자·버전·빈(기본)·하위 프로젝트·상위-하위 보드(388400b, `KINDS` 6종), 카드 이동(워크플로 검사), 열 추가·순서·이름·빼기. 88153b7: 빈 보드에 기존 작업 넣기·빼기(`POST /boards/{id}/cards`, `DELETE /boards/{id}/cards/{number}`, 작업은 바뀌지 않음, `board.manage`), 열에서 새 작업(`POST /boards/{id}/cards/new`, 열의 상태·담당자·버전, 프로젝트 기본 유형), 보드 필터(`PATCH /boards/{id}`의 `filters`로 저장, `GET /boards/{id}?filters=`로 저장하지 않고 걸러 보기, 목록과 같은 필드·연산자 검사). 하위 프로젝트 보드: 열 = 보드 프로젝트의 바로 아래 하위 프로젝트 중 보관되지 않고 `wp.view`가 있는 것(`board_columns.subproject_id`), 카드는 그 하위 프로젝트들의 작업, 카드를 다른 열로 옮기면 `WorkPackageTransfers.move`(하위 작업 함께, 작업 옮기기와 같은 검사), 열에서 만들면 그 하위 프로젝트에(쓰지 않는 유형이면 그 프로젝트 기본 유형). 상위-하위 보드: 열 = 같은 프로젝트의 작업(`parent_work_package_id`, 처음에는 하위가 있는 작업 번호순 6개, 제목은 "#번호 제목"), 카드 = 그 하위 작업, 옮기면 `parentNumber` 수정(계층 규칙 그대로), 열에서 만들면 그 작업의 하위로. 두 종류 모두 열 이름은 값의 이름을 따르므로 바꿀 수 없음 |
 | 날짜 형식 | 84f6e6c: `common/DisplayFormats`. `GET /settings/display`(로그인), `PUT /admin/settings/display`(관리자), 설정 키 `calendar.date_format`·`calendar.time_format`·`calendar.week_starts_on`. 저장하면 `Dates.format`의 형식이 바로 바뀌어 활동 기록·사용자 정의 필드 값·메일의 날짜가 따라감. 시작할 때 저장된 값을 읽음. 384a2f9: 날짜를 쓸 때 최대 30초마다(`Dates.RELOAD_MS`) DB에서 다시 읽어, 다른 인스턴스에서 저장한 값도 30초 안에 반영(같은 인스턴스에서 저장하면 바로). DB에 닿지 못하면 마지막 값을 씀. 요약 메일 항목 시각은 `Dates.formatDateTime`으로 날짜 형식·12시간제를 따르고, 필터 "이번 주"는 `Dates.startOfWeek`로 주 시작 요일을 따름. 내보내기 시각(`yyyy-MM-dd HH:mm`)만 고정 |
-| 그 밖 | 프로젝트·멤버·카테고리·버전·알림함·검색 제안·근무일 달력, 관리 전체(유형·상태·우선순위·워크플로·역할·사용자·그룹·근무일) |
+| 프로젝트 | 템플릿(a3aee0b): `PATCH /projects/{id}`의 `isTemplate`(project.edit), `GET /projects?filter=templates`, `POST /projects`의 `templateId`(볼 수 있고 보관되지 않은 템플릿, uuid 또는 식별자, 없으면 422 `template`)와 `copy`(members·versions·categories·workPackages·boards·queries, 그 밖은 422 `copy`). 복사는 `project/ProjectCopy`가 생성과 같은 트랜잭션에서 동기로: 항상 모듈·유형·프로젝트 사용자 정의 필드·프로젝트 특성 값(`custom_values`)·설명(입력이 비었을 때), 골라서 멤버와 역할(만든 사람은 관리자 역할을 유지하고, 템플릿 멤버였으면 거기서 받은 역할도 더함), 버전, 카테고리(기본 담당자는 새 프로젝트 멤버일 때만), 작업(계층, 작업끼리의 관계, 작업마다 "만듦" 저널 하나, 알림 없음, 작성자 = 만든 사람, 비멤버 담당자·책임자는 비움), 보드(하위 프로젝트 보드 제외, 값이 사라진 열은 뺌, 작업을 함께 복사할 때만 카드 순서), 보기(공개 보기와 만든 사람 자신의 비공개 보기). 복사한 버전·카테고리·작업 id는 보기 spec과 보드 필터의 JSON에서 문자열 치환으로 새 것으로. 첨부·주시자·코멘트는 복사하지 않음. 상위 프로젝트(5d641d1): `PATCH /projects/{id}`의 `parentId`(새 상위에 project.edit, 자기 자신이나 그 아래면 422 `parent`, null이면 최상위). 생성의 `parentId`는 전부터 있었음(상위에 project.edit) |
+| 그 밖 | 프로젝트·멤버·카테고리·버전·알림함·검색 제안·근무일 달력, 관리 전체(유형·상태·우선순위·워크플로·역할·사용자·그룹·근무일). 알림함의 이유·프로젝트 필터(57722a9)는 서버를 바꾸지 않고 화면이 `GET /notifications` 결과를 거름 |
 
 ## 검증
 
@@ -47,6 +48,7 @@ npm run build                # 운영 빌드(실제 API)를 backend 정적 리�
 - 그 뒤 추가: 사내 SSO `OidcIT` 5개(테스트 안의 IdP로 왕복: 이메일 연결 뒤 sub로 찾기, 계정 없음·자동 생성, 잠김·미확인 이메일·이메일 없음, 다른 키 서명·남의 state, 관리 API와 시크릿 비공개). 2026-10-10 a677079 기준 JUnit 51개 모두 통과.
 - 2026-10-11 추가: 그룹화·합계 `GroupingIT` 3개(그룹 건수 합 = 전체, 행의 groupKey와 그룹 순서, 페이지보다 큰 합계와 작업량 가중 완료 %, 끈 상태에서 null), 보드 `BoardsIT` 3개(빈 보드에 넣기·순서·옮기기·빼기에도 작업은 그대로, 필터 저장과 저장하지 않고 걸러 보기·422, 열에서 만든 카드가 열의 값을 받음), 날짜 형식 `DisplaySettingsIT` 1개(누구나 읽고 관리자만 저장, 형식 검사 422, `Dates.format` 결과). 84f6e6c 기준 JUnit 58개 모두 통과.
 - 2026-10-11 문서 점검 후속(384a2f9·31e39bd): `LockoutIT` 1개(실패 5번 → 423, 목록에 active + `lockedUntil`, "잠김"·"활성" 필터 모두에 나옴, `PATCH status=active`로 풀리고 다시 로그인), `ClientAddressIT` 1개(무작위 포트의 실제 HTTP, 신뢰하는 프록시가 보낸 `X-Forwarded-For`로 사람마다 따로 세고, 앞에 가짜 주소를 붙여도 한도 유지), `DisplayFormatsReloadIT` 1개(다른 인스턴스가 쓴 설정 값을 다시 읽음), `GroupingIT`에 단순 평균 1개 추가(가중 케이스는 합계 제외 상태를 빼고 남은 작업이 비면 작업량으로 계산하도록 고침), `OidcIT` 확장(`hasPassword`·`signInWith`, 비밀번호 만들기 202·422), `ProgressTest` 확장(남은 작업 없음 = 시작 전). JUnit 62/62, e2e 84/84(F11-E2 추가), 전체 두 번 돌림.
+- 2026-10-11 남은 should(f378a86..5d641d1): `TemplatesIT` 1개(템플릿 아닌 프로젝트는 422, `filter=templates`, 모든 항목 복사 뒤 모듈·유형·멤버·버전·카테고리·작업 수, 상위·버전이 새 것, 관계 수, 작업마다 저널 1개, 알림 0개, 보드·보기 수, 빈 복사, 모르는 항목 422), `GlobalRolesIT` 1개(배정 전 403 → 프로젝트 역할 422 → 배정하면 `globalPermissions`와 생성 201 → 사용자 관리자는 배정 403 → 회수하면 다시 403), `BoardsIT` +2(하위 프로젝트 보드: 열에서 만들면 그 하위 프로젝트, 옮기면 작업 프로젝트가 바뀜, 바로 아래가 아니면 422 / 상위-하위 보드: 열에서 만들면 하위, 옮기면 상위가 바뀜, 다른 프로젝트 작업은 열이 될 수 없음), `TransfersIT` +1(일괄 복사가 하위를 먼저 줘도 상위부터 만들어 계층 유지, 대상에 맞지 않으면 422 `#12`이고 아무것도 안 생김), `ProjectHierarchyIT` 1개(상위 지정, 자기 하위·자기 자신 422, null로 최상위, 새 상위의 수정 권한 없으면 4xx). JUnit 68/68, e2e 95/95(5d641d1 코드).
 - 점검 중에 찾아 고친 문제: 세션 없는 로그인 요청의 500, 저널 필드 순서(jsonb가 키 순서를 바꿈), 멘션 직후 빠른 입력 시 글자 순서가 섞이던 프론트 버그.
 
 ## 결제
@@ -113,3 +115,6 @@ npm run build                # 운영 빌드(실제 API)를 backend 정적 리�
 | ~~배포 파일~~ | 완료(커밋 11fb59b: 저장소 최상위 `Dockerfile`·`compose.yaml`·`.env.example`, 이미지로 점검까지. 운영 안내는 `replica/deploy.md`) |
 | ~~사내 SSO(OIDC)~~ | 완료(커밋 a677079: V10 `oidc_providers`·`user_identities`, `GET /auth/sso-providers`, `/auth/oidc/start·callback/{slug}`, `/admin/oidc-providers` 4개, `OidcIT`) |
 | SSO 남은 것 | 클레임으로 그룹 동기화, IdP 로그아웃(RP-initiated logout), 비밀번호 로그인 숨기기 옵션, 클라이언트 시크릿 암호화 저장 |
+| ~~템플릿·전역 역할·상위 프로젝트·새 보드 종류·일괄 복사~~ | 완료(2026-10-11, 위 "구현 범위"). 설계의 "템플릿이 크면 202 + `project-copy` 작업"은 만들지 않고 생성 요청 안에서 동기로 복사함. 큰 템플릿의 요청 시간은 재 보지 않음 |
+| 프로젝트 복사(could) | 템플릿 표시 없이 아무 프로젝트나 복사하는 진입점. `ProjectCopy`를 그대로 쓸 수 있음 |
+| 알림 필터의 서버 쪽 | 설계(§4.2)의 `GET /notifications?reason=&projectId=`는 없음. 화면이 최근 500건 안에서 거름 |

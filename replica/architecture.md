@@ -1,6 +1,6 @@
 # 아키텍처: openPMS (OpenProject 작업 패키지 + 계획 기능의 클린룸 재구현)
 
-- 입력: `replica/recon.md` (화면 S01–S37, 흐름 F01–F11), `replica/features.csv` (must 64 · should 50 · could 26 · skip 20)
+- 입력: `replica/recon.md` (화면 S01–S37, 흐름 F01–F11), `replica/features.csv` (must 64 · should 50 · could 26 · skip 20. 2026-10-11 지금 파일은 should 51)
 - 산출물: 이 문서, `replica/schema.sql` (Flyway V1), `replica/seed.sql` (Flyway V3)
 - 작성일: 2026-10-09
 - 정해진 사항: **사내 서버 셀프 호스팅**, **Spring Boot + React**, **이메일·비밀번호 로그인 (SSO는 should 단계, OIDC로 구현 완료: a677079)**
@@ -163,7 +163,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
    - 위 둘이 없고 프로젝트가 공개라면 `non_member` 역할
 3. 프로젝트 모듈이 꺼져 있으면 그 모듈의 화면과 권한을 쓸 수 없습니다(보드 → `board.*`, 캘린더·팀 플래너·Gantt 화면). 원본에서는 이 경우 403이 떴는데, openPMS에서는 메뉴에서 숨기고 직접 접근하면 404를 돌려줍니다.
 4. 보관된 프로젝트에서는 `*.view` 계열만 허용됩니다.
-5. 전역 권한은 `global_role_assignments`에서 계산합니다.
+5. 전역 권한은 `global_role_assignments`에서 계산합니다. 구현(0af87f8): 관리자가 관리 · 사용자에서 `PUT /admin/users/{id}/global-roles`로 배정합니다(§4.2 관리).
 6. 요청마다 `user → {project_id → Set<permission>}`을 한 번 계산해 캐시합니다. 목록 쿼리에는 `project_id = any(:visible)` 조건이 붙습니다.
 
 ### 3.2 워크플로 검사
@@ -286,7 +286,9 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 - **작업 패키지 응답의 `_meta`**: `editableFields`, `allowedActions`(edit, delete, move, comment, manageRelations…), `derived`(파생 필드 목록)를 담습니다. 화면은 이 값으로 편집 가능 여부를 그리고, 권한 규칙을 프론트에 복제하지 않습니다.
 - 원본 앱의 내부 API는 참고하지 않습니다. 모든 경로는 openPMS가 정의한 것입니다.
 
-### 4.2 경로 (총 146개: 설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1 + 비밀번호 만들기 1)
+### 4.2 경로 (총 147개: 설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1 + 비밀번호 만들기 1 + 전역 역할 배정 1)
+
+이 표는 설계에 구현 기록을 덧붙인 것입니다. 실제 컨트롤러 매핑 수(5d641d1 기준 156개, dev 전용 1개 포함)와 경로별 차이는 `docs/deliverables/04-인터페이스정의서.md` 부록에 있습니다.
 
 #### 인증·계정 (18)
 
@@ -315,10 +317,10 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 
 | method path | 하는 일 | 호출 가능 | 입력 | 출력 | 흐름 |
 | --- | --- | --- | --- | --- | --- |
-| GET /projects | 목록 (active, mine, favorite, archived, 상태, 이름 검색, 정렬) | 로그인 (보이는 것만) | 쿼리 파라미터 | page<ProjectSummary> | S03 |
-| POST /projects | 생성 (빈 프로젝트 또는 templateId), 생성자를 관리자 역할로 추가, 기본 유형 활성 | global.create_projects | name, identifier, description, parentId, isPublic, templateId | 201 project / 202 job(템플릿이 크면) | S04 F10 |
+| GET /projects | 목록 (active, mine, favorite, archived, 상태, 이름 검색, 정렬). 구현(a3aee0b): `filter=templates`는 템플릿으로 표시한 활성 프로젝트(새 프로젝트의 템플릿 목록) | 로그인 (보이는 것만) | 쿼리 파라미터 | page<ProjectSummary> | S03 S04 |
+| POST /projects | 생성 (빈 프로젝트 또는 templateId), 생성자를 관리자 역할로 추가, 기본 유형 활성. 구현(a3aee0b): `templateId`는 볼 수 있고 보관되지 않은 템플릿(없으면 422 `template`), `copy`는 members·versions·categories·workPackages·boards·queries 중 고른 것(그 밖은 422 `copy`). 모듈·유형·프로젝트 사용자 정의 필드·프로젝트 특성 값·설명(입력이 없을 때)은 항상 복사. 작업은 계층·작업끼리의 관계·"만듦" 저널 하나와 함께, 알림 없음. 복사한 버전·카테고리는 보기·보드 필터에서도 새 것으로, 비멤버는 담당자·책임자·보드 열에서 빠짐. 하위 프로젝트 보드와 첨부는 복사하지 않음. 복사는 요청 안에서 동기(`project/ProjectCopy`), 202·작업 예약은 없음. `parentId`는 상위에 project.edit | global.create_projects | name, identifier, description, parentId, isPublic, templateId, copy[] | 201 project (202 없음) | S04 F10 |
 | GET /projects/{project} | 상세 + 내 권한 + 켜진 모듈 | project.view | - | project | S05 |
-| PATCH /projects/{project} | 정보, 상태, 공개, 부모, 모듈 | project.edit (모듈은 project.manage_modules) | 부분 | project | S05 S24 |
+| PATCH /projects/{project} | 정보, 상태, 공개, 부모, 모듈. 구현: `isTemplate`(템플릿으로 쓰기, a3aee0b), `parentId`(5d641d1: 새 상위에 project.edit, 자기 자신이나 그 아래면 422 `parent`, null이면 최상위) | project.edit (모듈은 project.manage_modules) | 부분 | project | S05 S24 |
 | POST /projects/{project}/archive | 보관 | project.archive | - | 204 | S03 |
 | POST /projects/{project}/unarchive | 복원 | 관리자 | - | 204 | S03 |
 | DELETE /projects/{project} | 삭제 (식별자 재입력 확인, 하위 프로젝트가 있으면 409) | 관리자 | confirmIdentifier | 204 | S03 |
@@ -353,7 +355,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | DELETE /work-packages/{number} | 삭제 (자식 삭제 또는 조부모로 올리기 선택) | wp.delete | children=delete\|reparent | 204 | S08 |
 | POST /work-packages/{number}/copy | 복사 (대상 프로젝트, 자식·관계·첨부 포함 여부) | 대상에서 wp.create | targetProject, options | 201 WP | S08 |
 | POST /work-packages/{number}/move | 다른 프로젝트로 이동 (유형·버전·카테고리 매핑) | wp.move + 대상에서 wp.create | targetProject, mapping | WP / 422 | S08 |
-| POST /work-packages/bulk | 일괄 수정·이동·삭제 (전부 성공하거나 전부 실패) | 항목마다 해당 권한 | numbers[], action, changes | 200 / 422 + 실패 목록 | S06 |
+| POST /work-packages/bulk | 일괄 수정·이동·삭제 (전부 성공하거나 전부 실패). 구현(d0023b1): `action: copy`(targetProject 없으면 같은 프로젝트), 고른 작업끼리의 상위-하위를 사본에도 유지. 화면은 일괄 바와 행 우클릭 메뉴 | 항목마다 해당 권한 (복사는 대상에서 wp.create) | numbers[], action(update·move·delete·copy), changes, targetProject | 200 / 422 + 실패 목록 | S06 |
 | GET /work-packages/{number}/allowed-statuses | 지금 사용자 기준 전환 가능한 상태 | wp.view + wp.edit | - | statuses[] | S06–S08 F02 |
 | GET /work-packages/autocomplete | `#번호`·제목 검색 (관계·부모 지정, 멘션의 #링크) | 로그인 (보이는 것만) | q, projectId, excludeRelatedTo | items[] | F05 F07 |
 | GET /work-packages/{number}/activities | 저널 목록 (all, comments, changes, 정렬) | wp.view (내부 코멘트는 wp.view_internal_comments) | filter, order, page | page<Journal> | S08 |
@@ -404,23 +406,23 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | method path | 하는 일 | 호출 가능 | 입력 | 출력 | 흐름 |
 | --- | --- | --- | --- | --- | --- |
 | GET /projects/{project}/boards | 보드 목록 | board.view | - | boards[] | S14 |
-| POST /projects/{project}/boards | 생성 (종류별 기본 컬럼: 상태 보드는 열린 상태들 등) | board.manage | name, kind | 201 board | S16 F06 |
+| POST /projects/{project}/boards | 생성 (종류별 기본 컬럼: 상태 보드는 열린 상태들 등). 구현(388400b): 6종 모두. subproject는 볼 수 있는 바로 아래 하위 프로젝트마다 열, parent_child는 하위가 있는 작업 번호순 6개 | board.manage | name, kind | 201 board | S16 F06 |
 | GET /boards/{id} | 보드 + 컬럼 + 컬럼별 카드 (쿼리 엔진 사용). `filters`를 주면 저장하지 않고 그 필터로 걸러 봄 | board.view + wp.view | filters? (JSON, 목록과 같은 형식) | board (+ 저장된 filters, canManage) / 422 형식 오류 | S15 |
 | PATCH /boards/{id} | 이름, 공개, 보드 필터(모든 열에 적용, 모두에게) | board.manage | name, isPublic, filters | board / 422(모르는 필드·연산자) | S15 |
 | DELETE /boards/{id} | 삭제 | board.manage | - | 204 | S14 |
-| POST /boards/{id}/columns | 컬럼 추가 (최대 30) | board.manage | name 또는 valueId | 201 column (구현: 기본 보드는 name(1~60자), 나머지는 valueId. 200 board 전체) | S15 |
+| POST /boards/{id}/columns | 컬럼 추가 (최대 30) | board.manage | name 또는 valueId | 201 column (구현: 기본 보드는 name(1~60자), 나머지는 valueId. 200 board 전체. subproject는 바로 아래 하위 프로젝트만, parent_child는 같은 프로젝트의 작업만, 아니면 422) | S15 |
 | PATCH /board-columns/{id} | 순서·이름 변경 | board.manage | position, name | column (구현: board 전체. 이름은 값 없는 열만) | S15 |
 | DELETE /board-columns/{id} | 컬럼 삭제 (작업은 그대로) | board.manage | - | 204 (구현: 200 board 전체) | S15 |
-| POST /boards/{id}/moves | 카드 이동: 보드 종류에 따라 작업 속성 변경(상태는 워크플로 검사) + 순서 저장 | wp.edit (basic 보드는 board.manage) | workPackageNumber, toColumnId, beforeNumber, lockVersion | card + WP / 409 / 422 (구현: 입력 이름은 `number`, 200 board 전체. 기본 보드는 작업을 바꾸지 않고 보드에 없는 카드면 404) | S15 F06 |
+| POST /boards/{id}/moves | 카드 이동: 보드 종류에 따라 작업 속성 변경(상태는 워크플로 검사) + 순서 저장 | wp.edit (basic 보드는 board.manage) | workPackageNumber, toColumnId, beforeNumber, lockVersion | card + WP / 409 / 422 (구현: 입력 이름은 `number`, 200 board 전체. 기본 보드는 작업을 바꾸지 않고 보드에 없는 카드면 404. subproject 보드는 작업 옮기기(`POST /work-packages/{n}/move`와 같은 규칙, 하위 작업 함께), parent_child 보드는 상위 변경) | S15 F06 |
 | POST /boards/{id}/cards | 기본 보드: 그 프로젝트의 기존 작업을 열 맨 끝에 넣음(다른 열에 있으면 옮김). 작업은 바뀌지 않음. 88153b7 | board.manage | columnId, number | 200 board / 422(기본 보드 아님, 다른 프로젝트) | S15 |
 | DELETE /boards/{id}/cards/{number} | 기본 보드: 카드를 보드에서 뺌. 작업은 그대로. 88153b7 | board.manage | - | 200 board | S15 |
-| POST /boards/{id}/cards/new | 열에서 새 작업 만들기: 그 열의 상태·담당자·버전을 넣고 유형은 프로젝트 기본(typeId로 바꿀 수 있음). 기본 보드면 그 열에 넣음. 보통의 생성 규칙·권한을 그대로 거침. 88153b7 | wp.create (basic 보드는 board.manage도) | columnId, subject, typeId? | 201 {board, workPackage} / 422 | S15 |
+| POST /boards/{id}/cards/new | 열에서 새 작업 만들기: 그 열의 상태·담당자·버전을 넣고 유형은 프로젝트 기본(typeId로 바꿀 수 있음). 기본 보드면 그 열에 넣음. 보통의 생성 규칙·권한을 그대로 거침. 88153b7. 388400b: subproject 열이면 그 하위 프로젝트에 만들고(쓰지 않는 유형이면 그 프로젝트 기본 유형), parent_child 열이면 그 작업의 하위로 | wp.create (basic 보드는 board.manage도) | columnId, subject, typeId? | 201 {board, workPackage} / 422 | S15 |
 
 #### 알림 — F09 (4)
 
 | method path | 하는 일 | 호출 가능 | 입력 | 출력 | 흐름 |
 | --- | --- | --- | --- | --- | --- |
-| GET /notifications | 받은 편지함 (읽지 않음·모두, 이유, 프로젝트, 같은 작업끼리 묶음) | 본인 | filter, reason, projectId, page | page<NotificationGroup> | S19 |
+| GET /notifications | 받은 편지함 (읽지 않음·모두, 이유, 프로젝트, 같은 작업끼리 묶음). 구현: `filter`만 받고 배열(최근 500건). 이유·프로젝트 거르기(57722a9)는 화면이 이 결과에서 함(URL `?reason=&project=`) | 본인 | filter, reason, projectId, page | page<NotificationGroup> | S19 |
 | GET /notifications/unread-count | 헤더 배지 (60초 폴링, ETag) | 본인 | - | {count} / 304 | 공통 |
 | POST /notifications/read | 읽음 처리 (ids, 작업 단위, 현재 필터 전체) | 본인 | ids[] \| workPackageNumber \| all + filter | {updated} | S19 F09 |
 | POST /notifications/unread | 읽지 않음으로 되돌리기 | 본인 | ids[] | {updated} | S19 |
@@ -433,7 +435,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | GET /search/suggest | 헤더 자동완성 (작업 상위 5건 + 프로젝트 3건) | 로그인 | q | hits[] | 공통 |
 | GET /home | 즐겨찾는 프로젝트 + 내게 할당된 작업 요약 | 로그인 | - | home | S02 S21 |
 
-#### 관리 — F11 (46, 모두 관리자 전용. 사용자·그룹은 global.manage_users로도 가능)
+#### 관리 — F11 (47, 모두 관리자 전용. 사용자·그룹은 global.manage_users로도 가능. 전역 역할 배정은 관리자만)
 
 | 리소스 | 경로 | 개수 | 비고 | 화면 |
 | --- | --- | --- | --- | --- |
@@ -442,7 +444,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | 상태 | GET·POST /admin/statuses, PATCH·DELETE /admin/statuses/{id}, PUT /admin/statuses/order | 5 | 쓰고 있는 상태는 삭제 시 409, 기본 상태는 하나만 | S30 |
 | 우선순위 | GET·POST /admin/priorities, PATCH·DELETE /admin/priorities/{id}, PUT /admin/priorities/order | 5 | 같은 규칙 | S36 |
 | 역할 | GET·POST /admin/roles, PATCH·DELETE /admin/roles/{id}, GET /admin/permissions | 5 | 권한 키 목록과 설명 | S31 |
-| 사용자 | GET·POST /admin/users, PATCH·DELETE /admin/users/{id}, POST /admin/users/{id}/resend-invitation | 5 | DELETE는 익명화 작업을 예약. PATCH로 잠금·해제, 관리자 지정. 384a2f9: 응답 `lockedUntil`(로그인 실패 잠금 중이고 상태가 active일 때만, 아니면 null, 화면은 "일시 잠김"), `status=locked` 필터가 일시 잠김도 찾음, `PATCH status=active`가 실패 횟수와 `locked_until`을 지움 | S35 |
+| 사용자 | GET·POST /admin/users, PATCH·DELETE /admin/users/{id}, POST /admin/users/{id}/resend-invitation, PUT /admin/users/{id}/global-roles | 6 | DELETE는 익명화 작업을 예약. PATCH로 잠금·해제, 관리자 지정. 384a2f9: 응답 `lockedUntil`(로그인 실패 잠금 중이고 상태가 active일 때만, 아니면 null, 화면은 "일시 잠김"), `status=locked` 필터가 일시 잠김도 찾음, `PATCH status=active`가 실패 횟수와 `locked_until`을 지움. 0af87f8: `PUT …/global-roles {roleIds}`가 그 사람의 전역 역할을 전체 교체(관리자만, global.manage_users만으로는 403, 전역 역할이 아니면 422 `roleIds`), 응답 `globalRoles` | S35 |
 | 그룹 | GET·POST /admin/groups, PATCH·DELETE /admin/groups/{id}, PUT /admin/groups/{id}/members | 5 | | S35 |
 | 사용자 정의 필드 | GET·POST /admin/custom-fields, PATCH·DELETE /admin/custom-fields/{id} | 4 | 옵션과 사용 유형은 PATCH 본문에 포함 | S34 |
 | 설정 | GET·PUT /admin/settings/{section} | 2 | section: calendar, progress, attachments, notifications, auth, mail, display. calendar나 progress를 바꾸면 재계산 작업을 예약. display(84f6e6c)는 PUT만 있고 읽기는 로그인한 누구나 `GET /settings/display`. 저장하면 서버가 쓰는 날짜(`Dates.format`: 활동 기록, 사용자 정의 필드 값, 메일)도 바로 바뀜. 인스턴스가 여럿이면 다른 인스턴스는 날짜를 쓸 때 최대 30초마다 DB에서 다시 읽어 30초 안에 따라옴(`Dates.RELOAD_MS`, 384a2f9). 요약 메일 항목의 시각도 날짜 형식과 12시간제를 따름(`Dates.formatDateTime`), 필터 "이번 주"는 주 시작 요일을 따름(`Dates.startOfWeek`). 내보내기 파일의 시각만 기계가 읽기 좋은 `yyyy-MM-dd HH:mm` 고정 | S32 S33 |
@@ -491,7 +493,7 @@ S10–S12는 모달이라 라우트가 없습니다.
 | reschedule-all | 일회성, 근무일·휴무일 변경 시 | §3.3 S11 |
 | recalc-progress | 일회성, 진행률 설정 변경 시 | 모든 작업의 P1–P5 재계산 |
 | export | 일회성 | 대용량 내보내기 파일 생성 후 알림 |
-| project-copy | 일회성 | 템플릿 기반 대형 프로젝트 복사 |
+| project-copy | 일회성 | 템플릿 기반 대형 프로젝트 복사 (구현하지 않음: 템플릿 복사는 생성 요청 안에서 동기, a3aee0b) |
 | user-anonymize | 일회성 | 사용자 익명화, 멤버십·주시·알림 정리 |
 | attachment-orphans | 매일 03:00 KST | 24시간 넘게 연결되지 않은 임시 첨부와 파일 삭제 |
 | file-sweep | 매주 일요일 04:00 KST | DB에 없는 저장소 파일 삭제 (커밋 후 삭제가 실패한 경우를 정리) |
@@ -587,15 +589,15 @@ S10–S12는 모달이라 라우트가 없습니다.
 ### M3. should 항목 (약 6~8주)
 
 - 인증: 사내 SSO(OIDC, 완료: a677079), 이메일 초대(`/projects/{project}/invitations`, `/auth/invitations/*`), 계정·알림 설정(`/me/*`)
-- 프로젝트: 템플릿 생성, 하위 프로젝트, 모듈 켜기·끄기, 상태, 보관, 버전·카테고리(경로 8개), 그룹(`/admin/groups` 5개)
+- 프로젝트: 템플릿 생성(완료: a3aee0b), 하위 프로젝트(상위 지정 완료: 5d641d1), 모듈 켜기·끄기, 상태, 보관, 버전·카테고리(경로 8개), 그룹(`/admin/groups` 5개)
 - 작업 패키지:
   - 사용자 정의 필드(`/admin/custom-fields` 4개, `PUT …/custom-fields`)
   - 첨부(`/attachments` 3개 + 정리 작업)
-  - 일괄 편집·복사·이동(경로 3개)
+  - 일괄 편집·복사·이동(경로 3개, 일괄 복사와 우클릭 메뉴 완료: d0023b1)
   - 기타 관계 유형
 - 목록·보기: 그룹화와 그룹 합계, 하위 프로젝트 포함, URL로 보기 공유, CSV·XLS 내보내기(`/work-packages/export`, `/exports/{id}`)
 - 일정·진행률: 진행률 계산 모드와 recalc-progress 작업(S32)
-- 계획 뷰: 담당자·버전·하위 프로젝트·부모-자식·기본 보드, 캘린더(S17), 팀 플래너(S18, 원본에서는 Enterprise 전용 기능)
+- 계획 뷰: 담당자·버전·하위 프로젝트·부모-자식·기본 보드(모두 완료, 마지막 두 종류 388400b), 캘린더(S17), 팀 플래너(S18, 원본에서는 Enterprise 전용 기능)
 - 알림·검색: 날짜 알림, 즉시·요약 메일(작업 4개), 검색(`/search`, `/search/suggest`)
 - 모바일 반응형(M1·M2 화면)
 
@@ -617,7 +619,7 @@ S10–S12는 모달이라 라우트가 없습니다.
 ## 7. 요약
 
 - **스택**: Spring Boot 4 + Java 21 · jOOQ + Flyway · PostgreSQL 17 · React 19 + Vite + TanStack · db-scheduler · 사내 SMTP · Docker Compose 셀프 호스팅
-- **규모**: 테이블 36개(+ 라이브러리 3개), API 경로 146개(설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1 + 비밀번호 만들기 1), 작업 13종
+- **규모**: 테이블 36개(+ 라이브러리 3개), API 경로 147개(설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1 + 비밀번호 만들기 1 + 전역 역할 배정 1. 실제 컨트롤러 매핑은 156개), 작업 13종
 - **가장 위험한 세 가지**:
   1. 스케줄링 엔진: 근무일, lag, 자동 모드, 부모 파생, 전파, 순환 검출
   2. 쿼리 엔진: 필터 30여 종과 계층·그룹 합계를 권한 조건 아래에서 빠르게 처리
