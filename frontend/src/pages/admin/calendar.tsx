@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CalendarOff, ChevronLeft, ChevronRight, Plus, Save, Trash2 } from "lucide-react";
 import { DATE_FORMATS, type DisplaySettings } from "@/api";
-import { useAdminNonWorkingDays, useCalendarMutations, useCalendarSettings } from "@/api/admin-hooks";
+import { useAdminNonWorkingDays, useAdminTimeActivities, useCalendarMutations, useCalendarSettings, useTimeActivityMutations } from "@/api/admin-hooks";
 import { useDisplaySettings } from "@/api/hooks";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,59 @@ import { ConfirmDialog, fieldErrorOf, useRunWithToast } from "@/features/admin/c
 import { AdminGuard } from "./index";
 
 const DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
+
+/** 시간 기록 활동: what people pick when they log time; the default one fills the weekly sheet. */
+function TimeActivitiesSection() {
+  const { t } = useTranslation();
+  const q = useAdminTimeActivities();
+  const m = useTimeActivityMutations();
+  const runToast = useRunWithToast();
+  const [name, setName] = useState("");
+  const add = async () => {
+    if (await runToast(m.create.mutateAsync({ name }), t("app.saved"))) setName("");
+  };
+  return (
+    <section aria-labelledby="time-activities-h" className="flex flex-col gap-4 xl:col-span-2">
+      <div>
+        <h2 id="time-activities-h" className="text-lg text-fg">{t("time.activitiesTitle")}</h2>
+        <p className="mt-1 text-sm text-fg-muted">{t("time.activitiesHint")}</p>
+      </div>
+      {!q.data ? (
+        <Skeleton className="h-24 w-full" />
+      ) : (
+        <ul className="divide-y divide-border rounded-md border border-border" aria-label={t("time.activitiesTitle")}>
+          {q.data.map((a) => (
+            <li key={a.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
+              <span className={a.active ? "font-medium" : "text-fg-muted line-through"}>{a.name}</span>
+              {a.isDefault && <span className="rounded-sm bg-accent-subtle px-1.5 text-xs text-accent">{t("time.isDefault")}</span>}
+              {!a.active && <span className="text-xs text-fg-muted">{t("time.activityOff")}</span>}
+              <span className="ml-auto flex gap-1">
+                {a.active && !a.isDefault && (
+                  <Button size="sm" variant="ghost" onClick={() => void runToast(m.update.mutateAsync({ id: a.id, patch: { isDefault: true } }), t("app.saved"))}>
+                    {t("time.makeDefault")}
+                  </Button>
+                )}
+                {!a.isDefault && (
+                  <Button size="sm" variant="ghost" onClick={() => void runToast(m.update.mutateAsync({ id: a.id, patch: { active: !a.active } }), t("app.saved"))}>
+                    {a.active ? t("time.turnOff") : t("time.turnOn")}
+                  </Button>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap items-end gap-2">
+        <Field label={t("time.activityName")} error={fieldErrorOf(m.create.error, "name")}>
+          <Input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && name.trim() && void add()} />
+        </Field>
+        <Button icon={<Plus />} disabled={!name.trim()} loading={m.create.isPending} onClick={() => void add()}>
+          {t("time.addActivity")}
+        </Button>
+      </div>
+    </section>
+  );
+}
 
 /** 날짜 형식: date and time formats and the first weekday, with a preview of today. */
 function DisplaySection() {
@@ -198,6 +251,7 @@ export function AdminCalendarPage() {
               </div>
             </section>
             <DisplaySection />
+            <TimeActivitiesSection />
           </div>
         )}
       </AdminGuard>

@@ -2,7 +2,7 @@
 // rules live in one place.
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { ApiTokenInput, QueryFilter, BoardKind, Id, NotificationFilter, NotificationSetting, Preferences, ProfileInput, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch } from "./types";
+import type { TimeFilter, TimeGroupBy, TimeWeekCell, ApiTokenInput, QueryFilter, BoardKind, Id, NotificationFilter, NotificationSetting, Preferences, ProfileInput, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch } from "./types";
 
 export const qk = {
   me: ["me"] as const,
@@ -275,6 +275,28 @@ export function useBoardMutations(projectId: string) {
       onSuccess: () => qc.invalidateQueries({ queryKey: qk.boards(projectId) }),
     }),
     remove: useMutation({ mutationFn: (id: Id) => api.boards.remove(id), onSuccess: () => qc.invalidateQueries({ queryKey: qk.boards(projectId) }) }),
+  };
+}
+
+/* ---------- time tracking ---------- */
+
+export const useTimeActivities = () => useQuery({ queryKey: ["time", "activities"], queryFn: () => api.time.activities(), staleTime: 5 * 60_000 });
+export const useTimeWeek = (start?: string) =>
+  useQuery({ queryKey: ["time", "week", start ?? ""], queryFn: () => api.time.week(start), placeholderData: keepPreviousData });
+export const useTimeEntries = (params: TimeFilter & { workPackage?: number }, enabled = true) =>
+  useQuery({ queryKey: ["time", "entries", params], queryFn: () => api.time.list(params), enabled });
+export const useTimeReport = (params: TimeFilter & { groupBy: TimeGroupBy }) =>
+  useQuery({ queryKey: ["time", "report", params], queryFn: () => api.time.report(params), placeholderData: keepPreviousData });
+
+/** Every change refreshes the week, the lists and the report. */
+export function useTimeMutations() {
+  const qc = useQueryClient();
+  const done = () => qc.invalidateQueries({ queryKey: ["time"] });
+  return {
+    saveWeek: useMutation({ mutationFn: (v: { start: string; cells: TimeWeekCell[] }) => api.time.saveWeek(v.start, v.cells), onSuccess: done }),
+    create: useMutation({ mutationFn: api.time.create, onSuccess: done }),
+    update: useMutation({ mutationFn: (v: { id: Id; patch: Parameters<typeof api.time.update>[1] }) => api.time.update(v.id, v.patch), onSuccess: done }),
+    remove: useMutation({ mutationFn: api.time.remove, onSuccess: done }),
   };
 }
 

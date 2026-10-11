@@ -117,6 +117,17 @@
     "/work-packages/export": {
       "post": { "summary": "CSV·Excel·PDF로 내보내기(읽기 전용 토큰도 가능)", "responses": { "200": { "description": "파일" } } }
     },
+    "/time-entries": {
+      "get": { "summary": "시간 기록 목록: workPackage(번호) 하나의 전체, 또는 from·to(최대 1년)·project·user(me|id). 내 것은 time.log, 다른 사람 것은 time.view가 있을 때만", "responses": { "200": { "description": "[{ id, user, project, workPackage, activity, spentOn, hours, comment, canEdit }]" } } },
+      "post": { "summary": "시간 기록: { workPackageNumber, spentOn, hours(0 초과 24 이하, 소수 둘째 자리), activityId?, comment?, userId?(time.manage) }. 한 사람의 하루는 24시간까지. Idempotency-Key 권장", "responses": { "201": { "description": "기록" }, "403": { "$ref": "#/components/responses/Problem" }, "422": { "$ref": "#/components/responses/Problem" } } }
+    },
+    "/time-entries/week": {
+      "get": { "summary": "내 한 주(start가 속한 주): 날짜·휴무일, 하루 근무 시간, 작업별 칸(시간·건수)", "responses": { "200": { "description": "{ start, days, hoursPerDay, rows }" } } },
+      "put": { "summary": "내 한 주 저장: { start, cells: [{ workPackageNumber, date, hours }] } — 칸마다 그날 내 시간을 그 값으로(0은 지움). 여러 건으로 기록된 칸은 바꿀 수 없음. 전부 되거나 전부 안 됨(422에 칸 목록)", "responses": { "200": { "description": "저장 뒤의 주" }, "422": { "$ref": "#/components/responses/Problem" } } }
+    },
+    "/time-entries/report": {
+      "get": { "summary": "공수 합계: from·to·project·user, groupBy = user | workPackage | activity | project | day. 볼 수 있는 기록만", "responses": { "200": { "description": "{ from, to, groupBy, rows: [{ key, label, hours }], total }" } } }
+    },
     "/work-packages/export/count": {
       "post": { "summary": "내보내기 전 건수: total 목록에 맞는 작업, count 파일에 들어갈 작업(내보내기 권한), excluded 권한이 없어 빠지는 작업, limit 최대 건수(total이 넘으면 count·excluded 0). 본문은 내보내기와 같음(읽기 전용 토큰도 가능)", "responses": { "200": { "description": "{ total, count, excluded, limit }" }, "403": { "$ref": "#/components/responses/Problem" } } }
     }

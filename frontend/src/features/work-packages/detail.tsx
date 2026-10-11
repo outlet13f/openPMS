@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Copy, Eye, EyeOff, FolderInput, Link2, Maximize2, MoreHorizontal, Pencil, Share2, Trash2, X } from "lucide-react";
 import type { WorkPackage } from "@/api";
-import { useDeleteWorkPackage, useWatch, useWorkPackage } from "@/api/hooks";
+import { useDeleteWorkPackage, useProject, useWatch, useWorkPackage } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/choice";
 import { Banner, useToast } from "@/components/ui/feedback";
@@ -25,11 +25,12 @@ import { ErrorState, useDocumentTitle } from "@/app/page";
 import { Attributes } from "./attributes";
 import { ActivityTab } from "./activity";
 import { RelationsTab } from "./relations";
+import { TimeTab } from "./time-tab";
 import { StatusMenu } from "./status-menu";
 import { InlineText } from "./inline-text";
 import { useSaveWorkPackage } from "./use-save";
 
-export const DETAIL_TABS = ["overview", "activity", "files", "relations", "watchers"] as const;
+export const DETAIL_TABS = ["overview", "activity", "files", "relations", "watchers", "time"] as const;
 export type DetailTab = (typeof DETAIL_TABS)[number];
 /** A route's ":tab" segment, or the fallback when it is missing or unknown. */
 export const asDetailTab = (s: string | undefined, fallback: DetailTab): DetailTab => (DETAIL_TABS.includes(s as DetailTab) ? (s as DetailTab) : fallback);
@@ -147,6 +148,8 @@ export function WorkPackageDetail({
   const navigate = useNavigate();
   const toast = useToast();
   const q = useWorkPackage(number);
+  // the item's project says whether time is tracked there and what I may do with it (시간 tab)
+  const project = useProject(q.data?.project.identifier);
   const watch = useWatch(number);
   const { save } = useSaveWorkPackage();
   const [deleting, setDeleting] = useState(false);
@@ -255,6 +258,10 @@ export function WorkPackageDetail({
     </div>
   );
 
+  const timeProject = project.data;
+  const timeOn = !!timeProject?.enabledModules.includes("time_tracking") && (timeProject.myPermissions.includes("time.log") || timeProject.myPermissions.includes("time.view"));
+  const canLogTime = !!timeProject?.myPermissions.includes("time.log");
+
   const summary = (
     <div className="flex flex-col gap-5">
       <section aria-label={t("wp.fields.description")}>
@@ -265,8 +272,8 @@ export function WorkPackageDetail({
   );
 
   const tabs = (all: DetailTab[]) => {
-    // the watcher list needs wp.view_watchers; a link to it falls back to the first tab
-    const items = all.filter((k) => k !== "watchers" || wp._meta.allowedActions.viewWatchers);
+    // the watcher list needs wp.view_watchers, the time tab the time tracking module and a time permission; a link to a hidden tab falls back to the first
+    const items = all.filter((k) => (k !== "watchers" || wp._meta.allowedActions.viewWatchers) && (k !== "time" || timeOn));
     return (
       <Tabs
         aria-label={t("wp.listTitle")}
@@ -281,6 +288,7 @@ export function WorkPackageDetail({
             : k === "activity" ? <ActivityTab wp={wp} />
             : k === "files" ? <FilesTab wp={wp} />
             : k === "watchers" ? <WatchersTab wp={wp} />
+            : k === "time" ? <TimeTab wp={wp} canLog={canLogTime} />
             : <RelationsTab wp={wp} />,
         }))}
       />
@@ -291,11 +299,11 @@ export function WorkPackageDetail({
     <article ref={articleRef} tabIndex={-1} aria-label={`#${wp.number} ${wp.subject}`} className="flex min-h-0 flex-col outline-none">
       {header}
       {mode === "panel" ? (
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8">{tabs(["overview", "activity", "files", "relations", "watchers"])}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8">{tabs(["overview", "activity", "files", "relations", "watchers", "time"])}</div>
       ) : (
         <div className="grid grid-cols-1 gap-8 pb-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div className="pt-2">{summary}</div>
-          <div>{tabs(["activity", "files", "relations", "watchers"])}</div>
+          <div>{tabs(["activity", "files", "relations", "watchers", "time"])}</div>
         </div>
       )}
       {sharing && <ShareDialog wp={wp} open onOpenChange={setSharing} />}

@@ -6,6 +6,9 @@ import { db, type DbProject, type DbUser, type DbWp } from "./db";
 const MODULE_OF: Record<string, DbProject["enabledModules"][number]> = {
   "board.view": "boards",
   "board.manage": "boards",
+  "time.log": "time_tracking",
+  "time.view": "time_tracking",
+  "time.manage": "time_tracking",
 };
 
 const ALL_PROJECT_PERMS = Array.from(new Set(db.roles.filter((r) => r.scope === "project").flatMap((r) => r.permissions)));

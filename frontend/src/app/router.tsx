@@ -25,6 +25,8 @@ import { NotificationSettingsPage } from "@/pages/notification-settings";
 import { AccountPage } from "@/pages/account";
 import { SearchPage } from "@/pages/search";
 import { MyPage } from "@/pages/my-page";
+import { TimesheetPage } from "@/pages/timesheet";
+import { ProjectTimeReportPage } from "@/pages/projects/time-report";
 import { AdminCustomFieldsPage } from "@/pages/admin/custom-fields";
 import { AdminProgressPage } from "@/pages/admin/progress";
 import { AdminTypeFormPage } from "@/pages/admin/type-form";
@@ -88,6 +90,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <MeRoute render={(me) => <HomePage me={me} />} /> },
       { path: "my/page", element: <MyPage /> },
+      { path: "my/timesheet", element: <TimesheetPage /> },
       { path: "my/account", element: <AccountPage /> },
       { path: "my/notifications", element: <NotificationSettingsPage /> },
       {
@@ -145,6 +148,7 @@ export const router = createBrowserRouter([
               { path: "new", element: <PlanningNewRoute kind="calendar" /> },
             ],
           },
+          { path: "time", element: <RequireModule module="time_tracking"><ProjectTimeReportPage /></RequireModule> },
           { path: "team-planner", element: <RequireModule module="team_planner"><PlanningListPage kind="team_planner" /></RequireModule> },
           {
             path: "team-planner/:id",

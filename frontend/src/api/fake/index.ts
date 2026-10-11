@@ -48,6 +48,7 @@ import { DEFAULT_AUTH_SETTINGS, passwordProblem } from "../password-policy";
 import { DEFAULT_DISPLAY, OVERVIEW_WIDGETS } from "../types";
 import { issueToken, revokeAll, sendMail, tokenGone, validToken } from "./tokens";
 import { adminApi, categoriesApi, projectExtras, versionsApi } from "./admin";
+import { followMove, timeApi } from "./time";
 
 /* ---------- plumbing ---------- */
 
@@ -150,7 +151,7 @@ function createProjectFor(user: DbUser, input: ProjectInput, source: DbProject |
   const p: DbProject = {
     id: newId("p"), identifier, name, descriptionHtml: input.descriptionHtml ?? "", status: null, statusExplanation: "",
     isPublic: !!input.isPublic, isTemplate: false, archivedAt: null, parentId: input.parentId ?? null,
-    enabledModules: ["work_packages", "gantt", "boards"], typeIds: db.types.filter((t) => t.isDefault).map((t) => t.id),
+    enabledModules: ["work_packages", "gantt", "boards", "time_tracking"], typeIds: db.types.filter((t) => t.isDefault).map((t) => t.id),
     createdAt: now, updatedAt: now, latestActivityAt: now,
   };
   db.projects.push(p);
@@ -739,6 +740,7 @@ function moveWp(user: DbUser, number: number, input: MoveInput): WorkPackage {
     if (w.responsibleId && !isMember(w.responsibleId, target.id)) (changes.responsibleId = [w.responsibleId, null]), (w.responsibleId = null);
     w.lockVersion += 1;
     w.updatedAt = nowIso();
+    followMove(w.id, target.id); // its time entries move with it
     writeJournal(w, user, changes);
   }
   return toWp(root, user);
@@ -1688,6 +1690,7 @@ export const fakeApi: Api = {
       }),
   },
 
+  time: timeApi,
   search: {
     suggest: (q) =>
       run(() => {

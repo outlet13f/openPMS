@@ -1,5 +1,6 @@
 // Administration (S27–S36) and project settings (S24–S26) for the fake data layer.
 import type { Api } from "../api";
+import { adminTimeActivities } from "./time";
 import type { AdminCustomField, AdminOidcProvider, OidcProviderInput, AuthSettings, CustomField, CustomFieldInput, CustomValue, ProjectCustomFields, TypeForm, AdminGroup, AdminPriority, AdminRole, AdminStatus, AdminType, AdminUser, Category, Version } from "../types";
 import { ApiError } from "../errors";
 import { DATE_FORMATS } from "../types";
@@ -85,6 +86,7 @@ const PERMISSIONS: { key: string; scope: "project" | "global"; group: string }[]
   ...["wp.view", "wp.create", "wp.edit", "wp.delete", "wp.move", "wp.attach", "wp.comment", "wp.edit_own_comments", "wp.edit_comments", "wp.view_internal_comments", "wp.add_internal_comments", "wp.manage_relations", "wp.manage_subtasks", "wp.assign_versions", "wp.view_watchers", "wp.add_watchers", "wp.delete_watchers", "wp.share", "wp.export"].map((key) => ({ key, scope: "project" as const, group: "wp" })),
   ...["query.save", "query.manage_public"].map((key) => ({ key, scope: "project" as const, group: "query" })),
   ...["board.view", "board.manage"].map((key) => ({ key, scope: "project" as const, group: "board" })),
+  ...["time.log", "time.view", "time.manage"].map((key) => ({ key, scope: "project" as const, group: "time" })),
   ...["global.create_projects", "global.manage_users"].map((key) => ({ key, scope: "global" as const, group: "global" })),
 ];
 
@@ -750,6 +752,7 @@ export const adminApi: Api["admin"] = {
   },
 
   // the demo keeps webhooks but sends nothing
+  timeActivities: adminTimeActivities,
   webhooks: {
     list: () => run(() => (requireAdmin(sessionUser()), (db.webhooks ?? []).map(({ secret: _s, ...h }) => clone(h)))),
     create: (input) =>

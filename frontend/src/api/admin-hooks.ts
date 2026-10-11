@@ -208,3 +208,16 @@ export function useProjectSettingsMutations(projectId: string) {
     archive: useMut(() => api.projects.archive(projectId)),
   };
 }
+
+/* ---------- 시간 기록 활동 ---------- */
+
+export const useAdminTimeActivities = () => useQuery({ queryKey: ["time", "activities", "all"], queryFn: () => api.admin.timeActivities.list() });
+
+export function useTimeActivityMutations() {
+  const qc = useQueryClient();
+  const done = () => qc.invalidateQueries({ queryKey: ["time", "activities"] });
+  return {
+    create: useMutation({ mutationFn: api.admin.timeActivities.create, onSuccess: done }),
+    update: useMutation({ mutationFn: (v: { id: Id; patch: Parameters<typeof api.admin.timeActivities.update>[1] }) => api.admin.timeActivities.update(v.id, v.patch), onSuccess: done }),
+  };
+}

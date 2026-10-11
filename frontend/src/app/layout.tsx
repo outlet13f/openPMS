@@ -2,28 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useMatch, useNavigate, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { applyTheme } from "@/lib/theme";
-import {
-  ArrowLeft,
-  Bell,
-  CalendarDays,
-  ChevronDown,
-  FolderKanban,
-  GanttChart,
-  Home,
-  KanbanSquare,
-  LayoutDashboard,
-  ListTodo,
-  Code2,
-  Keyboard,
-  Palette,
-  Settings,
-  Shield,
-  Star,
-  UserRound,
-  Users,
-  CalendarRange,
-  PanelLeftOpen,
-} from "lucide-react";
+import { ArrowLeft, Bell, CalendarDays, CalendarRange, ChevronDown, Clock, Code2, FolderKanban, GanttChart, Home, KanbanSquare, Keyboard, LayoutDashboard, ListTodo, Palette, PanelLeftOpen, Settings, Shield, Star, UserRound, Users } from "lucide-react";
 import type { Me, Project } from "@/api";
 import { API_MODE } from "@/api";
 import { resetFakeDb } from "@/api/fake";
@@ -48,6 +27,7 @@ function GlobalSidebar({ me, onNavigate, unread, onCollapse }: { me: Me; onNavig
       items: [
         { label: t("nav.home"), to: "/", icon: <Home />, end: true },
         { label: t("nav.myPage"), to: "/my/page", icon: <UserRound /> },
+        { label: t("nav.timesheet"), to: "/my/timesheet", icon: <Clock /> },
         { label: t("nav.projects"), to: "/projects", icon: <FolderKanban /> },
         { label: t("nav.workPackages"), to: "/work-packages", icon: <ListTodo /> },
         { label: t("nav.gantt"), to: "/gantt", icon: <GanttChart /> },
@@ -139,6 +119,7 @@ function ProjectSidebar({ identifier, onNavigate, onCollapse }: { identifier: st
     mod("boards") && can(p, "board.view") && { label: t("nav.boards"), to: `${base}/boards`, icon: <KanbanSquare /> },
     mod("calendar") && { label: t("nav.calendar"), to: `${base}/calendar`, icon: <CalendarDays /> },
     mod("team_planner") && { label: t("nav.teamPlanner"), to: `${base}/team-planner`, icon: <CalendarRange /> },
+    mod("time_tracking") && can(p, "time.view") && { label: t("nav.timeReport"), to: `${base}/time`, icon: <Clock /> },
     can(p, "project.view_members") && { label: t("nav.members"), to: `${base}/members`, icon: <Users /> },
     can(p, "project.edit") && { label: t("nav.settings"), to: `${base}/settings/general`, icon: <Settings /> },
   ].filter(Boolean) as SidebarSection["items"];
@@ -233,6 +214,7 @@ export function AppLayout({ me }: { me: Me }) {
   const moduleItems: MenuEntry[] = [
     { label: t("nav.home"), icon: <Home />, onSelect: () => navigate("/") },
     { label: t("nav.myPage"), icon: <UserRound />, onSelect: () => navigate("/my/page") },
+    { label: t("nav.timesheet"), icon: <Clock />, onSelect: () => navigate("/my/timesheet") },
     { label: t("nav.projects"), icon: <FolderKanban />, onSelect: () => navigate("/projects") },
     { label: t("nav.workPackages"), icon: <ListTodo />, onSelect: () => navigate("/work-packages") },
     { label: t("nav.gantt"), icon: <GanttChart />, onSelect: () => navigate("/gantt") },

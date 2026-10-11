@@ -50,6 +50,20 @@ async function upload<T>(path: string, file: File): Promise<T> {
 }
 
 /** A file answer (export): the bytes and the name from Content-Disposition (filename*=UTF-8''…). */
+/** A GET that answers with a file (공수 Excel). */
+async function fetchFile(path: string, query: Record<string, unknown>): Promise<{ blob: Blob; fileName: string }> {
+  const url = new URL(BASE + path, window.location.origin);
+  for (const [k, v] of Object.entries(query)) if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
+  const res = await fetch(url, { credentials: "same-origin" });
+  if (!res.ok) {
+    const data = res.headers.get("content-type")?.includes("json") ? await res.json() : undefined;
+    throw new ApiError(res.status, data?.title ?? res.statusText, data?.detail, { fieldErrors: data?.errors });
+  }
+  const cd = res.headers.get("content-disposition") ?? "";
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+  return { blob: await res.blob(), fileName: star ? decodeURIComponent(star[1]) : "time.xlsx" };
+}
+
 async function download(path: string, body: unknown): Promise<{ blob: Blob; fileName: string }> {
   const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "*/*" };
   const token = csrfToken();
@@ -209,6 +223,17 @@ export const httpApi: Api = {
     display: () => get("/settings/display"),
     nonWorkingDays: (from, to) => get("/calendar/non-working-days", { from, to }),
   },
+  time: {
+    activities: () => get("/time-activities"),
+    list: (params) => get("/time-entries", { ...params }),
+    create: (input) => create("/time-entries", input),
+    update: (id, p) => patch(`/time-entries/${id}`, p),
+    remove: (id) => del(`/time-entries/${id}`),
+    week: (start) => get("/time-entries/week", { start }),
+    saveWeek: (start, cells) => put("/time-entries/week", { start, cells }),
+    report: (params) => get("/time-entries/report", { ...params }),
+    exportFile: (params) => fetchFile("/time-entries/export", { ...params }),
+  },
   search: {
     suggest: (q) => get("/search/suggest", { q }),
     results: (q, scope, page) => get("/search", { q, scope, page: String(page) }),
@@ -253,6 +278,11 @@ export const httpApi: Api = {
       update: (id, p) => patch(`/admin/roles/${id}`, p),
       remove: (id) => del(`/admin/roles/${id}`),
       permissions: () => get("/admin/permissions"),
+    },
+    timeActivities: {
+      list: () => get("/admin/time-activities"),
+      create: (input) => post("/admin/time-activities", input),
+      update: (id, p) => patch(`/admin/time-activities/${id}`, p),
     },
     webhooks: {
       list: () => get("/admin/webhooks"),

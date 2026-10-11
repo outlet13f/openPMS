@@ -2,7 +2,9 @@
 // Table shapes follow replica/schema.sql closely so the move to the real API is mechanical.
 // State survives reloads through localStorage (per browser, per user) and can be reset from the login page.
 
+import type { DbTimeEntry } from "./time-seed";
 import type {
+  TimeActivity,
   OverviewWidget,
   Webhook, DisplaySettings, QueryFilter, AdminOidcProvider, AuthSettings, BoardKind, CustomField, CustomValue, Id, NotificationSetting, ShareRole, Theme, TypeForm, IsoDate, IsoDateTime, ModuleKey, NotificationReason, Preferences, ProjectStatus, QuerySpec, ViewKind } from "../types";
 import { buildSeed } from "./seed";
@@ -151,6 +153,8 @@ export interface Db {
   customFields: CustomField[];
   projectCustomFields: { projectId: Id; customFieldId: Id }[];
   apiTokens?: DbApiToken[];
+  timeActivities?: TimeActivity[];
+  timeEntries?: DbTimeEntry[];
   webhooks?: (Omit<Webhook, "secret"> & { secret: string })[];
   apiTokensEnabled?: boolean;
   queries: DbQuery[];
@@ -177,7 +181,7 @@ export interface Db {
 }
 
 const KEY = "openpms.fakedb";
-const SCHEMA = 12;
+const SCHEMA = 13;
 
 function load(): Db {
   try {

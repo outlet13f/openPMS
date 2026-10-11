@@ -1,4 +1,12 @@
 import type {
+  TimeActivity,
+  TimeEntry,
+  TimeEntryInput,
+  TimeFilter,
+  TimeGroupBy,
+  TimeReport,
+  TimeWeek,
+  TimeWeekCell,
   NotificationCounts,
   NotificationFilter,
   NotificationReason,
@@ -324,6 +332,27 @@ export interface Api {
     nonWorkingDays(from: IsoDate, to: IsoDate): Promise<{ workingDays: number[]; days: { date: IsoDate; name: string }[] }>;
   };
 
+  time: {
+    /** GET /time-activities — the active ones, in order */
+    activities(): Promise<TimeActivity[]>;
+    /** GET /time-entries?workPackage= or ?from&to&project&user — what I may see (my own with time.log, everyone's with time.view) */
+    list(params: TimeFilter & { workPackage?: number }): Promise<TimeEntry[]>;
+    /** POST /time-entries (time.log; someone else's: time.manage) — at most 24 hours a person a day */
+    create(input: TimeEntryInput): Promise<TimeEntry>;
+    /** PATCH /time-entries/{id} — mine with time.log, anyone's with time.manage */
+    update(id: Id, patch: Partial<Omit<TimeEntryInput, "workPackageNumber" | "userId">>): Promise<TimeEntry>;
+    /** DELETE /time-entries/{id} */
+    remove(id: Id): Promise<void>;
+    /** GET /time-entries/week?start= — my week (any day of it) */
+    week(start?: IsoDate): Promise<TimeWeek>;
+    /** PUT /time-entries/week — sets my hours cell by cell, all or nothing (422 lists the cells: "#번호 날짜" or a date) */
+    saveWeek(start: IsoDate, cells: TimeWeekCell[]): Promise<TimeWeek>;
+    /** GET /time-entries/report — sums of what I may see, grouped */
+    report(params: TimeFilter & { groupBy: TimeGroupBy }): Promise<TimeReport>;
+    /** GET /time-entries/export — the entries as an Excel file */
+    exportFile(params: TimeFilter): Promise<{ blob: Blob; fileName: string }>;
+  };
+
   search: {
     /** GET /search/suggest */
     suggest(q: string): Promise<SearchHit[]>;
@@ -400,6 +429,14 @@ export interface Api {
       remove(id: Id): Promise<void>;
       /** GET /admin/permissions */
       permissions(): Promise<{ key: string; scope: "project" | "global"; group: string }[]>;
+    };
+    timeActivities: {
+      /** GET /admin/time-activities — all, switched-off ones too */
+      list(): Promise<TimeActivity[]>;
+      /** POST /admin/time-activities */
+      create(input: { name: string; isDefault?: boolean }): Promise<TimeActivity>;
+      /** PATCH /admin/time-activities/{id} — the default cannot be switched off */
+      update(id: Id, patch: Partial<Pick<TimeActivity, "name" | "position" | "active" | "isDefault">>): Promise<TimeActivity>;
     };
     webhooks: {
       /** GET /admin/webhooks */

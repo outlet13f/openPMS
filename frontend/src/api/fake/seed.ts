@@ -2,6 +2,7 @@
 // original app's demo content. Roles, types, statuses and priorities match replica/seed.sql.
 
 import type { Db, DbJournal, DbWp } from "./db";
+import { seedTime } from "./time-seed";
 import type { CustomField, MyPageWidget, QuerySpec } from "../types";
 
 const P_MANAGER = [
@@ -12,13 +13,13 @@ const P_MANAGER = [
   "wp.view", "wp.create", "wp.edit", "wp.delete", "wp.move", "wp.attach", "wp.comment", "wp.edit_own_comments",
   "wp.edit_comments", "wp.view_internal_comments", "wp.add_internal_comments", "wp.manage_relations",
   "wp.manage_subtasks", "wp.assign_versions", "wp.view_watchers", "wp.add_watchers", "wp.delete_watchers", "wp.export",
-  "query.save", "query.manage_public", "board.view", "board.manage",
+  "query.save", "query.manage_public", "board.view", "board.manage", "time.log", "time.view", "time.manage",
 ];
 const P_MEMBER = [
   "project.view", "project.view_members",
   "wp.view", "wp.create", "wp.edit", "wp.move", "wp.attach", "wp.comment", "wp.edit_own_comments",
   "wp.manage_relations", "wp.manage_subtasks", "wp.assign_versions", "wp.view_watchers", "wp.add_watchers", "wp.export",
-  "query.save", "board.view", "board.manage",
+  "query.save", "board.view", "board.manage", "time.log", "time.view",
 ];
 const P_VIEWER = ["project.view", "project.view_members", "wp.view", "wp.comment", "wp.edit_own_comments", "wp.view_watchers", "wp.export", "query.save", "board.view"];
 const P_NON_MEMBER = ["project.view", "wp.view", "board.view"];
@@ -78,7 +79,7 @@ export function buildSeed(schema: number): Db {
   // Members may not reopen a cancelled item; only managers can. Gives the workflow rule something to show.
   const wf = workflows.filter((w) => !(w.roleId === "r-member" && w.from === "s-cancel"));
 
-  const allModules = ["work_packages", "gantt", "boards", "calendar", "team_planner"] as const;
+  const allModules = ["work_packages", "gantt", "boards", "calendar", "team_planner", "time_tracking"] as const;
   const defaultTypeIds = ["t-task", "t-milestone", "t-summary"];
   const projects = [
     {
@@ -91,19 +92,19 @@ export function buildSeed(schema: number): Db {
       id: "p-mobile", identifier: "mobile-app", name: "모바일 앱 2.0",
       descriptionHtml: "<p>푸시 알림과 오프라인 보기를 넣은 2.0 베타를 10월 말에 배포합니다.</p>",
       status: "at_risk" as const, statusExplanation: "iOS 로그인 오류 때문에 베타 일정이 늦어질 수 있습니다.",
-      isPublic: false, parentId: null, enabledModules: ["work_packages", "gantt", "boards"] as typeof allModules[number][], typeIds: ["t-task", "t-milestone", "t-summary", "t-bug"],
+      isPublic: false, parentId: null, enabledModules: ["work_packages", "gantt", "boards", "time_tracking"] as typeof allModules[number][], typeIds: ["t-task", "t-milestone", "t-summary", "t-bug"],
     },
     {
       id: "p-infra", identifier: "infra", name: "사내 인프라",
       descriptionHtml: "<p>사내 네트워크, 인증서, 백업을 관리합니다. 전 직원이 열람할 수 있습니다.</p>",
       status: "on_track" as const, statusExplanation: "",
-      isPublic: true, parentId: null, enabledModules: ["work_packages", "gantt"] as typeof allModules[number][], typeIds: defaultTypeIds,
+      isPublic: true, parentId: null, enabledModules: ["work_packages", "gantt", "time_tracking"] as typeof allModules[number][], typeIds: defaultTypeIds,
     },
     {
       id: "p-backup", identifier: "infra-backup", name: "백업 체계 개선",
       descriptionHtml: "<p>백업 주기와 복원 절차를 정비합니다.</p>",
       status: null, statusExplanation: "",
-      isPublic: false, parentId: "p-infra", enabledModules: ["work_packages", "gantt"] as typeof allModules[number][], typeIds: defaultTypeIds,
+      isPublic: false, parentId: "p-infra", enabledModules: ["work_packages", "gantt", "time_tracking"] as typeof allModules[number][], typeIds: defaultTypeIds,
     },
     {
       id: "p-legacy", identifier: "legacy-intranet", name: "구 인트라넷 정리",
@@ -249,6 +250,7 @@ export function buildSeed(schema: number): Db {
 
   return {
     schema,
+    ...seedTime(),
     seq: { wp: 21, id: 1000 },
     sessionUserId: null,
     users,

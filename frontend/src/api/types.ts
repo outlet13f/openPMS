@@ -110,7 +110,7 @@ export interface Role {
 /* ---------- projects ---------- */
 
 export type ProjectStatus = "on_track" | "at_risk" | "off_track";
-export type ModuleKey = "work_packages" | "gantt" | "boards" | "calendar" | "team_planner";
+export type ModuleKey = "work_packages" | "gantt" | "boards" | "calendar" | "team_planner" | "time_tracking";
 
 export interface ProjectRef {
   id: Id;
@@ -171,6 +171,68 @@ export interface AdminApiToken extends ApiToken {
 /** 웹훅 (관리 · API와 웹훅) */
 export const WEBHOOK_EVENTS = ["work_package.created", "work_package.updated", "work_package.deleted", "work_package.commented"] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
+/** 시간 기록 (내 공수, 작업의 시간 탭, 공수 보고서) */
+export interface TimeActivity {
+  id: Id;
+  name: string;
+  position: number;
+  isDefault: boolean;
+  active: boolean;
+}
+export interface TimeEntry {
+  id: Id;
+  user: UserRef;
+  project: ProjectRef;
+  workPackage: WorkPackageRef;
+  activity: { id: Id; name: string } | null;
+  spentOn: IsoDate;
+  hours: number;
+  comment: string;
+  canEdit: boolean;
+}
+export interface TimeEntryInput {
+  workPackageNumber: number;
+  spentOn: IsoDate;
+  hours: number;
+  /** absent: the default activity */
+  activityId?: Id | null;
+  comment?: string;
+  /** someone else's time (time.manage) */
+  userId?: Id;
+}
+export interface TimeWeek {
+  /** the first day, as 관리 · 날짜 형식 starts weeks */
+  start: IsoDate;
+  days: { date: IsoDate; working: boolean; holiday: string | null }[];
+  /** 관리 · 근무 시간: a day past this is flagged, not refused (24 is the hard limit) */
+  hoursPerDay: number;
+  /** work packages I logged time on this week */
+  rows: { workPackage: WorkPackageRef; canLog: boolean; cells: { date: IsoDate; hours: number; entries: number }[] }[];
+}
+/** one cell of the sheet: my hours on a work package that day (0 clears it) */
+export interface TimeWeekCell {
+  workPackageNumber: number;
+  date: IsoDate;
+  hours: number;
+}
+export const TIME_GROUPS = ["user", "workPackage", "activity", "project", "day"] as const;
+export type TimeGroupBy = (typeof TIME_GROUPS)[number];
+export interface TimeFilter {
+  from?: IsoDate;
+  to?: IsoDate;
+  /** identifier or id */
+  project?: string;
+  /** "me", a user id, or all when absent */
+  user?: string;
+}
+export interface TimeReport {
+  from: IsoDate;
+  to: IsoDate;
+  groupBy: TimeGroupBy;
+  rows: { key: string; label: string; hours: number }[];
+  total: number;
+}
+
 export interface Webhook {
   id: Id;
   name: string;
