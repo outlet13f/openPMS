@@ -2,10 +2,10 @@
 import { useState, type ReactNode } from "react";
 import { Navigate, NavLink, useNavigate, useParams } from "react-router";
 import { useTranslation } from "react-i18next";
-import { Archive, ListPlus, MoreHorizontal, Pencil, Plus, Save, Tag, Trash2 } from "lucide-react";
-import type { ModuleKey, ProjectStatus, Version, VersionInput } from "@/api";
+import { Archive, Copy, ListPlus, MoreHorizontal, Pencil, Plus, Save, Tag, Trash2 } from "lucide-react";
+import { api, isApiError, TEMPLATE_PARTS, type ModuleKey, type Project, type ProjectStatus, type TemplatePart, type Version, type VersionInput } from "@/api";
 import { useCategories, useCategoryMutations, useProjectCustomFields, useProjectSettingsMutations, useSetProjectCustomFields, useVersionMutations, useVersions } from "@/api/admin-hooks";
-import { useFilterOptions } from "@/api/hooks";
+import { useFilterOptions, useMe } from "@/api/hooks";
 import { Badge, TypeLabel } from "@/components/ui/badges";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/choice";
@@ -58,6 +58,74 @@ function Section({ title, children, hint }: { title: string; hint?: string; chil
 
 /* ---------- 정보 ---------- */
 
+/** 프로젝트 복사: a new project from this one, taking what is ticked (as from a template). */
+function CopyProjectDialog({ project, onClose }: { project: Project; onClose: () => void }) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const runToast = useRunWithToast();
+  const [name, setName] = useState(t("settings.copyName", { name: project.name }));
+  const [identifier, setIdentifier] = useState(`${project.identifier}-copy`.slice(0, 100));
+  const [parts, setParts] = useState<TemplatePart[]>([...TEMPLATE_PARTS]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const fieldErr = (f: string) => (isApiError(error) ? error.fieldErrors.find((e) => e.field === f)?.message : undefined);
+  const submit = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const made = await runToast(
+        api.projects.copy(project.id, { name, identifier, parentId: project.parent?.id ?? null, copy: parts }).catch((e) => {
+          setError(e);
+          throw e;
+        }),
+        t("settings.copied"),
+      );
+      if (made) navigate(`/projects/${made.identifier}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={t("settings.copyTitle", { name: project.name })}
+      description={t("settings.copyHint")}
+      footer={
+        <>
+          <Button onClick={onClose}>{t("app.cancel")}</Button>
+          <Button variant="primary" icon={<Copy />} loading={busy} onClick={() => void submit()}>
+            {t("settings.copyAction")}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <Field label={t("projectNew.name")} required error={fieldErr("name")}>
+          <Input data-autofocus value={name} maxLength={255} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <Field label={t("projectNew.identifier")} required hint={t("projectNew.identifierHint")} error={fieldErr("identifier")}>
+          <Input value={identifier} maxLength={100} spellCheck={false} onChange={(e) => setIdentifier(e.target.value.toLowerCase())} />
+        </Field>
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-1 text-sm font-medium text-fg">{t("projectNew.copyLegend")}</legend>
+          <p className="text-xs text-fg-muted">{t("projectNew.copyAlways")}</p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {TEMPLATE_PARTS.map((part) => (
+              <Checkbox
+                key={part}
+                label={t(`projectNew.parts.${part}`)}
+                checked={parts.includes(part)}
+                onCheckedChange={(c) => setParts((ps) => (c === true ? [...ps, part] : ps.filter((x) => x !== part)))}
+              />
+            ))}
+          </div>
+        </fieldset>
+      </div>
+    </Dialog>
+  );
+}
+
 function GeneralSection() {
   const { t } = useTranslation();
   const project = useCurrentProject();
@@ -75,6 +143,9 @@ function GeneralSection() {
   });
   const parents = useParentCandidates(project);
   const [archiving, setArchiving] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const me = useMe().data;
+  const canCopy = can(project, "project.edit") && !!me?.globalPermissions.includes("global.create_projects");
   const save = () =>
     void runToast(
       m.update.mutateAsync({ name: v.name, descriptionHtml: textToHtml(v.description), status: v.status === "none" ? null : v.status, statusExplanation: v.statusExplanation, isPublic: v.isPublic, isTemplate: v.isTemplate,
@@ -126,6 +197,16 @@ function GeneralSection() {
           {t("app.save")}
         </Button>
       </div>
+      {canCopy && (
+        <div className="mt-6 rounded-md border border-border p-4">
+          <h3 className="text-sm font-semibold text-fg">{t("settings.copyProject")}</h3>
+          <p className="mt-1 text-sm text-fg-muted">{t("settings.copyHint")}</p>
+          <Button className="mt-3" icon={<Copy />} onClick={() => setCopying(true)}>
+            {t("settings.copyProject")}
+          </Button>
+        </div>
+      )}
+      {copying && <CopyProjectDialog project={project} onClose={() => setCopying(false)} />}
       {can(project, "project.archive") && !project.archivedAt && (
         <div className="mt-6 rounded-md border border-danger/40 p-4">
           <h3 className="text-sm font-semibold text-fg">{t("settings.archiveTitle")}</h3>

@@ -141,7 +141,6 @@ public class ProjectController {
     @Transactional
     public ResponseEntity<Dto.Project> create(@RequestBody Map<String, Object> in) {
         var ctx = current.ctx();
-        if (!ctx.isAdmin() && !ctx.globalPermissions().contains("global.create_projects")) throw ApiException.forbidden("프로젝트를 만들 권한이 없습니다.");
         ProjectRow template = null;
         var templateId = In.str(in, "templateId");
         if (templateId != null && !templateId.isBlank()) {
@@ -149,6 +148,24 @@ public class ProjectController {
                     .filter(p -> p.id().toString().equals(templateId) || p.identifier().equals(templateId)).findFirst()
                     .orElseThrow(() -> ApiException.field("template", "템플릿을 찾을 수 없습니다."));
         }
+        return make(ctx, in, template);
+    }
+
+    /**
+     * 프로젝트 복사: a new project from this one, as from a template ({name, identifier, parentId?, copy: [...]}); it takes the
+     * right to edit this project besides the right to create projects.
+     */
+    @PostMapping("/projects/{id}/copy")
+    @Transactional
+    public ResponseEntity<Dto.Project> copy(@PathVariable String id, @RequestBody Map<String, Object> in) {
+        var ctx = current.ctx();
+        var source = ctx.findProject(id);
+        ctx.require(source, "project.edit", "이 프로젝트를 복사할 권한이 없습니다.");
+        return make(ctx, in, source);
+    }
+
+    private ResponseEntity<Dto.Project> make(Ctx ctx, Map<String, Object> in, ProjectRow template) {
+        if (!ctx.isAdmin() && !ctx.globalPermissions().contains("global.create_projects")) throw ApiException.forbidden("프로젝트를 만들 권한이 없습니다.");
         var parts = new HashSet<>(In.strings(in, "copy") == null ? List.<String>of() : In.strings(in, "copy"));
         if (!ProjectCopy.PARTS.containsAll(parts)) throw ApiException.field("copy", "복사할 수 없는 항목이 있습니다.");
         var name = In.str(in, "name") == null ? "" : In.str(in, "name").trim();

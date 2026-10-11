@@ -4,6 +4,7 @@
 
 import type { Api } from "../api";
 import type {
+  ProjectInput,
   QueryFilter,
   Board,
   BoardColumn,
@@ -120,6 +121,33 @@ function copyTemplate(t: DbProject, p: DbProject, parts: Set<string>, user: DbUs
   if (parts.has("queries"))
     for (const q of db.queries.filter((x) => x.projectId === t.id && (x.isPublic || x.ownerId === user.id)))
       db.queries.push({ ...q, id: newId("q"), projectId: p.id, ownerId: user.id, spec: remap(q.spec), createdAt: now });
+}
+
+/** S04: a new project (blank, from a template, or a copy of source). */
+function createProjectFor(user: DbUser, input: ProjectInput, source: DbProject | null = null): DbProject {
+  if (!user.isAdmin && !globalPermissions(user).includes("global.create_projects")) throw new ApiError(403, "프로젝트를 만들 권한이 없습니다.");
+  const name = input.name.trim();
+  if (!name) throw fieldError("name", "프로젝트 이름을 입력하세요.");
+  const identifier = input.identifier.trim();
+  if (!/^[a-z][a-z0-9-]{0,99}$/.test(identifier)) throw fieldError("identifier", "영문 소문자로 시작하고 영문 소문자, 숫자, 하이픈만 쓸 수 있습니다.");
+  if (db.projects.some((p) => p.identifier === identifier)) throw fieldError("identifier", "이미 사용 중인 식별자입니다.");
+  if (input.parentId) {
+    const parent = db.projects.find((x) => x.id === input.parentId);
+    if (!parent || !can(user, parent, "project.edit")) throw fieldError("parent", "상위 프로젝트를 찾을 수 없습니다.");
+  }
+  const template = source ?? (input.templateId ? visibleProjects(user).find((p) => p.isTemplate && !p.archivedAt && (p.id === input.templateId || p.identifier === input.templateId)) : null);
+  if (!source && input.templateId && !template) throw fieldError("template", "템플릿을 찾을 수 없습니다.");
+  const now = nowIso();
+  const p: DbProject = {
+    id: newId("p"), identifier, name, descriptionHtml: input.descriptionHtml ?? "", status: null, statusExplanation: "",
+    isPublic: !!input.isPublic, isTemplate: false, archivedAt: null, parentId: input.parentId ?? null,
+    enabledModules: ["work_packages", "gantt", "boards"], typeIds: db.types.filter((t) => t.isDefault).map((t) => t.id),
+    createdAt: now, updatedAt: now, latestActivityAt: now,
+  };
+  db.projects.push(p);
+  db.members.push({ id: newId("m"), projectId: p.id, userId: user.id, groupId: null, roleIds: ["r-manager"], createdAt: now });
+  if (template) copyTemplate(template, p, new Set(input.copy ?? []), user);
+  return p;
 }
 
 function toMe(u: DbUser): Me {
@@ -765,32 +793,13 @@ export const fakeApi: Api = {
         return { items: list.slice((page - 1) * pageSize, page * pageSize).map((p) => toProject(p, user)), total: list.length, page, pageSize };
       }),
     get: (id) => run(() => toProject(findProject(sessionUser(), id), sessionUser())),
-    create: (input) =>
+    create: (input) => run(() => toProject(createProjectFor(sessionUser(), input), sessionUser())),
+    copy: (id, input) =>
       run(() => {
         const user = sessionUser();
-        if (!user.isAdmin && !globalPermissions(user).includes("global.create_projects")) throw new ApiError(403, "프로젝트를 만들 권한이 없습니다.");
-        const name = input.name.trim();
-        if (!name) throw fieldError("name", "프로젝트 이름을 입력하세요.");
-        const identifier = input.identifier.trim();
-        if (!/^[a-z][a-z0-9-]{0,99}$/.test(identifier)) throw fieldError("identifier", "영문 소문자로 시작하고 영문 소문자, 숫자, 하이픈만 쓸 수 있습니다.");
-        if (db.projects.some((p) => p.identifier === identifier)) throw fieldError("identifier", "이미 사용 중인 식별자입니다.");
-        if (input.parentId) {
-          const parent = db.projects.find((x) => x.id === input.parentId);
-          if (!parent || !can(user, parent, "project.edit")) throw fieldError("parent", "상위 프로젝트를 찾을 수 없습니다.");
-        }
-        const template = input.templateId ? visibleProjects(user).find((p) => p.isTemplate && !p.archivedAt && (p.id === input.templateId || p.identifier === input.templateId)) : null;
-        if (input.templateId && !template) throw fieldError("template", "템플릿을 찾을 수 없습니다.");
-        const now = nowIso();
-        const p: DbProject = {
-          id: newId("p"), identifier, name, descriptionHtml: input.descriptionHtml ?? "", status: null, statusExplanation: "",
-          isPublic: !!input.isPublic, isTemplate: false, archivedAt: null, parentId: input.parentId ?? null,
-          enabledModules: ["work_packages", "gantt", "boards"], typeIds: db.types.filter((t) => t.isDefault).map((t) => t.id),
-          createdAt: now, updatedAt: now, latestActivityAt: now,
-        };
-        db.projects.push(p);
-        db.members.push({ id: newId("m"), projectId: p.id, userId: user.id, groupId: null, roleIds: ["r-manager"], createdAt: now });
-        if (template) copyTemplate(template, p, new Set(input.copy ?? []), user);
-        return toProject(p, user);
+        const source = findProject(user, id);
+        requirePerm(user, source, "project.edit", "이 프로젝트를 복사할 권한이 없습니다.");
+        return toProject(createProjectFor(user, { ...input, templateId: null }, source), user);
       }),
     update: (id, patch) =>
       run(() => {

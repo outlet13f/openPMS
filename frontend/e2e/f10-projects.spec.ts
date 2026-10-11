@@ -74,6 +74,19 @@ test.describe("F10 프로젝트와 멤버", () => {
     expect(await api<string | null>(page, "return (await api.projects.get('sub-test')).parent?.identifier ?? null")).toBeNull();
   });
 
+  test("F10-H4 copy a project from its settings", async ({ page }) => {
+    await page.goto("/projects/web-platform/settings/general");
+    await page.getByRole("button", { name: "프로젝트 복사" }).click();
+    const dlg = page.getByRole("dialog", { name: "웹 플랫폼 개편 복사" });
+    await expect(dlg.getByLabel(/^프로젝트 이름/)).toHaveValue("웹 플랫폼 개편 (사본)");
+    await expect(dlg.getByLabel(/^식별자/)).toHaveValue("web-platform-copy");
+    await axe(page, "S24 프로젝트 복사");
+    await dlg.getByRole("button", { name: "복사해서 만들기" }).click();
+    await page.waitForURL(/\/projects\/web-platform-copy$/);
+    const wps = await api<{ total: number }>(page, "return await api.workPackages.query({ v: 1, filters: [], columns: ['subject'], sort: [], groupBy: null, hierarchy: false, sums: false, includeSubprojects: false }, { projectId: 'web-platform-copy', page: 1, pageSize: 20 })");
+    expect(wps.total).toBeGreaterThan(5);
+  });
+
   test("F10-E1 a taken identifier is refused next to the field", async ({ page }) => {
     await page.goto("/projects/new");
     await page.getByLabel(/^프로젝트 이름/).fill("중복 시험");

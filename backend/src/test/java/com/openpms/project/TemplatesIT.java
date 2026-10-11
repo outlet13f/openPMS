@@ -58,7 +58,7 @@ class TemplatesIT {
 
     @AfterEach
     void cleanUp() throws Exception {
-        for (var id : new String[] {"from-template", "from-template-bare"}) {
+        for (var id : new String[] {"from-template", "from-template-bare", "copied-project"}) {
             if (db.fetchExists(PROJECTS, PROJECTS.IDENTIFIER.eq(id)))
                 send(admin, delete("/api/v1/projects/" + id), "{\"confirmIdentifier\":\"" + id + "\"}").andExpect(status().isNoContent());
         }
@@ -131,6 +131,19 @@ class TemplatesIT {
         assertThat(db.fetchCount(PROJECT_TYPES, PROJECT_TYPES.PROJECT_ID.eq(bare))).isEqualTo(db.fetchCount(PROJECT_TYPES, PROJECT_TYPES.PROJECT_ID.eq(template)));
         send(admin, post("/api/v1/projects"), "{\"name\":\"x\",\"identifier\":\"from-template-x\",\"templateId\":\"web-platform\",\"copy\":[\"attachments\"]}")
                 .andExpect(status().isUnprocessableContent());
+    }
+
+    @Test
+    void anyProjectTheyMayEditCanBeCopied() throws Exception {
+        var template = id("web-platform");
+        // not a template: copying needs the right to edit it
+        send(login("haneul.lee@openpms.local"), post("/api/v1/projects/web-platform/copy"), "{\"name\":\"x\",\"identifier\":\"copied-project\"}")
+                .andExpect(status().isForbidden());
+        send(admin, post("/api/v1/projects/web-platform/copy"), "{\"name\":\"웹 플랫폼 (사본)\",\"identifier\":\"copied-project\",\"copy\":[\"workPackages\",\"versions\"]}")
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.name").value("웹 플랫폼 (사본)")).andExpect(jsonPath("$.isTemplate").value(false));
+        var made = id("copied-project");
+        assertThat(db.fetchCount(WORK_PACKAGES, WORK_PACKAGES.PROJECT_ID.eq(made))).isEqualTo(db.fetchCount(WORK_PACKAGES, WORK_PACKAGES.PROJECT_ID.eq(template)));
+        assertThat(db.fetchCount(MEMBERS, MEMBERS.PROJECT_ID.eq(made))).isEqualTo(1); // members were not ticked
     }
 
     /** The template's private views of the person copying (they come along too). */

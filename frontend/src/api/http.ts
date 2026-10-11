@@ -96,6 +96,7 @@ export const httpApi: Api = {
     list: (params) => get("/projects", { ...params }),
     get: (id) => get(`/projects/${encodeURIComponent(id)}`),
     create: (input) => post("/projects", input),
+    copy: (id, input) => post(`/projects/${id}/copy`, input),
     update: (id, p) => patch(`/projects/${id}`, p),
     setFavorite: (id, fav) => (fav ? put(`/projects/${id}/favorite`) : del(`/projects/${id}/favorite`)),
     overview: (id) => get(`/projects/${id}/overview`),
