@@ -63,6 +63,7 @@ openPMS/
       V15__webhooks.sql   웹훅: webhooks, webhook_deliveries
       V16__idempotency_keys.sql  생성 POST의 Idempotency-Key 응답 보관, webhooks 인덱스·트리거 보완
       V17__time_tracking.sql     시간 기록: time_activities, time_entries, 역할 권한 time.*, 모듈 time_tracking
+      V18__co_assignees.sql      공동 담당자: work_package_assignees(지금 담당자를 첫 자리로 백필)
   frontend/                     Vite + React + TS. 빌드 결과는 backend 정적 리소스로 복사
   Dockerfile                    저장소 최상위. 멀티 스테이지(프론트 빌드 → 백엔드 빌드 → JRE 런타임)
   compose.yaml                  저장소 최상위. app, db (mailpit 없음. 개발용 Mailpit은 backend/scripts/dev.sh가 띄움)
@@ -99,7 +100,7 @@ openPMS/
 
 ## 2. 스키마
 
-테이블 36개(자체) + 라이브러리 테이블 3개(spring_session, spring_session_attributes, scheduled_tasks). 전문은 `replica/schema.sql`(= Flyway V1). 구현 중 V4–V9로 바뀐 것(work_package_shares 테이블, user_preferences.last_digest_at·my_page_widgets, 알림 기본값, updated_at 트리거 예외, types.attribute_groups를 유형 양식으로 쓰며 기본값 '[]'로 초기화)은 `replica/review-2026-10-10.md` §2.3에 정리했습니다(V9는 그 뒤 추가). V10은 사내 SSO의 `oidc_providers`, `user_identities` 두 테이블을 더합니다(아래 목록과 설계 결정). 2026-10-11(4fb4ca5..86e58a9)에 V11 `projects.internal_comments`, V12 `users.theme`에 `high_contrast`, V13 `projects.overview_widgets`, V14 `api_tokens`, V15 `webhooks`·`webhook_deliveries`를 더했습니다. 같은 날 93d1a74의 V16이 `idempotency_keys`와 `webhooks_created_by_idx` 인덱스·`webhooks_set_updated_at` 트리거를 더했습니다. 789bb9d의 V17이 시간 기록 `time_activities`·`time_entries`를 더하고, `projects_known_modules` 검사에 `time_tracking`을 넣어 모든 기존 프로젝트에서 켰습니다. 구현 기준 테이블은 자체 45개 + 라이브러리 3개입니다(`docs/deliverables/05-데이터베이스설계서.md`).
+테이블 36개(자체) + 라이브러리 테이블 3개(spring_session, spring_session_attributes, scheduled_tasks). 전문은 `replica/schema.sql`(= Flyway V1). 구현 중 V4–V9로 바뀐 것(work_package_shares 테이블, user_preferences.last_digest_at·my_page_widgets, 알림 기본값, updated_at 트리거 예외, types.attribute_groups를 유형 양식으로 쓰며 기본값 '[]'로 초기화)은 `replica/review-2026-10-10.md` §2.3에 정리했습니다(V9는 그 뒤 추가). V10은 사내 SSO의 `oidc_providers`, `user_identities` 두 테이블을 더합니다(아래 목록과 설계 결정). 2026-10-11(4fb4ca5..86e58a9)에 V11 `projects.internal_comments`, V12 `users.theme`에 `high_contrast`, V13 `projects.overview_widgets`, V14 `api_tokens`, V15 `webhooks`·`webhook_deliveries`를 더했습니다. 같은 날 93d1a74의 V16이 `idempotency_keys`와 `webhooks_created_by_idx` 인덱스·`webhooks_set_updated_at` 트리거를 더했습니다. 789bb9d의 V17이 시간 기록 `time_activities`·`time_entries`를 더하고, `projects_known_modules` 검사에 `time_tracking`을 넣어 모든 기존 프로젝트에서 켰습니다. f494f76의 V18이 공동 담당자 `work_package_assignees`를 더했습니다(지금 담당자를 첫 자리로 옮겨 적음). 구현 기준 테이블은 자체 46개 + 라이브러리 3개입니다(`docs/deliverables/05-데이터베이스설계서.md`).
 
 **접근 규칙: 데이터 계층 검사.** RLS는 쓰지 않습니다. 앱이 DB 계정 하나로 접속하기 때문입니다. 대신 모든 서비스 메서드가 `PermissionService`로 권한을 확인하고, 모든 목록 쿼리는 `VisibleProjects.condition(user, permission)` 조건을 반드시 포함합니다(§4.1). 보이지 않는 리소스에는 403이 아니라 404를 돌려줘 존재 여부가 드러나지 않게 합니다.
 
@@ -113,7 +114,7 @@ openPMS/
 | 사용자·인증 | users, user_preferences, user_tokens, user_groups, user_group_members, roles, global_role_assignments, oidc_providers(V10 추가), user_identities(V10 추가), api_tokens(V14 추가), idempotency_keys(V16 추가) | 사용자(user_id) 또는 인스턴스(관리자). SSO 공급자는 인스턴스(관리자), 연결은 user_id + provider_id. API 토큰은 user_id(본인, 관리자는 전체 폐기). Idempotency-Key 응답은 user_id + key(본인만, 앱 필터가 씀) |
 | 프로젝트·멤버 | projects, project_favorites, members, member_roles | project_id, 즐겨찾기는 user_id |
 | 작업 설정 | types, project_types, statuses, workflows, priorities, versions, categories, custom_fields, custom_field_options, custom_field_types, project_custom_fields | 인스턴스(관리자), 버전·카테고리는 project_id |
-| 작업 패키지 | work_packages, relations, watchers, attachments, journals, work_package_shares(V6 추가) | project_id (작업 패키지를 통해), 공유는 work_package_id + user_id |
+| 작업 패키지 | work_packages, relations, watchers, attachments, journals, work_package_shares(V6 추가), work_package_assignees(V18 추가) | project_id (작업 패키지를 통해), 공유는 work_package_id + user_id, 공동 담당자는 work_package_id + user_id(프로젝트 멤버만, 앱이 검사) |
 | 보기·보드 | queries, query_favorites, boards, board_columns, board_cards | owner_id / project_id |
 | 알림 | notifications, notification_settings | recipient_id / user_id |
 | 달력·설정 | non_working_days, settings | 인스턴스(관리자) |
@@ -136,6 +137,7 @@ openPMS/
 - **웹훅은 보낼 일을 테이블에 쌓습니다(V15).** `webhooks`: name, url(`^https?://`), secret(HMAC 키, 평문, API로는 만들 때만), events(4종 부분집합, CHECK), project_ids(null = 전체), enabled, created_by. `webhook_deliveries`: 업무 변경과 같은 트랜잭션에서 넣는 아웃박스 행(event, payload jsonb, status pending·succeeded·failed, attempts, next_attempt_at, response_status, error). 보낼 차례인 행은 부분 인덱스(`status = 'pending'`)로 찾습니다. 웹훅을 지우면 전송 기록도 cascade로 지워지고, 그 밖에는 `token-cleanup`이 `pending`이 아니고 30일 지난 행을 지웁니다(dfde416). V16(93d1a74)이 `webhooks.created_by` 인덱스(`webhooks_created_by_idx`, 인덱스 없는 FK가 다시 0개)와 다른 테이블과 같은 `updated_at` 트리거(`webhooks_set_updated_at`)를 더했습니다.
 - **생성 POST의 재시도는 DB에서 한 번으로 묶습니다(V16).** `idempotency_keys`: PK (user_id, key), user_id → users(cascade), key(1–255자, CHECK), method, path(쿼리 포함), request_hash(메서드·경로·본문의 SHA-256: 같은 키를 다른 요청에 쓰면 422), status(null = 처리 중, 같은 키가 또 오면 409), content_type, body(bytea, 처음 2xx 응답), created_at(인덱스 `idempotency_keys_created_idx`). 처음 요청이 행을 먼저 넣어(`on conflict do nothing`) 동시에 온 같은 요청 중 하나만 실행되게 하고, 2xx가 아니면 행을 지워 다시 보낼 수 있게 합니다. 24시간 뒤 `token-cleanup`이 지웁니다. 설계(§5)는 "10분 보관"이었지만 사람이 다음 날 다시 시도하는 경우까지 덮도록 하루로 늘렸습니다.
 - **시간 기록은 사람·작업·날짜마다 한 줄씩 둡니다(V17).** `time_activities`: name(1–60자, 유일), position, is_default(부분 유일 인덱스로 하나만), active(끈 활동은 새 기록에 못 쓰고 지난 기록에는 남음), updated_at 트리거. 기본 7개: 개발(기본)·설계·회의·테스트·문서·관리·기타. `time_entries`: user_id → users(cascade), project_id → projects(cascade, 작업의 프로젝트를 복사해 둠 — 보고서·권한을 작업 조인 없이 프로젝트로 거르려고. 작업을 옮기면 `WorkPackageTransfers.move`가 같이 바꿈), work_package_id → work_packages(cascade), activity_id → time_activities(set null), spent_on(date), hours(numeric(5,2), 0 초과 24 이하), comment(1,000자), updated_at 트리거. 인덱스 (user_id, spent_on)·(project_id, spent_on)·(work_package_id)·(activity_id)라 인덱스 없는 FK는 여전히 0개. 한 사람의 하루 24시간 제한과 "칸 하나 = 그날 그 작업의 내 시간 합"은 DB 제약이 아니라 앱(`TimeController`)이 지킵니다. 같은 칸에 여러 줄을 허용해(시간 탭에서 활동·메모를 나눠 남김) 주간 입력표는 그런 칸을 바꾸지 않습니다. 시간 기록은 저널에 남기지 않습니다(근무 기록이지 작업의 변경이 아니어서). 처음 V17 초안은 `projects_known_modules`를 넓히지 않아 프로젝트가 있는 DB에서 실패했을 것이라 출시 전에 고쳤습니다.
+- **공동 담당자는 옆 테이블에 두고 `assignee_id`를 남깁니다(V18).** `work_package_assignees`: PK (work_package_id, user_id), work_package_id → work_packages(cascade), user_id → users(cascade), position(smallint 0–19, (work_package_id, position) 유일 제약은 `deferrable initially deferred`라 순서를 바꾸는 한 트랜잭션 안에서 잠깐 겹쳐도 됨), work_hours(numeric(10,2) 0–9999, 비워 둘 수 있음: 그 사람의 예상 시간), created_at, 인덱스 (user_id). position 0이 주 담당자이고 `work_packages.assignee_id`는 늘 그 사람(없으면 null)과 같게 앱(`wp/Assignees`)이 맞춥니다. 그래서 정렬·묶기·기준선의 과거 값(저널의 `assigneeId`)·예전 `assigneeId` API는 고치지 않고 주 담당자를 보고, 필터(eq·me·neq·none·any·그룹·역할은 `exists` 하위 쿼리)·알림·워크플로의 `assignee` 조건·날짜 알림·담당자 보드·팀 플래너·웹훅·내보내기만 이 테이블의 모든 사람을 봅니다. 배열 컬럼(`uuid[]`)은 사람별 예상 시간을 둘 곳이 없고 FK 무결성을 앱에 맡기게 되어 쓰지 않았습니다. 그룹을 담당자로 쓰는 방법도 원본 직원 답변(포럼 19193)이 "그룹을 만들지 않는" 담당자 여러 명을 말하므로 쓰지 않았습니다.
 - PostgreSQL 18로 올리면 시간순 정렬되는 `uuidv7()`을 기본값으로 바꾸는 것을 검토합니다.
 
 ### 권한 키
@@ -188,7 +190,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
   - `type_id` = 작업의 유형
   - `role_id` ∈ 사용자의 프로젝트 역할
   - `from_status_id` = 현재 상태
-  - `applies_to = 'always'`, 또는 `'author'`이면서 사용자가 작성자, 또는 `'assignee'`이면서 사용자가 담당자
+  - `applies_to = 'always'`, 또는 `'author'`이면서 사용자가 작성자, 또는 `'assignee'`이면서 사용자가 담당자(f494f76부터 담당자 목록의 누구든. 화면·API는 `always`만 만듦)
 - 관리자는 모든 상태로 바꿀 수 있습니다.
 - 유형과 상태를 함께 바꾸면 새 유형을 기준으로 검사합니다.
 - 새 작업은 기본 상태로 시작합니다. 생성 폼에서는 기본 상태에서 갈 수 있는 상태만 고를 수 있습니다.
@@ -276,12 +278,12 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 - **저널 집계**: 같은 사용자가 같은 작업을 `journals.aggregation_minutes`(5분) 안에 연속으로 바꿨고, 그 사이에 다른 사람의 저널이나 코멘트가 없으면 직전 저널에 변경을 합칩니다(`changes` 병합). 이미 만든 알림이 아직 읽히지 않았다면 그 알림을 갱신하고, 읽혔다면 새로 만듭니다.
 - **알림 생성(fan-out)**: 저널을 저장하는 트랜잭션 안에서 `notification-fanout` 작업을 예약합니다. 대상은 다음과 같습니다.
   - 새로 추가된 @멘션
-  - 담당자와 책임자
+  - 담당자(f494f76부터 담당자 목록의 모든 사람)와 책임자
   - 주시자
   - 사용자 설정에 따라 새 작업·코멘트·상태·우선순위·날짜 변경을 구독한 멤버
 - **제외 대상**: 행위자 본인, 그 작업을 볼 권한이 없는 사용자(멤버가 아닌 사람이 멘션된 경우 포함). 내부 코멘트는 `wp.view_internal_comments` 권한이 있는 사용자에게만 알립니다.
 - **수신자 1명당 1건**만 만듭니다. 이유가 여러 개면 우선순위가 높은 것 하나를 씁니다: mentioned > assigned > responsible > watched > 그 외.
-- **날짜 알림**: 매시간 실행하는 작업이 사용자 시간대 기준 "오늘"로 시작·완료 N일 전 알림과 기한 지남 알림을 만듭니다. 유니크 인덱스가 중복을 막습니다.
+- **날짜 알림**: 매시간 실행하는 작업이 사용자 시간대 기준 "오늘"로 시작·완료 N일 전 알림과 기한 지남 알림을 만듭니다. 유니크 인덱스가 중복을 막습니다. 받는 사람에는 담당자 목록의 모든 사람이 들어갑니다(f494f76).
 
 ---
 
@@ -709,14 +711,16 @@ S10–S12는 모달이라 라우트가 없습니다.
 - 2. 템플릿 복사 때 새 시작일로 전체 일정 이동(완료: 2f7ffb9·b63eaa0): `POST /projects`(templateId)·`POST /projects/{id}/copy`의 선택 `startDate`
 - 3. 업그레이드 안전장치(완료: 5966874): 업그레이드 전 자동 pg_dump(실패하면 시작 중단), 관리 · 시스템 정보 X12와 지금 백업, 경로 2개(§4.2 "시스템 정보·백업"), 이미지에 PostgreSQL 17 클라이언트, 볼륨 `backups`
 - 4. 성능 예산(완료: a81a4f6, `replica/perf.md`): 작업 1,000건 프로젝트(`perf-1000.sql`)에서 서버 예산(`PerfBudgetIT`: 요청별 p95·SQL 수·응답 크기, JFR 가상 스레드 고정 검사)·`NoPinningTest`·e2e `perf.spec.ts`·부하 도구 `scripts/perf_load.py`. 가상 스레드는 모니터 안에서 DB를 기다리지 않게(`Snapshot`의 `ReentrantLock`, 맵 밖 조회, 로그인 트랜잭션 제거, BUG-012), 응답 gzip 압축과 해시 붙은 `/assets` 1년 캐시(BUG-014), 보드 열마다 50장(BUG-013). 마이그레이션·경로 변화 없음. 권장 사양: 동시 100명까지 앱·DB 컨테이너 각 CPU 2개·메모리 1 GB
-- 5. 화면별 도움말 연결: 남음
+- 5. 화면별 도움말 연결(완료: cab644c): 헤더 도움말 › 이 화면 도움말, `/help`·`/help/admin`(`docs/deliverables` 07·10을 빌드 때 넣음). 마이그레이션·경로 변화 없음
+- 6. 공동 담당자(완료: f494f76·48f4a36): V18 `work_package_assignees`(§2 설계 결정), 작업 응답·만들기·고치기의 `assignees`, 보드 옮기기의 선택 `fromColumnId`, 웹훅 `assignees`. 경로 수 그대로. 화면은 상세의 담당자와 예상 시간 대화상자, 목록 "+N", 카드 아바타, 담당자 보드·팀 플래너는 사람마다
+- 7. 반복 작업: 보류(2026-10-11 사용자 결정)
 
 ---
 
 ## 7. 요약
 
 - **스택**: Spring Boot 4 + Java 21 · jOOQ + Flyway · PostgreSQL 17 · React 19 + Vite + TanStack · db-scheduler · 사내 SMTP · Docker Compose 셀프 호스팅
-- **규모**: 테이블 36개(+ 라이브러리 3개. 구현은 V17까지 자체 45개), API 경로 179개(설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1 + 비밀번호 만들기 1 + 전역 역할 배정 1 + 프로젝트 복사 1 + API 토큰·OpenAPI 8 + 웹훅 8 + 알림 건수 1 + 시간 기록 12 + 시스템 정보 2 = 179. 실제 컨트롤러 매핑은 188개), 작업 13종(구현은 6종 + 요청 안 동기 처리)
+- **규모**: 테이블 36개(+ 라이브러리 3개. 구현은 V18까지 자체 46개), API 경로 179개(설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1 + 비밀번호 만들기 1 + 전역 역할 배정 1 + 프로젝트 복사 1 + API 토큰·OpenAPI 8 + 웹훅 8 + 알림 건수 1 + 시간 기록 12 + 시스템 정보 2 = 179. 실제 컨트롤러 매핑은 188개), 작업 13종(구현은 6종 + 요청 안 동기 처리)
 - **가장 위험한 세 가지**:
   1. 스케줄링 엔진: 근무일, lag, 자동 모드, 부모 파생, 전파, 순환 검출
   2. 쿼리 엔진: 필터 30여 종과 계층·그룹 합계를 권한 조건 아래에서 빠르게 처리
