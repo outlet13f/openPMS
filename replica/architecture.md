@@ -38,6 +38,7 @@
 | 로그인 제한 | Bucket4j (메모리) | 인스턴스가 하나라 메모리 버킷으로 충분합니다. 구현(384a2f9): 키인 클라이언트 주소는 믿는 프록시가 보낸 `X-Forwarded-For`에서 꺼냅니다(Tomcat RemoteIpValve, §1 배포 구성). |
 | 호스팅 | 사내 서버의 Docker Compose (Podman 호환): `app` + `db` | 지금 OpenProject 운영 방식과 같습니다. TLS는 사내 리버스 프록시(nginx 등)에서 종료합니다. |
 | 관측 | Spring Boot Actuator (health, Prometheus 지표), JSON 로그를 stdout으로 | 사내 모니터링에 바로 연결합니다. |
+| 백업 (구현에서 더함, 5966874) | 앱 안에서 `pg_dump`(커스텀 형식) + 런타임 이미지에 PostgreSQL 17 클라이언트(apt.postgresql.org) | 업그레이드 때 백업을 잊는 것이 원본 사용자 불만이라(`replica/fixes.md` #3) 마이그레이션 직전을 아는 앱이 직접 받습니다. 배포판 클라이언트는 17 서버를 덤프하지 못합니다. 매일 백업과 서버 밖 보관은 계속 호스트가 맡습니다. |
 | 테스트 | JUnit 5 + Testcontainers(Postgres 17), jqwik(스케줄링 속성 기반 테스트), Playwright(E2E, `/replica-test`) | 실제 Postgres로 제약과 쿼리를 검증합니다. |
 
 ### 저장소 구조
@@ -50,6 +51,7 @@ openPMS/
       workpackage  journal  relation  scheduling  progress
       query  board  notification  mail  search  attachment
       admin  settings  jobs  common
+      (구현: system — 업그레이드 전 백업·시스템 정보, 5966874)
     src/main/resources/db/migration/
       V1__init.sql        = replica/schema.sql
       V2__libraries.sql   = Spring Session JDBC + db-scheduler의 PostgreSQL 스키마(각 라이브러리 제공본)
@@ -81,13 +83,15 @@ openPMS/
                        - /**         SPA(index.html 폴백)
                        - db-scheduler 작업 실행
                        - /data/files 볼륨(첨부)
+                       - /data/backups 볼륨(DB 덤프: 업그레이드 전·지금 백업, 구현 5966874)
                                    |
                                    v
                      [db 컨테이너: PostgreSQL 17, 볼륨]
 호스트 cron: pg_dump -Fc 매일 + /data/files 백업, 복원 연습 월 1회
+앱(구현 5966874): 적용할 마이그레이션이 있는 업그레이드 직전에 pg_dump → /data/backups, 실패하면 시작 중단
 ```
 
-환경 변수: `OPENPMS_BASE_URL`(메일 링크와 SSO 콜백 주소의 기준), `OPENPMS_DB_URL`·`_USER`·`_PASSWORD`, `OPENPMS_SMTP_HOST`·`_PORT`·`_USER`·`_PASSWORD`·`_STARTTLS`, `OPENPMS_MAIL_FROM`, `OPENPMS_FILES_DIR`, `OPENPMS_ADMIN_EMAIL`, `OPENPMS_SESSION_TIMEOUT`(기본 8h), `OPENPMS_SECURE_COOKIES`(기본 true), `OPENPMS_JOBS_ENABLED`(기본 true, dev 프로필은 false), `OPENPMS_PORT`(compose가 쓰는 호스트 포트, 기본 8090. 컨테이너 안 앱 포트는 8090이고 compose는 여기에 연결), `OPENPMS_FORWARD_HEADERS`(기본 native, 프록시 없이 쓸 때 none), `OPENPMS_TRUSTED_PROXIES`(`X-Forwarded-For`·`X-Forwarded-Proto`를 믿을 프록시 주소 정규식, 기본 127.x·::1·Docker 172.16–31.x·Podman 10.88–89.x, 384a2f9·90006c2. Docker 192.168.x 풀은 기본값 밖). 프록시는 두 헤더를 꼭 보내야 하고, 그래야 로그인 요청 제한이 사람마다 따로 셉니다. 값과 뜻은 `replica/deploy.md` "환경 변수". SSO 공급자 설정은 환경 변수가 아니라 DB(`oidc_providers`)에 둡니다.
+환경 변수: `OPENPMS_BASE_URL`(메일 링크와 SSO 콜백 주소의 기준), `OPENPMS_DB_URL`·`_USER`·`_PASSWORD`, `OPENPMS_SMTP_HOST`·`_PORT`·`_USER`·`_PASSWORD`·`_STARTTLS`, `OPENPMS_MAIL_FROM`, `OPENPMS_FILES_DIR`, `OPENPMS_ADMIN_EMAIL`, `OPENPMS_SESSION_TIMEOUT`(기본 8h), `OPENPMS_SECURE_COOKIES`(기본 true), `OPENPMS_JOBS_ENABLED`(기본 true, dev 프로필은 false), `OPENPMS_PORT`(compose가 쓰는 호스트 포트, 기본 8090. 컨테이너 안 앱 포트는 8090이고 compose는 여기에 연결), `OPENPMS_FORWARD_HEADERS`(기본 native, 프록시 없이 쓸 때 none), `OPENPMS_TRUSTED_PROXIES`(`X-Forwarded-For`·`X-Forwarded-Proto`를 믿을 프록시 주소 정규식, 기본 127.x·::1·Docker 172.16–31.x·Podman 10.88–89.x, 384a2f9·90006c2. Docker 192.168.x 풀은 기본값 밖). 프록시는 두 헤더를 꼭 보내야 하고, 그래야 로그인 요청 제한이 사람마다 따로 셉니다. 값과 뜻은 `replica/deploy.md` "환경 변수". SSO 공급자 설정은 환경 변수가 아니라 DB(`oidc_providers`)에 둡니다. 구현(5966874): `OPENPMS_BACKUP_BEFORE_UPGRADE`(기본 true, dev false: 업그레이드 전 덤프, 실패하면 시작 중단), `OPENPMS_BACKUP_DIR`(기본 /data/backups, 이미지가 정하고 compose가 볼륨 `backups`를 붙임, dev /tmp/openpms-backups), `OPENPMS_BACKUP_KEEP`(종류마다 남길 덤프 수, 기본 5).
 
 **첫 관리자**: 관리자 계정이 하나도 없고 `OPENPMS_ADMIN_EMAIL`이 설정돼 있으면, 시작할 때 그 이메일로 `invited` 상태의 관리자를 만들고 일회용 설정 링크(24시간)를 로그에 한 번 출력합니다. 기본 비밀번호는 없습니다.
 
@@ -302,7 +306,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 - **작업 패키지 응답의 `_meta`**: `editableFields`, `allowedActions`(edit, delete, move, comment, manageRelations…), `derived`(파생 필드 목록)를 담습니다. 화면은 이 값으로 편집 가능 여부를 그리고, 권한 규칙을 프론트에 복제하지 않습니다.
 - 원본 앱의 내부 API는 참고하지 않습니다. 모든 경로는 openPMS가 정의한 것입니다.
 
-### 4.2 경로 (총 177개: 설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1 + 비밀번호 만들기 1 + 전역 역할 배정 1 + 프로젝트 복사 1 + API 토큰·OpenAPI 8 + 웹훅 8 + 알림 건수 1 + 시간 기록 12)
+### 4.2 경로 (총 177개: 설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1 + 비밀번호 만들기 1 + 전역 역할 배정 1 + 프로젝트 복사 1 + API 토큰·OpenAPI 8 + 웹훅 8 + 알림 건수 1 + 시간 기록 12 + 시스템 정보 2 = 179)
 
 이 표는 설계에 구현 기록을 덧붙인 것입니다. 실제 컨트롤러 매핑 수(3f9d5c0 기준 186개, dev 전용 1개 포함)와 경로별 차이는 `docs/deliverables/04-인터페이스정의서.md` 부록에 있습니다.
 
@@ -519,6 +523,17 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 - X11은 기간이 거꾸로이거나 1년 이상이면 끝 칸 아래에 안내하고 보고서를 부르지 않습니다(6f46d4c·39c8974).
 - API 토큰: 읽기 토큰은 GET(목록·주간·보고서·Excel), 기록·주간 저장은 읽기·쓰기 토큰. `openapi.json`에는 `/time-entries`·`/time-entries/week`·`/time-entries/report`가 있습니다.
 
+#### 시스템 정보·백업 — X12 (2, 구현 기록: 5966874)
+
+처음 설계에는 없던 영역입니다. `replica/fixes.md` #3 업그레이드 안전장치(업그레이드 불만 19건/5곳)를 만들면서 더했습니다. 덤프는 `system/Backups`(`pg_dump --format=custom --no-owner`, 접속 정보는 데이터소스 설정, 비밀번호는 `PGPASSWORD`, `.part`에 쓰고 원자적 이름 바꾸기, 종류마다 최근 `OPENPMS_BACKUP_KEEP`개, 한 번에 하나, 30분 제한). 업그레이드 전 덤프는 경로가 아니라 `system/MigrateWithBackup`(Flyway 마이그레이션 전략)이 시작할 때 받습니다: 스키마가 있고 적용할 마이그레이션이 있으면 `before-upgrade` 덤프(라벨 v{현재}-to-v{목표}) 다음에 migrate, 덤프가 실패하면 마이그레이션 없이 시작 중단, 새 설치·대기 0은 덤프 없음.
+
+| method path | 하는 일 | 호출 가능 | 입력 | 출력 | 흐름 |
+| --- | --- | --- | --- | --- | --- |
+| GET /admin/system | 앱(버전·빌드 시각은 Gradle `buildInfo()`의 `BuildProperties`, 시작 시각, Java, 예약 작업 켜짐), DB(PostgreSQL `server_version`, `pg_database_size`), 마이그레이션(현재, 적용 수, 대기 수, 최근 8개와 시각·실패 표시), 백업(업그레이드 전 자동 켜짐, 폴더, 보관 수, `pg_dump --version` 줄 또는 null, 진행 중, 파일 목록 종류·크기·시각), 데이터 수(활성 사용자, 프로젝트, 작업, 첨부 바이트) | 관리자 | - | {app, database, migrations, backups, counts} | X12 F11 |
+| POST /admin/system/backup | 지금 백업(`manual` 덤프 하나) | 관리자 | - | 201 {name, kind, bytes, createdAt}. 진행 중이면 409, pg_dump가 없거나 실패하면 503("백업하지 못했습니다.", detail에 원인) | X12 |
+
+검증: `BackupsTest` 4개, `SystemIT` 1개(관리자 200·dev는 백업 꺼짐, pg_dump 없는 개발 환경의 지금 백업 503, 멤버 403), e2e F11-H4. 데모(가짜 계층)는 줄인 정보만 주고 백업은 503으로 거절.
+
 운영용 `GET /actuator/health`는 API 개수에 넣지 않았습니다.
 
 ### 4.3 프론트엔드 라우트 (SPA)
@@ -543,7 +558,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | /my/timesheet (?week=) | X10 내 공수(구현에서 더함, 3f9d5c0) |
 | /projects/:p/time | X11 공수 보고서(구현에서 더함, 3f9d5c0. 모듈 `time_tracking`과 time.view). 작업 상세의 시간 탭은 S07·S08의 `:tab` = `time` |
 | /search | S22 |
-| /admin/:section(/:id/:tab) | S27–S36. 구현에서 더함: /admin/roles/report(권한 보고서), /admin/integrations(API와 웹훅, 관리 첫 화면의 새 묶음 '연동') |
+| /admin/:section(/:id/:tab) | S27–S36. 구현에서 더함: /admin/roles/report(권한 보고서), /admin/integrations(API와 웹훅, 관리 첫 화면의 새 묶음 '연동'), /admin/system(시스템 정보 X12, 새 묶음 '시스템', 5966874) |
 | /help/api | API 문서(도움말 메뉴, f835e1c) |
 | /design | 컴포넌트 견본(도움말 메뉴). 384a2f9부터 로그인 필요, 별도 청크로 지연 로딩 |
 
@@ -573,7 +588,7 @@ S10–S12는 모달이라 라우트가 없습니다.
 | exports-cleanup | 매시간 | 24시간 지난 내보내기 파일 삭제 |
 | webhook-delivery | 15초 간격(구현에서 더함, 86e58a9) | 보낼 차례인 웹훅 전송을 50건까지. 2xx 아니면 1·5·30·120분 뒤 다시, 그다음 실패. 리다이렉트 안 따라감, 연결 5초·응답 10초 |
 
-백업은 앱 작업이 아니라 호스트 cron이 맡습니다(§1 배포 구성).
+백업은 앱 작업이 아니라 호스트 cron이 맡습니다(§1 배포 구성). 구현(5966874): 예약 작업은 여전히 없지만, 앱이 업그레이드 직전(시작할 때)과 관리 · 시스템 정보의 지금 백업에서 덤프를 받습니다(§4.2 "시스템 정보·백업"). 오래된 덤프 정리는 작업이 아니라 덤프 직후에 합니다.
 
 ---
 
@@ -610,7 +625,7 @@ S10–S12는 모달이라 라우트가 없습니다.
 - **PDF 한글**: OpenPDF에 Noto Sans KR(SIL OFL)을 임베드하지 않으면 한글이 빈칸으로 나옵니다. PDF가 커지지 않도록 폰트 서브셋을 사용합니다. 구현(6f7f18a): PDFBox + Pretendard(SIL OFL 1.1) 서브셋. 글꼴에 없는 문자는 '?'로 바꿔 파일이 늘 만들어지게 하고, 한 번에 1,000건까지만.
 - **권한 누수**: 목록 쿼리에서 `VisibleProjects` 조건이 하나라도 빠지면 다른 프로젝트 작업이 보입니다. 모든 목록 API에 대해 "비멤버는 0건" 통합 테스트를 둡니다. jOOQ 쿼리 헬퍼를 거치지 않는 `select from work_packages`는 코드 리뷰 체크리스트에 넣습니다.
 - **계층 쿼리 성능**: 재귀 CTE는 깊이 10, 작업 10만 건까지 충분할 것으로 봅니다(추정). 느려지면 `work_package_hierarchies` 클로저 테이블을 추가하고, 부모를 바꿀 때 같은 트랜잭션에서 갱신합니다.
-- **백업·업그레이드**: Flyway는 시작할 때 마이그레이션을 적용합니다. 업그레이드 전에 pg_dump를 받고, 파괴적인 마이그레이션(컬럼 삭제)은 두 릴리스에 걸쳐 나눕니다.
+- **백업·업그레이드**: Flyway는 시작할 때 마이그레이션을 적용합니다. 업그레이드 전에 pg_dump를 받고, 파괴적인 마이그레이션(컬럼 삭제)은 두 릴리스에 걸쳐 나눕니다. 구현(5966874): "업그레이드 전에 pg_dump"를 운영자 절차가 아니라 앱이 합니다. `MigrateWithBackup`이 적용할 마이그레이션이 있는 기존 DB를 먼저 덤프하고(실패하면 마이그레이션 없이 시작 중단, 끄려면 `OPENPMS_BACKUP_BEFORE_UPGRADE=false`), 덤프는 `backups` 볼륨에 종류마다 5개. 이미지 스모크: V17을 되돌린 DB로 시작 → 덤프(170,430바이트) 뒤 V17 적용, `pg_restore --list`로 읽힘, 쓸 수 없는 폴더면 시작 실패·스키마 v16 유지. 남는 위험: 덤프가 같은 서버에 있고 첨부는 없으며, 복원은 손으로 합니다(`replica/deploy.md`).
 
 ---
 
@@ -689,14 +704,16 @@ S10–S12는 모달이라 라우트가 없습니다.
 조사는 끝났습니다(2026-10-11, 2c84a0d, `replica/fixes.md`: 실제 사용자 리뷰 137건·7곳, 고칠 계획 5개). 만든 것과 남은 것:
 
 - 1. 주간 공수 입력표(완료: 789bb9d·3f9d5c0): 원본의 시간 기록을 함께 들여옴(V17 `time_activities`·`time_entries`, 모듈 `time_tracking`, 권한 `time.*`, 경로 12개 — §2 설계 결정, §4.2 "시간 기록"). 화면 X10 내 공수, S08 시간 탭, X11 공수 보고서, 관리 · 달력과 날짜의 시간 기록 활동. 비용·단가·예산은 계속 범위 밖
-- 2. 템플릿 복사 때 새 시작일로 전체 일정 이동, 3. 업그레이드 안전장치, 4. 성능 예산, 5. 화면별 도움말 연결: 남음
+- 2. 템플릿 복사 때 새 시작일로 전체 일정 이동(완료: 2f7ffb9·b63eaa0): `POST /projects`(templateId)·`POST /projects/{id}/copy`의 선택 `startDate`
+- 3. 업그레이드 안전장치(완료: 5966874): 업그레이드 전 자동 pg_dump(실패하면 시작 중단), 관리 · 시스템 정보 X12와 지금 백업, 경로 2개(§4.2 "시스템 정보·백업"), 이미지에 PostgreSQL 17 클라이언트, 볼륨 `backups`
+- 4. 성능 예산, 5. 화면별 도움말 연결: 남음
 
 ---
 
 ## 7. 요약
 
 - **스택**: Spring Boot 4 + Java 21 · jOOQ + Flyway · PostgreSQL 17 · React 19 + Vite + TanStack · db-scheduler · 사내 SMTP · Docker Compose 셀프 호스팅
-- **규모**: 테이블 36개(+ 라이브러리 3개. 구현은 V17까지 자체 45개), API 경로 177개(설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1 + 비밀번호 만들기 1 + 전역 역할 배정 1 + 프로젝트 복사 1 + API 토큰·OpenAPI 8 + 웹훅 8 + 알림 건수 1 + 시간 기록 12. 실제 컨트롤러 매핑은 186개), 작업 13종(구현은 6종 + 요청 안 동기 처리)
+- **규모**: 테이블 36개(+ 라이브러리 3개. 구현은 V17까지 자체 45개), API 경로 179개(설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1 + 비밀번호 만들기 1 + 전역 역할 배정 1 + 프로젝트 복사 1 + API 토큰·OpenAPI 8 + 웹훅 8 + 알림 건수 1 + 시간 기록 12 + 시스템 정보 2 = 179. 실제 컨트롤러 매핑은 188개), 작업 13종(구현은 6종 + 요청 안 동기 처리)
 - **가장 위험한 세 가지**:
   1. 스케줄링 엔진: 근무일, lag, 자동 모드, 부모 파생, 전파, 순환 검출
   2. 쿼리 엔진: 필터 30여 종과 계층·그룹 합계를 권한 조건 아래에서 빠르게 처리

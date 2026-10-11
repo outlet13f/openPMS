@@ -1,7 +1,7 @@
 # 배포 안내 (openPMS 사내 서버 운영)
 
-- 작성: 2026-10-10 · 빌드: 11fb59b · 갱신: 2026-10-11 (384a2f9: 프록시 뒤 클라이언트 주소, SSO 사용자의 비밀번호 만들기 / 86e58a9: 마이그레이션 V11–V15, API 토큰, 웹훅, PDF 글꼴 / 99e0287: 마이그레이션 V16(Idempotency-Key), 웹훅 사내망 주소 막기 `OPENPMS_WEBHOOK_BLOCK_PRIVATE` / 3f9d5c0: 마이그레이션 V17(시간 기록), 새 모듈 `time_tracking`)
-- 기준 파일: `Dockerfile`, `compose.yaml`, `.env.example`, `.dockerignore`, `backend/src/main/resources/application.yml`, `backend/src/main/java/com/openpms/auth/FirstAdmin.java`, `frontend/vite.config.ts`, `backend/src/main/java/com/openpms/auth/ApiTokenFilter.java`, `backend/src/main/java/com/openpms/webhook/Webhooks.java`, `backend/src/main/java/com/openpms/common/IdempotencyFilter.java`, `backend/src/main/resources/fonts/`
+- 작성: 2026-10-10 · 빌드: 11fb59b · 갱신: 2026-10-11 (384a2f9: 프록시 뒤 클라이언트 주소, SSO 사용자의 비밀번호 만들기 / 86e58a9: 마이그레이션 V11–V15, API 토큰, 웹훅, PDF 글꼴 / 99e0287: 마이그레이션 V16(Idempotency-Key), 웹훅 사내망 주소 막기 `OPENPMS_WEBHOOK_BLOCK_PRIVATE` / 3f9d5c0: 마이그레이션 V17(시간 기록), 새 모듈 `time_tracking` / 5966874: 업그레이드 전 자동 DB 백업과 관리 · 시스템 정보, 볼륨 `backups`, 이미지에 PostgreSQL 17 클라이언트, `OPENPMS_BACKUP_*`)
+- 기준 파일: `Dockerfile`, `compose.yaml`, `.env.example`, `.dockerignore`, `backend/src/main/resources/application.yml`, `backend/src/main/java/com/openpms/auth/FirstAdmin.java`, `frontend/vite.config.ts`, `backend/src/main/java/com/openpms/auth/ApiTokenFilter.java`, `backend/src/main/java/com/openpms/webhook/Webhooks.java`, `backend/src/main/java/com/openpms/common/IdempotencyFilter.java`, `backend/src/main/resources/fonts/`, `backend/src/main/java/com/openpms/system/Backups.java`·`MigrateWithBackup.java`·`SystemController.java`(5966874)
 - 이 문서는 위 파일에 실제로 있는 것만 적습니다. 파일이 바뀌면 이 문서도 같이 고칩니다.
 
 ## 구성
@@ -12,18 +12,19 @@
 | `db` 컨테이너 | PostgreSQL 17 (`docker.io/library/postgres:17`). 호스트에 포트를 열지 않고 `app`만 접속합니다. |
 | 볼륨 `db` | 데이터베이스 파일 (`/var/lib/postgresql/data`) |
 | 볼륨 `files` | 첨부 파일 (`/data/files`) |
+| 볼륨 `backups` | 앱이 받은 DB 덤프 (`/data/backups`, 5966874). 업그레이드 전 자동 백업과 관리 · 시스템 정보의 **지금 백업** |
 
 ```
 [사용자 브라우저] --HTTPS--> [사내 리버스 프록시: TLS]
                                    |
                                    v  127.0.0.1:8090
-                     [app: SPA + /api/v1, 예약 작업, /data/files]
-                                   |
+                     [app: SPA + /api/v1, 예약 작업, /data/files, /data/backups]
+                                   |   (pg_dump: 업그레이드 전·지금 백업)
                                    v
                      [db: PostgreSQL 17]
 ```
 
-- 이미지는 3단계로 만듭니다. 웹 화면 빌드(Node 24) → jar 빌드(JDK 21) → 실행용 이미지(JRE 21만).
+- 이미지는 3단계로 만듭니다. 웹 화면 빌드(Node 24) → jar 빌드(JDK 21) → 실행용 이미지(JRE 21, 5966874부터 PostgreSQL 17 클라이언트 `pg_dump`·`pg_restore`도. Ubuntu 배포판의 클라이언트는 버전이 낮아 17 서버를 덤프하지 못하므로 PostgreSQL 프로젝트의 apt 저장소 `apt.postgresql.org`(서명 키 ACCC4CF8)에서 `postgresql-client-17`을 설치).
 - 두 컨테이너 모두 `restart: unless-stopped`입니다. 서버를 재부팅하면 다시 뜹니다(Docker 데몬 또는 Podman 서비스가 켜져 있을 때).
 - `app`은 `db`의 헬스 체크(`pg_isready`)가 통과한 뒤에 시작합니다.
 
@@ -34,8 +35,8 @@
 | 컨테이너 런타임 | Docker + Compose, 또는 Podman (`podman compose`) |
 | 빌드 메모리 | 2GB면 충분합니다. Gradle 힙을 768MB로 제한해 두었습니다. |
 | 실행 메모리 | JVM은 컨테이너 메모리의 75%까지 씁니다(`-XX:MaxRAMPercentage=75`). |
-| 디스크 | 이미지 약 405MB(2026-10-10 측정. 그 뒤 PDF용 글꼴 파일 2개 약 5.4MB와 PDFBox가 jar에 더해짐, 다시 재지 않음), 그 밖에 DB와 첨부 파일, 백업 공간. 웹훅 전송 기록(`webhook_deliveries`)은 끝난 지 30일 지나면 `token-cleanup`이 지웁니다(dfde416, 아래 "웹훅과 API 토큰") |
-| 빌드 시 네트워크 | 베이스 이미지(node, eclipse-temurin, postgres)와 npm·Gradle 의존성을 내려받습니다. 사내 미러를 쓴다면 미리 맞춰 둡니다. |
+| 디스크 | 이미지 약 405MB(2026-10-10 측정. 그 뒤 PDF용 글꼴 파일 2개 약 5.4MB와 PDFBox가 jar에 더해짐, 다시 재지 않음), 그 밖에 DB와 첨부 파일, 백업 공간(5966874부터 `backups` 볼륨에 덤프가 종류마다 5개까지, 덤프 하나는 대략 DB 크기. 아래 "백업과 복원"). 웹훅 전송 기록(`webhook_deliveries`)은 끝난 지 30일 지나면 `token-cleanup`이 지웁니다(dfde416, 아래 "웹훅과 API 토큰") |
+| 빌드 시 네트워크 | 베이스 이미지(node, eclipse-temurin, postgres)와 npm·Gradle 의존성을 내려받습니다. 5966874부터 실행용 이미지 단계가 Ubuntu 패키지 저장소, `apt.postgresql.org`, `www.postgresql.org`(서명 키)에도 접속합니다. 사내 미러를 쓴다면 미리 맞춰 둡니다. |
 | 리버스 프록시 | TLS를 끝내는 사내 프록시(nginx 등). 업로드 한도는 30MB 이상으로 둡니다(첨부 한도 25MB, 앱의 요청 한도 30MB). |
 | SMTP | 사내 SMTP 릴레이. 초대·비밀번호 재설정·알림 메일에 씁니다. |
 | 나가는 네트워크(웹훅) | 웹훅을 쓰면 `app` 컨테이너가 받는 쪽 주소(http/https)로 나갈 수 있어야 합니다. 사내 방화벽의 egress 허용, DNS, https면 JRE가 그 인증서를 믿어야 합니다(사내 CA를 넣는 단계는 이미지에 없음). 웹훅을 안 쓰면 필요 없습니다. |
@@ -104,6 +105,8 @@
 | `OPENPMS_TRUSTED_PROXIES` | `X-Forwarded-For`·`X-Forwarded-Proto`를 믿을 프록시 주소(정규식). 넣으면 기본값을 통째로 바꿉니다 | 주석(기본값 사용) | 선택. 기본: 이 호스트(`127.x`, `::1`), Docker 브리지(`172.16`–`172.31.x`), Podman 네트워크(`10.88.x`, `10.89.x`). 아래 "리버스 프록시·TLS" |
 | `OPENPMS_FORWARD_HEADERS` | 프록시 헤더 처리 방식. `native`(기본)는 위 주소에서 온 헤더를 씀, `none`은 헤더를 무시 | 주석(`native`) | 선택. 프록시 없이 앱에 바로 붙을 때만 `none` |
 | `OPENPMS_WEBHOOK_BLOCK_PRIVATE` | `true`면 웹훅을 루프백·사설 주소(127.x, 10.x, 172.16–31.x, 192.168.x, 100.64.0.0/10, fc00::/7, 0.0.0.0)로 보내지 않음. 등록할 때 422, 보낼 때도 DNS를 다시 풀어 막고 기록에 "보내지 않음: …". 링크 로컬(169.254.x, fe80:, metadata.google.internal)은 이 값과 상관없이 늘 막음 | 주석(`false`) | 선택(06b48f5). 받는 사내 시스템이 사설 주소에 있으면 켤 수 없음. 아래 "웹훅" |
+| `OPENPMS_BACKUP_BEFORE_UPGRADE` | `true`면 시작할 때 스키마가 이미 있고 적용할 마이그레이션이 있으면 먼저 `pg_dump`로 덤프하고, 실패하면 마이그레이션하지 않고 시작을 멈춤. `false`면 덤프 없이 마이그레이션 | 주석(`true`) | 선택(5966874). `false`는 따로 덤프를 받아 둔 뒤 백업 실패를 우회할 때만. `dev` 프로필 기본은 `false` |
+| `OPENPMS_BACKUP_KEEP` | 종류(업그레이드 전, 직접 백업)마다 남길 최신 덤프 수. 새 덤프를 쓴 뒤 오래된 것을 지움 | 주석(`5`) | 선택(5966874). 1보다 작으면 1 |
 
 `.env`에 넣지 않는 값(compose와 이미지가 정합니다):
 
@@ -112,6 +115,7 @@
 | `OPENPMS_DB_URL` | `jdbc:postgresql://db:5432/openpms` | `compose.yaml` |
 | `OPENPMS_DB_USER` | `openpms` | `compose.yaml` |
 | `OPENPMS_FILES_DIR` | `/data/files` | `Dockerfile` |
+| `OPENPMS_BACKUP_DIR` | `/data/backups` | `Dockerfile`(볼륨 선언, `compose.yaml`이 이름 있는 볼륨 `backups`를 붙임, 5966874). `dev` 프로필 기본은 `/tmp/openpms-backups` |
 
 주의: `.env`에 변수 줄을 두고 값을 비우면 빈 문자열이 들어갑니다. `application.yml`의 기본값(예: 보내는 사람 `openPMS <no-reply@example.com>`)은 변수가 아예 없을 때만 쓰입니다. 필수 값은 반드시 채웁니다.
 
@@ -319,9 +323,30 @@
 
 ## 백업과 복원
 
-백업 대상은 두 가지입니다. **DB 덤프**와 **`files` 볼륨(첨부 파일)**. 둘을 같은 시각에 받습니다.
+백업 대상은 두 가지입니다. **DB 덤프**와 **`files` 볼륨(첨부 파일)**. 5966874부터 DB 덤프는 앱이 스스로도 받습니다(업그레이드 전 자동, 관리 · 시스템 정보의 **지금 백업**). 매일 정해진 시각에 받는 기능은 없으므로 매일 백업은 호스트 cron으로 받고, 첨부 파일도 따로 받습니다.
 
-### DB 백업
+### 앱이 받는 DB 덤프 (5966874)
+
+| 종류 | 언제 | 파일 이름 |
+| --- | --- | --- |
+| 업그레이드 전 | 시작할 때 Flyway의 현재 버전이 있고(스키마가 있음) 적용할 마이그레이션이 있으며 `OPENPMS_BACKUP_BEFORE_UPGRADE`가 true이면, 마이그레이션 직전에(`system/MigrateWithBackup`, Flyway 마이그레이션 전략) | `openpms-before-upgrade-v{현재}-to-v{목표}-{yyyyMMdd-HHmmss-SSS}.dump` |
+| 직접 백업 | 관리 · 시스템 정보(`/admin/system`, X12)의 **지금 백업**(`POST /api/v1/admin/system/backup`) | `openpms-manual-manual-{yyyyMMdd-HHmmss-SSS}.dump` |
+
+- `system/Backups`: `pg_dump --format=custom --no-owner`. 호스트·포트·DB 이름은 JDBC 주소(`OPENPMS_DB_URL`)에서, 사용자는 `OPENPMS_DB_USER`, 비밀번호는 환경 변수 `PGPASSWORD`로 넘깁니다(명령줄에 나오지 않음). 시각은 UTC.
+- `<이름>.part`로 쓰고 끝나면 원자적으로 이름을 바꿉니다. 실패하면 `.part`를 지웁니다.
+- 폴더는 `OPENPMS_BACKUP_DIR`(이미지 기본 `/data/backups`, 볼륨 `backups`). 종류마다 최신 `OPENPMS_BACKUP_KEEP`개(기본 5)를 남기고 오래된 것을 지웁니다. 이름 규칙에 맞지 않는 파일(손으로 넣은 덤프)은 건드리지 않습니다.
+- 30분 제한, 한 번에 하나(진행 중에 또 누르면 409). 실패하면 pg_dump의 마지막 출력을 메시지에 담습니다(503).
+- 업그레이드 전 덤프가 실패하면 시작이 "업그레이드 전 백업에 실패해 마이그레이션을 하지 않았습니다. … 원인을 고치거나, 따로 백업을 받은 뒤 OPENPMS_BACKUP_BEFORE_UPGRADE=false로 다시 시작하세요."로 멈추고 아무것도 마이그레이션하지 않습니다. 새 설치(스키마 없음)와 적용할 것이 없는 시작은 덤프하지 않습니다.
+- **`backups` 볼륨은 같은 서버에 있습니다.** 정기적으로(최소 매주, 업그레이드 직후 바로) 서버 밖으로 복사합니다.
+
+```bash
+docker compose exec -T app tar czf - -C /data/backups . > backups-$(date +%F).tar.gz
+```
+
+- 디스크: 덤프 하나는 대략 DB 크기입니다(관리 · 시스템 정보의 데이터베이스 · 크기). 볼륨에는 최대 2 × KEEP개가 쌓입니다. 공간이 모자라면 업그레이드 전 백업이 실패하고 앱이 시작하지 않습니다.
+- 한계: 덤프는 같은 서버에 있고(서버 밖 보관은 운영자 몫), 첨부 파일은 들어가지 않고, 매일 일정은 없고(업그레이드 전과 지금 백업뿐), 복원은 손으로 합니다.
+
+### DB 백업 (손으로, 매일 cron)
 
 `compose.yaml` 머리말의 명령입니다. 저장소 최상위 폴더에서 실행합니다.
 
@@ -331,7 +356,7 @@ docker compose exec -T db pg_dump -U openpms -Fc openpms > openpms-$(date +%F).d
 
 - `-Fc`는 PostgreSQL 사용자 지정 형식(압축)입니다. 복원은 `pg_restore`로 합니다.
 - 파일로 받을 때는 `-T`(TTY 끄기)를 붙입니다. `compose.yaml` 머리말 주석에도 `-T`가 있습니다. TTY가 붙으면 바이너리 덤프가 깨질 수 있습니다.
-- 매일 받도록 호스트 cron에 등록합니다(설계: `architecture.md` §1 배포 구성).
+- 매일 받도록 호스트 cron에 등록합니다(설계: `architecture.md` §1 배포 구성). 앱의 자동 백업은 업그레이드 때와 **지금 백업**을 누를 때만 생깁니다.
 
 ### 첨부 파일 백업
 
@@ -339,17 +364,31 @@ docker compose exec -T db pg_dump -U openpms -Fc openpms > openpms-$(date +%F).d
 docker compose exec -T app tar czf - -C /data/files . > files-$(date +%F).tar.gz
 ```
 
+DB 덤프(앱이 받는 것 포함)에는 첨부 파일이 들어가지 않습니다.
+
 ### DB 복원
 
-앱을 멈추고, DB를 새로 만든 뒤 덤프를 넣습니다.
+앱을 멈추고 덤프를 넣은 뒤, **덤프의 스키마 버전에 맞는 이미지**로 다시 띄웁니다. 업그레이드 전 덤프는 이름의 `v{현재}`가 그 버전입니다(`…-v16-to-v17-…`이면 V16 스키마).
 
 ```bash
+# 1. 볼륨에서 덤프 꺼내기 (앱이 뜨지 않으면: docker compose run --rm --no-deps -T --entrypoint cat app /data/backups/<파일> > restore.dump)
+docker compose exec -T app cat /data/backups/<파일> > restore.dump
+# 2. 앱을 멈추고 넣기
 docker compose stop app
+docker compose exec -T db pg_restore -U openpms -d openpms --clean --if-exists --no-owner < restore.dump
+# 3. 덤프의 스키마 버전에 맞는 이미지로 시작(업그레이드를 되돌리면 이전 이미지)
+docker compose up -d
+```
+
+DB를 아예 비우고 넣으려면 2단계 대신:
+
+```bash
 docker compose exec -T db dropdb -U openpms openpms
 docker compose exec -T db createdb -U openpms -O openpms openpms
 docker compose exec -T db pg_restore -U openpms -d openpms --no-owner < openpms-2026-10-10.dump
-docker compose start app
 ```
+
+새 이미지로 띄우면 앱이 다시 업그레이드 전 백업을 받고 마이그레이션합니다.
 
 복원 연습(운영 DB를 건드리지 않음): 새 DB를 만들어 넣고 확인한 뒤 지웁니다.
 
@@ -360,6 +399,8 @@ docker compose exec -T db psql -U openpms -d restore_check -c "select count(*) f
 docker compose exec -T db dropdb -U openpms restore_check
 ```
 
+덤프를 읽을 수 있는지만 보려면 `docker compose exec app pg_restore --list /data/backups/<파일>`(앱 이미지에 `pg_restore`가 있음).
+
 ### 첨부 파일 복원
 
 ```bash
@@ -368,7 +409,9 @@ docker compose exec -T app tar xzf - -C /data/files < files-2026-10-10.tar.gz
 
 ## 업그레이드
 
-1. **먼저 백업합니다**(DB와 첨부 파일 모두).
+업그레이드는 새 이미지로 바꾸고 다시 시작하는 한 가지 절차입니다(5966874). 스키마가 바뀌면 앱이 먼저 DB를 덤프합니다(위 "앱이 받는 DB 덤프").
+
+1. 첨부 파일을 백업하고, 되돌릴 때 쓸 지금 이미지를 남겨 둡니다(`docker tag` 또는 지금 커밋을 적어 둠). `OPENPMS_BACKUP_BEFORE_UPGRADE=false`로 운영 중이면 DB도 손으로 백업합니다.
 2. 새 소스를 받습니다(`git pull` 등).
 3. 이미지를 다시 빌드하고 띄웁니다.
 
@@ -383,7 +426,12 @@ docker compose exec -T app tar xzf - -C /data/files < files-2026-10-10.tar.gz
    curl -s http://127.0.0.1:8090/actuator/health
    ```
 
-- 마이그레이션이 실패하면 앱이 뜨지 않습니다. 원인을 고치거나, 이전 소스로 되돌려 빌드하고 백업에서 DB를 복원합니다.
+   적용할 마이그레이션이 있으면 그 전에 `N migration(s) to apply (vX -> vY): backing up the database first`와 `Backup written: /data/backups/openpms-before-upgrade-….dump (N bytes)`가 남습니다.
+5. 관리 · 시스템 정보에서 버전·빌드 시각, 현재 버전, 적용 대기 0, 최근 적용에 실패 없음, 업그레이드 전 백업 파일을 확인하고, 그 파일을 서버 밖으로 복사합니다.
+
+- 업그레이드 전 백업이 실패하면 앱이 마이그레이션 없이 멈춥니다. 공간·권한(`backups` 볼륨, uid 10001)·DB 접속을 고쳐 다시 띄우거나, 손으로 덤프를 받은 뒤 `OPENPMS_BACKUP_BEFORE_UPGRADE=false`로 띄우고 시작한 뒤 되돌립니다. DB는 그대로이므로 이전 이미지로 띄울 수도 있습니다.
+- 마이그레이션이 실패하면 앱이 뜨지 않습니다. 원인을 고치거나, 업그레이드 전 덤프로 DB를 복원하고 이전 이미지로 띄웁니다(위 "DB 복원").
+- 5966874 기준으로 올리면 새 마이그레이션은 없습니다(V17 그대로). 그래서 이번 시작에는 자동 백업이 생기지 않고 다음 마이그레이션부터 동작합니다. 바뀌는 것: 실행용 이미지에 PostgreSQL 17 클라이언트(빌드 때 `apt.postgresql.org` 접속), 새 볼륨 `backups`(새 `compose.yaml`로 `docker compose up -d`하면 생김. compose 파일을 직접 고쳐 쓰면 `app`에 `- backups:/data/backups`와 `volumes:`의 `backups:`를 더함), 선택 환경 변수 `OPENPMS_BACKUP_BEFORE_UPGRADE`·`OPENPMS_BACKUP_KEEP`, 관리 메뉴 묶음 **시스템** · **시스템 정보**. 올린 뒤 시스템 정보에서 pg_dump 버전이 보이는지 보고 **지금 백업**으로 첫 덤프를 받아 둡니다(아래 재검증 8).
 - 3f9d5c0 기준으로 올리면 V17 하나가 적용됩니다(시간 기록: `time_activities`·`time_entries` 테이블과 인덱스·트리거, 기본 활동 7개(개발(기본)·설계·회의·테스트·문서·관리·기타), 기본 역할 "프로젝트 관리자"에 `time.log`·`time.view`·`time.manage`, "멤버"에 `time.log`·`time.view`, `projects_known_modules` 검사에 `time_tracking`을 넣고 **모든 기존 프로젝트에서 시간 기록 모듈을 켬**). 테이블을 더하고, 역할 권한 배열과 프로젝트의 모듈 배열에 값을 더할 뿐 기존 데이터를 지우거나 바꾸지 않습니다. 역할 권한은 그 역할에 `time.log`가 아직 없을 때만 더하고, 이름이 아니라 V3 시드의 고정 id로 찾으므로 이름을 바꾼 기본 역할에도 들어갑니다(새로 만든 역할에는 들어가지 않음). 99e0287 이미지로 만든 V16 DB에서 올려 데이터 유지, 기존 프로젝트에 `time_tracking`, 활동 7개를 확인했습니다(아래 재검증 7). 새 환경 변수는 없습니다.
   - 사용자에게 보이는 변화: 모든 프로젝트 메뉴에 **공수 보고서**(시간 기록 보기 권한이 있는 사람), 작업 상세에 **시간** 탭, 전역 메뉴에 **내 공수**. 시간 기록을 쓰지 않을 프로젝트는 프로젝트 설정 → 모듈에서 **시간 기록**을 끄고, 인스턴스 전체에서 쓰지 않으려면 역할 권한에서 시간 기록 권한을 뺍니다. 올리기 전에 프로젝트 관리자에게 알립니다.
   - 주의(이번 작업에서 찾은 것): V17 첫 초안(커밋하지 않음)은 `projects_known_modules` 검사 제약을 넓히지 않고 `time_tracking`을 켜려 해서, 프로젝트가 있는 기존 DB에서는 실패했을 것입니다. 커밋된 V17(789bb9d)은 제약을 지우고 다시 만들므로 운영자가 따로 할 일은 없습니다. 앞으로 모듈을 더하는 마이그레이션도 이 검사 제약을 함께 바꿔야 하고, 기존 DB를 올려 보는 점검(아래 재검증 7처럼)이 이런 문제를 잡습니다.
@@ -433,12 +481,15 @@ curl -s http://127.0.0.1:8090/actuator/health
 | 연동이 401 "API 토큰이 올바르지 않거나 만료되었습니다." | 토큰을 폐기했거나 만료됐거나, 만든 사람이 잠김·삭제됨. 관리 → API와 웹훅에서 끈 경우는 "API 토큰을 쓰지 않도록 설정되어 있습니다." |
 | 연동이 403 "읽기 전용 토큰입니다." 또는 "…로그인·비밀번호·토큰·연동 설정을 다룰 수 없습니다." | 읽기·쓰기 토큰을 새로 만들거나, 토큰으로 부를 수 없는 경로입니다(dfde416부터 토큰 스위치·웹훅 설정도 포함, 관리자 토큰도 403). 그 밖의 403은 만든 사람에게 그 권한이 없는 것 |
 | 연동이 429 | 토큰 하나로 분당 300회를 넘음. 1분 뒤 풀림 |
+| 업그레이드 뒤 앱이 시작하지 않고 로그에 "업그레이드 전 백업에 실패해 마이그레이션을 하지 않았습니다." | DB는 바뀌지 않음. 뒤의 원인: "백업 파일을 쓸 수 없습니다(…)"면 디스크 공간·`backups` 볼륨 권한(uid 10001), "pg_dump가 실패했습니다: …"면 pg_dump 출력(DB 접속 등), "pg_dump를 실행할 수 없습니다"면 클라이언트 없는 이미지, "30분 안에 끝나지 않았습니다"면 큰 DB. 고치고 `docker compose up -d`. 바로 못 고치면 손으로 덤프한 뒤 `OPENPMS_BACKUP_BEFORE_UPGRADE=false`로 띄우고, 시작한 뒤 그 줄을 지우고 다시 `docker compose up -d` |
+| 관리 · 시스템 정보의 **지금 백업**이 회색, pg_dump "실행할 수 없음 — 이 환경에서는 백업할 수 없습니다(운영 이미지에는 들어 있음)" | `pg_dump`가 없는 환경(개발, 클라이언트를 뺀 이미지). 저장소 `Dockerfile`로 만든 이미지에는 있음. 이대로면 업그레이드 전 백업도 실패함 |
+| **지금 백업**이 "백업하지 못했습니다."(503) / "다른 백업이 진행 중입니다. 끝난 뒤 다시 시도하세요."(409) | 503은 위 줄과 같은 원인(메시지에 pg_dump 출력). 409는 다른 백업이 진행 중이므로 기다림 |
 | PDF 내보내기가 422 | 1,000건 넘음. 필터로 줄이거나 CSV·Excel로 |
 | `.env`의 DB 비밀번호를 바꿨더니 앱이 DB에 못 붙음 | PostgreSQL 이미지는 `db` 볼륨을 처음 만들 때만 비밀번호를 정합니다. 바꾸려면 DB 안에서 `ALTER USER openpms PASSWORD '...'`를 먼저 하고 `.env`를 같은 값으로 고칩니다. |
 
 ## 보안 메모
 
-- 앱은 권한 없는 사용자 `openpms`(uid 10001)로 돕니다. jar(`/app`)는 root 소유이고, 이 사용자에게 넘긴 폴더는 첨부 파일용 `/data/files`뿐입니다.
+- 앱은 권한 없는 사용자 `openpms`(uid 10001)로 돕니다. jar(`/app`)는 root 소유이고, 이 사용자에게 넘긴 폴더는 첨부 파일용 `/data/files`와 백업용 `/data/backups`(5966874)뿐입니다.
 - 비밀값(DB·SMTP 비밀번호)은 `.env`에만 둡니다. `.env`는 git에서 제외되고(`.gitignore`), `.dockerignore`로 이미지에도 들어가지 않습니다. 저장소에는 값이 빈 `.env.example`만 있습니다.
 - `frontend/.env.production`은 비밀값이 아닙니다. 화면을 실제 API에 붙이는 설정(`VITE_API=http`) 하나뿐입니다.
 - 운영 웹 빌드는 `VITE_API=http`가 없으면 빌드를 거부합니다(`vite.config.ts`). 가짜 데이터 계층이 실린 이미지가 나가는 일을 막습니다.
@@ -449,6 +500,7 @@ curl -s http://127.0.0.1:8090/actuator/health
 - API 토큰은 원문을 저장하지 않습니다(SHA-256). 토큰은 비밀번호처럼 다루라고 사용자에게 안내합니다. 토큰으로 한 변경은 활동 기록에 만든 사람으로 남고, 토큰으로 했다는 표시는 없습니다.
 - **웹훅 서명 키는 DB(`webhooks.secret`)에 평문으로 저장됩니다**(HMAC 계산에 원문이 필요). SSO 클라이언트 시크릿과 같이 DB 덤프를 비밀값처럼 다룹니다. 샜다고 의심되면 **서명 키 새로 만들기**.
 - 웹훅 받는 주소는 관리자가 정하며, 기본으로는 링크 로컬·메타데이터 주소 말고는 사내 주소 제한이 없습니다. `OPENPMS_WEBHOOK_BLOCK_PRIVATE=true`면 루프백·사설 주소도 막습니다(06b48f5, 위 "웹훅"). 그 밖에는 관리자 계정 관리와 egress 방화벽이 방어선입니다.
+- `backups` 볼륨의 덤프에는 DB 전체(SSO 시크릿·웹훅 서명 키 평문 포함)가 들어 있습니다. 볼륨과 서버 밖 사본의 접근을 줄이고 사본은 암호화된 곳에 둡니다. 앱은 DB 비밀번호를 `PGPASSWORD` 환경 변수로 `pg_dump`에 넘깁니다(명령줄에 보이지 않음).
 - `idempotency_keys.body`에는 만들기 요청의 응답(만든 작업·코멘트 내용)이 하루 동안 남습니다. DB 덤프를 비밀값처럼 다루는 기존 원칙에 포함됩니다.
 - 번들 글꼴(Pretendard, SIL OFL 1.1)의 라이선스 원문을 지우지 않습니다(위 "PDF 내보내기와 글꼴").
 
@@ -572,3 +624,18 @@ curl -s http://127.0.0.1:8090/actuator/health
 | Excel | 내려받은 파일 이름 "공수 2026-10-01~2026-10-11.xlsx" |
 
 V17 첫 초안의 검사 제약 문제(위 "업그레이드")는 이 점검 전에 고친 것이고, 이 점검의 V16 → V17 업그레이드가 그 수정을 확인합니다. 사내 근태 시스템이 API 토큰으로 공수를 가져가는 연동은 배포 때 위 "웹훅과 API 토큰" 순서대로 확인합니다.
+
+### 2026-10-11 재검증 8 (5966874 기준 이미지: 업그레이드 전 자동 백업, 관리 · 시스템 정보)
+
+5966874 코드로 만든 이미지를 같은 스크래치 compose(포트 18090)로 띄워 확인했습니다. 이미지 안 `pg_dump` 17.11, `pg_restore` 있음.
+
+| 항목 | 결과 |
+| --- | --- |
+| 새 설치 | 빈 스키마에 마이그레이션 17개 적용, 백업 파일 없음(새 설치는 덤프하지 않음) |
+| 지금 백업 | 관리 · 시스템 정보의 **지금 백업** → `openpms-manual-…dump`(약 178KB), 화면 목록에 나옴 |
+| 업그레이드 전 백업 | DB에서 V17을 되돌림(V17의 테이블 두 개 삭제, 이력 행 삭제) → 앱 재시작 → 로그 `1 migration(s) to apply (v16 -> v17): backing up the database first`, `Backup written: …before-upgrade-v16-to-v17-….dump (170430 bytes)` → V17 적용 |
+| 덤프 읽기 | `pg_restore --list`로 위 덤프를 읽음, 테이블 데이터 47개(`projects`, `work_packages` 포함) |
+| 백업 실패 | 다시 V17을 되돌리고 `OPENPMS_BACKUP_DIR=/proc/no-backups`로 시작 → "업그레이드 전 백업에 실패해 마이그레이션을 하지 않았습니다. …"로 시작 실패, 스키마는 V16 그대로 |
+| 다시 보통으로 | 환경 변수를 빼고 다시 시작 → 백업한 뒤 마이그레이션 |
+
+`backups` 볼륨을 서버 밖으로 복사하는 일은 이 점검에서 하지 않았습니다. 복원은 문서 점검 뒤 같은 이미지·스크래치 compose에서 위 "DB 복원" 절차 그대로(덤프 꺼내기 → 앱 정지 → `pg_restore --clean --if-exists --no-owner` → 앱 시작) 실행해, 지운 작업과 바꾼 프로젝트 이름이 돌아오는 것을 확인했습니다(종료 코드 0, 현재 버전 17). 복원 연습(새 DB에 넣고 수 확인 후 삭제)도 같은 날 확인했습니다.
