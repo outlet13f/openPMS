@@ -14,13 +14,15 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Requests with "Authorization: Bearer opms_…" act as the token's owner for that request only (no session, no cookie, so
- * no CSRF token either). A read token may only read; no token reaches sign-in, password or token management; each token
- * gets 300 requests a minute.
+ * no CSRF token either). A read token may only read; no token reaches sign-in, password or token management, nor the
+ * integration settings (token switch, webhooks); each token gets 300 requests a minute.
  */
 public class ApiTokenFilter extends OncePerRequestFilter {
     public static final String ATTRIBUTE = "openpms.apiToken";
     private static final Set<String> READ = Set.of("GET", "HEAD", "OPTIONS");
-    private static final List<String> CLOSED = List.of("/api/v1/auth/", "/api/v1/me/password", "/api/v1/me/api-tokens", "/api/v1/admin/api-tokens");
+    /** Sign-in, passwords, tokens, and the integration settings themselves (token switch, webhooks) stay with a signed-in person. */
+    private static final List<String> CLOSED = List.of("/api/v1/auth/", "/api/v1/me/password", "/api/v1/me/api-tokens", "/api/v1/admin/api-tokens",
+            "/api/v1/admin/settings/api", "/api/v1/admin/webhooks", "/api/v1/admin/webhook-deliveries");
 
     private final ApiTokens tokens;
     private final RateLimiter limiter;
@@ -54,7 +56,7 @@ public class ApiTokenFilter extends OncePerRequestFilter {
             return;
         }
         if (CLOSED.stream().anyMatch(path::startsWith) && !path.equals("/api/v1/auth/me")) {
-            SecurityConfig.problem(res, json, 403, "API 토큰으로는 로그인·비밀번호·토큰을 다룰 수 없습니다.");
+            SecurityConfig.problem(res, json, 403, "API 토큰으로는 로그인·비밀번호·토큰·연동 설정을 다룰 수 없습니다.");
             return;
         }
         if ("read".equals(bearer.scope()) && !READ.contains(req.getMethod()) && !path.equals("/api/v1/work-packages/query")

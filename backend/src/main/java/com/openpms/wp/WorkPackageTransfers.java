@@ -33,8 +33,11 @@ public class WorkPackageTransfers {
     private final Assembler assembler;
     private final Journals journals;
     private final CustomFields customFields;
+    private final com.openpms.webhook.Webhooks webhooks;
 
-    public WorkPackageTransfers(DSLContext db, WorkPackageService service, Assembler assembler, Journals journals, CustomFields customFields) {
+    public WorkPackageTransfers(DSLContext db, WorkPackageService service, Assembler assembler, Journals journals, CustomFields customFields,
+                                com.openpms.webhook.Webhooks webhooks) {
+        this.webhooks = webhooks;
         this.db = db;
         this.service = service;
         this.assembler = assembler;
@@ -174,7 +177,9 @@ public class WorkPackageTransfers {
             w.setLockVersion(w.getLockVersion() + 1);
             w.setUpdatedAt(OffsetDateTime.now());
             w.store();
-            journals.write(ctx, w, changes, "", null, false);
+            var j = journals.write(ctx, w, changes, "", null, false);
+            // a move is a change of the item (its project); webhooks hear it as an update
+            webhooks.enqueue(ctx, w, "work_package.updated", java.util.Map.of("changes", com.openpms.webhook.Webhooks.changes(journals.toDto(ctx, j, target))));
         }
         // notifications keep a copy of the project for their filters
         db.update(NOTIFICATIONS).set(NOTIFICATIONS.PROJECT_ID, target.id())

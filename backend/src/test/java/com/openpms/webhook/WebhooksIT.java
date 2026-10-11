@@ -109,6 +109,8 @@ class WebhooksIT {
                 .andExpect(status().isForbidden());
         send(admin, post("/api/v1/admin/webhooks"), "{\"name\":\"x\",\"url\":\"ftp://example\",\"events\":[\"work_package.created\"]}")
                 .andExpect(status().isUnprocessableContent()).andExpect(jsonPath("$.errors[0].field").value("url"));
+        send(admin, post("/api/v1/admin/webhooks"), "{\"name\":\"x\",\"url\":\"http://169.254.169.254/latest\",\"events\":[\"work_package.created\"]}")
+                .andExpect(status().isUnprocessableContent());
         var made = json.readTree(send(admin, post("/api/v1/admin/webhooks"), "{\"name\":\"배포 알림\",\"url\":\"" + url("/hook")
                 + "\",\"events\":[\"work_package.created\",\"work_package.commented\"],\"projectIds\":[\"" + project + "\"]}")
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());

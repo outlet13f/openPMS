@@ -66,7 +66,7 @@ test.describe("F03 그룹화와 합계", () => {
     await viewMenu(page, ["합계 표시"]);
     await expect(table.getByText("전체 합계")).toHaveCount(0);
   });
-  test("F03-G3 highlighting: whole rows in the status colour, or the priority and due date cells", async ({ page }) => {
+  test("F03-G7 highlighting: whole rows in the status colour, or the priority and due date cells", async ({ page }) => {
     await page.goto("/projects/web-platform/work-packages");
     await viewMenu(page, ["강조 표시", "행 색: 상태"]);
     const row = page.getByRole("row").filter({ hasText: "화면 설계 검토" });

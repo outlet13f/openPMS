@@ -92,6 +92,10 @@ class ApiTokensIT {
         var write = issue(admin, "write");
         mvc.perform(patch("/api/v1/work-packages/3").header("Authorization", "Bearer " + write).contentType(MediaType.APPLICATION_JSON).content(change))
                 .andExpect(status().isOk());
+        // not even an administrator's token reaches the integration settings
+        mvc.perform(get("/api/v1/admin/webhooks").header("Authorization", "Bearer " + write)).andExpect(status().isForbidden());
+        mvc.perform(put("/api/v1/admin/settings/api").header("Authorization", "Bearer " + write).contentType(MediaType.APPLICATION_JSON).content("{\"tokensEnabled\":true}"))
+                .andExpect(status().isForbidden());
         // a member's token has the member's rights
         var member = issue(login("haneul.lee@openpms.local"), "write");
         mvc.perform(get("/api/v1/admin/users").header("Authorization", "Bearer " + member)).andExpect(status().isForbidden());
