@@ -16,7 +16,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Session login with an HttpOnly cookie (Spring Session JDBC) and a CSRF cookie token for the SPA
- * (architecture.md §1 인증). Everything under /api needs a session except signing in and the token flows.
+ * (architecture.md §1 인증). Everything under /api needs a session except signing in and the token flows; integrations send
+ * a personal API token instead (ApiTokenFilter).
  */
 @Configuration
 public class SecurityConfig {
@@ -31,9 +32,12 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http, SecurityContextRepository repo, JsonMapper json, OidcLogin oidc) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http, SecurityContextRepository repo, JsonMapper json, OidcLogin oidc, ApiTokens tokens,
+                                           RateLimiter limiter) throws Exception {
         http
-                .csrf(csrf -> csrf.spa())
+                // a request with an API token carries no cookie, so there is nothing for CSRF to protect (ApiTokenFilter)
+                .csrf(csrf -> csrf.spa().ignoringRequestMatchers(ApiTokenFilter::isBearer))
+                .addFilterBefore(new ApiTokenFilter(tokens, limiter, json), org.springframework.security.web.csrf.CsrfFilter.class)
                 .securityContext(sc -> sc.securityContextRepository(repo))
                 .sessionManagement(s -> s.sessionFixation(f -> f.changeSessionId()))
                 // an API has no page to return to after signing in: do not create sessions for 401s
@@ -53,7 +57,7 @@ public class SecurityConfig {
                         "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'")))
                 .authorizeHttpRequests(a -> a
                         .requestMatchers("/api/v1/auth/login", "/api/v1/auth/password-reset", "/api/v1/auth/password-reset/confirm", "/api/v1/auth/password-policy",
-                                "/api/v1/auth/invitations/**", "/api/v1/auth/sso-providers", "/api/v1/auth/oidc/**").permitAll()
+                                "/api/v1/auth/invitations/**", "/api/v1/auth/sso-providers", "/api/v1/auth/oidc/**", "/api/v1/openapi.json").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll())
                 .exceptionHandling(e -> e

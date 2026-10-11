@@ -86,6 +86,9 @@ export const httpApi: Api = {
     changePassword: (currentPassword, newPassword) => put("/me/password", { currentPassword, newPassword }),
     sendPasswordSetup: () => post("/me/password/setup", {}),
     endOtherSessions: () => post("/me/sessions/end-others"),
+    apiTokens: () => get("/me/api-tokens"),
+    createApiToken: (input) => post("/me/api-tokens", input),
+    revokeApiToken: (id) => del(`/me/api-tokens/${id}`),
     updatePreferences: (p) => put("/me/preferences", p),
     notificationSettings: () => get("/me/notification-settings"),
     saveDefaultNotificationSetting: (s) => put("/me/notification-settings/default", s),
@@ -237,6 +240,12 @@ export const httpApi: Api = {
       update: (id, p) => patch(`/admin/roles/${id}`, p),
       remove: (id) => del(`/admin/roles/${id}`),
       permissions: () => get("/admin/permissions"),
+    },
+    api: {
+      settings: () => get("/admin/settings/api"),
+      saveSettings: (input) => put("/admin/settings/api", input),
+      tokens: () => get("/admin/api-tokens"),
+      revokeToken: (id) => del(`/admin/api-tokens/${id}`),
     },
     users: {
       list: (params) => get("/admin/users", { ...params }),

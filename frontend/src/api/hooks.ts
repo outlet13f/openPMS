@@ -2,7 +2,7 @@
 // rules live in one place.
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { QueryFilter, BoardKind, Id, NotificationSetting, Preferences, ProfileInput, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch } from "./types";
+import type { ApiTokenInput, QueryFilter, BoardKind, Id, NotificationSetting, Preferences, ProfileInput, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch } from "./types";
 
 export const qk = {
   me: ["me"] as const,
@@ -301,3 +301,15 @@ export function useMarkRead(opts: { keepList?: boolean } = {}) {
 
 export const useNonWorkingDays = (from: string, to: string) =>
   useQuery({ queryKey: qk.calendar(from, to), queryFn: () => api.calendar.nonWorkingDays(from, to), staleTime: 300_000 });
+
+/* ---------- 외부 연동 API 토큰 ---------- */
+
+export const useApiTokens = () => useQuery({ queryKey: ["me", "api-tokens"], queryFn: () => api.account.apiTokens() });
+export function useApiTokenMutations() {
+  const qc = useQueryClient();
+  const refresh = () => qc.invalidateQueries({ queryKey: ["me", "api-tokens"] });
+  return {
+    create: useMutation({ mutationFn: (input: ApiTokenInput) => api.account.createApiToken(input), onSuccess: refresh }),
+    revoke: useMutation({ mutationFn: (id: Id) => api.account.revokeApiToken(id), onSuccess: refresh }),
+  };
+}

@@ -1,4 +1,7 @@
-import type { DisplaySettings, BoardCardCreated, QueryFilter, AdminOidcProvider, OidcProviderInput, SsoProvider, AuthSettings, PasswordRules, BulkInput, CopyInput, MoveInput, ExportCount, Invitation,
+import type {
+  AdminApiToken,
+  ApiToken,
+  ApiTokenInput, DisplaySettings, BoardCardCreated, QueryFilter, AdminOidcProvider, OidcProviderInput, SsoProvider, AuthSettings, PasswordRules, BulkInput, CopyInput, MoveInput, ExportCount, Invitation,
   Attachment,
   ProgressSettings,
   ExportInput,
@@ -102,6 +105,12 @@ export interface Api {
     sendPasswordSetup(): Promise<void>;
     /** POST /me/sessions/end-others — sign out everywhere but here */
     endOtherSessions(): Promise<void>;
+    /** GET /me/api-tokens — my tokens in force (not their secrets) */
+    apiTokens(): Promise<ApiToken[]>;
+    /** POST /me/api-tokens — the secret is in this answer only; 403 when administrators switched tokens off */
+    createApiToken(input: ApiTokenInput): Promise<{ token: ApiToken; secret: string }>;
+    /** DELETE /me/api-tokens/{id} */
+    revokeApiToken(id: Id): Promise<void>;
     /** PUT /me/preferences — only the given keys change */
     updatePreferences(patch: Partial<Preferences>): Promise<Preferences>;
     /** GET /me/notification-settings */
@@ -383,6 +392,16 @@ export interface Api {
       remove(id: Id): Promise<void>;
       /** GET /admin/permissions */
       permissions(): Promise<{ key: string; scope: "project" | "global"; group: string }[]>;
+    };
+    api: {
+      /** GET /admin/settings/api */
+      settings(): Promise<{ tokensEnabled: boolean }>;
+      /** PUT /admin/settings/api */
+      saveSettings(input: { tokensEnabled: boolean }): Promise<{ tokensEnabled: boolean }>;
+      /** GET /admin/api-tokens — everyone's tokens in force */
+      tokens(): Promise<AdminApiToken[]>;
+      /** DELETE /admin/api-tokens/{id} */
+      revokeToken(id: Id): Promise<void>;
     };
     users: {
       /** GET /admin/users */

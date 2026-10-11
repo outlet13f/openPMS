@@ -4,6 +4,7 @@
 package com.openpms.db;
 
 
+import com.openpms.db.tables.ApiTokens;
 import com.openpms.db.tables.Attachments;
 import com.openpms.db.tables.BoardCards;
 import com.openpms.db.tables.BoardColumns;
@@ -50,6 +51,11 @@ import com.openpms.db.tables.Workflows;
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class Tables {
+
+    /**
+     * The table <code>public.api_tokens</code>.
+     */
+    public static final ApiTokens API_TOKENS = ApiTokens.API_TOKENS;
 
     /**
      * The table <code>public.attachments</code>.

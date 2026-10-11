@@ -35,6 +35,8 @@ import { AdminWorkflowsPage } from "@/pages/admin/workflows";
 import { AdminRoleEditPage, AdminRolesPage, AdminRolesReportPage } from "@/pages/admin/roles";
 import { AdminGroupsPage, AdminUsersPage } from "@/pages/admin/users";
 import { AdminCalendarPage } from "@/pages/admin/calendar";
+import { AdminIntegrationsPage } from "@/pages/admin/integrations";
+import { ApiDocsPage } from "@/pages/api-docs";
 import { ProjectSettingsPage } from "@/pages/projects/settings";
 import { BoardsPage, NewBoardPage } from "@/pages/boards/list";
 import { BoardDetailRoute, BoardPage } from "@/pages/boards/board";
@@ -173,6 +175,8 @@ export const router = createBrowserRouter([
       { path: "admin/users", element: <AdminUsersPage /> },
       { path: "admin/groups", element: <AdminGroupsPage /> },
       { path: "admin/calendar", element: <AdminCalendarPage /> },
+      { path: "admin/integrations", element: <AdminIntegrationsPage /> },
+      { path: "help/api", element: <ApiDocsPage /> },
       { path: "admin/:section/*", element: <AdminStub /> },
       { path: "*", element: <NotFound /> },
     ],

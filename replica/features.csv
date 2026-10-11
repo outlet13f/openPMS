@@ -138,7 +138,7 @@ Gantt 라벨 위치 설정(왼쪽·오른쪽·먼 오른쪽),Gantt,could,yes,yes
 관리: 로그인·비밀번호 정책(길이·문자 종류·잠금·재설정 허용·링크 유효 시간),관리,should,yes,yes,"원본 docs/system-admin-guide/authentication/login-registration-settings (2026-10-10 점검에서 추가) | 빌드: /admin/authentication. 최소 길이, 꼭 넣을 문자 종류, 섞을 종류 수, 실패 잠금(0=끔)·잠금 시간, 재설정 허용, 재설정·초대 링크 유효 시간. 초대 수락·재설정·변경 모두 같은 규칙. 원본의 비밀번호 만료·이전 비밀번호 재사용 금지·자가 가입은 없음"
 프로젝트 설정: 사용 유형·카테고리·사용자 정의 필드 활성화,관리,must,yes,yes,S25 | 빌드: 유형·카테고리·사용자 정의 필드(모든 프로젝트 필드는 항상 켜짐) 켜기
 프로젝트 설정: 버전 관리,관리,should,yes,yes,S26 | 빌드: S26
-REST API(사내 연동용),연동,could,yes,no,원본 API v3. 형태는 새로 설계 | 빌드: 화면용 /api/v1 약 120개 경로는 있음(세션 쿠키·CSRF). 외부 연동용 API 토큰·OpenAPI 문서·버전 정책은 없음
+REST API(사내 연동용),연동,could,yes,yes,"원본 API v3. 형태는 새로 설계 | 빌드: /api/v1(화면과 같은 경로) + 개인 API 토큰(계정 설정, 이름·읽기 전용/읽기·쓰기·만료 30/90/365일/없음, 원문은 한 번만, SHA-256만 저장, V14). Authorization: Bearer로 세션·CSRF 없이 그 사람 권한으로. 로그인·비밀번호·토큰 API는 막음, 토큰마다 분당 300회. 관리 · API와 웹훅에서 끄기·전체 토큰 폐기. OpenAPI 3.1(/api/v1/openapi.json, 주요 경로)과 도움말 'API 문서'(버전 정책: v1 안에서는 필드 추가만)"
 웹훅,연동,could,yes,no,관리: API 및 webhook
 시간 추적·비용·예산,범위 밖,could,yes,skip,이번 범위 밖. 다음 단계 후보
 미팅,범위 밖,could,yes,skip,범위 밖

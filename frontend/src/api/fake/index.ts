@@ -749,6 +749,24 @@ export const fakeApi: Api = {
         revokeAll(u.id, "password_reset");
         sendMail(u.email, "[openPMS] 비밀번호 만들기", `/password-reset?token=${issueToken(u.id, "password_reset", 60, null)}`);
       }),
+    apiTokens: () => run(() => (db.apiTokens ?? []).filter((x) => x.userId === sessionUser().id).map(({ userId: _u, ...t }) => clone(t))),
+    createApiToken: (input) =>
+      run(() => {
+        const user = sessionUser();
+        if (db.apiTokensEnabled === false) throw new ApiError(403, "관리자가 API 토큰을 꺼 두었습니다.");
+        if (!input.name.trim() || input.name.trim().length > 60) throw fieldError("name", "토큰 이름을 1~60자로 입력하세요.");
+        const now = nowIso();
+        const t = { id: newId("tok"), userId: user.id, name: input.name.trim(), scope: input.scope, createdAt: now, lastUsedAt: null, expiresAt: input.expiresInDays ? new Date(Date.now() + input.expiresInDays * 86_400_000).toISOString() : null };
+        db.apiTokens = [t, ...(db.apiTokens ?? [])];
+        const { userId: _u, ...token } = t;
+        return { token: clone(token), secret: `opms_demo_${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}` };
+      }),
+    revokeApiToken: (id) =>
+      run(() => {
+        const user = sessionUser();
+        if (!(db.apiTokens ?? []).some((x) => x.id === id && x.userId === user.id)) throw new ApiError(404, "토큰을 찾을 수 없습니다.");
+        db.apiTokens = (db.apiTokens ?? []).filter((x) => x.id !== id);
+      }),
     // the demo has one session per browser: nothing else to end
     endOtherSessions: () => run(() => void sessionUser()),
   },

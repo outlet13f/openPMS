@@ -13,6 +13,7 @@ import {
   KanbanSquare,
   LayoutDashboard,
   ListTodo,
+  Code2,
   Keyboard,
   Palette,
   Settings,
@@ -150,6 +151,7 @@ function AdminSidebar({ me, onNavigate, onCollapse }: { me: Me; onNavigate?: () 
     { title: t("admin.groupTitles.workPackages"), keys: ["types", "statuses", "workflows", "priorities", "customFields", "progress"] },
     { title: t("admin.groupTitles.people"), keys: ["users", "groups", "roles", "authentication"] },
     { title: t("admin.groupTitles.calendar"), keys: ["calendar"] },
+    { title: t("admin.groupTitles.integrations"), keys: ["integrations"] },
   ];
   const visible = (k: string) => me.isAdmin || ((k === "users" || k === "groups") && me.globalPermissions.includes("global.manage_users"));
   return (
@@ -265,6 +267,7 @@ export function AppLayout({ me }: { me: Me }) {
         accountItems={accountItems}
         helpItems={[
           { label: t("shortcuts.title"), icon: <Keyboard />, shortcut: "?", onSelect: shortcuts.openHelp },
+          { label: t("apiDocs.title"), icon: <Code2 />, onSelect: () => navigate("/help/api") },
           { label: t("nav.designSystem"), icon: <Palette />, onSelect: () => navigate("/design") },
         ]}
         moduleItems={moduleItems}

@@ -15,6 +15,7 @@ import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/spinner";
 import { ConfirmDialog, fieldErrorOf } from "@/features/admin/common";
 import { PageBody, PageHeader, useDocumentTitle } from "@/app/page";
+import { ApiTokensSection } from "@/features/account/api-tokens";
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
@@ -233,6 +234,7 @@ export function AccountPage() {
           <Display />
           <Password />
           <Sessions />
+          <ApiTokensSection Section={Section} />
         </div>
       )}
     </PageBody>

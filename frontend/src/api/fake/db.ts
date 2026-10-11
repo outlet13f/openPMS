@@ -121,6 +121,8 @@ export interface DbToken { token: string; userId: Id; purpose: "invitation" | "p
 /** Demo only: mail the real backend would send (shown on the login page in fake mode). */
 export interface DbMail { id: Id; to: string; subject: string; link: string; sentAt: IsoDateTime }
 
+export interface DbApiToken { id: Id; userId: Id; name: string; scope: "read" | "write"; createdAt: IsoDateTime; lastUsedAt: IsoDateTime | null; expiresAt: IsoDateTime | null }
+
 export interface Db {
   schema: number;
   seq: { wp: number; id: number };
@@ -147,6 +149,8 @@ export interface Db {
   shares: { id: Id; wpId: Id; userId: Id; role: ShareRole; createdBy: Id | null; createdAt: IsoDateTime }[];
   customFields: CustomField[];
   projectCustomFields: { projectId: Id; customFieldId: Id }[];
+  apiTokens?: DbApiToken[];
+  apiTokensEnabled?: boolean;
   queries: DbQuery[];
   queryFavorites: { userId: Id; queryId: Id }[];
   boards: DbBoard[];

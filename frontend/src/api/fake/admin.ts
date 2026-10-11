@@ -749,6 +749,22 @@ export const adminApi: Api["admin"] = {
     permissions: () => run(() => (requireAdmin(sessionUser()), clone(PERMISSIONS))),
   },
 
+  api: {
+    settings: () => run(() => (requireAdmin(sessionUser()), { tokensEnabled: db.apiTokensEnabled !== false })),
+    saveSettings: (input) => run(() => (requireAdmin(sessionUser()), (db.apiTokensEnabled = input.tokensEnabled), { tokensEnabled: input.tokensEnabled })),
+    tokens: () =>
+      run(() => {
+        requireAdmin(sessionUser());
+        return (db.apiTokens ?? []).map((t) => clone({ ...t, userName: db.users.find((u) => u.id === t.userId)?.name ?? "" }));
+      }),
+    revokeToken: (id) =>
+      run(() => {
+        requireAdmin(sessionUser());
+        if (!(db.apiTokens ?? []).some((x) => x.id === id)) throw notFound("토큰");
+        db.apiTokens = (db.apiTokens ?? []).filter((x) => x.id !== id);
+      }),
+  },
+
   users: {
     list: (params = {}) =>
       run(() => {

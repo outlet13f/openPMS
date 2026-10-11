@@ -7,6 +7,7 @@ package com.openpms.db.tables;
 import com.openpms.db.Indexes;
 import com.openpms.db.Keys;
 import com.openpms.db.Public;
+import com.openpms.db.tables.ApiTokens.ApiTokensPath;
 import com.openpms.db.tables.Attachments.AttachmentsPath;
 import com.openpms.db.tables.BoardColumns.BoardColumnsPath;
 import com.openpms.db.tables.Boards.BoardsPath;
@@ -236,6 +237,19 @@ public class Users extends TableImpl<UsersRecord> {
     @Override
     public List<UniqueKey<UsersRecord>> getUniqueKeys() {
         return Arrays.asList(Keys.USERS_EMAIL_KEY);
+    }
+
+    private transient ApiTokensPath _apiTokens;
+
+    /**
+     * Get the implicit to-many join path to the <code>public.api_tokens</code>
+     * table
+     */
+    public ApiTokensPath apiTokens() {
+        if (_apiTokens == null)
+            _apiTokens = new ApiTokensPath(this, null, Keys.API_TOKENS__API_TOKENS_USER_ID_FKEY.getInverseKey());
+
+        return _apiTokens;
     }
 
     private transient AttachmentsPath _attachments;

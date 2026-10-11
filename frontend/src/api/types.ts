@@ -148,6 +148,26 @@ export interface ProjectListParams {
   pageSize?: number;
 }
 
+/** 외부 연동 API 토큰 (계정 설정): the secret is only shown when made */
+export interface ApiToken {
+  id: Id;
+  name: string;
+  scope: "read" | "write";
+  createdAt: IsoDateTime;
+  lastUsedAt: IsoDateTime | null;
+  expiresAt: IsoDateTime | null;
+}
+export interface ApiTokenInput {
+  name: string;
+  scope: "read" | "write";
+  /** 30, 90 or 365; null: no expiry */
+  expiresInDays: 30 | 90 | 365 | null;
+}
+export interface AdminApiToken extends ApiToken {
+  userId: Id;
+  userName: string;
+}
+
 export interface ProjectInput {
   name: string;
   identifier: string;

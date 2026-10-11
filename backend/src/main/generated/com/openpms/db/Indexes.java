@@ -4,6 +4,7 @@
 package com.openpms.db;
 
 
+import com.openpms.db.tables.ApiTokens;
 import com.openpms.db.tables.Attachments;
 import com.openpms.db.tables.BoardCards;
 import com.openpms.db.tables.BoardColumns;
@@ -53,6 +54,7 @@ public class Indexes {
     // INDEX definitions
     // -------------------------------------------------------------------------
 
+    public static final Index API_TOKENS_USER_IDX = Internal.createIndex(DSL.name("api_tokens_user_idx"), ApiTokens.API_TOKENS, new OrderField[] { ApiTokens.API_TOKENS.USER_ID }, false);
     public static final Index ATTACHMENTS_AUTHOR_IDX = Internal.createIndex(DSL.name("attachments_author_idx"), Attachments.ATTACHMENTS, new OrderField[] { Attachments.ATTACHMENTS.AUTHOR_ID }, false);
     public static final Index ATTACHMENTS_FILE_NAME_TRGM = Internal.createIndex(DSL.name("attachments_file_name_trgm"), Attachments.ATTACHMENTS, new OrderField[] { Attachments.ATTACHMENTS.FILE_NAME }, false);
     public static final Index ATTACHMENTS_ORPHANS_IDX = Internal.createIndex(DSL.name("attachments_orphans_idx"), Attachments.ATTACHMENTS, new OrderField[] { Attachments.ATTACHMENTS.CREATED_AT }, false);

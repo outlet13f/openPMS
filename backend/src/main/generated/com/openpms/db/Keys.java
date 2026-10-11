@@ -4,6 +4,7 @@
 package com.openpms.db;
 
 
+import com.openpms.db.tables.ApiTokens;
 import com.openpms.db.tables.Attachments;
 import com.openpms.db.tables.BoardCards;
 import com.openpms.db.tables.BoardColumns;
@@ -43,6 +44,7 @@ import com.openpms.db.tables.Watchers;
 import com.openpms.db.tables.WorkPackageShares;
 import com.openpms.db.tables.WorkPackages;
 import com.openpms.db.tables.Workflows;
+import com.openpms.db.tables.records.ApiTokensRecord;
 import com.openpms.db.tables.records.AttachmentsRecord;
 import com.openpms.db.tables.records.BoardCardsRecord;
 import com.openpms.db.tables.records.BoardColumnsRecord;
@@ -102,6 +104,8 @@ public class Keys {
     // UNIQUE and PRIMARY KEY definitions
     // -------------------------------------------------------------------------
 
+    public static final UniqueKey<ApiTokensRecord> API_TOKENS_PKEY = Internal.createUniqueKey(ApiTokens.API_TOKENS, DSL.name("api_tokens_pkey"), new TableField[] { ApiTokens.API_TOKENS.ID }, true);
+    public static final UniqueKey<ApiTokensRecord> API_TOKENS_TOKEN_HASH_KEY = Internal.createUniqueKey(ApiTokens.API_TOKENS, DSL.name("api_tokens_token_hash_key"), new TableField[] { ApiTokens.API_TOKENS.TOKEN_HASH }, true);
     public static final UniqueKey<AttachmentsRecord> ATTACHMENTS_PKEY = Internal.createUniqueKey(Attachments.ATTACHMENTS, DSL.name("attachments_pkey"), new TableField[] { Attachments.ATTACHMENTS.ID }, true);
     public static final UniqueKey<AttachmentsRecord> ATTACHMENTS_STORAGE_KEY_KEY = Internal.createUniqueKey(Attachments.ATTACHMENTS, DSL.name("attachments_storage_key_key"), new TableField[] { Attachments.ATTACHMENTS.STORAGE_KEY }, true);
     public static final UniqueKey<BoardCardsRecord> BOARD_CARDS_PKEY = Internal.createUniqueKey(BoardCards.BOARD_CARDS, DSL.name("board_cards_pkey"), new TableField[] { BoardCards.BOARD_CARDS.BOARD_ID, BoardCards.BOARD_CARDS.WORK_PACKAGE_ID }, true);
@@ -169,6 +173,7 @@ public class Keys {
     // FOREIGN KEY definitions
     // -------------------------------------------------------------------------
 
+    public static final ForeignKey<ApiTokensRecord, UsersRecord> API_TOKENS__API_TOKENS_USER_ID_FKEY = Internal.createForeignKey(ApiTokens.API_TOKENS, DSL.name("api_tokens_user_id_fkey"), new TableField[] { ApiTokens.API_TOKENS.USER_ID }, Keys.USERS_PKEY, new TableField[] { Users.USERS.ID }, true, ForeignKeyRule.CASCADE, ForeignKeyRule.NO_ACTION);
     public static final ForeignKey<AttachmentsRecord, UsersRecord> ATTACHMENTS__ATTACHMENTS_AUTHOR_ID_FKEY = Internal.createForeignKey(Attachments.ATTACHMENTS, DSL.name("attachments_author_id_fkey"), new TableField[] { Attachments.ATTACHMENTS.AUTHOR_ID }, Keys.USERS_PKEY, new TableField[] { Users.USERS.ID }, true, ForeignKeyRule.RESTRICT, ForeignKeyRule.NO_ACTION);
     public static final ForeignKey<AttachmentsRecord, WorkPackagesRecord> ATTACHMENTS__ATTACHMENTS_WORK_PACKAGE_ID_FKEY = Internal.createForeignKey(Attachments.ATTACHMENTS, DSL.name("attachments_work_package_id_fkey"), new TableField[] { Attachments.ATTACHMENTS.WORK_PACKAGE_ID }, Keys.WORK_PACKAGES_PKEY, new TableField[] { WorkPackages.WORK_PACKAGES.ID }, true, ForeignKeyRule.CASCADE, ForeignKeyRule.NO_ACTION);
     public static final ForeignKey<BoardCardsRecord, BoardsRecord> BOARD_CARDS__BOARD_CARDS_BOARD_ID_FKEY = Internal.createForeignKey(BoardCards.BOARD_CARDS, DSL.name("board_cards_board_id_fkey"), new TableField[] { BoardCards.BOARD_CARDS.BOARD_ID }, Keys.BOARDS_PKEY, new TableField[] { Boards.BOARDS.ID }, true, ForeignKeyRule.CASCADE, ForeignKeyRule.NO_ACTION);

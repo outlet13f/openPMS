@@ -4,6 +4,7 @@
 package com.openpms.db;
 
 
+import com.openpms.db.tables.ApiTokens;
 import com.openpms.db.tables.Attachments;
 import com.openpms.db.tables.BoardCards;
 import com.openpms.db.tables.BoardColumns;
@@ -66,6 +67,11 @@ public class Public extends SchemaImpl {
      * The reference instance of <code>public</code>
      */
     public static final Public PUBLIC = new Public();
+
+    /**
+     * The table <code>public.api_tokens</code>.
+     */
+    public final ApiTokens API_TOKENS = ApiTokens.API_TOKENS;
 
     /**
      * The table <code>public.attachments</code>.
@@ -285,6 +291,7 @@ public class Public extends SchemaImpl {
     @Override
     public final List<Table<?>> getTables() {
         return Arrays.asList(
+            ApiTokens.API_TOKENS,
             Attachments.ATTACHMENTS,
             BoardCards.BOARD_CARDS,
             BoardColumns.BOARD_COLUMNS,
