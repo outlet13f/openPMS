@@ -162,6 +162,11 @@ public class Projects extends TableImpl<ProjectsRecord> {
      */
     public final TableField<ProjectsRecord, Boolean> INTERNAL_COMMENTS = createField(DSL.name("internal_comments"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
 
+    /**
+     * The column <code>public.projects.overview_widgets</code>.
+     */
+    public final TableField<ProjectsRecord, String[]> OVERVIEW_WIDGETS = createField(DSL.name("overview_widgets"), SQLDataType.CLOB.array().nullable(false).defaultValue(DSL.field(DSL.raw("'{description,workSummary,status,members}'::text[]"), SQLDataType.CLOB.array())), this, "");
+
     private Projects(Name alias, Table<ProjectsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }

@@ -1,5 +1,6 @@
 // Turns fake database rows into the API's DTO shapes (src/api/types.ts).
 import type { CustomValue, Journal, JournalDetail, Project, ProjectRef, StatusRef, TypeRef, UserRef, WorkPackage, WorkPackageRef, WpField } from "../types";
+import { DEFAULT_OVERVIEW_WIDGETS } from "../types";
 import { formatDate, todayIso } from "@/lib/dates";
 import { db, type DbJournal, type DbProject, type DbUser, type DbWp } from "./db";
 import { allowedStatusIds, can, projectPermissions, shareRoleOf } from "./permissions";
@@ -48,6 +49,7 @@ export function toProject(p: DbProject, user: DbUser): Project {
     isPublic: p.isPublic,
     isTemplate: p.isTemplate,
     internalComments: !!p.internalComments,
+    overviewWidgets: [...(p.overviewWidgets ?? DEFAULT_OVERVIEW_WIDGETS)],
     archivedAt: p.archivedAt,
     parent: parent ? projectRef(parent) : null,
     enabledModules: p.enabledModules,

@@ -126,6 +126,8 @@ export interface Project extends ProjectRef {
   isTemplate: boolean;
   /** 내부 코멘트 on: roles with wp.add_internal_comments may write comments only wp.view_internal_comments roles read */
   internalComments: boolean;
+  /** S05 개요: the widgets shown, in order */
+  overviewWidgets: OverviewWidget[];
   archivedAt: IsoDateTime | null;
   parent: ProjectRef | null;
   enabledModules: ModuleKey[];
@@ -160,6 +162,10 @@ export interface ProjectInput {
 
 export const TEMPLATE_PARTS = ["members", "versions", "categories", "workPackages", "boards", "queries"] as const;
 export type TemplatePart = (typeof TEMPLATE_PARTS)[number];
+
+export const OVERVIEW_WIDGETS = ["description", "workSummary", "status", "members", "versions", "dueSoon", "recent", "assignedToMe"] as const;
+export type OverviewWidget = (typeof OVERVIEW_WIDGETS)[number];
+export const DEFAULT_OVERVIEW_WIDGETS: OverviewWidget[] = ["description", "workSummary", "status", "members"];
 
 export interface ProjectOverview {
   project: Project;

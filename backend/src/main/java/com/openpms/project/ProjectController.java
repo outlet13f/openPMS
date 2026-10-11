@@ -58,6 +58,7 @@ public class ProjectController {
     private static final Set<String> MODULES = Set.of("work_packages", "gantt", "boards", "calendar", "team_planner");
     private static final Set<String> STATUSES = Set.of("on_track", "at_risk", "off_track");
     /** The seeded 프로젝트 관리자 role (fixed id, backend/scripts/ids.py) — a project's creator gets it. */
+    static final List<String> OVERVIEW_WIDGETS = List.of("description", "workSummary", "status", "members", "versions", "dueSoon", "recent", "assignedToMe");
     static final UUID MANAGER_ROLE = UUID.fromString("0329397e-d933-5ac1-b27c-95889ba1a893");
 
     public record CategoryDto(UUID id, String name, Dto.UserRef defaultAssignee, long workPackageCount) {}
@@ -95,7 +96,7 @@ public class ProjectController {
             if (latest == null || latest.isBefore(p.updatedAt())) latest = p.updatedAt();
             return new Dto.Project(p.id(), p.identifier(), p.name(), p.descriptionHtml(), p.status(), p.statusExplanation(), p.isPublic(), p.isTemplate(),
                     p.archivedAt(), parent, p.enabledModules(), favs.contains(p.id()), List.copyOf(ctx.perms(p)), p.createdAt(), p.updatedAt(), latest,
-                    p.internalComments());
+                    p.internalComments(), p.overviewWidgets());
         }).toList();
     }
 
@@ -222,6 +223,12 @@ public class ProjectController {
         }
         if (In.has(patch, "statusExplanation")) u = u.set(PROJECTS.STATUS_EXPLANATION, In.str(patch, "statusExplanation") == null ? "" : In.str(patch, "statusExplanation"));
         if (In.has(patch, "isPublic")) u = u.set(PROJECTS.IS_PUBLIC, Boolean.TRUE.equals(In.bool(patch, "isPublic")));
+        // 개요 위젯 (S05): which widgets show, in order
+        if (In.has(patch, "overviewWidgets")) {
+            var widgets = In.strings(patch, "overviewWidgets");
+            if (widgets == null || !OVERVIEW_WIDGETS.containsAll(widgets)) throw ApiException.field("overviewWidgets", "알 수 없는 위젯이 있습니다.");
+            u = u.set(PROJECTS.OVERVIEW_WIDGETS, widgets.stream().distinct().toArray(String[]::new));
+        }
         // 내부 코멘트: comments only roles with wp.view_internal_comments read
         if (In.has(patch, "internalComments")) u = u.set(PROJECTS.INTERNAL_COMMENTS, Boolean.TRUE.equals(In.bool(patch, "internalComments")));
         // 템플릿으로 쓰기: offered when someone creates a project

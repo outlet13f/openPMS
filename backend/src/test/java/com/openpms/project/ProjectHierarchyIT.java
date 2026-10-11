@@ -44,6 +44,7 @@ class ProjectHierarchyIT {
         // seed: 백업 체계 개선 is under 사내 인프라
         db.update(PROJECTS).set(PROJECTS.PARENT_ID, id("infra")).where(PROJECTS.IDENTIFIER.eq("infra-backup")).execute();
         db.update(PROJECTS).setNull(PROJECTS.PARENT_ID).where(PROJECTS.IDENTIFIER.eq("web-platform")).execute();
+        db.update(PROJECTS).set(PROJECTS.OVERVIEW_WIDGETS, new String[] {"description", "workSummary", "status", "members"}).where(PROJECTS.IDENTIFIER.eq("web-platform")).execute();
     }
 
     UUID id(String identifier) {
@@ -74,5 +75,17 @@ class ProjectHierarchyIT {
         // someone who manages 백업 체계 개선 but may not edit 모바일 앱 cannot put it there (seed: 이하늘 is not a member of 모바일 앱)
         var haneul = login("haneul.lee@openpms.local");
         move(haneul, "infra-backup", id("mobile-app")).andExpect(status().is4xxClientError());
+    }
+
+    /** S05 개요 위젯: known widgets only, in the order given; members without project.edit cannot change them. */
+    @Test
+    void theOverviewWidgetsAreKnownOnesInOrder() throws Exception {
+        var admin = login("seoyeon.kim@openpms.local");
+        mvc.perform(patch("/api/v1/projects/web-platform").session(admin).with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{\"overviewWidgets\":[\"chart\"]}"))
+                .andExpect(status().isUnprocessableContent()).andExpect(jsonPath("$.errors[0].field").value("overviewWidgets"));
+        mvc.perform(patch("/api/v1/projects/web-platform").session(admin).with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{\"overviewWidgets\":[\"versions\",\"description\"]}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.overviewWidgets[0]").value("versions")).andExpect(jsonPath("$.overviewWidgets[1]").value("description"));
+        mvc.perform(patch("/api/v1/projects/web-platform").session(login("haneul.lee@openpms.local")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"overviewWidgets\":[]}")).andExpect(status().isForbidden());
     }
 }

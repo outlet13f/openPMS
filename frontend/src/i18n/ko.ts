@@ -213,6 +213,21 @@ const ko = {
     overdue: "기한 지남",
     byStatus: "상태별",
     noDescription: "설명이 없습니다.",
+    editWidgets: "위젯 편집",
+    editHint: "보일 위젯을 고르고 순서를 정합니다. 이 프로젝트를 보는 모든 사람에게 같은 개요가 보입니다. 바꾸면 바로 저장됩니다.",
+    noWidgets: "보이는 위젯이 없습니다",
+    noWidgetsBody: "위젯 편집에서 보일 위젯을 고르세요.",
+    versionDone: "{{total}}개 중 {{closed}}개 완료",
+    widgets: {
+      description: "설명", workSummary: "작업 현황", status: "프로젝트 상태", members: "멤버", versions: "버전 진행",
+      dueSoon: "곧 완료일(14일 안)", recent: "최근 바뀐 작업(7일)", assignedToMe: "내게 할당된 작업",
+    },
+    empty: {
+      versions: "진행 중인 버전이 없습니다.",
+      dueSoon: "14일 안에 완료일이 오는 열린 작업이 없습니다.",
+      recent: "지난 7일 동안 바뀐 작업이 없습니다.",
+      assignedToMe: "이 프로젝트에서 내게 할당된 열린 작업이 없습니다.",
+    },
   },
   wp: {
     listTitle: "작업",

@@ -124,7 +124,7 @@ export interface Api {
     /** POST /projects/{project}/copy — a new project from this one, as from a template (project.edit here + global.create_projects) */
     copy(id: Id, input: Omit<ProjectInput, "templateId">): Promise<Project>;
     /** PATCH /projects/{project} */
-    update(id: Id, patch: Partial<Pick<Project, "name" | "descriptionHtml" | "status" | "statusExplanation" | "isPublic" | "isTemplate" | "internalComments" | "enabledModules">> & { parentId?: Id | null }): Promise<Project>;
+    update(id: Id, patch: Partial<Pick<Project, "name" | "descriptionHtml" | "status" | "statusExplanation" | "isPublic" | "isTemplate" | "internalComments" | "overviewWidgets" | "enabledModules">> & { parentId?: Id | null }): Promise<Project>;
     /** PUT|DELETE /projects/{project}/favorite */
     setFavorite(id: Id, favorite: boolean): Promise<void>;
     /** GET /projects/{project}/overview */

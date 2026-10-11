@@ -1,5 +1,5 @@
 // F10 프로젝트를 만들고 팀 꾸리기 (S03 → S04 → S23)
-import { test, expect, login, resetDb, axe, api } from "./support";
+import { test, expect, login, logout, resetDb, axe, api } from "./support";
 
 test.beforeAll(resetDb);
 
@@ -85,6 +85,28 @@ test.describe("F10 프로젝트와 멤버", () => {
     await page.waitForURL(/\/projects\/web-platform-copy$/);
     const wps = await api<{ total: number }>(page, "return await api.workPackages.query({ v: 1, filters: [], columns: ['subject'], sort: [], groupBy: null, hierarchy: false, sums: false, includeSubprojects: false }, { projectId: 'web-platform-copy', page: 1, pageSize: 20 })");
     expect(wps.total).toBeGreaterThan(5);
+  });
+
+  test("F10-H5 the overview is a dashboard its managers arrange", async ({ page }) => {
+    await page.goto("/projects/web-platform");
+    for (const name of ["설명", "작업 현황", "프로젝트 상태", "멤버"]) await expect(page.getByRole("region", { name, exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "위젯 편집" }).click();
+    const editor = page.getByRole("region", { name: "위젯 편집" });
+    await editor.getByRole("checkbox", { name: "버전 진행" }).click();
+    await editor.getByRole("checkbox", { name: "멤버" }).click();
+    await editor.getByRole("checkbox", { name: "곧 완료일(14일 안)" }).click();
+    await expect(page.getByRole("region", { name: "버전 진행" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "멤버", exact: true })).toHaveCount(0);
+    await axe(page, "S05 개요 위젯 편집");
+    await expect(editor.getByText("저장됨")).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("region", { name: "곧 완료일(14일 안)" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "멤버", exact: true })).toHaveCount(0);
+    await logout(page);
+    await login(page, "haneul.lee@openpms.local");
+    await page.goto("/projects/web-platform");
+    await expect(page.getByRole("region", { name: "버전 진행" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "위젯 편집" })).toHaveCount(0);
   });
 
   test("F10-E1 a taken identifier is refused next to the field", async ({ page }) => {

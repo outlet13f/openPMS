@@ -51,7 +51,8 @@ public class ProjectCopy {
     /** Copies into a project just created (its creator is already a member with the manager role). */
     public void copy(Ctx ctx, ProjectRow template, UUID target, Set<String> parts, boolean keepDescription) {
         var src = db.selectFrom(PROJECTS).where(PROJECTS.ID.eq(template.id())).fetchOne();
-        var update = db.update(PROJECTS).set(PROJECTS.ENABLED_MODULES, src.getEnabledModules()).set(PROJECTS.CUSTOM_VALUES, src.getCustomValues());
+        var update = db.update(PROJECTS).set(PROJECTS.ENABLED_MODULES, src.getEnabledModules()).set(PROJECTS.CUSTOM_VALUES, src.getCustomValues())
+                .set(PROJECTS.OVERVIEW_WIDGETS, src.getOverviewWidgets()).set(PROJECTS.INTERNAL_COMMENTS, src.getInternalComments());
         if (!keepDescription) update = update.set(PROJECTS.DESCRIPTION_HTML, src.getDescriptionHtml()).set(PROJECTS.DESCRIPTION_TEXT, src.getDescriptionText());
         update.where(PROJECTS.ID.eq(target)).execute();
         db.deleteFrom(PROJECT_TYPES).where(PROJECT_TYPES.PROJECT_ID.eq(target)).execute();

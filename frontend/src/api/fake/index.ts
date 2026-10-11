@@ -39,7 +39,7 @@ import { exportCount, exportWorkPackages } from "./export";
 import { deriveProgress, progressLocked } from "./progress";
 import { DEFAULT_TYPE_FORM } from "../type-form";
 import { DEFAULT_AUTH_SETTINGS, passwordProblem } from "../password-policy";
-import { DEFAULT_DISPLAY } from "../types";
+import { DEFAULT_DISPLAY, OVERVIEW_WIDGETS } from "../types";
 import { issueToken, revokeAll, sendMail, tokenGone, validToken } from "./tokens";
 import { adminApi, categoriesApi, projectExtras, versionsApi } from "./admin";
 
@@ -59,7 +59,10 @@ normalizeOnce();
 /** S04, same rules as the server's ProjectCopy: modules, types, fields always; the chosen parts; nobody is notified. */
 function copyTemplate(t: DbProject, p: DbProject, parts: Set<string>, user: DbUser) {
   const now = nowIso();
-  Object.assign(p, { enabledModules: [...t.enabledModules], typeIds: [...t.typeIds], descriptionHtml: p.descriptionHtml || t.descriptionHtml });
+  Object.assign(p, {
+    enabledModules: [...t.enabledModules], typeIds: [...t.typeIds], descriptionHtml: p.descriptionHtml || t.descriptionHtml,
+    overviewWidgets: t.overviewWidgets ? [...t.overviewWidgets] : undefined, internalComments: t.internalComments,
+  });
   for (const f of db.projectCustomFields.filter((x) => x.projectId === t.id)) db.projectCustomFields.push({ projectId: p.id, customFieldId: f.customFieldId });
   if (parts.has("members"))
     for (const m of db.members.filter((x) => x.projectId === t.id)) {
@@ -806,6 +809,7 @@ export const fakeApi: Api = {
         const user = sessionUser();
         const p = findProject(user, id);
         requirePerm(user, p, patch.enabledModules ? "project.manage_modules" : "project.edit");
+        if (patch.overviewWidgets && patch.overviewWidgets.some((w) => !(OVERVIEW_WIDGETS as readonly string[]).includes(w))) throw fieldError("overviewWidgets", "알 수 없는 위젯이 있습니다.");
         if (patch.parentId !== undefined && patch.parentId !== null) {
           const parent = db.projects.find((x) => x.id === patch.parentId);
           if (!parent || !can(user, parent, "project.edit")) throw fieldError("parent", "상위 프로젝트를 찾을 수 없습니다.");

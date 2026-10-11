@@ -48,7 +48,7 @@ public final class Dto {
     public record Project(UUID id, String identifier, String name, String descriptionHtml, String status, String statusExplanation,
                           boolean isPublic, boolean isTemplate, OffsetDateTime archivedAt, ProjectRef parent, List<String> enabledModules,
                           boolean favorite, List<String> myPermissions, OffsetDateTime createdAt, OffsetDateTime updatedAt,
-                          OffsetDateTime latestActivityAt, boolean internalComments) {}
+                          OffsetDateTime latestActivityAt, boolean internalComments, List<String> overviewWidgets) {}
 
     public record OverviewMember(IdName user, List<String> roles) {}
 
