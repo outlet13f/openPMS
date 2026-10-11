@@ -33,6 +33,8 @@ import com.openpms.db.tables.Relations;
 import com.openpms.db.tables.Roles;
 import com.openpms.db.tables.Settings;
 import com.openpms.db.tables.Statuses;
+import com.openpms.db.tables.TimeActivities;
+import com.openpms.db.tables.TimeEntries;
 import com.openpms.db.tables.Types;
 import com.openpms.db.tables.UserGroupMembers;
 import com.openpms.db.tables.UserGroups;
@@ -217,6 +219,16 @@ public class Public extends SchemaImpl {
     public final Statuses STATUSES = Statuses.STATUSES;
 
     /**
+     * The table <code>public.time_activities</code>.
+     */
+    public final TimeActivities TIME_ACTIVITIES = TimeActivities.TIME_ACTIVITIES;
+
+    /**
+     * The table <code>public.time_entries</code>.
+     */
+    public final TimeEntries TIME_ENTRIES = TimeEntries.TIME_ENTRIES;
+
+    /**
      * The table <code>public.types</code>.
      */
     public final Types TYPES = Types.TYPES;
@@ -338,6 +350,8 @@ public class Public extends SchemaImpl {
             Roles.ROLES,
             Settings.SETTINGS,
             Statuses.STATUSES,
+            TimeActivities.TIME_ACTIVITIES,
+            TimeEntries.TIME_ENTRIES,
             Types.TYPES,
             UserGroupMembers.USER_GROUP_MEMBERS,
             UserGroups.USER_GROUPS,

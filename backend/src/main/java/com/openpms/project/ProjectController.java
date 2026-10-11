@@ -55,7 +55,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1")
 public class ProjectController {
     private static final Pattern IDENTIFIER = Pattern.compile("^[a-z][a-z0-9-]{0,99}$");
-    private static final Set<String> MODULES = Set.of("work_packages", "gantt", "boards", "calendar", "team_planner");
+    private static final Set<String> MODULES = Set.of("work_packages", "gantt", "boards", "calendar", "team_planner", "time_tracking");
     private static final Set<String> STATUSES = Set.of("on_track", "at_risk", "off_track");
     /** The seeded 프로젝트 관리자 role (fixed id, backend/scripts/ids.py) — a project's creator gets it. */
     static final List<String> OVERVIEW_WIDGETS = List.of("description", "workSummary", "status", "members", "versions", "dueSoon", "recent", "assignedToMe");
@@ -188,7 +188,7 @@ public class ProjectController {
         p.setDescriptionText(Html.text(html));
         p.setIsPublic(Boolean.TRUE.equals(In.bool(in, "isPublic")));
         p.setParentId(parentId);
-        p.setEnabledModules(new String[] {"work_packages", "gantt", "boards"});
+        p.setEnabledModules(new String[] {"work_packages", "gantt", "boards", "time_tracking"});
         p.setCreatedBy(ctx.userId());
         p.store();
         for (var t : ctx.s().types()) if (t.isDefault()) db.insertInto(PROJECT_TYPES).set(PROJECT_TYPES.PROJECT_ID, p.getId()).set(PROJECT_TYPES.TYPE_ID, t.id()).execute();

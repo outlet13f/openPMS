@@ -26,7 +26,8 @@ public final class Ctx {
             "edit", Set.of("wp.view", "wp.comment", "wp.edit_own_comments", "wp.edit", "wp.attach"));
 
     /** Permissions that need a project module: switched-off modules take them away. */
-    private static final Map<String, String> MODULE_OF = Map.of("board.view", "boards", "board.manage", "boards");
+    private static final Map<String, String> MODULE_OF = Map.of("board.view", "boards", "board.manage", "boards",
+            "time.log", "time_tracking", "time.view", "time_tracking", "time.manage", "time_tracking");
 
     private Snapshot snapshot;
     private final java.util.function.Supplier<Snapshot> reload;

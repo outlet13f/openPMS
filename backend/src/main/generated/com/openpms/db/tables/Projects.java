@@ -18,6 +18,7 @@ import com.openpms.db.tables.ProjectCustomFields.ProjectCustomFieldsPath;
 import com.openpms.db.tables.ProjectFavorites.ProjectFavoritesPath;
 import com.openpms.db.tables.ProjectTypes.ProjectTypesPath;
 import com.openpms.db.tables.Queries.QueriesPath;
+import com.openpms.db.tables.TimeEntries.TimeEntriesPath;
 import com.openpms.db.tables.Types.TypesPath;
 import com.openpms.db.tables.Users.UsersPath;
 import com.openpms.db.tables.Versions.VersionsPath;
@@ -406,6 +407,19 @@ public class Projects extends TableImpl<ProjectsRecord> {
             _queries = new QueriesPath(this, null, Keys.QUERIES__QUERIES_PROJECT_ID_FKEY.getInverseKey());
 
         return _queries;
+    }
+
+    private transient TimeEntriesPath _timeEntries;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.time_entries</code> table
+     */
+    public TimeEntriesPath timeEntries() {
+        if (_timeEntries == null)
+            _timeEntries = new TimeEntriesPath(this, null, Keys.TIME_ENTRIES__TIME_ENTRIES_PROJECT_ID_FKEY.getInverseKey());
+
+        return _timeEntries;
     }
 
     private transient VersionsPath _versions;

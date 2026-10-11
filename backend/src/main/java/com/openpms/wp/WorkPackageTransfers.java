@@ -177,6 +177,7 @@ public class WorkPackageTransfers {
             w.setLockVersion(w.getLockVersion() + 1);
             w.setUpdatedAt(OffsetDateTime.now());
             w.store();
+            com.openpms.time.TimeController.follow(db, w.getId(), w.getProjectId()); // its time entries move with it
             var j = journals.write(ctx, w, changes, "", null, false);
             // a move is a change of the item (its project); webhooks hear it as an update
             webhooks.enqueue(ctx, w, "work_package.updated", java.util.Map.of("changes", com.openpms.webhook.Webhooks.changes(journals.toDto(ctx, j, target, changes))));

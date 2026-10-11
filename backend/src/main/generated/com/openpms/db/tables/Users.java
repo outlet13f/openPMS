@@ -26,6 +26,7 @@ import com.openpms.db.tables.QueryFavorites.QueryFavoritesPath;
 import com.openpms.db.tables.Relations.RelationsPath;
 import com.openpms.db.tables.Roles.RolesPath;
 import com.openpms.db.tables.Settings.SettingsPath;
+import com.openpms.db.tables.TimeEntries.TimeEntriesPath;
 import com.openpms.db.tables.UserGroupMembers.UserGroupMembersPath;
 import com.openpms.db.tables.UserGroups.UserGroupsPath;
 import com.openpms.db.tables.UserIdentities.UserIdentitiesPath;
@@ -475,6 +476,19 @@ public class Users extends TableImpl<UsersRecord> {
             _settings = new SettingsPath(this, null, Keys.SETTINGS__SETTINGS_UPDATED_BY_FKEY.getInverseKey());
 
         return _settings;
+    }
+
+    private transient TimeEntriesPath _timeEntries;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.time_entries</code> table
+     */
+    public TimeEntriesPath timeEntries() {
+        if (_timeEntries == null)
+            _timeEntries = new TimeEntriesPath(this, null, Keys.TIME_ENTRIES__TIME_ENTRIES_USER_ID_FKEY.getInverseKey());
+
+        return _timeEntries;
     }
 
     private transient UserGroupMembersPath _userGroupMembers;

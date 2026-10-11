@@ -109,6 +109,7 @@ public class AdminController {
             PERMISSIONS.add(new Permission(k, "project", "wp"));
         for (var k : List.of("query.save", "query.manage_public")) PERMISSIONS.add(new Permission(k, "project", "query"));
         for (var k : List.of("board.view", "board.manage")) PERMISSIONS.add(new Permission(k, "project", "board"));
+        for (var k : List.of("time.log", "time.view", "time.manage")) PERMISSIONS.add(new Permission(k, "project", "time"));
         for (var k : List.of("global.create_projects", "global.manage_users")) PERMISSIONS.add(new Permission(k, "global", "global"));
     }
 
