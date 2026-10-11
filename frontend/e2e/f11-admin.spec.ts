@@ -73,6 +73,21 @@ test.describe("F11 관리", () => {
     await page.waitForURL(/\/projects\/haneul-project/);
   });
 
+  test("F11-H3 the permission report: every role against every permission, changed in place", async ({ page }) => {
+    await page.goto("/admin/roles");
+    await page.getByRole("link", { name: "권한 보고서" }).click();
+    await expect(page.getByRole("heading", { name: "권한 보고서", level: 1 })).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: "멤버: 프로젝트 보기", exact: true })).toBeChecked();
+    const cell = page.getByRole("checkbox", { name: "멤버: 내보내기", exact: true });
+    const was = await cell.isChecked();
+    await cell.click();
+    await axe(page, "S31 권한 보고서");
+    await page.getByRole("button", { name: "역할 1개 저장" }).click();
+    await expect(page.getByText("역할 1개의 권한을 저장했습니다").first()).toBeVisible();
+    const perms = await api<string[]>(page, "return (await api.admin.roles.list()).find((r) => r.name === '멤버').permissions");
+    expect(perms.includes("wp.export")).toBe(!was);
+  });
+
   test("F11-N1 a member cannot open administration", async ({ page }) => {
     await page.evaluate(async () => (await import("/src/api/index.ts" as string)).api.auth.logout());
     await login(page, "junho.park@openpms.local");

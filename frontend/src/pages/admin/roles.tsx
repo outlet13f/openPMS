@@ -1,8 +1,8 @@
 // S31 관리: 역할 및 권한 — role list and the permission editor.
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useTranslation } from "react-i18next";
-import { MoreHorizontal, Pencil, Plus, Save, Trash2 } from "lucide-react";
+import { MoreHorizontal, Pencil, Plus, Save, Table2, Trash2 } from "lucide-react";
 import type { AdminRole } from "@/api";
 import { useAdminRoles, usePermissionDefs, useRoleMutations } from "@/api/admin-hooks";
 import { Badge } from "@/components/ui/badges";
@@ -79,9 +79,14 @@ export function AdminRolesPage() {
         title={t("admin.sections.roles")}
         breadcrumbs={[{ label: t("nav.admin"), href: "/admin" }, { label: t("admin.sections.roles") }]}
         actions={
-          <Button variant="primary" icon={<Plus />} onClick={() => setCreating(true)}>
-            {t("admin.roles.new")}
-          </Button>
+          <>
+            <Button asChild icon={<Table2 />}>
+              <Link to="/admin/roles/report">{t("admin.roles.report")}</Link>
+            </Button>
+            <Button variant="primary" icon={<Plus />} onClick={() => setCreating(true)}>
+              {t("admin.roles.new")}
+            </Button>
+          </>
         }
       />
       <AdminGuard>
@@ -223,6 +228,109 @@ export function AdminRoleEditPage() {
             );
           })}
         </div>
+      </AdminGuard>
+    </PageBody>
+  );
+}
+
+/** 권한 보고서 (/admin/roles/report): every role against every permission in one table, changed in place; only the roles changed are saved. */
+export function AdminRolesReportPage() {
+  const { t } = useTranslation();
+  useDocumentTitle(t("admin.roles.report"));
+  const roles = useAdminRoles();
+  const defs = usePermissionDefs();
+  const { update } = useRoleMutations();
+  const runToast = useRunWithToast();
+  const [draft, setDraft] = useState<Record<string, Set<string>>>({});
+  useEffect(() => {
+    if (roles.data) setDraft(Object.fromEntries(roles.data.map((r) => [r.id, new Set(r.permissions)])));
+  }, [roles.data]);
+
+  if (roles.isPending || defs.isPending) return <PageBody><Skeleton className="mt-6 h-96 w-full" /></PageBody>;
+  if (roles.isError || defs.isError) return <ErrorState error={roles.error ?? defs.error} />;
+  const changed = roles.data.filter((r) => {
+    const d = draft[r.id];
+    return d && (d.size !== r.permissions.length || r.permissions.some((p) => !d.has(p)));
+  });
+  const toggle = (roleId: string, key: string, on: boolean) =>
+    setDraft((cur) => {
+      const n = new Set(cur[roleId]);
+      if (on) n.add(key);
+      else n.delete(key);
+      return { ...cur, [roleId]: n };
+    });
+  const save = async () => {
+    for (const r of changed) await update.mutateAsync({ id: r.id, patch: { permissions: [...draft[r.id]] } });
+  };
+  const label = (key: string) => t(`permissions.keys.${key.replace(".", "_")}` as "permissions.keys.wp_view");
+
+  return (
+    <PageBody>
+      <PageHeader
+        title={t("admin.roles.report")}
+        breadcrumbs={[{ label: t("nav.admin"), href: "/admin" }, { label: t("admin.sections.roles"), href: "/admin/roles" }, { label: t("admin.roles.report") }]}
+        actions={
+          <Button variant="primary" icon={<Save />} disabled={!changed.length} loading={update.isPending} onClick={() => void runToast(save(), t("admin.roles.reportSaved", { count: changed.length }))}>
+            {changed.length ? t("admin.roles.saveChanged", { count: changed.length }) : t("app.save")}
+          </Button>
+        }
+      />
+      <AdminGuard>
+        <p className="mb-4 text-sm text-fg-muted">{t("admin.roles.reportHint")}</p>
+        {(["project", "global"] as const).map((scope) => {
+          const cols = roles.data.filter((r) => r.scope === scope);
+          const keys = defs.data.filter((d) => d.scope === scope);
+          if (!cols.length) return null;
+          const groups = [...new Set(keys.map((d) => d.group))];
+          return (
+            <section key={scope} aria-labelledby={`report-${scope}`} className="mb-8">
+              <h2 id={`report-${scope}`} className="mb-2 text-base font-semibold text-fg">
+                {scope === "project" ? t("admin.roles.scopeProject") : t("admin.roles.scopeGlobal")}
+              </h2>
+              <AdminTable minWidth={320 + cols.length * 110}>
+                <thead>
+                  <tr className={theadRow}>
+                    <th scope="col" className={th}>{t("admin.roles.permission")}</th>
+                    {cols.map((r) => (
+                      <th key={r.id} scope="col" className={`${th} w-28 text-center`}>
+                        <Link to={`/admin/roles/${r.id}`} className="hover:underline">{r.name}</Link>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {groups.map((g) => (
+                    <Fragment key={g}>
+                      <tr className="border-b border-border bg-surface-sunken">
+                        <th scope="colgroup" colSpan={cols.length + 1} className="px-3 py-1.5 text-left text-xs font-semibold text-fg-muted">
+                          {t(`permissions.groups.${g}` as "permissions.groups.wp")}
+                        </th>
+                      </tr>
+                      {keys.filter((d) => d.group === g).map((d) => (
+                        <tr key={d.key} className={tbodyRow}>
+                          <th scope="row" className="px-3 text-left text-sm font-normal text-fg">
+                            {label(d.key)} <span className="text-xs text-fg-muted">{d.key}</span>
+                          </th>
+                          {cols.map((r) => (
+                            <td key={r.id} className="px-3 text-center">
+                              <input
+                                type="checkbox"
+                                className="size-4 accent-accent"
+                                aria-label={t("admin.roles.cellLabel", { role: r.name, permission: label(d.key) })}
+                                checked={!!draft[r.id]?.has(d.key)}
+                                onChange={(e) => toggle(r.id, d.key, e.target.checked)}
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </AdminTable>
+            </section>
+          );
+        })}
       </AdminGuard>
     </PageBody>
   );

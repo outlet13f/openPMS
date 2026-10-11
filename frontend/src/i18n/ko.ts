@@ -536,6 +536,12 @@ const ko = {
       selectAll: "이 묶음 모두",
       deleteTitle: "역할을 삭제할까요?",
       deleteBody: "'{{name}}' 역할과 그 워크플로가 지워집니다. 이 역할을 가진 멤버가 있으면 삭제할 수 없습니다.",
+      report: "권한 보고서",
+      reportHint: "모든 역할의 권한을 한 표에서 보고 고칩니다. 바꾼 역할만 저장됩니다.",
+      permission: "권한",
+      cellLabel: "{{role}}: {{permission}}",
+      saveChanged: "역할 {{count}}개 저장",
+      reportSaved: "역할 {{count}}개의 권한을 저장했습니다",
     },
     users: {
       invite: "사용자 초대",

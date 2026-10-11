@@ -32,7 +32,7 @@ import { AdminAuthenticationPage } from "@/pages/admin/authentication";
 import { InvitationPage, PasswordResetPage } from "@/pages/auth-links";
 import { AdminPrioritiesPage, AdminStatusesPage } from "@/pages/admin/statuses";
 import { AdminWorkflowsPage } from "@/pages/admin/workflows";
-import { AdminRoleEditPage, AdminRolesPage } from "@/pages/admin/roles";
+import { AdminRoleEditPage, AdminRolesPage, AdminRolesReportPage } from "@/pages/admin/roles";
 import { AdminGroupsPage, AdminUsersPage } from "@/pages/admin/users";
 import { AdminCalendarPage } from "@/pages/admin/calendar";
 import { ProjectSettingsPage } from "@/pages/projects/settings";
@@ -168,6 +168,7 @@ export const router = createBrowserRouter([
       { path: "admin/workflows", element: <AdminWorkflowsPage /> },
       { path: "admin/priorities", element: <AdminPrioritiesPage /> },
       { path: "admin/roles", element: <AdminRolesPage /> },
+      { path: "admin/roles/report", element: <AdminRolesReportPage /> },
       { path: "admin/roles/:id", element: <AdminRoleEditPage /> },
       { path: "admin/users", element: <AdminUsersPage /> },
       { path: "admin/groups", element: <AdminGroupsPage /> },
