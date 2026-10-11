@@ -200,8 +200,9 @@ export const httpApi: Api = {
     createCard: (id, columnId, subject) => post(`/boards/${id}/cards/new`, { columnId, subject }),
   },
   notifications: {
-    list: (filter) => get("/notifications", { filter }),
+    list: (filter, narrow) => get("/notifications", { filter, reasons: narrow?.reasons?.join(","), project: narrow?.project }),
     unreadCount: async () => (await get<{ count: number }>("/notifications/unread-count")).count,
+    counts: (narrow) => get("/notifications/counts", { reasons: narrow?.reasons?.join(","), project: narrow?.project }),
     markRead: (target) => post("/notifications/read", target),
   },
   calendar: {

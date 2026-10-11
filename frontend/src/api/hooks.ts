@@ -2,7 +2,7 @@
 // rules live in one place.
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { ApiTokenInput, QueryFilter, BoardKind, Id, NotificationSetting, Preferences, ProfileInput, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch } from "./types";
+import type { ApiTokenInput, QueryFilter, BoardKind, Id, NotificationFilter, NotificationSetting, Preferences, ProfileInput, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch } from "./types";
 
 export const qk = {
   me: ["me"] as const,
@@ -25,7 +25,8 @@ export const qk = {
   savedQueries: (projectId?: string, view?: string) => ["saved-queries", projectId ?? "", view ?? "work_packages"] as const,
   boards: (projectId: string) => ["boards", projectId] as const,
   board: (id: string) => ["board", id] as const,
-  notifications: (filter: string) => ["notifications", "list", filter] as const,
+  notifications: (filter: string, narrow?: NotificationFilter) => ["notifications", "list", filter, narrow ?? {}] as const,
+  notificationCounts: (narrow?: NotificationFilter) => ["notifications", "counts", narrow ?? {}] as const,
   /** Shares the ["notifications"] prefix so every inbox change also refreshes the badge. */
   unread: ["notifications", "count"] as const,
   calendar: (from: string, to: string) => ["calendar", from, to] as const,
@@ -279,7 +280,10 @@ export function useBoardMutations(projectId: string) {
 
 /* ---------- notifications ---------- */
 
-export const useNotifications = (filter: "unread" | "all") => useQuery({ queryKey: qk.notifications(filter), queryFn: () => api.notifications.list(filter) });
+export const useNotifications = (filter: "unread" | "all", narrow?: NotificationFilter) =>
+  useQuery({ queryKey: qk.notifications(filter, narrow), queryFn: () => api.notifications.list(filter, narrow), placeholderData: keepPreviousData });
+export const useNotificationCounts = (narrow?: NotificationFilter) =>
+  useQuery({ queryKey: qk.notificationCounts(narrow), queryFn: () => api.notifications.counts(narrow), placeholderData: keepPreviousData });
 
 /** Header badge: polls every 60 s (architecture.md §5 "실시간"). */
 export const useUnreadCount = (enabled: boolean) =>

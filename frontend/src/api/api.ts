@@ -1,4 +1,7 @@
 import type {
+  NotificationCounts,
+  NotificationFilter,
+  NotificationReason,
   Webhook,
   WebhookDelivery,
   WebhookInput,
@@ -304,12 +307,14 @@ export interface Api {
   };
 
   notifications: {
-    /** GET /notifications */
-    list(filter: "unread" | "all"): Promise<NotificationGroup[]>;
+    /** GET /notifications?filter=&reasons=&project= — the newest 500 matching (filters apply first) */
+    list(filter: "unread" | "all", narrow?: NotificationFilter): Promise<NotificationGroup[]>;
     /** GET /notifications/unread-count */
     unreadCount(): Promise<number>;
-    /** POST /notifications/read */
-    markRead(target: { ids: Id[] } | { workPackageNumber: number } | { all: true }): Promise<void>;
+    /** GET /notifications/counts?reasons=&project= — unread counts for the filter choices, over every notification */
+    counts(narrow?: NotificationFilter): Promise<NotificationCounts>;
+    /** POST /notifications/read — by ids, one work package, everything, or what a filter matches (listed or not) */
+    markRead(target: { ids: Id[] } | { workPackageNumber: number } | { all: true } | { reasons?: NotificationReason[]; project?: string }): Promise<void>;
   };
 
   calendar: {

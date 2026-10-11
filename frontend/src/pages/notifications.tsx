@@ -6,7 +6,7 @@ import { Link, Navigate, Outlet, useMatch, useParams, useSearchParams } from "re
 import { useTranslation } from "react-i18next";
 import { CheckCheck, FilterX, Inbox, Settings } from "lucide-react";
 import type { NotificationGroup, NotificationReason } from "@/api";
-import { useMarkRead, useNotifications } from "@/api/hooks";
+import { useMarkRead, useNotificationCounts, useNotifications } from "@/api/hooks";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, Counter, StatusPill, TypeLabel } from "@/components/ui/badges";
 import { Button } from "@/components/ui/button";
@@ -31,15 +31,6 @@ const REASON_FILTERS: Record<ReasonFilter, NotificationReason[]> = {
 };
 const ALL = "all";
 
-/** The list as the filters see it: only matching notifications, groups without any left out. */
-function applyFilters(groups: NotificationGroup[], reason: string | null, project: string | null): NotificationGroup[] {
-  const reasons = reason ? REASON_FILTERS[reason as ReasonFilter] : null;
-  return groups.flatMap((g) => {
-    if (project && g.workPackage.project.identifier !== project) return [];
-    const items = reasons ? g.items.filter((i) => reasons.includes(i.reason)) : g.items;
-    return items.length ? [{ ...g, items, unread: items.filter((i) => !i.read).length }] : [];
-  });
-}
 
 function GroupCard({ g, selected, href }: { g: NotificationGroup; selected: boolean; href: string }) {
   const { t } = useTranslation();
@@ -90,35 +81,33 @@ export function NotificationsPage() {
   useDocumentTitle(t("notifications.title"));
   const [params, setParams] = useSearchParams();
   const filter = params.get("filter") === "all" ? "all" : "unread";
-  const list = useNotifications(filter);
+  const reason = (params.get("reason") ?? "") in REASON_FILTERS ? (params.get("reason") as ReasonFilter) : null;
+  const project = params.get("project");
+  // the server filters (and counts) over every notification, not only the newest it lists
+  const narrow = useMemo(() => ({ reasons: reason ? REASON_FILTERS[reason] : undefined, project: project ?? undefined }), [reason, project]);
+  const list = useNotifications(filter, narrow);
+  const totals = useNotificationCounts(narrow);
   const markRead = useMarkRead();
   const details = useMatch("/notifications/details/:number/*");
   const selected = details ? Number(details.params.number) : undefined;
-  const reason = (params.get("reason") ?? "") in REASON_FILTERS ? (params.get("reason") as ReasonFilter) : null;
-  const project = params.get("project");
   const search = params.toString() ? `?${params.toString()}` : "";
   const setParam = (key: string, value: string | null) => setParams((p) => (value ? p.set(key, value) : p.delete(key), p));
 
   // unread counts per choice (within the other filter), as the notification center shows them
   const counts = useMemo(() => {
-    const groups = list.data ?? [];
-    const unreadOf = (gs: NotificationGroup[]) => gs.reduce((n, g) => n + g.unread, 0);
-    const byReason = Object.fromEntries((Object.keys(REASON_FILTERS) as ReasonFilter[]).map((r) => [r, unreadOf(applyFilters(groups, r, project))]));
-    const projects = new Map<string, { name: string; unread: number }>();
-    for (const g of applyFilters(groups, reason, null)) {
-      const p = projects.get(g.workPackage.project.identifier) ?? { name: g.workPackage.project.name, unread: 0 };
-      p.unread += g.unread;
-      projects.set(g.workPackage.project.identifier, p);
-    }
+    const c = totals.data;
+    const byReason = Object.fromEntries(
+      (Object.keys(REASON_FILTERS) as ReasonFilter[]).map((r) => [r, REASON_FILTERS[r].reduce((n, x) => n + (c?.byReason[x] ?? 0), 0)]),
+    ) as Record<ReasonFilter, number>;
+    const projects = new Map<string, { name: string; unread: number }>((c?.projects ?? []).map((p) => [p.identifier, { name: p.name, unread: p.unread }]));
     if (project && !projects.has(project)) projects.set(project, { name: project, unread: 0 });
-    return { all: unreadOf(applyFilters(groups, null, project)), byReason, projects, allProjects: unreadOf(applyFilters(groups, reason, null)) };
-  }, [list.data, reason, project]);
-  const shown = useMemo(() => (list.data ? applyFilters(list.data, reason, project) : undefined), [list.data, reason, project]);
+    return { all: c?.all ?? 0, byReason, projects, allProjects: c?.allProjects ?? 0 };
+  }, [totals.data, project]);
+  const shown: NotificationGroup[] | undefined = list.data;
   const filtered = !!(reason || project);
   const withCount = (label: string, n: number) => (n > 0 ? `${label} (${n})` : label);
-  // with a filter, 모두 읽음 reads what is shown, not everything
-  const readShown = () =>
-    filtered ? markRead.mutate({ ids: (shown ?? []).flatMap((g) => g.items.filter((i) => !i.read).map((i) => i.id)) }) : markRead.mutate({ all: true });
+  // with a filter, 모두 읽음 reads everything the filter matches (listed or not), not everything
+  const readShown = () => (filtered ? markRead.mutate({ reasons: narrow.reasons, project: narrow.project }) : markRead.mutate({ all: true }));
 
   return (
     <div className="flex min-h-full">

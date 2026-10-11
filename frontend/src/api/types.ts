@@ -843,6 +843,18 @@ export interface NotificationItem {
   createdAt: IsoDateTime;
 }
 
+/** The notification center's filters: reasons (empty: all) and a project (identifier, empty: all). */
+export interface NotificationFilter {
+  reasons?: NotificationReason[];
+  project?: string | null;
+}
+/** Unread counts over every notification: all and per reason within the chosen project, per project within the chosen reasons. */
+export interface NotificationCounts {
+  all: number;
+  byReason: Partial<Record<NotificationReason, number>>;
+  projects: { identifier: string; name: string; unread: number }[];
+  allProjects: number;
+}
 export interface NotificationGroup {
   workPackage: WorkPackageRef;
   items: NotificationItem[];

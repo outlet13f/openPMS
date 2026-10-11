@@ -16,6 +16,9 @@ import type {
   Me,
   Member,
   NotificationGroup,
+  NotificationCounts,
+  NotificationFilter,
+  NotificationReason,
   NotificationItem,
   RelationGroups,
   RelationType,
@@ -154,6 +157,17 @@ function createProjectFor(user: DbUser, input: ProjectInput, source: DbProject |
   db.members.push({ id: newId("m"), projectId: p.id, userId: user.id, groupId: null, roleIds: ["r-manager"], createdAt: now });
   if (template) copyTemplate(template, p, new Set(input.copy ?? []), user);
   return p;
+}
+
+/** The notification center's filters, as the server applies them. */
+function inFilter(n: { reason: NotificationReason; wpId: string }, narrow?: NotificationFilter): boolean {
+  if (narrow?.reasons?.length && !narrow.reasons.includes(n.reason)) return false;
+  if (narrow?.project) {
+    const wp = db.workPackages.find((w) => w.id === n.wpId);
+    const p = db.projects.find((x) => x.identifier === narrow.project || x.id === narrow.project);
+    if (!wp || !p || wp.projectId !== p.id) return false;
+  }
+  return true;
 }
 
 /** S06 기준선 (same rule as the server's Baselines): the first change after the point holds the value from then. */
@@ -1606,10 +1620,10 @@ export const fakeApi: Api = {
   },
 
   notifications: {
-    list: (filter) =>
+    list: (filter, narrow) =>
       run(() => {
         const user = sessionUser();
-        const mine = db.notifications.filter((n) => n.recipientId === user.id && (filter === "all" || !n.readAt));
+        const mine = db.notifications.filter((n) => n.recipientId === user.id && (filter === "all" || !n.readAt) && inFilter(n, narrow));
         const groups = new Map<string, NotificationGroup>();
         for (const n of mine.sort((a, b) => b.createdAt.localeCompare(a.createdAt))) {
           const wp = db.workPackages.find((w) => w.id === n.wpId);
@@ -1621,6 +1635,30 @@ export const fakeApi: Api = {
           groups.set(wp.id, g);
         }
         return clone([...groups.values()]);
+      }),
+    counts: (narrow) =>
+      run(() => {
+        const user = sessionUser();
+        const out: NotificationCounts = { all: 0, byReason: {}, projects: [], allProjects: 0 };
+        const projects = new Map<string, { identifier: string; name: string; unread: number }>();
+        for (const n of db.notifications) {
+          if (n.recipientId !== user.id || n.readAt) continue;
+          const wp = db.workPackages.find((w) => w.id === n.wpId);
+          const p = wp && projectOf(wp);
+          if (!wp || !p || !can(user, p, "wp.view")) continue;
+          if (inFilter(n, { project: narrow?.project })) {
+            out.all++;
+            out.byReason[n.reason] = (out.byReason[n.reason] ?? 0) + 1;
+          }
+          if (inFilter(n, { reasons: narrow?.reasons })) {
+            out.allProjects++;
+            const e = projects.get(p.id) ?? { identifier: p.identifier, name: p.name, unread: 0 };
+            e.unread++;
+            projects.set(p.id, e);
+          }
+        }
+        out.projects = [...projects.values()].sort((a, b) => a.name.localeCompare(b.name, "ko"));
+        return out;
       }),
     unreadCount: () =>
       run(() => {
@@ -1634,7 +1672,9 @@ export const fakeApi: Api = {
         const wpId = "workPackageNumber" in target ? db.workPackages.find((w) => w.number === target.workPackageNumber)?.id : undefined;
         for (const n of db.notifications) {
           if (n.recipientId !== user.id || n.readAt) continue;
-          if ("all" in target || ("ids" in target && target.ids.includes(n.id)) || (wpId && n.wpId === wpId)) n.readAt = now;
+          const byFilter = "reasons" in target || "project" in target;
+          if ("all" in target || ("ids" in target && target.ids.includes(n.id)) || (wpId && n.wpId === wpId) || (byFilter && inFilter(n, target as NotificationFilter)))
+            n.readAt = now;
         }
       }),
   },
