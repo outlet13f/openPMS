@@ -544,6 +544,8 @@ const ko = {
     groups: { user: "사람별", workPackage: "작업별", activity: "활동별", project: "프로젝트별", day: "날짜별" },
     share: "비율",
     exportXlsx: "Excel로 내려받기",
+    rangeInvalid: "끝 날짜가 시작 날짜보다 빠릅니다",
+    rangeTooLong: "한 번에 1년까지만 볼 수 있습니다",
     reportEmpty: "이 기간에 기록된 시간이 없습니다.",
     activitiesTitle: "시간 기록 활동",
     activitiesHint: "시간을 기록할 때 고르는 활동입니다. 기본 활동은 내 공수 입력표에서 쓰입니다. 끈 활동은 새 기록에 쓸 수 없고 지난 기록에는 남습니다.",

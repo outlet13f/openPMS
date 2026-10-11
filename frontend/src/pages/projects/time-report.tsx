@@ -33,7 +33,9 @@ export function ProjectTimeReportPage() {
   const [from, setFrom] = useState(initialFrom);
   const [to, setTo] = useState(initialTo);
   const [groupBy, setGroupBy] = useState<TimeGroupBy>("user");
-  const okRange = !!from && !!to && from <= to;
+  // the server answers at most a year at a time; say so here instead of asking
+  const tooLong = !!from && !!to && (Date.parse(to) - Date.parse(from)) / 86_400_000 >= 366;
+  const okRange = !!from && !!to && from <= to && !tooLong;
   const report = useTimeReport({ project: project.identifier, from: okRange ? from : undefined, to: okRange ? to : undefined, groupBy });
   const [downloading, setDownloading] = useState(false);
 
@@ -70,7 +72,7 @@ export function ProjectTimeReportPage() {
         <Field label={t("time.from")}>
           <Input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
         </Field>
-        <Field label={t("time.to")} error={okRange ? undefined : t("time.invalid")}>
+        <Field label={t("time.to")} error={okRange ? undefined : tooLong ? t("time.rangeTooLong") : t("time.rangeInvalid")}>
           <Input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
         </Field>
         <div className="flex flex-col gap-1.5">
