@@ -111,6 +111,19 @@ test.describe("F11 관리", () => {
       await api(page, "await api.admin.users.setGlobalRoles(args[0], []); await api.admin.roles.remove(args[1])", doyoon, role.id);
     }
   });
+  test("F11-H4 시스템 정보: version, database, migrations and backups; no pg_dump here, so no backup button", async ({ page }) => {
+    await page.goto("/admin");
+    await page.getByRole("link", { name: "시스템 정보" }).first().click();
+    await expect(page.getByRole("heading", { name: "시스템 정보", level: 1 })).toBeVisible();
+    const db = page.getByRole("region", { name: "데이터베이스" });
+    await expect(db.getByText(/^17/)).toBeVisible();
+    await expect(page.getByRole("region", { name: "최근 적용" }).getByText("v17")).toBeVisible();
+    const backups = page.getByRole("region", { name: "백업", exact: true });
+    await expect(backups.getByText("꺼짐")).toBeVisible(); // the dev profile
+    await expect(backups.getByText(/실행할 수 없음/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "지금 백업" })).toBeDisabled();
+    await axe(page, "X12 시스템 정보");
+  });
   test("F11-N1 a member cannot open administration", async ({ page }) => {
     await page.evaluate(async () => (await import("/src/api/index.ts" as string)).api.auth.logout());
     await login(page, "junho.park@openpms.local");

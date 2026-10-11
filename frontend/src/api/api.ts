@@ -1,4 +1,6 @@
 import type {
+  BackupFile,
+  SystemInfo,
   TimeActivity,
   TimeEntry,
   TimeEntryInput,
@@ -429,6 +431,12 @@ export interface Api {
       remove(id: Id): Promise<void>;
       /** GET /admin/permissions */
       permissions(): Promise<{ key: string; scope: "project" | "global"; group: string }[]>;
+    };
+    system: {
+      /** GET /admin/system — version, database, migrations, backups, counts */
+      info(): Promise<SystemInfo>;
+      /** POST /admin/system/backup — a pg_dump now (409 while another runs, 503 when pg_dump cannot run) */
+      backup(): Promise<BackupFile>;
     };
     timeActivities: {
       /** GET /admin/time-activities — all, switched-off ones too */

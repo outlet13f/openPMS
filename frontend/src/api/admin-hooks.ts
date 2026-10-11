@@ -221,3 +221,12 @@ export function useTimeActivityMutations() {
     update: useMutation({ mutationFn: (v: { id: Id; patch: Parameters<typeof api.admin.timeActivities.update>[1] }) => api.admin.timeActivities.update(v.id, v.patch), onSuccess: done }),
   };
 }
+
+/* ---------- 시스템 정보 ---------- */
+
+export const useSystemInfo = () => useQuery({ queryKey: ["admin", "system"], queryFn: () => api.admin.system.info() });
+
+export function useBackupNow() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: () => api.admin.system.backup(), onSettled: () => qc.invalidateQueries({ queryKey: ["admin", "system"] }) });
+}

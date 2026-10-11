@@ -752,6 +752,21 @@ export const adminApi: Api["admin"] = {
   },
 
   // the demo keeps webhooks but sends nothing
+  // the demo has no server, database or backups: the page shows what it can
+  system: {
+    info: () =>
+      run(() => {
+        requireAdmin(sessionUser());
+        return {
+          app: { version: "데모", builtAt: null, startedAt: nowIso(), java: "-", jobsEnabled: false },
+          database: { version: "브라우저 저장소(데모)", sizeBytes: JSON.stringify(db).length },
+          migrations: { current: null, applied: 0, pending: 0, recent: [] },
+          backups: { beforeUpgrade: false, dir: "-", keep: 0, pgDump: null, running: false, files: [] },
+          counts: { activeUsers: db.users.filter((u) => u.status === "active").length, projects: db.projects.length, workPackages: db.workPackages.length, attachmentBytes: 0 },
+        };
+      }),
+    backup: () => run(() => (requireAdmin(sessionUser()), Promise.reject(new ApiError(503, "백업하지 못했습니다.", "데모에서는 백업하지 않습니다.")) as never)),
+  },
   timeActivities: adminTimeActivities,
   webhooks: {
     list: () => run(() => (requireAdmin(sessionUser()), (db.webhooks ?? []).map(({ secret: _s, ...h }) => clone(h)))),

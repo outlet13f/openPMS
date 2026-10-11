@@ -171,6 +171,22 @@ export interface AdminApiToken extends ApiToken {
 /** 웹훅 (관리 · API와 웹훅) */
 export const WEBHOOK_EVENTS = ["work_package.created", "work_package.updated", "work_package.deleted", "work_package.commented"] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
+/** 관리 · 시스템 정보 */
+export interface BackupFile {
+  name: string;
+  kind: "before-upgrade" | "manual";
+  bytes: number;
+  createdAt: IsoDateTime;
+}
+export interface SystemInfo {
+  app: { version: string; builtAt: IsoDateTime | null; startedAt: IsoDateTime; java: string; jobsEnabled: boolean };
+  database: { version: string; sizeBytes: number };
+  migrations: { current: string | null; applied: number; pending: number; recent: { version: string; description: string; installedAt: IsoDateTime | null; success: boolean }[] };
+  /** pgDump: its version line, null when it cannot be run (development) */
+  backups: { beforeUpgrade: boolean; dir: string; keep: number; pgDump: string | null; running: boolean; files: BackupFile[] };
+  counts: { activeUsers: number; projects: number; workPackages: number; attachmentBytes: number };
+}
+
 /** 시간 기록 (내 공수, 작업의 시간 탭, 공수 보고서) */
 export interface TimeActivity {
   id: Id;

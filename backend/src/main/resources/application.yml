@@ -83,6 +83,12 @@ openpms:
   webhooks:
     # true: webhooks may not go to loopback or private-network addresses (link-local is always refused)
     block-private-addresses: ${OPENPMS_WEBHOOK_BLOCK_PRIVATE:false}
+  backup:
+    # pg_dump before an upgrade applies migrations (a failed dump stops the start-up); 관리 · 시스템 정보 also backs up on demand
+    before-upgrade: ${OPENPMS_BACKUP_BEFORE_UPGRADE:true}
+    dir: ${OPENPMS_BACKUP_DIR:/data/backups}
+    # dumps of each kind (before-upgrade, manual) kept; older ones are removed
+    keep: ${OPENPMS_BACKUP_KEEP:5}
 
 ---
 # Development: dev data set (scripts/gen_dev_data.py), plain-http cookies.
@@ -97,6 +103,10 @@ spring:
 openpms:
   # the browser checks sign in many times a minute
   logins-per-minute: 500
+  # development: no pg_dump in the build container, and the restore point is the backup (scripts/dev.sh snapshot-db)
+  backup:
+    before-upgrade: ${OPENPMS_BACKUP_BEFORE_UPGRADE:false}
+    dir: ${OPENPMS_BACKUP_DIR:/tmp/openpms-backups}
   jobs:
     # off by default so browser checks are not disturbed; run one with POST /api/v1/dev/jobs/{name},
     # or start with OPENPMS_JOBS_ENABLED=true scripts/dev.sh run

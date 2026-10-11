@@ -133,6 +133,7 @@ function AdminSidebar({ me, onNavigate, onCollapse }: { me: Me; onNavigate?: () 
     { title: t("admin.groupTitles.people"), keys: ["users", "groups", "roles", "authentication"] },
     { title: t("admin.groupTitles.calendar"), keys: ["calendar"] },
     { title: t("admin.groupTitles.integrations"), keys: ["integrations"] },
+    { title: t("admin.groupTitles.system"), keys: ["system"] },
   ];
   const visible = (k: string) => me.isAdmin || ((k === "users" || k === "groups") && me.globalPermissions.includes("global.manage_users"));
   return (

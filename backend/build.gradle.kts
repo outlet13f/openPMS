@@ -20,6 +20,11 @@ repositories {
     mavenCentral()
 }
 
+// version and build time for 관리 · 시스템 정보 (META-INF/build-info.properties → BuildProperties)
+springBoot {
+    buildInfo()
+}
+
 // jOOQ classes are generated from the migrated dev database and checked in (src/main/generated), so a
 // normal build needs no database. Regenerate after a schema change: scripts/dev.sh gradle jooqCodegen
 sourceSets["main"].java.srcDir("src/main/generated")

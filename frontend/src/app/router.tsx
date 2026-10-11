@@ -38,6 +38,7 @@ import { AdminRoleEditPage, AdminRolesPage, AdminRolesReportPage } from "@/pages
 import { AdminGroupsPage, AdminUsersPage } from "@/pages/admin/users";
 import { AdminCalendarPage } from "@/pages/admin/calendar";
 import { AdminIntegrationsPage } from "@/pages/admin/integrations";
+import { AdminSystemPage } from "@/pages/admin/system";
 import { ApiDocsPage } from "@/pages/api-docs";
 import { ProjectSettingsPage } from "@/pages/projects/settings";
 import { BoardsPage, NewBoardPage } from "@/pages/boards/list";
@@ -180,6 +181,7 @@ export const router = createBrowserRouter([
       { path: "admin/groups", element: <AdminGroupsPage /> },
       { path: "admin/calendar", element: <AdminCalendarPage /> },
       { path: "admin/integrations", element: <AdminIntegrationsPage /> },
+      { path: "admin/system", element: <AdminSystemPage /> },
       { path: "help/api", element: <ApiDocsPage /> },
       { path: "admin/:section/*", element: <AdminStub /> },
       { path: "*", element: <NotFound /> },

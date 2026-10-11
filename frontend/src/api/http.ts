@@ -279,6 +279,10 @@ export const httpApi: Api = {
       remove: (id) => del(`/admin/roles/${id}`),
       permissions: () => get("/admin/permissions"),
     },
+    system: {
+      info: () => get("/admin/system"),
+      backup: () => post("/admin/system/backup"),
+    },
     timeActivities: {
       list: () => get("/admin/time-activities"),
       create: (input) => post("/admin/time-activities", input),
