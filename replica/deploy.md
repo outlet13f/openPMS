@@ -1,6 +1,6 @@
 # 배포 안내 (openPMS 사내 서버 운영)
 
-- 작성: 2026-10-10 · 빌드: 11fb59b · 갱신: 2026-10-11 (384a2f9: 프록시 뒤 클라이언트 주소, SSO 사용자의 비밀번호 만들기 / 86e58a9: 마이그레이션 V11–V15, API 토큰, 웹훅, PDF 글꼴 / 99e0287: 마이그레이션 V16(Idempotency-Key), 웹훅 사내망 주소 막기 `OPENPMS_WEBHOOK_BLOCK_PRIVATE`)
+- 작성: 2026-10-10 · 빌드: 11fb59b · 갱신: 2026-10-11 (384a2f9: 프록시 뒤 클라이언트 주소, SSO 사용자의 비밀번호 만들기 / 86e58a9: 마이그레이션 V11–V15, API 토큰, 웹훅, PDF 글꼴 / 99e0287: 마이그레이션 V16(Idempotency-Key), 웹훅 사내망 주소 막기 `OPENPMS_WEBHOOK_BLOCK_PRIVATE` / 3f9d5c0: 마이그레이션 V17(시간 기록), 새 모듈 `time_tracking`)
 - 기준 파일: `Dockerfile`, `compose.yaml`, `.env.example`, `.dockerignore`, `backend/src/main/resources/application.yml`, `backend/src/main/java/com/openpms/auth/FirstAdmin.java`, `frontend/vite.config.ts`, `backend/src/main/java/com/openpms/auth/ApiTokenFilter.java`, `backend/src/main/java/com/openpms/webhook/Webhooks.java`, `backend/src/main/java/com/openpms/common/IdempotencyFilter.java`, `backend/src/main/resources/fonts/`
 - 이 문서는 위 파일에 실제로 있는 것만 적습니다. 파일이 바뀌면 이 문서도 같이 고칩니다.
 
@@ -287,7 +287,7 @@
 
 - 사람마다 **계정 설정 → API 토큰**에서 만듭니다: 이름, 권한 범위(읽기 전용 / 읽기·쓰기), 만료(30·90·365일·없음). 토큰 값(`opms_…`)은 만들 때 한 번만 보이고, DB에는 SHA-256만 남습니다. 한 사람이 쓰는 토큰은 20개까지입니다.
 - 사내 시스템은 `Authorization: Bearer <토큰>`으로 `/api/v1`을 부릅니다. 세션 쿠키와 CSRF 토큰은 필요 없고, 토큰을 만든 사람의 권한 그대로 동작합니다. 연동 전용 계정(사람이 아닌 계정)을 초대해 필요한 프로젝트에만 넣고, 그 계정으로 토큰을 만드는 것을 권합니다.
-- 읽기 전용 토큰은 조회(GET)와 목록 조회·내보내기(`POST /work-packages/query`, `/export`, `/export/count`)만 합니다. 로그인·비밀번호·토큰 관리 경로(`/auth/**`의 `/auth/me` 밖, `/me/password*`, `/me/api-tokens`, `/admin/api-tokens`)와 연동 설정(`/admin/settings/api`, `/admin/webhooks*`, `/admin/webhook-deliveries*`, dfde416)은 관리자의 토큰을 포함해 어떤 토큰으로도 부를 수 없습니다(403 "API 토큰으로는 로그인·비밀번호·토큰·연동 설정을 다룰 수 없습니다."). 토큰 스위치와 웹훅은 관리자가 로그인해서 화면으로 바꿉니다.
+- 읽기 전용 토큰은 조회(GET)와 목록 조회·내보내기(`POST /work-packages/query`, `/export`, `/export/count`)만 합니다. 시간 기록(3f9d5c0)의 목록·주간·공수 보고서·Excel(`GET /time-entries`, `/week`, `/report`, `/export`)도 GET이라 읽기 토큰으로 됩니다. 사내 근태·정산 시스템이 공수를 가져갈 때는 읽기 토큰으로 충분하고, 기록하거나 주간 입력표를 저장(`POST /time-entries`, `PUT /time-entries/week`)하려면 읽기·쓰기 토큰이 필요합니다. 로그인·비밀번호·토큰 관리 경로(`/auth/**`의 `/auth/me` 밖, `/me/password*`, `/me/api-tokens`, `/admin/api-tokens`)와 연동 설정(`/admin/settings/api`, `/admin/webhooks*`, `/admin/webhook-deliveries*`, dfde416)은 관리자의 토큰을 포함해 어떤 토큰으로도 부를 수 없습니다(403 "API 토큰으로는 로그인·비밀번호·토큰·연동 설정을 다룰 수 없습니다."). 토큰 스위치와 웹훅은 관리자가 로그인해서 화면으로 바꿉니다.
 - 토큰마다 분당 300회까지입니다(넘으면 429). 버킷은 인스턴스 메모리라 인스턴스를 늘리면 인스턴스마다 따로 셉니다.
 - **관리자 스위치**: **API 토큰 쓰기**를 끄면(`PUT /api/v1/admin/settings/api`, 설정 키 `api.tokens_enabled`) 새 토큰을 만들 수 없고 있는 토큰도 모두 바로 401입니다. 기본은 켜짐입니다. 연동을 쓰지 않는 동안 꺼 두는 것도 방법입니다. 같은 화면에서 모든 사람의 토큰(만든 사람, 최근 사용)을 보고 폐기합니다.
 - 만든 사람을 잠그거나 삭제하면 그 사람의 토큰은 바로 401입니다. 퇴사자 처리 때 따로 할 일은 없습니다.
@@ -384,6 +384,9 @@ docker compose exec -T app tar xzf - -C /data/files < files-2026-10-10.tar.gz
    ```
 
 - 마이그레이션이 실패하면 앱이 뜨지 않습니다. 원인을 고치거나, 이전 소스로 되돌려 빌드하고 백업에서 DB를 복원합니다.
+- 3f9d5c0 기준으로 올리면 V17 하나가 적용됩니다(시간 기록: `time_activities`·`time_entries` 테이블과 인덱스·트리거, 기본 활동 7개(개발(기본)·설계·회의·테스트·문서·관리·기타), 기본 역할 "프로젝트 관리자"에 `time.log`·`time.view`·`time.manage`, "멤버"에 `time.log`·`time.view`, `projects_known_modules` 검사에 `time_tracking`을 넣고 **모든 기존 프로젝트에서 시간 기록 모듈을 켬**). 테이블을 더하고, 역할 권한 배열과 프로젝트의 모듈 배열에 값을 더할 뿐 기존 데이터를 지우거나 바꾸지 않습니다. 역할 권한은 그 역할에 `time.log`가 아직 없을 때만 더하고, 이름이 아니라 V3 시드의 고정 id로 찾으므로 이름을 바꾼 기본 역할에도 들어갑니다(새로 만든 역할에는 들어가지 않음). 99e0287 이미지로 만든 V16 DB에서 올려 데이터 유지, 기존 프로젝트에 `time_tracking`, 활동 7개를 확인했습니다(아래 재검증 7). 새 환경 변수는 없습니다.
+  - 사용자에게 보이는 변화: 모든 프로젝트 메뉴에 **공수 보고서**(시간 기록 보기 권한이 있는 사람), 작업 상세에 **시간** 탭, 전역 메뉴에 **내 공수**. 시간 기록을 쓰지 않을 프로젝트는 프로젝트 설정 → 모듈에서 **시간 기록**을 끄고, 인스턴스 전체에서 쓰지 않으려면 역할 권한에서 시간 기록 권한을 뺍니다. 올리기 전에 프로젝트 관리자에게 알립니다.
+  - 주의(이번 작업에서 찾은 것): V17 첫 초안(커밋하지 않음)은 `projects_known_modules` 검사 제약을 넓히지 않고 `time_tracking`을 켜려 해서, 프로젝트가 있는 기존 DB에서는 실패했을 것입니다. 커밋된 V17(789bb9d)은 제약을 지우고 다시 만들므로 운영자가 따로 할 일은 없습니다. 앞으로 모듈을 더하는 마이그레이션도 이 검사 제약을 함께 바꿔야 하고, 기존 DB를 올려 보는 점검(아래 재검증 7처럼)이 이런 문제를 잡습니다.
 - 99e0287 기준으로 올리면 V16 하나가 적용됩니다(`idempotency_keys` 테이블, `webhooks_created_by_idx` 인덱스, `webhooks_set_updated_at` 트리거). 테이블·인덱스·트리거를 더할 뿐 기존 데이터를 바꾸지 않습니다. 9252851 이미지로 만든 V15 DB에서 올려 프로젝트·작업이 그대로인 것을 확인했습니다(아래 재검증 6). 새 환경 변수 `OPENPMS_WEBHOOK_BLOCK_PRIVATE`는 선택이고 넣지 않으면 지금처럼 동작합니다. 사용자에게 보이는 변화: 목록 기준선 아래 "기준선 이후 목록에서 빠진 작업", 알림 필터·건수가 최근 500건에 묶이지 않음. 웹훅 받는 쪽에는 자동 일정·첨부·프로젝트 복사 이벤트가 새로 가므로 미리 알립니다.
 - 86e58a9 기준으로 올리면 V11–V15 다섯 개가 적용됩니다(내부 코멘트 켜기, 고대비 테마 값, 개요 위젯, API 토큰, 웹훅). 모두 컬럼·테이블을 더하거나 검사 조건을 넓히는 것이라 기존 데이터를 바꾸지 않습니다. V10 DB에서 올려 데이터가 그대로인 것을 확인했습니다(아래 재검증 4). 새 환경 변수는 없습니다. API 토큰은 기본으로 켜져 있으므로, 연동을 쓰지 않을 거면 올린 뒤 관리 → API와 웹훅에서 끕니다. 키보드 단축키도 이번에 처음 동작하는데, 환경설정 기본값(`user_preferences.keyboard_shortcuts`)이 켬이라 기존 사용자 모두에게 켜진 채로 시작합니다(끄기는 계정 설정 → 화면 → 키보드 단축키). 사용자에게 미리 알립니다.
 - 세션은 DB(Spring Session JDBC)에 있으므로 재시작해도 사용자는 다시 로그인하지 않아도 됩니다.
@@ -553,3 +556,19 @@ curl -s http://127.0.0.1:8090/actuator/health
 | Idempotency-Key | 화면이 만든 두 생성 요청(`POST /api/v1/projects` 201, `POST /api/v1/projects/{id}/work-packages` 201)이 `idempotency_keys`에 상태·응답과 함께 남음 |
 
 `OPENPMS_WEBHOOK_BLOCK_PRIVATE=true`로 띄운 확인과 실제 사내 시스템으로 받는 웹훅은 배포 때 위 "웹훅과 API 토큰" 순서대로 합니다.
+
+### 2026-10-11 재검증 7 (3f9d5c0 기준 이미지: 마이그레이션 V17, 시간 기록)
+
+3f9d5c0 코드로 만든 이미지를 같은 스크래치 compose(포트 18090)로 띄워 두 가지를 확인했습니다.
+
+| 항목 | 결과 |
+| --- | --- |
+| 업그레이드(V16 DB) | 99e0287 이미지로 만든 V16 DB에 새 이미지를 띄움 → V17 적용, 프로젝트와 작업이 그대로, 기존 프로젝트의 모듈에 `time_tracking`이 들어감, `time_activities` 7행 |
+| 새 설치 | 빈 스키마에 17개 적용 |
+| 브라우저 흐름 | 초대 링크로 가입 → 프로젝트·작업 만들기 → 홈·관리·보드·Gantt·계정 화면, 통과 |
+| PDF | 200 |
+| 주간 입력표 | 내 공수에 `2:30` 입력 → 저장 → 다시 읽으면 `2.5` |
+| 공수 보고서 | 합계 2.5 |
+| Excel | 내려받은 파일 이름 "공수 2026-10-01~2026-10-11.xlsx" |
+
+V17 첫 초안의 검사 제약 문제(위 "업그레이드")는 이 점검 전에 고친 것이고, 이 점검의 V16 → V17 업그레이드가 그 수정을 확인합니다. 사내 근태 시스템이 API 토큰으로 공수를 가져가는 연동은 배포 때 위 "웹훅과 API 토큰" 순서대로 확인합니다.

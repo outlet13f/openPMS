@@ -1,6 +1,6 @@
 # 아키텍처: openPMS (OpenProject 작업 패키지 + 계획 기능의 클린룸 재구현)
 
-- 입력: `replica/recon.md` (화면 S01–S37, 흐름 F01–F11), `replica/features.csv` (must 64 · should 50 · could 26 · skip 20. 2026-10-11 지금 파일은 should 51)
+- 입력: `replica/recon.md` (화면 S01–S37, 흐름 F01–F11), `replica/features.csv` (must 64 · should 50 · could 26 · skip 20. 2026-10-11 지금 파일은 should 51, 3f9d5c0부터 could 27: "시간 추적·비용·예산"을 나눠 시간 기록이 could로 들어오고 비용·예산은 skip으로 남음)
 - 산출물: 이 문서, `replica/schema.sql` (Flyway V1), `replica/seed.sql` (Flyway V3)
 - 작성일: 2026-10-09
 - 정해진 사항: **사내 서버 셀프 호스팅**, **Spring Boot + React**, **이메일·비밀번호 로그인 (SSO는 should 단계, OIDC로 구현 완료: a677079)**
@@ -60,6 +60,7 @@ openPMS/
       V14__api_tokens.sql 개인 API 토큰
       V15__webhooks.sql   웹훅: webhooks, webhook_deliveries
       V16__idempotency_keys.sql  생성 POST의 Idempotency-Key 응답 보관, webhooks 인덱스·트리거 보완
+      V17__time_tracking.sql     시간 기록: time_activities, time_entries, 역할 권한 time.*, 모듈 time_tracking
   frontend/                     Vite + React + TS. 빌드 결과는 backend 정적 리소스로 복사
   Dockerfile                    저장소 최상위. 멀티 스테이지(프론트 빌드 → 백엔드 빌드 → JRE 런타임)
   compose.yaml                  저장소 최상위. app, db (mailpit 없음. 개발용 Mailpit은 backend/scripts/dev.sh가 띄움)
@@ -94,7 +95,7 @@ openPMS/
 
 ## 2. 스키마
 
-테이블 36개(자체) + 라이브러리 테이블 3개(spring_session, spring_session_attributes, scheduled_tasks). 전문은 `replica/schema.sql`(= Flyway V1). 구현 중 V4–V9로 바뀐 것(work_package_shares 테이블, user_preferences.last_digest_at·my_page_widgets, 알림 기본값, updated_at 트리거 예외, types.attribute_groups를 유형 양식으로 쓰며 기본값 '[]'로 초기화)은 `replica/review-2026-10-10.md` §2.3에 정리했습니다(V9는 그 뒤 추가). V10은 사내 SSO의 `oidc_providers`, `user_identities` 두 테이블을 더합니다(아래 목록과 설계 결정). 2026-10-11(4fb4ca5..86e58a9)에 V11 `projects.internal_comments`, V12 `users.theme`에 `high_contrast`, V13 `projects.overview_widgets`, V14 `api_tokens`, V15 `webhooks`·`webhook_deliveries`를 더했습니다. 같은 날 93d1a74의 V16이 `idempotency_keys`와 `webhooks_created_by_idx` 인덱스·`webhooks_set_updated_at` 트리거를 더했습니다. 구현 기준 테이블은 자체 43개 + 라이브러리 3개입니다(`docs/deliverables/05-데이터베이스설계서.md`).
+테이블 36개(자체) + 라이브러리 테이블 3개(spring_session, spring_session_attributes, scheduled_tasks). 전문은 `replica/schema.sql`(= Flyway V1). 구현 중 V4–V9로 바뀐 것(work_package_shares 테이블, user_preferences.last_digest_at·my_page_widgets, 알림 기본값, updated_at 트리거 예외, types.attribute_groups를 유형 양식으로 쓰며 기본값 '[]'로 초기화)은 `replica/review-2026-10-10.md` §2.3에 정리했습니다(V9는 그 뒤 추가). V10은 사내 SSO의 `oidc_providers`, `user_identities` 두 테이블을 더합니다(아래 목록과 설계 결정). 2026-10-11(4fb4ca5..86e58a9)에 V11 `projects.internal_comments`, V12 `users.theme`에 `high_contrast`, V13 `projects.overview_widgets`, V14 `api_tokens`, V15 `webhooks`·`webhook_deliveries`를 더했습니다. 같은 날 93d1a74의 V16이 `idempotency_keys`와 `webhooks_created_by_idx` 인덱스·`webhooks_set_updated_at` 트리거를 더했습니다. 789bb9d의 V17이 시간 기록 `time_activities`·`time_entries`를 더하고, `projects_known_modules` 검사에 `time_tracking`을 넣어 모든 기존 프로젝트에서 켰습니다. 구현 기준 테이블은 자체 45개 + 라이브러리 3개입니다(`docs/deliverables/05-데이터베이스설계서.md`).
 
 **접근 규칙: 데이터 계층 검사.** RLS는 쓰지 않습니다. 앱이 DB 계정 하나로 접속하기 때문입니다. 대신 모든 서비스 메서드가 `PermissionService`로 권한을 확인하고, 모든 목록 쿼리는 `VisibleProjects.condition(user, permission)` 조건을 반드시 포함합니다(§4.1). 보이지 않는 리소스에는 403이 아니라 404를 돌려줘 존재 여부가 드러나지 않게 합니다.
 
@@ -113,6 +114,7 @@ openPMS/
 | 알림 | notifications, notification_settings | recipient_id / user_id |
 | 달력·설정 | non_working_days, settings | 인스턴스(관리자) |
 | 연동 | webhooks(V15 추가), webhook_deliveries(V15 추가) | 인스턴스(관리자) |
+| 시간 기록 | time_activities(V17 추가), time_entries(V17 추가) | 활동은 인스턴스(관리자). 기록은 user_id(본인, `time.manage`는 남의 것도) + project_id(작업의 프로젝트, 작업을 옮기면 따라감) |
 
 ### 설계 결정
 
@@ -124,11 +126,12 @@ openPMS/
 - **사용자 정의 필드 값은 `custom_values jsonb`에 둡니다.** EAV 테이블보다 조회와 필터가 단순하고, `jsonb_path_ops` GIN 인덱스로 같음 조건을 빠르게 찾습니다. 대신 옵션·사용자 참조의 무결성은 앱이 검증합니다.
 - **저장된 보기 설정은 `queries.spec jsonb` 한 칸**에 넣고 `"v":1`로 형식 버전을 둡니다. 기본 보기(모두 열림, 내게 할당됨 등)는 코드에 있습니다.
 - **보드 컬럼은 종류별 FK를 nullable로 각각 둡니다**(`num_nonnulls = 1`). 다형 참조를 피했기 때문에 상태·버전 등이 삭제되면 컬럼도 FK에 따라 같이 삭제됩니다.
-- **돈 컬럼은 없습니다.** 시간·비용은 이번 범위 밖입니다.
+- **돈 컬럼은 없습니다.** 비용·단가·예산은 범위 밖입니다. 시간 기록은 3f9d5c0부터 있습니다(아래 V17).
 - **SSO 공급자는 DB에 둡니다(V10).** `oidc_providers`: slug(콜백 주소에 들어감, `^[a-z0-9][a-z0-9-]{0,39}$`, 유일), display_name(1–60자), issuer, client_id, client_secret(평문, API로 내보내지 않음), scopes(기본 `openid email profile`), claim_email·claim_name(기본 `email`·`name`), auto_create(기본 false), enabled, position, updated_at 트리거. `user_identities`: user_id → users(cascade), provider_id → oidc_providers(cascade, 공급자를 지우면 연결만 사라짐), subject, last_login_at. 유일 (provider_id, subject)와 (provider_id, user_id): 공급자마다 계정 하나에 sub 하나. 공급자의 토큰은 저장하지 않습니다.
 - **API 토큰은 해시만 둡니다(V14).** `api_tokens`: user_id(cascade), name(1–60자), token_hash(SHA-256, 유일), scope(`read`·`write`), last_used_at(1분에 한 번만 갱신), expires_at(null = 없음), revoked_at(폐기해도 행은 남김). 토큰 원문(`opms_` + 32바이트)은 만들 때 응답에 한 번만 있습니다.
 - **웹훅은 보낼 일을 테이블에 쌓습니다(V15).** `webhooks`: name, url(`^https?://`), secret(HMAC 키, 평문, API로는 만들 때만), events(4종 부분집합, CHECK), project_ids(null = 전체), enabled, created_by. `webhook_deliveries`: 업무 변경과 같은 트랜잭션에서 넣는 아웃박스 행(event, payload jsonb, status pending·succeeded·failed, attempts, next_attempt_at, response_status, error). 보낼 차례인 행은 부분 인덱스(`status = 'pending'`)로 찾습니다. 웹훅을 지우면 전송 기록도 cascade로 지워지고, 그 밖에는 `token-cleanup`이 `pending`이 아니고 30일 지난 행을 지웁니다(dfde416). V16(93d1a74)이 `webhooks.created_by` 인덱스(`webhooks_created_by_idx`, 인덱스 없는 FK가 다시 0개)와 다른 테이블과 같은 `updated_at` 트리거(`webhooks_set_updated_at`)를 더했습니다.
 - **생성 POST의 재시도는 DB에서 한 번으로 묶습니다(V16).** `idempotency_keys`: PK (user_id, key), user_id → users(cascade), key(1–255자, CHECK), method, path(쿼리 포함), request_hash(메서드·경로·본문의 SHA-256: 같은 키를 다른 요청에 쓰면 422), status(null = 처리 중, 같은 키가 또 오면 409), content_type, body(bytea, 처음 2xx 응답), created_at(인덱스 `idempotency_keys_created_idx`). 처음 요청이 행을 먼저 넣어(`on conflict do nothing`) 동시에 온 같은 요청 중 하나만 실행되게 하고, 2xx가 아니면 행을 지워 다시 보낼 수 있게 합니다. 24시간 뒤 `token-cleanup`이 지웁니다. 설계(§5)는 "10분 보관"이었지만 사람이 다음 날 다시 시도하는 경우까지 덮도록 하루로 늘렸습니다.
+- **시간 기록은 사람·작업·날짜마다 한 줄씩 둡니다(V17).** `time_activities`: name(1–60자, 유일), position, is_default(부분 유일 인덱스로 하나만), active(끈 활동은 새 기록에 못 쓰고 지난 기록에는 남음), updated_at 트리거. 기본 7개: 개발(기본)·설계·회의·테스트·문서·관리·기타. `time_entries`: user_id → users(cascade), project_id → projects(cascade, 작업의 프로젝트를 복사해 둠 — 보고서·권한을 작업 조인 없이 프로젝트로 거르려고. 작업을 옮기면 `WorkPackageTransfers.move`가 같이 바꿈), work_package_id → work_packages(cascade), activity_id → time_activities(set null), spent_on(date), hours(numeric(5,2), 0 초과 24 이하), comment(1,000자), updated_at 트리거. 인덱스 (user_id, spent_on)·(project_id, spent_on)·(work_package_id)·(activity_id)라 인덱스 없는 FK는 여전히 0개. 한 사람의 하루 24시간 제한과 "칸 하나 = 그날 그 작업의 내 시간 합"은 DB 제약이 아니라 앱(`TimeController`)이 지킵니다. 같은 칸에 여러 줄을 허용해(시간 탭에서 활동·메모를 나눠 남김) 주간 입력표는 그런 칸을 바꾸지 않습니다. 시간 기록은 저널에 남기지 않습니다(근무 기록이지 작업의 변경이 아니어서). 처음 V17 초안은 `projects_known_modules`를 넓히지 않아 프로젝트가 있는 DB에서 실패했을 것이라 출시 전에 고쳤습니다.
 - PostgreSQL 18로 올리면 시간순 정렬되는 `uuidv7()`을 기본값으로 바꾸는 것을 검토합니다.
 
 ### 권한 키
@@ -150,13 +153,14 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | wp.share | 작업 패키지를 멤버 아닌 사용자와 공유(V6 추가, 기본: 프로젝트 관리자) |
 | query.save / query.manage_public | 비공개 보기 저장 / 공개 보기 관리 |
 | board.view / board.manage | 보드 보기 / 보드·컬럼 관리 |
+| time.log / time.view / time.manage | 내 시간 기록(기록·고치기·지우기) / 모든 사람의 시간 기록 보기(공수 보고서) / 남의 시간 기록 고치기·대신 기록. V17 추가, 모듈 `time_tracking`이 꺼지면 빠짐. 기본: 프로젝트 관리자 셋 다, 멤버 time.log·time.view, 참관자·비멤버 없음 |
 | global.create_projects / global.manage_users | 전역 역할 전용 |
 
 기본 역할(seed): 프로젝트 관리자(전체), 멤버, 참관자, 비멤버(공개 프로젝트 열람), 프로젝트 생성자(전역).
 
 ### 전역 설정 키 (`settings`)
 
-`calendar.working_days` `[1..5]`, `calendar.week_starts_on` `7`(일요일. 구현: `"default"`·`1` 월·`6` 토·`7` 일, ISO 요일), `calendar.date_format` `default`(한국어: 2026.10.21)·`YYYY.MM.DD`·`YYYY-MM-DD`·`YYYY/MM/DD`·`YYYY년 M월 D일`·`DD.MM.YYYY`·`MM/DD/YYYY`, `calendar.time_format` `default`(24시간)·`24h`·`12h`, `calendar.hours_per_day` `8`, `calendar.duration_format`, `progress.mode` `work|status`, `progress.totals` `weighted|simple_average`, `progress.closed_sets_100`, `attachments.max_bytes` (25MB), `journals.aggregation_minutes` `5`, `notifications.poll_seconds` `60`, `i18n.default_locale`, `i18n.default_time_zone`, `auth.*` (비밀번호 길이, 잠금 횟수·시간, 토큰 수명), `mail.from`. 구현에서 더한 키: `api.tokens_enabled`(API 토큰 사용, 기본 true, f835e1c).
+`calendar.working_days` `[1..5]`, `calendar.week_starts_on` `7`(일요일. 구현: `"default"`·`1` 월·`6` 토·`7` 일, ISO 요일), `calendar.date_format` `default`(한국어: 2026.10.21)·`YYYY.MM.DD`·`YYYY-MM-DD`·`YYYY/MM/DD`·`YYYY년 M월 D일`·`DD.MM.YYYY`·`MM/DD/YYYY`, `calendar.time_format` `default`(24시간)·`24h`·`12h`, `calendar.hours_per_day` `8`(구현: 3f9d5c0부터 주간 입력표의 하루 근무 시간 경고에도 씀), `calendar.duration_format`, `progress.mode` `work|status`, `progress.totals` `weighted|simple_average`, `progress.closed_sets_100`, `attachments.max_bytes` (25MB), `journals.aggregation_minutes` `5`, `notifications.poll_seconds` `60`, `i18n.default_locale`, `i18n.default_time_zone`, `auth.*` (비밀번호 길이, 잠금 횟수·시간, 토큰 수명), `mail.from`. 구현에서 더한 키: `api.tokens_enabled`(API 토큰 사용, 기본 true, f835e1c).
 
 ---
 
@@ -169,7 +173,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
    - 사용자의 직접 멤버십 역할
    - 사용자가 속한 그룹의 멤버십 역할
    - 위 둘이 없고 프로젝트가 공개라면 `non_member` 역할
-3. 프로젝트 모듈이 꺼져 있으면 그 모듈의 화면과 권한을 쓸 수 없습니다(보드 → `board.*`, 캘린더·팀 플래너·Gantt 화면). 원본에서는 이 경우 403이 떴는데, openPMS에서는 메뉴에서 숨기고 직접 접근하면 404를 돌려줍니다.
+3. 프로젝트 모듈이 꺼져 있으면 그 모듈의 화면과 권한을 쓸 수 없습니다(보드 → `board.*`, 캘린더·팀 플래너·Gantt 화면. 구현 789bb9d: 시간 기록 `time_tracking` → `time.*`, `Ctx.MODULE_OF`). 원본에서는 이 경우 403이 떴는데, openPMS에서는 메뉴에서 숨기고 직접 접근하면 404를 돌려줍니다.
 4. 보관된 프로젝트에서는 `*.view` 계열만 허용됩니다.
 5. 전역 권한은 `global_role_assignments`에서 계산합니다. 구현(0af87f8): 관리자가 관리 · 사용자에서 `PUT /admin/users/{id}/global-roles`로 배정합니다(§4.2 관리).
 6. 요청마다 `user → {project_id → Set<permission>}`을 한 번 계산해 캐시합니다. 목록 쿼리에는 `project_id = any(:visible)` 조건이 붙습니다.
@@ -298,9 +302,9 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 - **작업 패키지 응답의 `_meta`**: `editableFields`, `allowedActions`(edit, delete, move, comment, manageRelations…), `derived`(파생 필드 목록)를 담습니다. 화면은 이 값으로 편집 가능 여부를 그리고, 권한 규칙을 프론트에 복제하지 않습니다.
 - 원본 앱의 내부 API는 참고하지 않습니다. 모든 경로는 openPMS가 정의한 것입니다.
 
-### 4.2 경로 (총 165개: 설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1 + 비밀번호 만들기 1 + 전역 역할 배정 1 + 프로젝트 복사 1 + API 토큰·OpenAPI 8 + 웹훅 8 + 알림 건수 1)
+### 4.2 경로 (총 177개: 설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1 + 비밀번호 만들기 1 + 전역 역할 배정 1 + 프로젝트 복사 1 + API 토큰·OpenAPI 8 + 웹훅 8 + 알림 건수 1 + 시간 기록 12)
 
-이 표는 설계에 구현 기록을 덧붙인 것입니다. 실제 컨트롤러 매핑 수(99e0287 기준 174개, dev 전용 1개 포함)와 경로별 차이는 `docs/deliverables/04-인터페이스정의서.md` 부록에 있습니다.
+이 표는 설계에 구현 기록을 덧붙인 것입니다. 실제 컨트롤러 매핑 수(3f9d5c0 기준 186개, dev 전용 1개 포함)와 경로별 차이는 `docs/deliverables/04-인터페이스정의서.md` 부록에 있습니다.
 
 #### 인증·계정 (18)
 
@@ -336,7 +340,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | POST /projects/{project}/copy | 구현(cdce335): 이 프로젝트를 템플릿처럼 복사해 새 프로젝트를 만듦. 입력과 복사 규칙은 `POST /projects`의 템플릿과 같음(`ProjectCopy`, 동기, 개요 위젯·내부 코멘트 설정 포함) | 원본에 project.edit + global.create_projects | name, identifier, parentId, copy[] | 201 project | S24 F10 |
 | POST /projects/{project}/archive | 보관 | project.archive | - | 204 | S03 |
 | POST /projects/{project}/unarchive | 복원 | 관리자 | - | 204 | S03 |
-| DELETE /projects/{project} | 삭제 (식별자 재입력 확인, 하위 프로젝트가 있으면 409) | 관리자 | confirmIdentifier | 204 | S03 |
+| DELETE /projects/{project} | 삭제 (식별자 재입력 확인, 하위 프로젝트가 있으면 409). 구현(1.6): 시간 기록도 cascade로 지워지고 확인 화면은 이를 말하지 않음 | 관리자 | confirmIdentifier | 204 | S03 |
 | PUT /projects/{project}/favorite | 즐겨찾기 추가 | project.view | - | 204 | S02 S03 |
 | DELETE /projects/{project}/favorite | 즐겨찾기 해제 | 본인 | - | 204 | S02 S03 |
 | GET /projects/{project}/overview | 개요 위젯 데이터 (상태, 멤버 요약, 상태별 작업 수). 구현: 버전 진행·곧 완료일·최근 바뀐 작업·내게 할당된 작업 위젯은 버전 목록과 `POST /work-packages/query`를 씀 | project.view | - | overview | S05 |
@@ -365,7 +369,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | POST /projects/{project}/work-packages | 생성 → 저널 v1 → 알림 예약 → 스케줄 전파 | wp.create (부모 지정 시 wp.manage_subtasks) | typeId, subject, description, 속성, customValues, parentNumber, attachmentIds | 201 WP | S09 F01 F07 |
 | GET /work-packages/{number} | 상세 + `_meta` | wp.view | - | WP | S07 S08 |
 | PATCH /work-packages/{number} | 부분 수정 (워크플로, 읽기 전용, 스케줄·진행률 재계산, 저널) | wp.edit (상태: 워크플로, 부모: wp.manage_subtasks, 버전: wp.assign_versions) | lockVersion, 변경, touched[] | WP / 409 / 422 | S06–S08 S13 F02 F04 |
-| DELETE /work-packages/{number} | 삭제 (자식 삭제 또는 조부모로 올리기 선택) | wp.delete | children=delete\|reparent | 204 | S08 |
+| DELETE /work-packages/{number} | 삭제 (자식 삭제 또는 조부모로 올리기 선택). 구현(1.6): 시간 기록도 cascade로 지워지고, 화면의 확인 대화상자가 기록된 시간을 경고(39c8974) | wp.delete | children=delete\|reparent | 204 | S08 |
 | POST /work-packages/{number}/copy | 복사 (대상 프로젝트, 자식·관계·첨부 포함 여부) | 대상에서 wp.create | targetProject, options | 201 WP | S08 |
 | POST /work-packages/{number}/move | 다른 프로젝트로 이동 (유형·버전·카테고리 매핑) | wp.move + 대상에서 wp.create | targetProject, mapping | WP / 422 | S08 |
 | POST /work-packages/bulk | 일괄 수정·이동·삭제 (전부 성공하거나 전부 실패). 구현(d0023b1): `action: copy`(targetProject 없으면 같은 프로젝트), 고른 작업끼리의 상위-하위를 사본에도 유지. 화면은 일괄 바와 행 우클릭 메뉴 | 항목마다 해당 권한 (복사는 대상에서 wp.create) | numbers[], action(update·move·delete·copy), changes, targetProject | 200 / 422 + 실패 목록 | S06 |
@@ -490,6 +494,31 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 
 "세션만"은 API 토큰으로 부를 수 없다는 뜻입니다(403 "API 토큰으로는 로그인·비밀번호·토큰·연동 설정을 다룰 수 없습니다."). 앞부분 목록으로 막으며, dfde416부터 연동 설정(`/admin/settings/api`, `/admin/webhooks*`, `/admin/webhook-deliveries*`)도 이 목록에 있어 관리자의 읽기·쓰기 토큰으로도 부를 수 없습니다(`ApiTokensIT`).
 
+#### 시간 기록 — X10 · X11 · S08 (12, 구현 기록: 789bb9d·3f9d5c0)
+
+처음 설계에는 없던 영역입니다(시간 추적은 범위 밖이었음). `replica/fixes.md` #1 주간 공수 입력표를 만들면서 더했습니다. 모든 경로는 프로젝트 모듈 `time_tracking`이 켜진 곳의 기록만 다룹니다(꺼지면 `time.*`가 없음).
+
+| method path | 하는 일 | 호출 가능 | 입력 | 출력 | 흐름 |
+| --- | --- | --- | --- | --- | --- |
+| GET /time-activities | 쓸 수 있는(켜진) 활동, 순서대로 | 로그인 | - | activities[] | S08 대화상자 |
+| GET /admin/time-activities | 모든 활동(꺼진 것 포함) | 관리자 | - | activities[] | 관리 · 달력과 날짜 |
+| POST /admin/time-activities | 활동 추가(맨 뒤) | 관리자 | name(1–60자, 유일), isDefault? | 201 activity / 422 | 관리 · 달력과 날짜 |
+| PATCH /admin/time-activities/{id} | 이름·순서·켜기·기본. 기본은 하나(새 기본을 정하면 앞의 것이 풀림), 기본 활동은 끌 수 없고 꺼진 활동은 기본이 될 수 없음 | 관리자 | name, position, active, isDefault | activity / 404 / 422 | 관리 · 달력과 날짜 |
+| GET /time-entries | 기록 목록. `workPackage`면 그 작업의 전부, 아니면 기간(기본 이번 달, 최대 366일). 볼 수 있는 것만(내 것 time.log, 남의 것 time.view), 최신순 최대 2,000행 | 로그인 | workPackage(번호) 또는 from·to, project, user(me\|id) | entries[] (canEdit 포함) | S08 시간 탭 |
+| POST /time-entries | 기록. 프로젝트는 작업의 프로젝트, 활동이 없으면 기본 활동. 한 사람의 하루 24시간까지 | 내 것: 작업 프로젝트의 time.log / 남의 몫(userId): time.manage | workPackageNumber, spentOn, hours(0 초과 24 이하, 소수 둘째 자리), activityId?, comment?(1,000자), userId? | 201 entry / 403 / 422 | S08 대화상자 |
+| PATCH /time-entries/{id} | 고치기(보낸 필드만) | 내 것: time.log / 남의 것: time.manage | spentOn, hours, activityId, comment | entry / 403 / 404 / 422 | S08 대화상자 |
+| DELETE /time-entries/{id} | 지우기 | 위와 같음 | - | 204 / 403 / 404 | S08 시간 탭 |
+| GET /time-entries/week | 내 한 주. start가 속한 주(주 시작은 관리 · 날짜 형식) | 로그인(내 것만) | start? | {start, days[{date, working, holiday}], hoursPerDay, rows[{workPackage, canLog, cells[{date, hours, entries}]}]} | X10 |
+| PUT /time-entries/week | 내 한 주 저장. 칸마다 그날 내 시간을 그 값으로: 없으면 기본 활동으로 새로, 하나면 고침(0이면 지움), 여러 건이면 거절. 전부 되거나 전부 안 됨 | 칸의 작업 프로젝트마다 time.log | start, cells[{workPackageNumber, date, hours}] | 저장 뒤의 week / 422(errors[].field = "#번호 날짜" 또는 날짜) | X10 |
+| GET /time-entries/report | 합계. 볼 수 있는 기록만(time.view인 프로젝트는 모든 사람, time.log만이면 내 것). DB에서 GROUP BY로 합쳐 건수 한도 없음(6d816e4) | 로그인 | from, to, project, user, groupBy(user\|workPackage\|activity\|project\|day) | {from, to, groupBy, rows[{key, label, hours}], total} / 422 | X11 |
+| GET /time-entries/export | 같은 조건의 기록을 xlsx로(날짜, 사람, 프로젝트, 번호, 작업, 활동, 시간, 메모, 합계 행). 50,000행까지(넘는 행은 말없이 빠짐) | 로그인 | from, to, project, user | xlsx "공수 {from}~{to}.xlsx" | X11 |
+
+- 인스턴스의 하루 근무 시간(`calendar.hours_per_day`)을 넘는 것은 막지 않고 화면(X10)이 경고만 합니다. 막는 것은 한 사람의 하루 24시간입니다(422 "하루에 24시간을 넘게 기록할 수 없습니다.").
+- 시간 기록은 저널에 남지 않고, 프로젝트 복사·템플릿이 가져가지 않으며, 웹훅 이벤트가 없습니다. 작업을 옮기면 기록의 프로젝트가 따라갑니다(`TimeController.follow`).
+- 작업·프로젝트를 지우면 기록도 FK cascade로 지워집니다. 작업 삭제 확인은 `GET /time-entries?workPackage=`로 센 시간(내가 볼 수 있는 것)이 있으면 경고 배너를 보이고(39c8974), 프로젝트 삭제 확인은 시간 기록을 말하지 않습니다.
+- X11은 기간이 거꾸로이거나 1년 이상이면 끝 칸 아래에 안내하고 보고서를 부르지 않습니다(6f46d4c·39c8974).
+- API 토큰: 읽기 토큰은 GET(목록·주간·보고서·Excel), 기록·주간 저장은 읽기·쓰기 토큰. `openapi.json`에는 `/time-entries`·`/time-entries/week`·`/time-entries/report`가 있습니다.
+
 운영용 `GET /actuator/health`는 API 개수에 넣지 않았습니다.
 
 ### 4.3 프론트엔드 라우트 (SPA)
@@ -511,6 +540,8 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | /work-packages, /gantt | 전역 목록, 전역 Gantt |
 | /notifications (+ /notifications/details/:number) | S19 |
 | /my/page, /my/account, /my/notifications | S21, S37, S20 |
+| /my/timesheet (?week=) | X10 내 공수(구현에서 더함, 3f9d5c0) |
+| /projects/:p/time | X11 공수 보고서(구현에서 더함, 3f9d5c0. 모듈 `time_tracking`과 time.view). 작업 상세의 시간 탭은 S07·S08의 `:tab` = `time` |
 | /search | S22 |
 | /admin/:section(/:id/:tab) | S27–S36. 구현에서 더함: /admin/roles/report(권한 보고서), /admin/integrations(API와 웹훅, 관리 첫 화면의 새 묶음 '연동') |
 | /help/api | API 문서(도움말 메뉴, f835e1c) |
@@ -521,7 +552,7 @@ S10–S12는 모달이라 라우트가 없습니다.
 ### 4.4 웹훅·작업
 
 - **들어오는 웹훅**: 없음 (결제·외부 캘린더 연동이 없음).
-- **나가는 웹훅**: 없음. 작업 변경 웹훅은 could 단계에서 추가합니다. 구현(86e58a9): 작업 생성·변경·삭제·코멘트(내부 코멘트 제외)를 관리자가 등록한 주소로 서명한 JSON으로 보냄. 업무 트랜잭션 안에서 `webhook_deliveries`에 쌓고 아래 `webhook-delivery` 작업이 보냄(아웃박스). 작업 옮기기(다른 프로젝트)는 dfde416부터 `work_package.updated`로 보냄. 06b48f5부터 자동 일정 전파로 밀린 작업과 첨부 추가·삭제도 `work_package.updated`, 프로젝트 복사·템플릿으로 생긴 작업은 `work_package.created`. `changes`는 그 요청이 바꾼 것만. 사설·루프백 받는 주소는 운영 스위치(`OPENPMS_WEBHOOK_BLOCK_PRIVATE`, 기본 꺼짐)로 막음(등록·전송 때 검사).
+- **나가는 웹훅**: 없음. 작업 변경 웹훅은 could 단계에서 추가합니다. 구현(86e58a9): 작업 생성·변경·삭제·코멘트(내부 코멘트 제외)를 관리자가 등록한 주소로 서명한 JSON으로 보냄. 업무 트랜잭션 안에서 `webhook_deliveries`에 쌓고 아래 `webhook-delivery` 작업이 보냄(아웃박스). 작업 옮기기(다른 프로젝트)는 dfde416부터 `work_package.updated`로 보냄. 06b48f5부터 자동 일정 전파로 밀린 작업과 첨부 추가·삭제도 `work_package.updated`, 프로젝트 복사·템플릿으로 생긴 작업은 `work_package.created`. `changes`는 그 요청이 바꾼 것만. 사설·루프백 받는 주소는 운영 스위치(`OPENPMS_WEBHOOK_BLOCK_PRIVATE`, 기본 꺼짐)로 막음(등록·전송 때 검사). 시간 기록(789bb9d)은 이벤트를 보내지 않음.
 - **들어오는 연동**: 구현(f835e1c): 사내 시스템이 개인 API 토큰으로 `/api/v1`을 부름(§4.1).
 - **나가는 메일**: 사내 SMTP.
 
@@ -655,14 +686,17 @@ S10–S12는 모달이라 라우트가 없습니다.
 
 ### M5. replica-entrepreneur 개선 사항
 
-진행 중입니다(2026-10-11, 99e0287 뒤). 기능 패리티가 100이 되어 다음 단계로 시작했고, 실제 사용자 불만을 바탕으로 한 개선 사항은 끝나면 이 자리에 추가합니다.
+조사는 끝났습니다(2026-10-11, 2c84a0d, `replica/fixes.md`: 실제 사용자 리뷰 137건·7곳, 고칠 계획 5개). 만든 것과 남은 것:
+
+- 1. 주간 공수 입력표(완료: 789bb9d·3f9d5c0): 원본의 시간 기록을 함께 들여옴(V17 `time_activities`·`time_entries`, 모듈 `time_tracking`, 권한 `time.*`, 경로 12개 — §2 설계 결정, §4.2 "시간 기록"). 화면 X10 내 공수, S08 시간 탭, X11 공수 보고서, 관리 · 달력과 날짜의 시간 기록 활동. 비용·단가·예산은 계속 범위 밖
+- 2. 템플릿 복사 때 새 시작일로 전체 일정 이동, 3. 업그레이드 안전장치, 4. 성능 예산, 5. 화면별 도움말 연결: 남음
 
 ---
 
 ## 7. 요약
 
 - **스택**: Spring Boot 4 + Java 21 · jOOQ + Flyway · PostgreSQL 17 · React 19 + Vite + TanStack · db-scheduler · 사내 SMTP · Docker Compose 셀프 호스팅
-- **규모**: 테이블 36개(+ 라이브러리 3개. 구현은 V16까지 자체 43개), API 경로 165개(설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1 + 비밀번호 만들기 1 + 전역 역할 배정 1 + 프로젝트 복사 1 + API 토큰·OpenAPI 8 + 웹훅 8 + 알림 건수 1. 실제 컨트롤러 매핑은 174개), 작업 13종(구현은 6종 + 요청 안 동기 처리)
+- **규모**: 테이블 36개(+ 라이브러리 3개. 구현은 V17까지 자체 45개), API 경로 177개(설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1 + 비밀번호 만들기 1 + 전역 역할 배정 1 + 프로젝트 복사 1 + API 토큰·OpenAPI 8 + 웹훅 8 + 알림 건수 1 + 시간 기록 12. 실제 컨트롤러 매핑은 186개), 작업 13종(구현은 6종 + 요청 안 동기 처리)
 - **가장 위험한 세 가지**:
   1. 스케줄링 엔진: 근무일, lag, 자동 모드, 부모 파생, 전파, 순환 검출
   2. 쿼리 엔진: 필터 30여 종과 계층·그룹 합계를 권한 조건 아래에서 빠르게 처리
