@@ -165,6 +165,10 @@ class BoardsIT {
             assertThat(body(send(admin, get("/api/v1/work-packages/" + number), "")).get("project").get("identifier").asString()).isEqualTo("infra-temp");
             // only direct subprojects can be columns
             send(admin, post("/api/v1/boards/" + id + "/columns"), "{\"valueId\":\"" + infra + "\"}").andExpect(status().isUnprocessableContent());
+            // a subproject moved elsewhere drops out of the board
+            send(admin, patch("/api/v1/projects/infra-temp"), "{\"parentId\":null}").andExpect(status().isOk());
+            board = body(send(admin, get("/api/v1/boards/" + id), "").andExpect(status().isOk()));
+            for (var c : board.get("columns")) assertThat(c.get("title").asString()).isNotEqualTo("임시 하위");
         } finally {
             if (number != null) send(admin, delete("/api/v1/work-packages/" + number), "").andExpect(status().is2xxSuccessful());
             if (id != null) send(admin, delete("/api/v1/boards/" + id), "").andExpect(status().isNoContent());

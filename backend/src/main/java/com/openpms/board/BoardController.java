@@ -140,6 +140,11 @@ public class BoardController {
         var s = ctx.s();
         var project = s.project(b.getProjectId()).orElseThrow();
         var cols = columns(b.getId(), b.getKind());
+        // a subproject column shows only while it is a direct subproject the viewer can see (moved, archived or private ones drop out)
+        if ("subproject".equals(b.getKind())) {
+            var shown = subprojects(ctx, b.getProjectId()).stream().map(Snapshot.ProjectRow::id).collect(java.util.stream.Collectors.toSet());
+            cols = cols.stream().filter(c -> c.valueId() != null && shown.contains(c.valueId())).toList();
+        }
         var filters = override != null ? override : savedFilters(b);
         var cards = cardsByColumn(ctx, b, cols, QueryEngine.filters(filters));
         var all = cards.values().stream().flatMap(List::stream).toList();

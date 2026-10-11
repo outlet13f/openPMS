@@ -695,6 +695,7 @@ public class AdminController {
         db.deleteFrom(WORK_PACKAGE_SHARES).where(WORK_PACKAGE_SHARES.USER_ID.eq(id)).execute();
         db.deleteFrom(NOTIFICATIONS).where(NOTIFICATIONS.RECIPIENT_ID.eq(id)).execute();
         db.deleteFrom(USER_GROUP_MEMBERS).where(USER_GROUP_MEMBERS.USER_ID.eq(id)).execute();
+        db.deleteFrom(GLOBAL_ROLE_ASSIGNMENTS).where(GLOBAL_ROLE_ASSIGNMENTS.USER_ID.eq(id)).execute();
         db.deleteFrom(BOARD_COLUMNS).where(BOARD_COLUMNS.USER_ID.eq(id)).execute();
         db.update(WORK_PACKAGES).setNull(WORK_PACKAGES.ASSIGNEE_ID).where(WORK_PACKAGES.ASSIGNEE_ID.eq(id)).execute();
         db.update(WORK_PACKAGES).setNull(WORK_PACKAGES.RESPONSIBLE_ID).where(WORK_PACKAGES.RESPONSIBLE_ID.eq(id)).execute();

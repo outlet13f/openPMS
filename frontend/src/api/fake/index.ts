@@ -401,7 +401,9 @@ function boardColumns(user: DbUser, b: DbBoard, project: DbProject, filters: Que
   const inBoard = new Set([project.id, ...(b.kind === "subproject" ? subprojectsOf(user, project.id).map((p) => p.id) : [])]);
   const wps = db.workPackages.filter((w) => inBoard.has(w.projectId) && filters.every((f) => matches(w, f, user)));
   const order = (w: DbWp) => b.order[w.id] ?? w.number;
+  const shown = new Set(subprojectsOf(user, project.id).map((p) => p.id));
   return b.columns
+    .filter((c) => b.kind !== "subproject" || (c.valueId !== null && shown.has(c.valueId)))
     .sort((x, y) => x.position - y.position)
     .map((c) => {
       let cards: DbWp[] = [];

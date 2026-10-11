@@ -806,7 +806,7 @@ export const adminApi: Api["admin"] = {
         if (u.id === me.id) throw new ApiError(422, "내 계정은 삭제할 수 없습니다.");
         if (u.isAdmin && db.users.filter((x) => x.isAdmin && x.status === "active").length <= 1) throw new ApiError(422, "마지막 관리자입니다.");
         // anonymise (architecture.md §2): keep journals, drop personal data and access
-        Object.assign(u, { status: "deleted", name: "삭제된 사용자", email: `deleted+${u.id}@invalid`, password: "", isAdmin: false });
+        Object.assign(u, { status: "deleted", name: "삭제된 사용자", email: `deleted+${u.id}@invalid`, password: "", isAdmin: false, globalRoleIds: [] });
         db.members = db.members.filter((m) => m.userId !== id);
         db.watchers = db.watchers.filter((w) => w.userId !== id);
         db.shares = db.shares.filter((x) => x.userId !== id);

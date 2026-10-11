@@ -190,7 +190,7 @@ const ko = {
     templatePick: "템플릿",
     copyLegend: "함께 복사할 것",
     copyAlways: "모듈, 작업 유형, 사용자 정의 필드와 프로젝트 특성 값은 항상 복사합니다. 복사한 작업에는 알림이 가지 않습니다.",
-    parts: { members: "멤버와 역할", versions: "버전", categories: "카테고리", workPackages: "작업(계층·관계 포함)", boards: "보드", queries: "공개 보기" },
+    parts: { members: "멤버와 역할", versions: "버전", categories: "카테고리", workPackages: "작업(계층·관계 포함)", boards: "보드", queries: "저장된 보기(공개 보기와 내 보기)" },
     descriptionFromTemplate: "비워 두면 템플릿의 설명을 씁니다.",
     parent: "상위 프로젝트",
     parentHint: "고르면 이 프로젝트가 그 아래 하위 프로젝트가 됩니다. 내가 수정할 수 있는 프로젝트만 고를 수 있습니다.",

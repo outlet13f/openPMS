@@ -66,7 +66,7 @@ test.describe("F06 보드 보강", () => {
     await expect(page.getByRole("button", { name: /^필터 1/ })).toBeVisible();
     await expect(page.getByRole("link", { name: "화면 설계 검토" })).toHaveCount(0);
   });
-  test("F06-B4 a parent-child board: a column per parent, children as cards; moving a card changes its parent", async ({ page }) => {
+  test("F06-B7 a parent-child board: a column per parent, children as cards; moving a card changes its parent", async ({ page }) => {
     await page.goto("/projects/web-platform/boards/new");
     await page.getByLabel(/^보드 이름/).fill("상위와 하위");
     await page.getByRole("radio", { name: /상위-하위/ }).click();
@@ -92,7 +92,7 @@ test.describe("F06 보드 보강", () => {
     await expect(page.getByRole("region", { name: /^#5 / })).toBeVisible();
   });
 
-  test("F06-B5 a subproject board: a column per subproject with its work", async ({ page }) => {
+  test("F06-B8 a subproject board: a column per subproject with its work", async ({ page }) => {
     const infra = await api<{ id: string }>(page, "return await api.projects.get('infra')");
     await api(page, "await api.projects.update(args[0], { enabledModules: ['work_packages', 'gantt', 'boards'] })", infra.id);
     await page.goto("/projects/infra/boards/new");
