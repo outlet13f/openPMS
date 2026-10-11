@@ -13,6 +13,8 @@ export default defineConfig(({ command, mode }) => {
     resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
     server: {
       port: 5173,
+      // 도움말 reads the manuals from docs/deliverables (outside the app's folder)
+      fs: { allow: [".", "../docs/deliverables"] },
       // With VITE_API=http the SPA calls /api through this proxy to the dev backend (backend/scripts/dev.sh run, port 8090).
       proxy: { "/api": process.env.OPENPMS_API_URL ?? "http://localhost:8090" },
     },
@@ -20,6 +22,10 @@ export default defineConfig(({ command, mode }) => {
       // Spring Boot serves the built SPA as static resources.
       outDir: "../backend/src/main/resources/static",
       emptyOutDir: true,
+      // file names in plain ASCII (the manuals' chunks would be named after 07-사용자매뉴얼.md): safe behind any proxy
+      rolldownOptions: {
+        output: { chunkFileNames: (chunk: { name: string }) => (/[^ -~]/.test(chunk.name) ? "assets/doc-[hash].js" : "assets/[name]-[hash].js") },
+      },
     },
   };
 });

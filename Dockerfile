@@ -10,6 +10,8 @@ RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
 # the design tokens are the source of the generated CSS (npm run tokens, run by prebuild)
 COPY replica/design/ /src/replica/design/
+# 도움말 shows the user and operator manuals inside the app (read at build time)
+COPY docs/deliverables/ /src/docs/deliverables/
 RUN npm run build
 
 # 2. the jar, with the web app inside (jOOQ classes are checked in: no database needed to build)

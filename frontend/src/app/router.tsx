@@ -52,6 +52,13 @@ import { Skeleton } from "@/components/ui/spinner";
 const CalendarPage = lazy(() => import("@/pages/planning/calendar").then((m) => ({ default: m.CalendarPage })));
 // The component catalogue is for the people building the app (help menu): signed in only, its own chunk.
 const DesignPage = lazy(() => import("@/pages/design-page").then((m) => ({ default: m.DesignPage })));
+// 도움말 (the manuals) is its own chunk; the manuals' text is loaded separately on first use
+const HelpPage = lazy(() => import("@/pages/help").then((m) => ({ default: m.HelpPage })));
+const helpPage = (manual: "user" | "admin") => (
+  <Suspense fallback={<Skeleton className="m-8 h-96" />}>
+    <HelpPage manual={manual} />
+  </Suspense>
+);
 
 function AdminStub() {
   const { t } = useTranslation();
@@ -182,6 +189,8 @@ export const router = createBrowserRouter([
       { path: "admin/calendar", element: <AdminCalendarPage /> },
       { path: "admin/integrations", element: <AdminIntegrationsPage /> },
       { path: "admin/system", element: <AdminSystemPage /> },
+      { path: "help", element: helpPage("user") },
+      { path: "help/admin", element: helpPage("admin") },
       { path: "help/api", element: <ApiDocsPage /> },
       { path: "admin/:section/*", element: <AdminStub /> },
       { path: "*", element: <NotFound /> },

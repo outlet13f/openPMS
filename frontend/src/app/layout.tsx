@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useMatch, useNavigate, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { applyTheme } from "@/lib/theme";
-import { ArrowLeft, Bell, CalendarDays, CalendarRange, ChevronDown, Clock, Code2, FolderKanban, GanttChart, Home, KanbanSquare, Keyboard, LayoutDashboard, ListTodo, Palette, PanelLeftOpen, Settings, Shield, Star, UserRound, Users } from "lucide-react";
+import { ArrowLeft, Bell, BookOpen, CalendarDays, CalendarRange, ChevronDown, Clock, Code2, FolderKanban, GanttChart, Home, KanbanSquare, Keyboard, LayoutDashboard, ListTodo, Palette, PanelLeftOpen, Settings, Shield, Star, UserRound, Users } from "lucide-react";
 import type { Me, Project } from "@/api";
 import { API_MODE } from "@/api";
 import { resetFakeDb } from "@/api/fake";
@@ -17,6 +17,8 @@ import { SearchBox } from "./search-box";
 import { useShortcuts } from "./shortcuts";
 import { can } from "./project";
 import { ADMIN_SECTIONS } from "@/pages/admin";
+import { HelpPanel } from "@/features/help/help-panel";
+import { topicFor, type Topic } from "@/features/help/topics";
 
 /* ---------- sidebars ---------- */
 
@@ -167,6 +169,9 @@ export function AppLayout({ me }: { me: Me }) {
   const location = useLocation();
   const logout = useLogout();
   const [drawer, setDrawer] = useState(false);
+  // 이 화면 도움말: the manual section for this screen, in a panel over it
+  const [help, setHelp] = useState<Topic | null>(null);
+  const screenTopic = topicFor(location.pathname);
   // Desktop sidebar can be collapsed to a thin rail; remembered per browser (a convenience, not data).
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -249,6 +254,10 @@ export function AppLayout({ me }: { me: Me }) {
         quickAddItems={quickAdd}
         accountItems={accountItems}
         helpItems={[
+          ...(screenTopic ? [{ label: t("help.thisScreen"), icon: <BookOpen />, onSelect: () => setHelp(screenTopic) }] : []),
+          { label: t("help.userManual"), icon: <BookOpen />, onSelect: () => navigate("/help") },
+          ...(me.isAdmin ? [{ label: t("help.adminManual"), icon: <BookOpen />, onSelect: () => navigate("/help/admin") }] : []),
+          { kind: "separator" as const },
           { label: t("shortcuts.title"), icon: <Keyboard />, shortcut: "?", onSelect: shortcuts.openHelp },
           { label: t("apiDocs.title"), icon: <Code2 />, onSelect: () => navigate("/help/api") },
           { label: t("nav.designSystem"), icon: <Palette />, onSelect: () => navigate("/design") },
@@ -257,6 +266,7 @@ export function AppLayout({ me }: { me: Me }) {
         onOpenMenu={() => setDrawer(true)}
       />
       {shortcuts.dialog}
+      <HelpPanel topic={help} onClose={() => setHelp(null)} />
       <div className="flex min-h-0 flex-1">
         {collapsed ? (
           <div className="sticky top-header hidden h-[calc(100dvh-var(--pms-layout-header-h))] w-12 shrink-0 flex-col items-center border-r border-border-muted py-3 lg:flex">

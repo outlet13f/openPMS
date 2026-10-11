@@ -6,6 +6,7 @@ import { CalendarDays, CircleDot, Flag, Gauge, GitBranch, KeyRound, ListPlus, Lo
 import { useMe } from "@/api/hooks";
 import { EmptyState } from "@/components/ui/feedback";
 import { PageBody, PageHeader, useDocumentTitle } from "@/app/page";
+import { Capabilities } from "@/features/help/capabilities";
 
 /** Administrators only; user and group screens also accept global.manage_users (architecture.md §4.2). */
 export function AdminGuard({ children, userManagers }: { children: ReactNode; userManagers?: boolean }) {
@@ -57,6 +58,7 @@ export function AdminHomePage() {
             </li>
           ))}
         </ul>
+        <Capabilities />
       </AdminGuard>
     </PageBody>
   );
