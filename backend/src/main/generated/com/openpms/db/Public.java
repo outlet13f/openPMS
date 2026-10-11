@@ -41,6 +41,8 @@ import com.openpms.db.tables.UserTokens;
 import com.openpms.db.tables.Users;
 import com.openpms.db.tables.Versions;
 import com.openpms.db.tables.Watchers;
+import com.openpms.db.tables.WebhookDeliveries;
+import com.openpms.db.tables.Webhooks;
 import com.openpms.db.tables.WorkPackageShares;
 import com.openpms.db.tables.WorkPackages;
 import com.openpms.db.tables.Workflows;
@@ -254,6 +256,16 @@ public class Public extends SchemaImpl {
     public final Watchers WATCHERS = Watchers.WATCHERS;
 
     /**
+     * The table <code>public.webhook_deliveries</code>.
+     */
+    public final WebhookDeliveries WEBHOOK_DELIVERIES = WebhookDeliveries.WEBHOOK_DELIVERIES;
+
+    /**
+     * The table <code>public.webhooks</code>.
+     */
+    public final Webhooks WEBHOOKS = Webhooks.WEBHOOKS;
+
+    /**
      * The table <code>public.work_package_shares</code>.
      */
     public final WorkPackageShares WORK_PACKAGE_SHARES = WorkPackageShares.WORK_PACKAGE_SHARES;
@@ -328,6 +340,8 @@ public class Public extends SchemaImpl {
             Users.USERS,
             Versions.VERSIONS,
             Watchers.WATCHERS,
+            WebhookDeliveries.WEBHOOK_DELIVERIES,
+            Webhooks.WEBHOOKS,
             WorkPackageShares.WORK_PACKAGE_SHARES,
             WorkPackages.WORK_PACKAGES,
             Workflows.WORKFLOWS

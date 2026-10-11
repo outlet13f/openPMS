@@ -1,4 +1,7 @@
 import type {
+  Webhook,
+  WebhookDelivery,
+  WebhookInput,
   AdminApiToken,
   ApiToken,
   ApiTokenInput, DisplaySettings, BoardCardCreated, QueryFilter, AdminOidcProvider, OidcProviderInput, SsoProvider, AuthSettings, PasswordRules, BulkInput, CopyInput, MoveInput, ExportCount, Invitation,
@@ -392,6 +395,24 @@ export interface Api {
       remove(id: Id): Promise<void>;
       /** GET /admin/permissions */
       permissions(): Promise<{ key: string; scope: "project" | "global"; group: string }[]>;
+    };
+    webhooks: {
+      /** GET /admin/webhooks */
+      list(): Promise<Webhook[]>;
+      /** POST /admin/webhooks — the answer carries the signing secret once */
+      create(input: WebhookInput): Promise<Webhook>;
+      /** PATCH /admin/webhooks/{id} */
+      update(id: Id, patch: Partial<WebhookInput>): Promise<Webhook>;
+      /** POST /admin/webhooks/{id}/secret — a new secret, shown once; the old one stops */
+      rotateSecret(id: Id): Promise<Webhook>;
+      /** DELETE /admin/webhooks/{id} */
+      remove(id: Id): Promise<void>;
+      /** GET /admin/webhooks/{id}/deliveries — the last 30 */
+      deliveries(id: Id): Promise<WebhookDelivery[]>;
+      /** POST /admin/webhooks/{id}/test — a ping sent right away */
+      test(id: Id): Promise<WebhookDelivery>;
+      /** POST /admin/webhook-deliveries/{id}/redeliver */
+      redeliver(deliveryId: Id): Promise<WebhookDelivery>;
     };
     api: {
       /** GET /admin/settings/api */

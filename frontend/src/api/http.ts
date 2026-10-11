@@ -241,6 +241,16 @@ export const httpApi: Api = {
       remove: (id) => del(`/admin/roles/${id}`),
       permissions: () => get("/admin/permissions"),
     },
+    webhooks: {
+      list: () => get("/admin/webhooks"),
+      create: (input) => post("/admin/webhooks", input),
+      update: (id, p) => patch(`/admin/webhooks/${id}`, p),
+      rotateSecret: (id) => post(`/admin/webhooks/${id}/secret`),
+      remove: (id) => del(`/admin/webhooks/${id}`),
+      deliveries: (id) => get(`/admin/webhooks/${id}/deliveries`),
+      test: (id) => post(`/admin/webhooks/${id}/test`),
+      redeliver: (id) => post(`/admin/webhook-deliveries/${id}/redeliver`),
+    },
     api: {
       settings: () => get("/admin/settings/api"),
       saveSettings: (input) => put("/admin/settings/api", input),

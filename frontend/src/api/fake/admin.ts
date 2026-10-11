@@ -749,6 +749,52 @@ export const adminApi: Api["admin"] = {
     permissions: () => run(() => (requireAdmin(sessionUser()), clone(PERMISSIONS))),
   },
 
+  // the demo keeps webhooks but sends nothing
+  webhooks: {
+    list: () => run(() => (requireAdmin(sessionUser()), (db.webhooks ?? []).map(({ secret: _s, ...h }) => clone(h)))),
+    create: (input) =>
+      run(() => {
+        const me = sessionUser();
+        requireAdmin(me);
+        if (!input.name.trim()) throw fieldError("name", "이름을 1~100자로 입력하세요.");
+        if (!/^https?:\/\/[^/\s]+/.test(input.url)) throw fieldError("url", "http:// 또는 https:// 로 시작하는 주소를 입력하세요.");
+        if (!input.events.length) throw fieldError("events", "보낼 이벤트를 하나 이상 고르세요.");
+        const secret = `whsec_demo${Math.random().toString(36).slice(2)}`;
+        const h = { ...input, name: input.name.trim(), id: newId("wh"), secret, secretHint: `…${secret.slice(-4)}`, createdAt: nowIso() };
+        db.webhooks = [...(db.webhooks ?? []), h];
+        return clone(h);
+      }),
+    update: (id, patch) =>
+      run(() => {
+        requireAdmin(sessionUser());
+        const h = (db.webhooks ?? []).find((x) => x.id === id);
+        if (!h) throw notFound("웹훅");
+        Object.assign(h, patch);
+        const { secret: _s, ...out } = h;
+        return clone(out);
+      }),
+    rotateSecret: (id) =>
+      run(() => {
+        requireAdmin(sessionUser());
+        const h = (db.webhooks ?? []).find((x) => x.id === id);
+        if (!h) throw notFound("웹훅");
+        h.secret = `whsec_demo${Math.random().toString(36).slice(2)}`;
+        h.secretHint = `…${h.secret.slice(-4)}`;
+        return clone(h);
+      }),
+    remove: (id) => run(() => (requireAdmin(sessionUser()), (db.webhooks = (db.webhooks ?? []).filter((x) => x.id !== id)), undefined)),
+    deliveries: () => run(() => (requireAdmin(sessionUser()), [])),
+    test: () =>
+      run(() => {
+        requireAdmin(sessionUser());
+        return { id: newId("wd"), event: "ping" as const, status: "failed" as const, attempts: 1, responseStatus: null, error: "데모에서는 보내지 않습니다", createdAt: nowIso(), deliveredAt: null, nextAttemptAt: null };
+      }),
+    redeliver: () =>
+      run(() => {
+        requireAdmin(sessionUser());
+        throw notFound("전송 기록");
+      }),
+  },
   api: {
     settings: () => run(() => (requireAdmin(sessionUser()), { tokensEnabled: db.apiTokensEnabled !== false })),
     saveSettings: (input) => run(() => (requireAdmin(sessionUser()), (db.apiTokensEnabled = input.tokensEnabled), { tokensEnabled: input.tokensEnabled })),

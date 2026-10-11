@@ -3,7 +3,8 @@
 // State survives reloads through localStorage (per browser, per user) and can be reset from the login page.
 
 import type {
-  OverviewWidget, DisplaySettings, QueryFilter, AdminOidcProvider, AuthSettings, BoardKind, CustomField, CustomValue, Id, NotificationSetting, ShareRole, Theme, TypeForm, IsoDate, IsoDateTime, ModuleKey, NotificationReason, Preferences, ProjectStatus, QuerySpec, ViewKind } from "../types";
+  OverviewWidget,
+  Webhook, DisplaySettings, QueryFilter, AdminOidcProvider, AuthSettings, BoardKind, CustomField, CustomValue, Id, NotificationSetting, ShareRole, Theme, TypeForm, IsoDate, IsoDateTime, ModuleKey, NotificationReason, Preferences, ProjectStatus, QuerySpec, ViewKind } from "../types";
 import { buildSeed } from "./seed";
 
 export interface DbUser {
@@ -150,6 +151,7 @@ export interface Db {
   customFields: CustomField[];
   projectCustomFields: { projectId: Id; customFieldId: Id }[];
   apiTokens?: DbApiToken[];
+  webhooks?: (Omit<Webhook, "secret"> & { secret: string })[];
   apiTokensEnabled?: boolean;
   queries: DbQuery[];
   queryFavorites: { userId: Id; queryId: Id }[];

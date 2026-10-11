@@ -58,4 +58,24 @@ test.describe("F15 API 토큰", () => {
     await expect(page.getByRole("cell", { name: "/api/v1/work-packages/query" })).toBeVisible();
     await axe(page, "API 문서");
   });
+  test("F15-H3 a webhook: made with a signing secret shown once, a test send recorded in its deliveries", async ({ page }) => {
+    await page.goto("/admin/integrations");
+    await page.getByRole("button", { name: "웹훅 추가" }).click();
+    const dlg = page.getByRole("dialog", { name: "웹훅 추가" });
+    await dlg.getByLabel(/^이름/).fill("배포 알림");
+    // the app itself refuses a POST here: a failing receiver, without needing one
+    await dlg.getByLabel(/^받는 주소/).fill("http://127.0.0.1:8090/actuator/health");
+    await expect(dlg.getByRole("checkbox", { name: /작업 생성/ })).toBeChecked();
+    await axe(page, "관리 · 웹훅 추가");
+    await dlg.getByRole("button", { name: "저장" }).click();
+    const secret = page.getByRole("dialog", { name: "서명 키" });
+    await expect(secret.getByLabel("서명 키")).toContainText("whsec_");
+    await secret.getByRole("button", { name: "확인" }).click();
+    await expect(page.getByText("배포 알림", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "테스트 전송" }).click();
+    await expect(page.getByText("테스트 전송이 실패했습니다").first()).toBeVisible();
+    const log = page.getByRole("list", { name: "배포 알림 전송 기록" });
+    await expect(log.getByText("ping")).toBeVisible();
+    await expect(log.getByText("실패")).toBeVisible();
+  });
 });

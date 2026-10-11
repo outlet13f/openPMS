@@ -46,8 +46,11 @@ public class WorkPackageService {
     private final ScheduleStore schedules;
 
     private final CustomFields customFields;
+    private final com.openpms.webhook.Webhooks webhooks;
 
-    public WorkPackageService(DSLContext db, Assembler assembler, Journals journals, ScheduleStore schedules, CustomFields customFields) {
+    public WorkPackageService(DSLContext db, Assembler assembler, Journals journals, ScheduleStore schedules, CustomFields customFields,
+                              com.openpms.webhook.Webhooks webhooks) {
+        this.webhooks = webhooks;
         this.customFields = customFields;
         this.db = db;
         this.assembler = assembler;
@@ -235,6 +238,7 @@ public class WorkPackageService {
 
         var j = journals.write(ctx, w, new LinkedHashMap<>(Map.of(Journals.CREATED, Journals.listOf(null, true))), "", null, false);
         journals.fanOut(ctx, w, j, List.of());
+        webhooks.enqueue(ctx, w, "work_package.created", null);
         var g = schedules.load(ctx);
         schedules.apply(ctx, g.propagate(List.of(w.getId()), null, false));
         return assembler.one(ctx, reload(w.getId()));
@@ -402,6 +406,7 @@ public class WorkPackageService {
         var saved = reload(wp.getId());
         var j = journals.write(ctx, saved, changes, "", null, false);
         journals.fanOut(ctx, saved, j, List.of());
+        webhooks.enqueue(ctx, saved, "work_package.updated", Map.of("changes", com.openpms.webhook.Webhooks.changes(journals.toDto(ctx, j, ctx.s().project(saved.getProjectId()).orElseThrow()))));
 
         // S7: dates, mode or hierarchy changes ripple to successors and automatic parents
         if (changes.containsKey("startDate") || changes.containsKey("dueDate") || changes.containsKey("parentId") || changes.containsKey("scheduleManually")) {
@@ -491,6 +496,8 @@ public class WorkPackageService {
         } else {
             db.update(WORK_PACKAGES).set(WORK_PACKAGES.PARENT_ID, wp.getParentId()).where(WORK_PACKAGES.PARENT_ID.eq(wp.getId())).execute();
         }
+        // delivery rows keep their payload, so the item may go now
+        for (var gone : db.selectFrom(WORK_PACKAGES).where(WORK_PACKAGES.ID.in(doomed)).fetch()) webhooks.enqueue(ctx, gone, "work_package.deleted", null);
         db.deleteFrom(WORK_PACKAGES).where(WORK_PACKAGES.ID.in(doomed)).execute();
         // an automatic parent re-derives its dates from the children that are left
         if (wp.getParentId() != null) {
@@ -514,6 +521,8 @@ public class WorkPackageService {
         if (Html.text(html).isEmpty()) throw ApiException.field("comment", "코멘트를 입력하세요.");
         var j = journals.write(ctx, f.wp(), new LinkedHashMap<>(), html, null, internal);
         journals.fanOut(ctx, f.wp(), j, Html.mentions(html));
+        // internal comments stay inside openPMS
+        if (!internal) webhooks.enqueue(ctx, f.wp(), "work_package.commented", Map.of("comment", Map.of("text", Html.text(html), "journalId", j.getId())));
         return journals.toDto(ctx, j, f.project());
     }
 

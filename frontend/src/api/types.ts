@@ -168,6 +168,42 @@ export interface AdminApiToken extends ApiToken {
   userName: string;
 }
 
+/** 웹훅 (관리 · API와 웹훅) */
+export const WEBHOOK_EVENTS = ["work_package.created", "work_package.updated", "work_package.deleted", "work_package.commented"] as const;
+export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
+export interface Webhook {
+  id: Id;
+  name: string;
+  url: string;
+  events: WebhookEvent[];
+  /** empty: every project */
+  projectIds: Id[];
+  enabled: boolean;
+  /** the last characters of the signing secret */
+  secretHint: string;
+  createdAt: IsoDateTime;
+  /** only in the answer that made the webhook or a new secret */
+  secret?: string | null;
+}
+export interface WebhookInput {
+  name: string;
+  url: string;
+  events: WebhookEvent[];
+  projectIds: Id[];
+  enabled: boolean;
+}
+export interface WebhookDelivery {
+  id: Id;
+  event: WebhookEvent | "ping";
+  status: "pending" | "succeeded" | "failed";
+  attempts: number;
+  responseStatus: number | null;
+  error: string | null;
+  createdAt: IsoDateTime;
+  deliveredAt: IsoDateTime | null;
+  nextAttemptAt: IsoDateTime | null;
+}
+
 export interface ProjectInput {
   name: string;
   identifier: string;

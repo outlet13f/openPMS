@@ -31,6 +31,7 @@ import com.openpms.db.tables.UserIdentities.UserIdentitiesPath;
 import com.openpms.db.tables.UserPreferences.UserPreferencesPath;
 import com.openpms.db.tables.UserTokens.UserTokensPath;
 import com.openpms.db.tables.Watchers.WatchersPath;
+import com.openpms.db.tables.Webhooks.WebhooksPath;
 import com.openpms.db.tables.WorkPackageShares.WorkPackageSharesPath;
 import com.openpms.db.tables.WorkPackages.WorkPackagesPath;
 import com.openpms.db.tables.records.UsersRecord;
@@ -538,6 +539,19 @@ public class Users extends TableImpl<UsersRecord> {
             _watchers = new WatchersPath(this, null, Keys.WATCHERS__WATCHERS_USER_ID_FKEY.getInverseKey());
 
         return _watchers;
+    }
+
+    private transient WebhooksPath _webhooks;
+
+    /**
+     * Get the implicit to-many join path to the <code>public.webhooks</code>
+     * table
+     */
+    public WebhooksPath webhooks() {
+        if (_webhooks == null)
+            _webhooks = new WebhooksPath(this, null, Keys.WEBHOOKS__WEBHOOKS_CREATED_BY_FKEY.getInverseKey());
+
+        return _webhooks;
     }
 
     private transient WorkPackageSharesPath _workPackageSharesCreatedByFkey;
