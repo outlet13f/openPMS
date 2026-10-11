@@ -406,7 +406,7 @@ public class WorkPackageService {
         var saved = reload(wp.getId());
         var j = journals.write(ctx, saved, changes, "", null, false);
         journals.fanOut(ctx, saved, j, List.of());
-        webhooks.enqueue(ctx, saved, "work_package.updated", Map.of("changes", com.openpms.webhook.Webhooks.changes(journals.toDto(ctx, j, ctx.s().project(saved.getProjectId()).orElseThrow()))));
+        webhooks.enqueue(ctx, saved, "work_package.updated", Map.of("changes", com.openpms.webhook.Webhooks.changes(journals.toDto(ctx, j, ctx.s().project(saved.getProjectId()).orElseThrow(), changes))));
 
         // S7: dates, mode or hierarchy changes ripple to successors and automatic parents
         if (changes.containsKey("startDate") || changes.containsKey("dueDate") || changes.containsKey("parentId") || changes.containsKey("scheduleManually")) {

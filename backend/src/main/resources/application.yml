@@ -80,6 +80,9 @@ openpms:
   jobs:
     # date alerts, notification mail, cleanup (jobs/Jobs.java); false for a web-only instance
     enabled: ${OPENPMS_JOBS_ENABLED:true}
+  webhooks:
+    # true: webhooks may not go to loopback or private-network addresses (link-local is always refused)
+    block-private-addresses: ${OPENPMS_WEBHOOK_BLOCK_PRIVATE:false}
 
 ---
 # Development: dev data set (scripts/gen_dev_data.py), plain-http cookies.

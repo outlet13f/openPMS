@@ -12,6 +12,7 @@ import com.openpms.core.Refs;
 import com.openpms.db.tables.records.AttachmentsRecord;
 import com.openpms.wp.Journals;
 import com.openpms.wp.WorkPackageService;
+import com.openpms.webhook.Webhooks;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -21,6 +22,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.apache.tika.Tika;
@@ -60,8 +62,11 @@ public class AttachmentController {
     private final FileStorage storage;
     private final SettingsRepo settings;
     private final Journals journals;
+    private final Webhooks webhooks;
 
-    public AttachmentController(Current current, DSLContext db, WorkPackageService workPackages, FileStorage storage, SettingsRepo settings, Journals journals) {
+    public AttachmentController(Current current, DSLContext db, WorkPackageService workPackages, FileStorage storage, SettingsRepo settings, Journals journals,
+                                Webhooks webhooks) {
+        this.webhooks = webhooks;
         this.current = current;
         this.db = db;
         this.workPackages = workPackages;
@@ -131,6 +136,7 @@ public class AttachmentController {
             changes.put("attachment:" + a.getId(), listOf(null, name)); // one key per file, so merged entries keep every name
             var j = journals.write(ctx, f.wp(), changes, "", null, false);
             journals.fanOut(ctx, f.wp(), j, List.of());
+            webhooks.enqueue(ctx, f.wp(), "work_package.updated", Map.of("changes", Webhooks.changes(journals.toDto(ctx, j, f.project(), changes))));
             return ResponseEntity.status(HttpStatus.CREATED).body(toDto(ctx, a, true));
         } catch (RuntimeException e) {
             storage.delete(key); // the row did not make it: do not keep the bytes
@@ -184,7 +190,8 @@ public class AttachmentController {
         a.delete();
         var changes = new LinkedHashMap<String, List<Object>>();
         changes.put("attachment:" + a.getId(), listOf(a.getFileName(), null));
-        journals.write(ctx, found.wp().wp(), changes, "", null, false);
+        var j = journals.write(ctx, found.wp().wp(), changes, "", null, false);
+        webhooks.enqueue(ctx, found.wp().wp(), "work_package.updated", Map.of("changes", Webhooks.changes(journals.toDto(ctx, j, found.wp().project(), changes))));
         storage.delete(a.getStorageKey());
         return ResponseEntity.noContent().build();
     }

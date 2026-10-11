@@ -90,10 +90,9 @@ public class WebhookController {
             }
             if (!("http".equals(uri.getScheme()) || "https".equals(uri.getScheme())) || uri.getHost() == null || url.length() > 2000)
                 throw ApiException.field("url", "http:// 또는 https:// 로 시작하는 주소를 입력하세요.");
-            // cloud metadata services live on link-local addresses: never a webhook receiver
-            var host = uri.getHost().toLowerCase();
-            if (host.startsWith("169.254.") || host.startsWith("[fe80:") || host.equals("metadata.google.internal"))
-                throw ApiException.field("url", "이 주소로는 보낼 수 없습니다.");
+            // never link-local (cloud metadata); private and loopback addresses when the operator says so (Webhooks.refused)
+            var why = webhooks.refused(uri.getHost());
+            if (why != null) throw ApiException.field("url", why);
             h.setUrl(url);
         }
         if (creating || In.has(in, "events")) {

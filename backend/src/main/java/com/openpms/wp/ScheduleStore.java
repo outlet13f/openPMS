@@ -17,8 +17,10 @@ public class ScheduleStore {
 
     private final DSLContext db;
     private final Journals journals;
+    private final com.openpms.webhook.Webhooks webhooks;
 
-    public ScheduleStore(DSLContext db, Journals journals) {
+    public ScheduleStore(DSLContext db, Journals journals, com.openpms.webhook.Webhooks webhooks) {
+        this.webhooks = webhooks;
         this.db = db;
         this.journals = journals;
     }
@@ -51,7 +53,10 @@ public class ScheduleStore {
                     .set(WORK_PACKAGES.LOCK_VERSION, WORK_PACKAGES.LOCK_VERSION.plus(1)).set(WORK_PACKAGES.UPDATED_AT, now)
                     .where(WORK_PACKAGES.ID.eq(n.id)).execute();
             var rec = db.selectFrom(WORK_PACKAGES).where(WORK_PACKAGES.ID.eq(n.id)).fetchOne();
-            journals.write(ctx, rec, c.changes(), "", c.cause(), false);
+            var j = journals.write(ctx, rec, c.changes(), "", c.cause(), false);
+            // dates moved by the schedule are changes too: webhooks hear them as updates
+            webhooks.enqueue(ctx, rec, "work_package.updated",
+                    java.util.Map.of("changes", com.openpms.webhook.Webhooks.changes(journals.toDto(ctx, j, ctx.s().project(rec.getProjectId()).orElseThrow(), c.changes()))));
         }
     }
 }

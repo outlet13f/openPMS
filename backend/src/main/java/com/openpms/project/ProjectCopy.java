@@ -42,8 +42,10 @@ public class ProjectCopy {
 
     private final DSLContext db;
     private final Journals journals;
+    private final com.openpms.webhook.Webhooks webhooks;
 
-    public ProjectCopy(DSLContext db, Journals journals) {
+    public ProjectCopy(DSLContext db, Journals journals, com.openpms.webhook.Webhooks webhooks) {
+        this.webhooks = webhooks;
         this.db = db;
         this.journals = journals;
     }
@@ -150,6 +152,7 @@ public class ProjectCopy {
         for (var c : made.values()) {
             c.refresh();
             journals.write(ctx, c, new LinkedHashMap<>(Map.of(Journals.CREATED, Journals.listOf(null, true))), "", null, false);
+            webhooks.enqueue(ctx, c, "work_package.created", null);
         }
     }
 

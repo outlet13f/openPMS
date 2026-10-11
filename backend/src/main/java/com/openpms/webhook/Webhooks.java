@@ -52,12 +52,48 @@ public class Webhooks {
     private final DSLContext db;
     private final JsonMapper json;
     private final Mailer mailer;
+    private final boolean blockPrivate;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).followRedirects(HttpClient.Redirect.NEVER).build();
 
-    public Webhooks(DSLContext db, JsonMapper json, Mailer mailer) {
+    public Webhooks(DSLContext db, JsonMapper json, Mailer mailer,
+                    @org.springframework.beans.factory.annotation.Value("${openpms.webhooks.block-private-addresses:false}") boolean blockPrivate) {
         this.db = db;
         this.json = json;
         this.mailer = mailer;
+        this.blockPrivate = blockPrivate;
+    }
+
+    /**
+     * Why this host may not receive webhooks, or null. Link-local addresses (cloud metadata services live there) never may;
+     * loopback, private (10/8, 172.16/12, 192.168/16, 100.64/10, fc00::/7) and "any" addresses not when the operator turns on
+     * openpms.webhooks.block-private-addresses. A name is checked by what it resolves to now; a name that does not resolve
+     * passes here (the send checks again, so a name pointed at a blocked address later is still not sent to).
+     */
+    public String refused(String host) {
+        if (host == null) return "주소 형식이 아닙니다.";
+        var h = host.toLowerCase();
+        if (h.startsWith("[") && h.endsWith("]")) h = h.substring(1, h.length() - 1);
+        if (h.equals("metadata.google.internal")) return LINK_LOCAL;
+        java.net.InetAddress[] all;
+        try {
+            all = java.net.InetAddress.getAllByName(h);
+        } catch (java.net.UnknownHostException e) {
+            return null;
+        }
+        for (var a : all) {
+            if (a.isLinkLocalAddress()) return LINK_LOCAL;
+            if (blockPrivate && isPrivate(a)) return "사내망·루프백 주소로는 보낼 수 없습니다(운영 설정에서 막혀 있음).";
+        }
+        return null;
+    }
+
+    static final String LINK_LOCAL = "이 주소로는 보낼 수 없습니다.";
+
+    static boolean isPrivate(java.net.InetAddress a) {
+        if (a.isLoopbackAddress() || a.isSiteLocalAddress() || a.isAnyLocalAddress()) return true;
+        var b = a.getAddress();
+        if (b.length == 4) return (b[0] & 0xff) == 100 && (b[1] & 0xc0) == 64; // 100.64.0.0/10 (carrier-grade NAT)
+        return (b[0] & 0xfe) == 0xfc; // fc00::/7 (unique local)
     }
 
     public static String newSecret() {
@@ -141,7 +177,9 @@ public class Webhooks {
         var body = d.getPayload().data();
         Integer code = null;
         String error = null;
-        try {
+        var why = refused(URI.create(hook.getUrl()).getHost());
+        if (why != null) error = "보내지 않음: " + why;
+        else try {
             var req = HttpRequest.newBuilder(URI.create(hook.getUrl())).timeout(Duration.ofSeconds(10))
                     .header("Content-Type", "application/json").header("User-Agent", "openPMS-Webhook/1")
                     .header("X-OpenPMS-Event", d.getEvent()).header("X-OpenPMS-Delivery", d.getId().toString())

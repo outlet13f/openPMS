@@ -237,8 +237,12 @@ public class Journals {
     }
 
     public Dto.Journal toDto(Ctx ctx, JournalsRecord j, Snapshot.ProjectRow project) {
+        return toDto(ctx, j, project, changesOf(j));
+    }
+
+    /** The entry with only these changes (a webhook tells one request's changes, not all merged into the entry). */
+    public Dto.Journal toDto(Ctx ctx, JournalsRecord j, Snapshot.ProjectRow project, Map<String, List<Object>> changes) {
         var s = ctx.s();
-        var changes = changesOf(j);
         var details = new ArrayList<Dto.JournalDetail>();
         if (changes.containsKey(CREATED)) details.add(new Dto.JournalDetail(CREATED, "작업을 만들었습니다", null, null));
         // jsonb does not keep key order: show fields in the form's order (start before due …), custom fields after, in field order

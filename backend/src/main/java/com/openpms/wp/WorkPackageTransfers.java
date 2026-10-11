@@ -179,7 +179,7 @@ public class WorkPackageTransfers {
             w.store();
             var j = journals.write(ctx, w, changes, "", null, false);
             // a move is a change of the item (its project); webhooks hear it as an update
-            webhooks.enqueue(ctx, w, "work_package.updated", java.util.Map.of("changes", com.openpms.webhook.Webhooks.changes(journals.toDto(ctx, j, target))));
+            webhooks.enqueue(ctx, w, "work_package.updated", java.util.Map.of("changes", com.openpms.webhook.Webhooks.changes(journals.toDto(ctx, j, target, changes))));
         }
         // notifications keep a copy of the project for their filters
         db.update(NOTIFICATIONS).set(NOTIFICATIONS.PROJECT_ID, target.id())
