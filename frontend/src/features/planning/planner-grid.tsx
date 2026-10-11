@@ -125,6 +125,7 @@ function Cell({ userId, date, shaded, today, holiday, onCreate }: { userId: stri
 function Bar({
   bar,
   days,
+  personId,
   assigneeName,
   onOpen,
   resizePreview,
@@ -132,6 +133,8 @@ function Bar({
 }: {
   bar: Placed;
   days: number;
+  /** the row's person: an item shared by several people (공동 담당자) has a bar in each of their rows */
+  personId: string;
   assigneeName: string;
   onOpen: (wp: WorkPackage) => void;
   resizePreview: { startIdx: number; endIdx: number } | null;
@@ -141,8 +144,8 @@ function Bar({
   const { wp } = bar;
   const movable = canMoveDates(wp);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `wp|${wp.number}`,
-    data: { wp },
+    id: `wp|${wp.number}|${personId}`,
+    data: { wp, from: personId },
     disabled: !movable,
     attributes: { roleDescription: t("boards.cardRole") },
   });
@@ -242,7 +245,8 @@ export function PlannerGrid({
   const shaded = (d: IsoDate) => !workingDays.includes(isoWeekday(d)) || holidays.has(d);
 
   const placed = useMemo(
-    () => new Map(people.map((p) => [p.id, placeBars(items.filter((wp) => wp.assignee?.id === p.id), from, days)])),
+    // 공동 담당자: an item stands in the row of everyone who has it
+    () => new Map(people.map((p) => [p.id, placeBars(items.filter((wp) => (wp.assignees?.length ? wp.assignees.some((a) => a.user.id === p.id) : wp.assignee?.id === p.id)), from, days)])),
     [people, items, from, days],
   );
 
@@ -337,7 +341,7 @@ export function PlannerGrid({
                 {bars.length > 0 ? (
                   <ul aria-label={person.name} className="pointer-events-none relative h-full [&>li]:pointer-events-auto">
                     {bars.map((b) => (
-                      <Bar key={b.wp.id} bar={b} days={days} assigneeName={person.name} onOpen={onOpen} resizePreview={previewOf(b)} onResizeStart={onResizeStart} />
+                      <Bar key={b.wp.id} bar={b} days={days} personId={person.id} assigneeName={person.name} onOpen={onOpen} resizePreview={previewOf(b)} onResizeStart={onResizeStart} />
                     ))}
                   </ul>
                 ) : (

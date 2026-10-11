@@ -18,6 +18,7 @@ import { StatusMenu } from "./status-menu";
 import { InlinePick } from "./inline-pick";
 import { useSaveWorkPackage } from "./use-save";
 import { CustomValueView, cfIdOf, useColumnLabel } from "./custom-fields";
+import { MoreAssignees } from "./assignees";
 
 const WIDTH: Partial<Record<ColumnKey, string>> = {
   number: "w-16", type: "w-24", status: "w-32", assignee: "w-40", responsible: "w-40", author: "w-36", priority: "w-24",
@@ -57,7 +58,9 @@ function Cell({ wp, column, options, inline }: { wp: WorkPackage; column: Column
     case "status":
       return <StatusMenu wp={wp} size="sm" />;
     case "assignee":
+      // 공동 담당자: the quick pick changes the main assignee; "+N" names the others
       return (
+        <span className="inline-flex items-center">
         <InlinePick
           value={wp.assignee?.id ?? null}
           disabled={!editable("assignee") || !options}
@@ -67,6 +70,8 @@ function Cell({ wp, column, options, inline }: { wp: WorkPackage; column: Column
         >
           {wp.assignee ? <Principal id={wp.assignee.id} name={wp.assignee.name} size="xs" /> : <span className="text-fg-muted">-</span>}
         </InlinePick>
+        <MoreAssignees assignees={wp.assignees} />
+        </span>
       );
     case "responsible":
       return wp.responsible ? <Principal id={wp.responsible.id} name={wp.responsible.name} size="xs" /> : <span className="text-fg-muted">-</span>;
@@ -432,6 +437,7 @@ export function WorkPackageTable({
                   type: wp.type,
                   status: wp.status,
                   assignee: wp.assignee ?? undefined,
+                  assignees: wp.assignees,
                   startDate: wp.startDate ?? undefined,
                   dueDate: wp.dueDate ?? undefined,
                   overdue: wp._meta.overdue,

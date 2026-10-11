@@ -399,7 +399,10 @@ export interface WorkPackage {
   subject: string;
   descriptionHtml: string;
   author: UserRef;
+  /** the main assignee: the first of assignees */
   assignee: UserRef | null;
+  /** 공동 담당자: everyone who has the item, in order, each with their own estimate in hours */
+  assignees: Assignee[];
   responsible: UserRef | null;
   version: VersionRef | null;
   category: { id: Id; name: string } | null;
@@ -456,13 +459,25 @@ export interface WorkPackage {
   };
 }
 
+/** 공동 담당자: one of the people who have a work package */
+export interface Assignee {
+  user: UserRef;
+  workHours: number | null;
+}
+
+/** How a list of assignees is sent: everyone, in order (the first is the main assignee); [] = nobody */
+export type AssigneesInput = { userId: Id; workHours?: number | null }[];
+
 export interface WorkPackageInput {
   typeId: Id;
   subject: string;
   descriptionHtml?: string;
   statusId?: Id;
   priorityId?: Id;
+  /** the main assignee only (someone on the list moves to the front; someone new takes the main place; null = nobody) */
   assigneeId?: Id | null;
+  /** everyone, in order, with their hours; instead of assigneeId */
+  assignees?: AssigneesInput;
   responsibleId?: Id | null;
   versionId?: Id | null;
   categoryId?: Id | null;

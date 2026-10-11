@@ -7,6 +7,7 @@ import { can, memberRoleIds } from "./permissions";
 import { toWp } from "./dto";
 import { cfText, findField, opsFor, sortKey, valueOn } from "./custom-fields";
 import { progressSettings } from "./progress";
+import { teamOf } from "./assignees";
 
 function descendantsOf(projectId: string): string[] {
   const out = [projectId];
@@ -152,8 +153,14 @@ export function matches(w: DbWp, f: QueryFilter, user: DbUser): boolean {
       return ref(w.typeId);
     case "priority":
       return ref(w.priorityId);
-    case "assignee":
-      return ref(w.assigneeId);
+    case "assignee": {
+      // 공동 담당자: anyone who has the item
+      const team = teamOf(w).map((e) => e.userId);
+      if (f.op === "any") return team.length > 0;
+      if (f.op === "none") return team.length === 0;
+      const hit = team.some((x) => vals.includes(x)) || (vals.includes("none") && team.length === 0);
+      return f.op === "eq" ? hit : !hit;
+    }
     case "responsible":
       return ref(w.responsibleId);
     case "author":
@@ -167,9 +174,9 @@ export function matches(w: DbWp, f: QueryFilter, user: DbUser): boolean {
     case "watcher":
       return some(db.watchers.filter((x) => x.wpId === w.id).map((x) => x.userId));
     case "assigneeGroup":
-      return some(w.assigneeId ? db.groups.filter((g) => g.memberIds.includes(w.assigneeId!)).map((g) => g.id) : []);
+      return some(db.groups.filter((g) => teamOf(w).some((e) => g.memberIds.includes(e.userId))).map((g) => g.id));
     case "assigneeRole":
-      return some(w.assigneeId ? memberRoleIds(w.assigneeId, w.projectId) : []);
+      return some(teamOf(w).flatMap((e) => memberRoleIds(e.userId, w.projectId)));
     case "number": {
       const nums = vals.flatMap((v) => v.split(/[\s,]+/)).map((v) => Number(v.replace("#", ""))).filter((x) => Number.isInteger(x) && x > 0);
       return f.op === "eq" ? nums.includes(w.number) : !nums.includes(w.number);

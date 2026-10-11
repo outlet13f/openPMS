@@ -191,13 +191,20 @@ export function TeamPlannerPage() {
   );
   const nameOf = (userId: string) => people.find((p) => p.id === userId)?.name ?? "";
 
-  const assign = async (wp: WorkPackage, userId: string, day: IsoDate | null) => {
+  /**
+   * A bar moved to a person's row. 공동 담당자: from another person's row it hands that person's place over (the others
+   * stay); from the side panel the person becomes the main assignee (someone already on it just moves to the front).
+   */
+  const assign = async (wp: WorkPackage, userId: string, day: IsoDate | null, fromUserId?: string) => {
     const patch: Omit<WorkPackagePatch, "lockVersion"> = {};
-    if (wp.assignee?.id !== userId) patch.assigneeId = userId;
+    const team = wp.assignees.map((a) => ({ userId: a.user.id, workHours: a.workHours }));
+    if (fromUserId && fromUserId !== userId && team.some((e) => e.userId === fromUserId)) {
+      patch.assignees = team.filter((e) => e.userId !== userId).map((e) => (e.userId === fromUserId ? { userId, workHours: e.workHours } : e));
+    } else if (!fromUserId && wp.assignee?.id !== userId) patch.assigneeId = userId;
     if (day && (canMoveDates(wp) || (!wp.startDate && !wp.dueDate))) Object.assign(patch, datesFor(wp, day));
     if (!Object.keys(patch).length) return;
     const saved = await save(wp, patch);
-    if (saved && patch.assigneeId) toast({ tone: "success", title: t("planner.assigned", { number: wp.number, name: nameOf(userId) }) });
+    if (saved && (patch.assigneeId || patch.assignees)) toast({ tone: "success", title: t("planner.assigned", { number: wp.number, name: nameOf(userId) }) });
   };
   const onDragStart = (e: DragStartEvent) => {
     const wp = e.active.data.current?.wp as WorkPackage | undefined;
@@ -208,12 +215,16 @@ export function TeamPlannerPage() {
     setActive(null);
     const wp = a.data.current?.wp as WorkPackage | undefined;
     if (!wp || !over) return;
+    const from = a.data.current?.from as string | undefined;
     if (over.id === "remove") {
-      if (wp.assignee && (await save(wp, { assigneeId: null }))) toast({ tone: "success", title: t("planner.unassigned", { number: wp.number }) });
+      // off this person's row only; the others keep it
+      const rest = wp.assignees.filter((x) => x.user.id !== from).map((x) => ({ userId: x.user.id, workHours: x.workHours }));
+      const patch = from && wp.assignees.length > 1 ? { assignees: rest } : { assigneeId: null };
+      if (wp.assignee && (await save(wp, patch))) toast({ tone: "success", title: t("planner.unassigned", { number: wp.number }) });
       return;
     }
     const cell = parseCell(over.id);
-    if (cell) await assign(wp, cell.userId, cell.date);
+    if (cell) await assign(wp, cell.userId, cell.date, from);
   };
   /** Menu path from the side panel: keep its dates when it has some, otherwise put it on today (or the first day shown). */
   const assignFromMenu = (wp: WorkPackage, person: UserRef) => void assign(wp, person.id, wp.startDate || wp.dueDate ? null : today >= from && today <= to ? today : from);

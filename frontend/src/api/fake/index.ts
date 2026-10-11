@@ -50,6 +50,7 @@ import { DEFAULT_DISPLAY, OVERVIEW_WIDGETS } from "../types";
 import { issueToken, revokeAll, sendMail, tokenGone, validToken } from "./tokens";
 import { adminApi, categoriesApi, projectExtras, versionsApi } from "./admin";
 import { followMove, timeApi } from "./time";
+import { beyondMain, journalTeam, readTeam, sameTeam, swap, teamOf, withMain, type TeamEntry } from "./assignees";
 
 /* ---------- plumbing ---------- */
 
@@ -350,7 +351,7 @@ function fanOut(wp: DbWp, journal: DbJournal, actor: DbUser, mentioned: string[]
   };
   const setting = (userId: string) => effectiveSetting(userId, project.id);
   mentioned.forEach((id) => offer(id, "mentioned"));
-  if (wp.assigneeId && setting(wp.assigneeId).assignee) offer(wp.assigneeId, "assigned");
+  for (const e of teamOf(wp)) if (setting(e.userId).assignee) offer(e.userId, "assigned");
   if (wp.responsibleId && setting(wp.responsibleId).responsible) offer(wp.responsibleId, "responsible");
   db.watchers.filter((x) => x.wpId === wp.id).forEach((x) => offer(x.userId, "watched"));
   const c = journal.changes;
@@ -446,7 +447,23 @@ function applyPatch(user: DbUser, number: number, patch: WorkPackagePatch): Work
     if (!db.priorities.some((x) => x.id === patch.priorityId)) throw fieldError("priority", "알 수 없는 우선순위입니다.");
     set("priorityId", patch.priorityId);
   }
-  for (const [key, field] of [["assigneeId", "assignee"], ["responsibleId", "responsible"]] as const) {
+  // 공동 담당자: the whole list, or the main assignee the older way
+  let team: TeamEntry[] | null = null;
+  const before = teamOf(wp);
+  if (patch.assignees !== undefined) {
+    const r = readTeam(patch.assignees, (id) => isMember(id, project.id));
+    if (typeof r === "string") throw fieldError("assignees", r);
+    team = r;
+  } else if (patch.assigneeId !== undefined) {
+    if (patch.assigneeId !== null && !isMember(patch.assigneeId, project.id)) throw fieldError("assignee", "프로젝트 멤버만 지정할 수 있습니다.");
+    team = withMain(before, patch.assigneeId);
+  }
+  if (team && !sameTeam(before, team)) {
+    set("assigneeId", team[0]?.userId ?? null);
+    if (beyondMain(before) || beyondMain(team)) changes.assignees = [journalTeam(before), journalTeam(team)];
+    next.team = team;
+  }
+  for (const [key, field] of [["responsibleId", "responsible"]] as const) {
     const v = patch[key];
     if (v === undefined) continue;
     if (v !== null && !isMember(v, project.id)) throw fieldError(field, "프로젝트 멤버만 지정할 수 있습니다.");
@@ -575,7 +592,7 @@ function boardColumns(user: DbUser, b: DbBoard, project: DbProject, filters: Que
         cards = wps.filter((w) => w.statusId === c.valueId);
       } else if (b.kind === "assignee" && c.valueId) {
         title = userRef(c.valueId)?.name ?? "";
-        cards = wps.filter((w) => w.assigneeId === c.valueId && !statusOf(w).isClosed);
+        cards = wps.filter((w) => teamOf(w).some((e) => e.userId === c.valueId) && !statusOf(w).isClosed);
       } else if (b.kind === "version" && c.valueId) {
         title = db.versions.find((v) => v.id === c.valueId)?.name ?? "";
         cards = wps.filter((w) => w.versionId === c.valueId);
@@ -644,6 +661,8 @@ function notificationSummary(n: (typeof db.notifications)[number], user: DbUser)
   const actor = userRef(n.actorId)?.name ?? "누군가";
   const j = n.journalId ? db.journals.find((x) => x.id === n.journalId) : null;
   if (n.reason === "assigned" && j?.changes.assigneeId?.[1] === user.id) return `${actor}님이 나를 담당자로 지정했습니다`;
+  const listed = (v: unknown) => Array.isArray(v) && v.some((e: { userId?: string }) => e.userId === user.id);
+  if (n.reason === "assigned" && j?.changes.assignees && listed(j.changes.assignees[1]) && !listed(j.changes.assignees[0])) return `${actor}님이 나를 공동 담당자로 지정했습니다`;
   let text = (REASON_TEXT[n.reason] ?? (() => "작업이 바뀌었습니다"))(actor);
   if (j && n.reason !== "mentioned") {
     const d = toJournal(j, user).details.filter((x) => x.field !== "_created")[0];
@@ -671,6 +690,9 @@ function createWp(user: DbUser, projectId: string, input: WorkPackageInput): Wor
   if (!subject) throw fieldError("subject", "제목을 입력하세요.");
   if (subject.length > 255) throw fieldError("subject", "제목은 255자 이하로 입력하세요.");
   if (!p.typeIds.includes(input.typeId)) throw fieldError("type", "이 프로젝트에서 쓰지 않는 유형입니다.");
+  const team = input.assignees ? readTeam(input.assignees, (id) => isMember(id, p.id)) : null;
+  if (typeof team === "string") throw fieldError("assignees", team);
+  if (team?.length) input = { ...input, assigneeId: team[0].userId };
   if (input.assigneeId && !isMember(input.assigneeId, p.id)) throw fieldError("assignee", "프로젝트 멤버만 지정할 수 있습니다.");
   if (input.statusId !== undefined && !db.statuses.some((x) => x.id === input.statusId)) throw fieldError("status", "알 수 없는 상태입니다.");
   if (input.priorityId !== undefined && !db.priorities.some((x) => x.id === input.priorityId)) throw fieldError("priority", "알 수 없는 우선순위입니다.");
@@ -692,7 +714,7 @@ function createWp(user: DbUser, projectId: string, input: WorkPackageInput): Wor
     id: newId("wp"), number: db.seq.wp, projectId: p.id, typeId: input.typeId,
     statusId: input.statusId ?? db.statuses.find((s) => s.isDefault)!.id,
     priorityId: input.priorityId ?? db.priorities.find((x) => x.isDefault)!.id,
-    subject, descriptionHtml: input.descriptionHtml ?? "", authorId: user.id, assigneeId,
+    subject, descriptionHtml: input.descriptionHtml ?? "", authorId: user.id, assigneeId, ...(team?.length ? { team } : {}),
     responsibleId: input.responsibleId ?? null, versionId: input.versionId ?? null, categoryId: category?.id ?? null, parentId,
     startDate: null, dueDate: null, duration: null, ignoreNonWorkingDays: false, scheduleManually: true,
     workHours: null, remainingHours: null, doneRatio: null, customValues, lockVersion: 0, createdAt: now, updatedAt: now,
@@ -740,7 +762,8 @@ function copyWp(user: DbUser, w: DbWp, target: DbProject, subject: string, paren
     descriptionHtml: w.descriptionHtml,
     statusId: w.statusId,
     priorityId: w.priorityId,
-    assigneeId: w.assigneeId && isMember(w.assigneeId, target.id) ? w.assigneeId : null,
+    // 공동 담당자: the members among them come along, with their hours
+    assignees: teamOf(w).filter((e) => isMember(e.userId, target.id)),
     responsibleId: w.responsibleId && isMember(w.responsibleId, target.id) ? w.responsibleId : null,
     versionId: same && can(user, target, "wp.assign_versions") ? w.versionId : null,
     categoryId: same ? w.categoryId : null,
@@ -780,7 +803,17 @@ function moveWp(user: DbUser, number: number, input: MoveInput): WorkPackage {
     if (w === root && typeId !== w.typeId) (changes.typeId = [w.typeId, typeId]), (w.typeId = typeId);
     if (w.versionId && db.versions.find((v) => v.id === w.versionId)?.projectId !== target.id) (changes.versionId = [w.versionId, null]), (w.versionId = null);
     if (w.categoryId) (changes.categoryId = [w.categoryId, null]), (w.categoryId = null);
-    if (w.assigneeId && !isMember(w.assigneeId, target.id)) (changes.assigneeId = [w.assigneeId, null]), (w.assigneeId = null);
+    {
+      const team = teamOf(w);
+      const staying = team.filter((e) => isMember(e.userId, target.id));
+      if (staying.length !== team.length) {
+        const main = staying[0]?.userId ?? null;
+        if (main !== w.assigneeId) changes.assigneeId = [w.assigneeId, main];
+        if (beyondMain(team) || beyondMain(staying)) changes.assignees = [journalTeam(team), journalTeam(staying)];
+        w.assigneeId = main;
+        w.team = staying;
+      }
+    }
     if (w.responsibleId && !isMember(w.responsibleId, target.id)) (changes.responsibleId = [w.responsibleId, null]), (w.responsibleId = null);
     w.lockVersion += 1;
     w.updatedAt = nowIso();
@@ -1609,7 +1642,13 @@ export const fakeApi: Api = {
         if (!col) throw new ApiError(404, "컬럼을 찾을 수 없습니다.");
         const { wp } = findWp(user, input.number);
         if (b.kind === "status" && col.valueId && col.valueId !== wp.statusId) applyPatch(user, wp.number, { lockVersion: input.lockVersion, statusId: col.valueId });
-        if (b.kind === "assignee" && col.valueId && col.valueId !== wp.assigneeId) applyPatch(user, wp.number, { lockVersion: input.lockVersion, assigneeId: col.valueId });
+        if (b.kind === "assignee" && col.valueId) {
+          // from one person's column to another's hands that person's place over
+          const from = b.columns.find((c) => c.id === input.fromColumnId)?.valueId ?? null;
+          const team = teamOf(wp);
+          const nextTeam = from ? swap(team, from, col.valueId) : withMain(team, col.valueId);
+          if (!sameTeam(team, nextTeam)) applyPatch(user, wp.number, { lockVersion: input.lockVersion, assignees: nextTeam });
+        }
         if (b.kind === "version" && col.valueId !== wp.versionId) applyPatch(user, wp.number, { lockVersion: input.lockVersion, versionId: col.valueId });
         if (b.kind === "parent_child" && col.valueId && col.valueId !== wp.parentId)
           applyPatch(user, wp.number, { lockVersion: input.lockVersion, parentNumber: db.workPackages.find((w) => w.id === col.valueId)?.number ?? null });

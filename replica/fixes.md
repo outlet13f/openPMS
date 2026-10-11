@@ -62,7 +62,7 @@
 | 3 | **업그레이드 안전장치** (완료: 5966874): 새 마이그레이션을 적용하기 전에 DB를 자동으로 백업. 관리 · 시스템 정보에 버전, 적용된 마이그레이션, 마지막 백업을 보여 줌. 운영 문서에 "이미지 바꾸고 다시 시작"하는 한 가지 절차만 둠 | M | /replica-backend, /replica-deploy | 업그레이드 19건/5곳, 포럼 19206·19214, 블로그 kronis.dev |
 | 4 | **성능 예산** (완료: a81a4f6, `replica/perf.md`): 주요 화면(목록 1,000건, 보드, Gantt, 작업 상세)의 응답 시간 목표를 정하고 자동 측정 테스트로 회귀를 막음. 운영자 매뉴얼에 권장 사양을 실측으로 적음. 재는 중에 CPU 2개 서버의 30초 멈춤(BUG-012, S1), 보드 1,000장 느림(BUG-013), 압축·캐시 없음(BUG-014)을 찾아 고침 | S | /replica-test | 느림·자원 14건/3곳 |
 | 5 | **화면별 도움말 연결** (완료): 각 화면의 도움말 버튼이 사용자 매뉴얼의 해당 절로 연결. 관리 화면에 "무엇이 되는가" 기능 목록. 헤더 **도움말 › 이 화면 도움말**이 그 절을 오른쪽 패널로 열고(하던 화면 유지), `/help`·`/help/admin`에서 매뉴얼 전체를 목차·검색과 함께 봄. 매뉴얼은 `docs/deliverables` 원문을 빌드 때 넣어 문서와 앱이 같은 내용 | S | /replica-build | 문서·찾기 11건/4곳 |
-| 6 | **공동 담당자**: 작업에 담당자를 여러 명 두고 각자 예상 시간을 따로 적음. 필터·알림·보드도 함께 | L | /replica-build | 7건/2곳. 원본 직원 답변: "Multiple assignees without group creation is one of the feature requests with the highest vote count here." [포럼 19193](https://community.openproject.org/projects/OP/forums/6/topics/19193) (투표 수 자체는 확인 못함) |
+| 6 | **공동 담당자** (완료: f494f76 외): 작업에 담당자를 여러 명 두고 각자 예상 시간을 따로 적음. 필터·알림·보드도 함께. 첫 사람이 주 담당자(정렬·묶기·예전 API), 담당자 필터·내게 할당됨·알림·워크플로 "담당자일 때"·기한 알림·담당자 보드·팀 플래너는 모두를 봄 | L | /replica-build | 7건/2곳. 원본 직원 답변: "Multiple assignees without group creation is one of the feature requests with the highest vote count here." [포럼 19193](https://community.openproject.org/projects/OP/forums/6/topics/19193) (투표 수 자체는 확인 못함) |
 | 7 | **반복 작업** (보류, 2026-10-11 사용자 결정): 매주·매월 같은 작업을 자동으로 만들기 | M | /replica-build | 7건, 출처 1곳(근거 약함) |
 
 **이번에 넣지 않은 것**

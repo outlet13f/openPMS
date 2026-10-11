@@ -6,6 +6,7 @@ import { db, type DbJournal, type DbProject, type DbUser, type DbWp } from "./db
 import { allowedStatusIds, can, projectPermissions, shareRoleOf } from "./permissions";
 import { cfIdOf, cfText, customValuesOf } from "./custom-fields";
 import { progressLocked, totalsOf } from "./progress";
+import { teamOf } from "./assignees";
 
 export const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 
@@ -104,6 +105,7 @@ export function toWp(w: DbWp, user: DbUser): WorkPackage {
     descriptionHtml: w.descriptionHtml,
     author: userRef(w.authorId)!,
     assignee: userRef(w.assigneeId),
+    assignees: teamOf(w).map((e) => ({ user: userRef(e.userId)!, workHours: e.workHours })),
     responsible: userRef(w.responsibleId),
     version: version ? { id: version.id, name: version.name } : null,
     category: category ? { id: category.id, name: category.name } : null,
@@ -157,6 +159,7 @@ const FIELD_LABEL: Record<string, string> = {
   statusId: "상태",
   priorityId: "우선순위",
   assigneeId: "담당자",
+  assignees: "담당자 목록",
   responsibleId: "책임자",
   versionId: "버전",
   categoryId: "카테고리",
@@ -186,6 +189,10 @@ export function display(field: string, v: unknown): string | null {
     case "assigneeId":
     case "responsibleId":
       return userRef(v as string)?.name ?? null;
+    case "assignees":
+      return Array.isArray(v) && v.length
+        ? (v as { userId: string; workHours: string | null }[]).map((e) => `${userRef(e.userId)?.name ?? ""}${e.workHours !== null ? ` ${Number(e.workHours)}시간` : ""}`).join(", ")
+        : null;
     case "versionId":
       return db.versions.find((s) => s.id === v)?.name ?? null;
     case "categoryId":

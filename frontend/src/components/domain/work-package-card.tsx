@@ -4,6 +4,7 @@ import { cn } from "@/lib/cn";
 import { Avatar } from "@/components/ui/avatar";
 import { StatusPill, TypeLabel } from "@/components/ui/badges";
 import { useTranslation } from "react-i18next";
+import { AssigneeAvatars } from "@/features/work-packages/assignees";
 
 export interface CardWorkPackage {
   number: number;
@@ -12,6 +13,8 @@ export interface CardWorkPackage {
   type: { name: string; color: string };
   status?: { name: string; color: string };
   assignee?: { id: string; name: string };
+  /** 공동 담당자: everyone (stacked avatars when more than one) */
+  assignees?: { user: { id: string; name: string }; workHours: number | null }[];
   startDate?: string;
   dueDate?: string;
   overdue?: boolean;
@@ -69,7 +72,13 @@ export function WorkPackageCard({
         </a>
       </h3>
       <div className="mt-2 flex items-center justify-between gap-2">
-        {wp.assignee ? <Avatar id={wp.assignee.id} name={wp.assignee.name} size="xs" /> : <span className="text-xs text-fg-muted">{t("wp.unassigned")}</span>}
+        {wp.assignees && wp.assignees.length > 1 ? (
+          <AssigneeAvatars assignees={wp.assignees} />
+        ) : wp.assignee ? (
+          <Avatar id={wp.assignee.id} name={wp.assignee.name} size="xs" />
+        ) : (
+          <span className="text-xs text-fg-muted">{t("wp.unassigned")}</span>
+        )}
         {(wp.startDate || wp.dueDate) && (
           <span className="inline-flex items-center gap-1 text-xs text-fg-muted tabular-nums">
             {wp.autoScheduled && <CalendarClock className="size-3.5" aria-label={t("wp.autoScheduled")} />}

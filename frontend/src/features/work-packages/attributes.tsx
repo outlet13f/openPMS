@@ -2,7 +2,7 @@
 import { Fragment, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
-import { CalendarClock, CalendarDays, Pin } from "lucide-react";
+import { CalendarClock, CalendarDays, Pin, Users } from "lucide-react";
 import type { CustomField, WorkPackage } from "@/api";
 import { BUILT_IN_ATTRIBUTES, DEFAULT_TYPE_FORM, type BuiltInAttribute } from "@/api/type-form";
 import { useFilterOptions } from "@/api/hooks";
@@ -15,6 +15,7 @@ import { InlineText } from "./inline-text";
 import { useSaveWorkPackage } from "./use-save";
 import { DateDialog } from "./date-dialog";
 import { CustomFieldInline } from "./custom-fields";
+import { AssigneesDialog, CoAssignees } from "./assignees";
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -42,6 +43,7 @@ export function Attributes({ wp }: { wp: WorkPackage }) {
   const { save } = useSaveWorkPackage();
   const options = useFilterOptions(wp.project.id).data;
   const [dates, setDates] = useState(false);
+  const [team, setTeam] = useState(false);
   const can = (f: WorkPackage["_meta"]["editableFields"][number]) => wp._meta.editableFields.includes(f);
   const people = options?.users ?? [];
   const person = (u: WorkPackage["assignee"]) => (u ? <Principal id={u.id} name={u.name} size="xs" /> : <span className="text-fg-muted">-</span>);
@@ -65,6 +67,20 @@ export function Attributes({ wp }: { wp: WorkPackage }) {
         >
           {person(wp.assignee)}
         </InlinePick>
+        <CoAssignees wp={wp} />
+        {can("assignee") && (
+          <>
+            <button
+              type="button"
+              onClick={() => setTeam(true)}
+              className="mt-1 -ml-1.5 inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-xs text-accent hover:bg-surface-hover"
+            >
+              <Users aria-hidden="true" className="size-3.5" />
+              {wp.assignees.length > 1 ? t("wp.assignees.edit") : t("wp.assignees.addOthers")}
+            </button>
+            <AssigneesDialog wp={wp} people={people} open={team} onOpenChange={setTeam} onSave={(list) => ok({ assignees: list })} />
+          </>
+        )}
       </Row>
     ),
     responsible: (

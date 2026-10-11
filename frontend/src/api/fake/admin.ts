@@ -893,7 +893,9 @@ export const adminApi: Api["admin"] = {
         db.notifications = db.notifications.filter((n) => n.recipientId !== id);
         db.groups.forEach((g) => (g.memberIds = g.memberIds.filter((m) => m !== id)));
         db.workPackages.forEach((w) => {
-          if (w.assigneeId === id) w.assigneeId = null;
+          // 공동 담당자: off every list; the next person becomes the main assignee
+          if (w.team) w.team = w.team.filter((e) => e.userId !== id);
+          if (w.assigneeId === id) w.assigneeId = w.team?.[0]?.userId ?? null;
           if (w.responsibleId === id) w.responsibleId = null;
         });
       }),

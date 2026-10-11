@@ -39,6 +39,13 @@ import { can, useCurrentProject } from "@/app/project";
 import { WorkPackageDetail, asDetailTab } from "@/features/work-packages/detail";
 
 const cardId = (n: number) => `card-${n}`;
+/**
+ * 공동 담당자: on an assignee board one item stands in several people's columns, so a card's drag id is the item and the
+ * column it came from ("card-12@<column>"). Keys follow the card objects of the loaded board (a card dragged to another
+ * column keeps its key until the board reloads).
+ */
+const keys = new WeakMap<WorkPackage, string>();
+const keyOf = (w: WorkPackage) => keys.get(w) ?? cardId(w.number);
 /** A long column draws this many cards first and the rest on request (성능 예산: 1,000 cards at once took 1.5 s and 250 MB). */
 const COLUMN_PAGE = 50;
 /** Where a card dropped on the column itself (not on a card) goes: the end, or the end of what is drawn when the column is cut short. */
@@ -64,7 +71,7 @@ const boardKeyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
   if (!target) return undefined;
   return { x: target.left + (target.width - collisionRect.width) / 2, y: target.top + 8 };
 };
-const numberOf = (id: string | number) => Number(String(id).replace("card-", ""));
+const numberOf = (id: string | number) => Number(String(id).replace("card-", "").split("@")[0]);
 
 function toCard(wp: WorkPackage) {
   return {
@@ -74,6 +81,7 @@ function toCard(wp: WorkPackage) {
     type: wp.type,
     status: wp.status,
     assignee: wp.assignee ?? undefined,
+    assignees: wp.assignees,
     startDate: wp.startDate ?? undefined,
     dueDate: wp.dueDate ?? undefined,
     overdue: wp._meta.overdue,
@@ -88,7 +96,7 @@ function toCard(wp: WorkPackage) {
  */
 function SortableCard({ wp, href, disabled, onRemove }: { wp: WorkPackage; href: string; disabled: boolean; onRemove?: () => void }) {
   const { t } = useTranslation();
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: cardId(wp.number), disabled });
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: keyOf(wp), disabled });
   return (
     <li ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cn(isDragging && "opacity-40")} onPointerDown={listeners?.onPointerDown as PointerEventHandler<HTMLLIElement> | undefined}>
       <WorkPackageCard
@@ -285,11 +293,11 @@ function Column({
           )}
         </div>
       </header>
-      <SortableContext items={drawn.map((c) => cardId(c.number))} strategy={verticalListSortingStrategy}>
+      <SortableContext items={drawn.map(keyOf)} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className="flex min-h-24 flex-1 flex-col gap-2">
           {drawn.map((wp) => (
             <SortableCard
-              key={wp.id}
+              key={keyOf(wp)}
               wp={wp}
               href={hrefOf(wp)}
               disabled={!canDrag || (!onRemoveCard && !wp._meta.allowedActions.edit)}
@@ -425,11 +433,13 @@ export function BoardPage() {
   const details = useMatch(`${base}/details/:number/*`);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: boardKeyboardCoordinates }));
 
+  // drag keys for the loaded board's cards (see keyOf)
+  useMemo(() => board.data?.columns.forEach((c) => c.cards.forEach((w) => keys.set(w, `card-${w.number}@${c.id}`))), [board.data]);
   const columnOf = useMemo(() => {
     const map = new Map<string, string>();
     columns?.forEach((c) => {
       map.set(c.id, c.id);
-      c.cards.forEach((w) => map.set(cardId(w.number), c.id));
+      c.cards.forEach((w) => map.set(keyOf(w), c.id));
     });
     return map;
   }, [columns]);
@@ -461,8 +471,7 @@ export function BoardPage() {
   };
 
   const onDragStart = (e: DragStartEvent) => {
-    const n = numberOf(e.active.id);
-    setActive(cols.flatMap((c) => c.cards).find((w) => w.number === n) ?? null);
+    setActive(cols.flatMap((c) => c.cards).find((w) => keyOf(w) === String(e.active.id)) ?? null);
     setOrigin(columnOf.get(String(e.active.id)) ?? null);
   };
 
@@ -473,11 +482,11 @@ export function BoardPage() {
     if (!from || !to || from === to) return;
     setColumns((prev) => {
       if (!prev) return prev;
-      const card = prev.find((c) => c.id === from)!.cards.find((w) => cardId(w.number) === a.id)!;
+      const card = prev.find((c) => c.id === from)!.cards.find((w) => keyOf(w) === a.id)!;
       return prev.map((c) => {
-        if (c.id === from) return { ...c, cards: c.cards.filter((w) => w.number !== card.number) };
+        if (c.id === from) return { ...c, cards: c.cards.filter((w) => w !== card) };
         if (c.id === to) {
-          const idx = c.cards.findIndex((w) => cardId(w.number) === over.id);
+          const idx = c.cards.findIndex((w) => keyOf(w) === over.id);
           const cards = [...c.cards];
           cards.splice(idx >= 0 ? idx : dropEnd(cards.length, limitOf(c.id)), 0, card);
           return { ...c, cards };
@@ -495,8 +504,8 @@ export function BoardPage() {
     let next = columns;
     // reorder inside the target column
     const col = next.find((c) => c.id === to)!;
-    const oldIdx = col.cards.findIndex((w) => cardId(w.number) === a.id);
-    const overIdx = col.cards.findIndex((w) => cardId(w.number) === over.id);
+    const oldIdx = col.cards.findIndex((w) => keyOf(w) === a.id);
+    const overIdx = col.cards.findIndex((w) => keyOf(w) === over.id);
     if (oldIdx >= 0 && overIdx >= 0 && oldIdx !== overIdx) {
       const cards = [...col.cards];
       const [x] = cards.splice(oldIdx, 1);
@@ -505,10 +514,11 @@ export function BoardPage() {
       setColumns(next);
     }
     const finalCol = next.find((c) => c.id === to)!;
-    const idx = finalCol.cards.findIndex((w) => w.number === moved.number);
+    const idx = finalCol.cards.findIndex((w) => w === moved);
     if (to === origin && oldIdx === overIdx) return; // dropped where it started
     try {
-      show(await api.boards.move(b.id, { number: moved.number, toColumnId: to, beforeNumber: finalCol.cards[idx + 1]?.number ?? null, lockVersion: moved.lockVersion }));
+      // fromColumnId: on an assignee board, whose place the card hands over (공동 담당자)
+      show(await api.boards.move(b.id, { number: moved.number, toColumnId: to, fromColumnId: origin ?? undefined, beforeNumber: finalCol.cards[idx + 1]?.number ?? null, lockVersion: moved.lockVersion }));
       invalidateWorkPackages(qc, moved.number);
     } catch (err) {
       setColumns(b.columns);

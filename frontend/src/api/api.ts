@@ -313,7 +313,8 @@ export interface Api {
     /** DELETE /board-columns/{id} (board.manage) — the column goes, its work packages stay */
     removeColumn(columnId: Id): Promise<Board>;
     /** POST /boards/{id}/moves */
-    move(id: Id, input: { number: number; toColumnId: Id; beforeNumber: number | null; lockVersion: number }): Promise<Board>;
+    /** fromColumnId: the column the card left (on an assignee board, whose place is handed over — 공동 담당자) */
+    move(id: Id, input: { number: number; toColumnId: Id; fromColumnId?: Id; beforeNumber: number | null; lockVersion: number }): Promise<Board>;
   };
 
   notifications: {

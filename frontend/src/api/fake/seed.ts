@@ -171,6 +171,8 @@ export function buildSeed(schema: number): Db {
       lockVersion: 0, createdAt: created, updatedAt: created, ...opts,
     };
   });
+  // 공동 담당자: 결제 API 연동 is shared by 박준호 (24 h) and 이하늘 (16 h), as in the dev database
+  workPackages.find((w) => w.number === 4)!.team = [{ userId: "u-junho", workHours: 24 }, { userId: "u-haneul", workHours: 16 }];
   rows.forEach(([n, , , , , , , , parent]) => {
     if (parent) workPackages.find((w) => w.number === n)!.parentId = byNumber.get(parent)!;
   });

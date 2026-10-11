@@ -66,6 +66,8 @@ export interface DbWp {
   descriptionHtml: string;
   authorId: Id;
   assigneeId: Id | null;
+  /** 공동 담당자: everyone, in order (assignees.ts teamOf reads it; absent = only assigneeId) */
+  team?: { userId: Id; workHours: number | null }[];
   responsibleId: Id | null;
   versionId: Id | null;
   categoryId: Id | null;
@@ -181,7 +183,7 @@ export interface Db {
 }
 
 const KEY = "openpms.fakedb";
-const SCHEMA = 13;
+const SCHEMA = 14;
 
 function load(): Db {
   try {
