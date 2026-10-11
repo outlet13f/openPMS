@@ -117,4 +117,45 @@ class ApiTokensIT {
         // the description is public
         mvc.perform(get("/api/v1/openapi.json")).andExpect(status().isOk()).andExpect(jsonPath("$.openapi").value("3.1.0"));
     }
+
+    @Test
+    void expiredTokensStopAdministratorsRevokeAnyoneSUseIsRecordedAndTheRateIsCapped() throws Exception {
+        var admin = login("seoyeon.kim@openpms.local");
+        var member = login("haneul.lee@openpms.local");
+        var mine = issue(member, "read");
+        var memberToken = json.readTree(mvc.perform(get("/api/v1/me/api-tokens").session(member)).andReturn().getResponse().getContentAsString()).get(0);
+        var id = java.util.UUID.fromString(memberToken.get("id").asString());
+
+        // use is recorded
+        assertThat(db.select(API_TOKENS.LAST_USED_AT).from(API_TOKENS).where(API_TOKENS.ID.eq(id)).fetchOne(API_TOKENS.LAST_USED_AT)).isNull();
+        mvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer " + mine)).andExpect(status().isOk());
+        assertThat(db.select(API_TOKENS.LAST_USED_AT).from(API_TOKENS).where(API_TOKENS.ID.eq(id)).fetchOne(API_TOKENS.LAST_USED_AT)).isNotNull();
+        // a read token may ask how much an export would hold
+        mvc.perform(post("/api/v1/work-packages/export/count").header("Authorization", "Bearer " + mine).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"projectId\":\"web-platform\",\"spec\":{\"v\":1,\"filters\":[],\"columns\":[\"subject\"],\"sort\":[],\"hierarchy\":false,\"sums\":false,\"includeSubprojects\":false}}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.limit").exists());
+
+        // past its expiry date: 401
+        db.update(API_TOKENS).set(API_TOKENS.EXPIRES_AT, java.time.OffsetDateTime.now().minusMinutes(1)).where(API_TOKENS.ID.eq(id)).execute();
+        mvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer " + mine)).andExpect(status().isUnauthorized());
+        db.update(API_TOKENS).set(API_TOKENS.EXPIRES_AT, java.time.OffsetDateTime.now().plusDays(1)).where(API_TOKENS.ID.eq(id)).execute();
+        mvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer " + mine)).andExpect(status().isOk());
+
+        // an administrator revokes someone else's token; a member cannot reach that route
+        mvc.perform(delete("/api/v1/admin/api-tokens/" + id).session(member).with(csrf())).andExpect(status().isForbidden());
+        mvc.perform(delete("/api/v1/admin/api-tokens/" + id).session(admin).with(csrf())).andExpect(status().isNoContent());
+        mvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer " + mine)).andExpect(status().isUnauthorized());
+
+        // 300 requests a minute per token, then 429 (the bucket refills as it goes, 5 a second, so a few more get through)
+        var busy = issue(admin, "read");
+        int ok = 0;
+        int refused = 0;
+        for (int i = 0; i < 400; i++) {
+            int code = mvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer " + busy)).andReturn().getResponse().getStatus();
+            if (code == 200) ok++;
+            else if (code == 429) refused++;
+        }
+        assertThat(ok).isBetween(300, 360);
+        assertThat(ok + refused).isEqualTo(400);
+    }
 }

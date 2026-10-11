@@ -55,7 +55,8 @@ class WebhooksIT {
         receiver = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         receiver.createContext("/", ex -> {
             got.add(new Received(ex.getRequestURI().getPath(), ex.getRequestHeaders(), new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)));
-            int code = ex.getRequestURI().getPath().startsWith("/fail") ? 500 : 204;
+            int code = ex.getRequestURI().getPath().startsWith("/fail") ? 500 : ex.getRequestURI().getPath().startsWith("/redirect") ? 302 : 204;
+            if (code == 302) ex.getResponseHeaders().add("Location", "/hook");
             ex.sendResponseHeaders(code, -1);
             ex.close();
         });
@@ -281,5 +282,45 @@ class WebhooksIT {
         } finally {
             db.deleteFrom(API_TOKENS).execute();
         }
+    }
+
+    @Test
+    void updatesDeletesSwitchedOffHooksNewSecretsAndRedirects() throws Exception {
+        var all = json.readTree(send(admin, post("/api/v1/admin/webhooks"), "{\"name\":\"전부\",\"url\":\"" + url("/hook")
+                + "\",\"events\":[\"work_package.updated\",\"work_package.deleted\"]}").andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        var off = json.readTree(send(admin, post("/api/v1/admin/webhooks"), "{\"name\":\"꺼 둔 것\",\"url\":\"" + url("/hook")
+                + "\",\"events\":[\"work_package.updated\"],\"enabled\":false}").andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        var hop = json.readTree(send(admin, post("/api/v1/admin/webhooks"), "{\"name\":\"옮겨 가는 주소\",\"url\":\"" + url("/redirect")
+                + "\",\"events\":[\"work_package.deleted\"]}").andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        assertThat(off.get("enabled").asBoolean()).isFalse();
+        var type = json.readTree(mvc.perform(get("/api/v1/work-packages/11").session(admin)).andReturn().getResponse().getContentAsString()).get("type").get("id").asString();
+        // made in 모바일 앱: a webhook without projects covers every project
+        long n = json.readTree(send(admin, post("/api/v1/projects/mobile-app/work-packages"), "{\"subject\":\"고칠 작업\",\"typeId\":\"" + type + "\"}")
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("number").asLong();
+        send(admin, patch("/api/v1/work-packages/" + n), "{\"lockVersion\":" + lockVersion(n) + ",\"subject\":\"고친 작업\"}").andExpect(status().isOk());
+        var updates = db.selectFrom(WEBHOOK_DELIVERIES).where(WEBHOOK_DELIVERIES.EVENT.eq("work_package.updated")).fetch();
+        assertThat(updates).hasSize(1).allMatch(d -> d.getWebhookId().toString().equals(all.get("id").asString()));
+        var change = json.readTree(updates.get(0).getPayload().data()).get("changes").get(0);
+        assertThat(change.get("label").asString()).isEqualTo("제목");
+        assertThat(change.get("from").asString()).isEqualTo("고칠 작업");
+        assertThat(change.get("to").asString()).isEqualTo("고친 작업");
+        webhooks.deliver(Instant.now());
+        got.clear();
+
+        // a new secret: the old one stops, the next send is signed with the new one
+        var rotated = json.readTree(send(admin, post("/api/v1/admin/webhooks/" + all.get("id").asString() + "/secret"), "{}")
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("secret").asString();
+        send(admin, delete("/api/v1/work-packages/" + n), "").andExpect(status().is2xxSuccessful());
+        assertThat(db.fetchCount(WEBHOOK_DELIVERIES, WEBHOOK_DELIVERIES.EVENT.eq("work_package.deleted"))).isEqualTo(2);
+        webhooks.deliver(Instant.now());
+        var hits = got.stream().filter(r -> r.path().equals("/hook")).toList();
+        assertThat(hits).hasSize(1);
+        assertThat(hits.get(0).headers().get("X-openpms-signature")).containsExactly(Webhooks.sign(rotated, hits.get(0).body()));
+        assertThat(json.readTree(hits.get(0).body()).get("event").asString()).isEqualTo("work_package.deleted");
+        // a redirect is an answer, not a new address: not followed, tried again later
+        var bounced = db.selectFrom(WEBHOOK_DELIVERIES).where(WEBHOOK_DELIVERIES.WEBHOOK_ID.eq(java.util.UUID.fromString(hop.get("id").asString()))).fetchOne();
+        assertThat(bounced.getResponseStatus()).isEqualTo(302);
+        assertThat(bounced.getStatus()).isEqualTo("pending");
+        assertThat(got.stream().filter(r -> r.path().equals("/hook")).count()).as("the redirect target was not called").isEqualTo(1);
     }
 }
