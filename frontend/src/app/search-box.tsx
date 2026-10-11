@@ -50,6 +50,7 @@ export function SearchBox() {
         ref={inputRef}
         id={`${id}-input`}
         type="search"
+        data-global-search
         role="combobox"
         autoComplete="off"
         aria-expanded={show}

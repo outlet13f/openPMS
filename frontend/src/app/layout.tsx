@@ -13,6 +13,7 @@ import {
   KanbanSquare,
   LayoutDashboard,
   ListTodo,
+  Keyboard,
   Palette,
   Settings,
   Shield,
@@ -33,6 +34,7 @@ import { Input } from "@/components/ui/field";
 import { Counter } from "@/components/ui/badges";
 import { useLogout } from "./auth";
 import { SearchBox } from "./search-box";
+import { useShortcuts } from "./shortcuts";
 import { can } from "./project";
 import { ADMIN_SECTIONS } from "@/pages/admin";
 
@@ -202,6 +204,7 @@ export function AppLayout({ me }: { me: Me }) {
   const identifier = projectMatch && projectMatch.params.p !== "new" ? projectMatch.params.p : undefined;
   const project = useProject(identifier).data;
   const mainRef = useRef<HTMLElement>(null);
+  const shortcuts = useShortcuts(me, project ?? null);
 
   // Move focus to <main> when the page changes (not when only the split panel changes), so screen
   // readers land on the new content and keyboard users do not stay on a link that left the screen.
@@ -260,10 +263,14 @@ export function AppLayout({ me }: { me: Me }) {
         search={<SearchBox />}
         quickAddItems={quickAdd}
         accountItems={accountItems}
-        helpItems={[{ label: t("nav.designSystem"), icon: <Palette />, onSelect: () => navigate("/design") }]}
+        helpItems={[
+          { label: t("shortcuts.title"), icon: <Keyboard />, shortcut: "?", onSelect: shortcuts.openHelp },
+          { label: t("nav.designSystem"), icon: <Palette />, onSelect: () => navigate("/design") },
+        ]}
         moduleItems={moduleItems}
         onOpenMenu={() => setDrawer(true)}
       />
+      {shortcuts.dialog}
       <div className="flex min-h-0 flex-1">
         {collapsed ? (
           <div className="sticky top-header hidden h-[calc(100dvh-var(--pms-layout-header-h))] w-12 shrink-0 flex-col items-center border-r border-border-muted py-3 lg:flex">

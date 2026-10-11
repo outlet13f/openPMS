@@ -107,6 +107,12 @@ function Display() {
           checked={me.preferences.warnOnUnsaved}
           onCheckedChange={(c) => m.preferences.mutate({ warnOnUnsaved: c === true }, { onError: fail })}
         />
+        <Checkbox
+          label={t("account.keyboardShortcuts")}
+          description={t("account.keyboardShortcutsHint")}
+          checked={me.preferences.keyboardShortcuts}
+          onCheckedChange={(c) => m.preferences.mutate({ keyboardShortcuts: c === true }, { onError: fail })}
+        />
       </div>
     </Section>
   );
