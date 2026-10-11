@@ -46,9 +46,11 @@ public class ProjectCopy {
     private final DSLContext db;
     private final Journals journals;
     private final com.openpms.webhook.Webhooks webhooks;
+    private final com.openpms.wp.Assignees assignees;
 
-    public ProjectCopy(DSLContext db, Journals journals, com.openpms.webhook.Webhooks webhooks) {
+    public ProjectCopy(DSLContext db, Journals journals, com.openpms.webhook.Webhooks webhooks, com.openpms.wp.Assignees assignees) {
         this.webhooks = webhooks;
+        this.assignees = assignees;
         this.db = db;
         this.journals = journals;
     }
@@ -203,6 +205,12 @@ public class ProjectCopy {
             made.put(w.getId(), c);
             ids.put(w.getId(), c.getId());
         }
+        // 공동 담당자: everyone who is a member of the new project comes along, with their hours
+        var teams = assignees.of(sources.stream().map(com.openpms.db.tables.records.WorkPackagesRecord::getId).toList());
+        teams.forEach((source, team) -> {
+            var kept = team.stream().filter(e -> people.contains(e.userId())).toList();
+            if (!kept.isEmpty()) assignees.write(ids.get(source), kept);
+        });
         for (var w : sources) {
             if (w.getParentId() == null || !ids.containsKey(w.getParentId())) continue;
             db.update(WORK_PACKAGES).set(WORK_PACKAGES.PARENT_ID, ids.get(w.getParentId())).where(WORK_PACKAGES.ID.eq(ids.get(w.getId()))).execute();

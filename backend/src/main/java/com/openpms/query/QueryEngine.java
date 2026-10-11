@@ -4,6 +4,7 @@ import static com.openpms.db.Tables.JOURNALS;
 import static com.openpms.db.Tables.RELATIONS;
 import static com.openpms.db.Tables.WATCHERS;
 import static com.openpms.db.Tables.WORK_PACKAGES;
+import static com.openpms.db.Tables.WORK_PACKAGE_ASSIGNEES;
 import static org.jooq.impl.DSL.coalesce;
 import static org.jooq.impl.DSL.exists;
 import static org.jooq.impl.DSL.falseCondition;
@@ -109,6 +110,31 @@ public class QueryEngine {
             case "neq" -> (ids.isEmpty() ? trueCondition() : col.notIn(ids).or(col.isNull())).and(none ? col.isNotNull() : trueCondition());
             case "any" -> col.isNotNull();
             default -> col.isNull();
+        };
+    }
+
+    /**
+     * 담당자 filters look at everyone who has the item (공동 담당자), not only the main assignee. The baseline's table of
+     * past values only knows the main assignee then, so there it stays that.
+     */
+    private Condition team(WorkPackages t, String op, java.util.Collection<UUID> people, boolean none) {
+        if (t != W) {
+            var in = people.isEmpty() ? falseCondition() : t.ASSIGNEE_ID.in(people);
+            return switch (op) {
+                case "eq" -> in.or(none ? t.ASSIGNEE_ID.isNull() : falseCondition());
+                case "neq" -> in.not().or(t.ASSIGNEE_ID.isNull()).and(none ? t.ASSIGNEE_ID.isNotNull() : trueCondition());
+                case "any" -> t.ASSIGNEE_ID.isNotNull();
+                default -> t.ASSIGNEE_ID.isNull();
+            };
+        }
+        var A = WORK_PACKAGE_ASSIGNEES;
+        var anyone = exists(selectOne().from(A).where(A.WORK_PACKAGE_ID.eq(t.ID)));
+        var these = people.isEmpty() ? falseCondition() : exists(selectOne().from(A).where(A.WORK_PACKAGE_ID.eq(t.ID), A.USER_ID.in(people)));
+        return switch (op) {
+            case "eq" -> these.or(none ? anyone.not() : falseCondition());
+            case "neq" -> these.not().and(none ? anyone : trueCondition());
+            case "any" -> anyone;
+            default -> anyone.not();
         };
     }
 
@@ -259,7 +285,7 @@ public class QueryEngine {
             };
             case "type" -> ref(t.TYPE_ID, f.op(), vals);
             case "priority" -> ref(t.PRIORITY_ID, f.op(), vals);
-            case "assignee" -> ref(t.ASSIGNEE_ID, f.op(), vals);
+            case "assignee" -> team(t, f.op(), vals.stream().map(QueryEngine::uuid).filter(x -> x != null).toList(), vals.contains("none"));
             case "responsible" -> ref(t.RESPONSIBLE_ID, f.op(), vals);
             case "author" -> ref(t.AUTHOR_ID, f.op(), vals);
             case "version" -> ref(t.VERSION_ID, f.op(), vals);
@@ -273,8 +299,7 @@ public class QueryEngine {
             case "assigneeGroup" -> {
                 var people = new HashSet<UUID>();
                 vals.stream().map(QueryEngine::uuid).filter(x -> x != null && s.groups().containsKey(x)).forEach(g -> people.addAll(s.groups().get(g).memberIds()));
-                var in = people.isEmpty() ? falseCondition() : t.ASSIGNEE_ID.in(people);
-                yield "eq".equals(f.op()) ? in : in.not().or(t.ASSIGNEE_ID.isNull());
+                yield team(t, "eq".equals(f.op()) ? "eq" : "neq", people, false);
             }
             case "assigneeRole" -> {
                 var roles = vals.stream().map(QueryEngine::uuid).filter(x -> x != null).toList();
@@ -282,10 +307,10 @@ public class QueryEngine {
                 for (var p : s.projects().values()) {
                     var people = s.projectUsers(p.id()).stream().map(Snapshot.UserRow::id)
                             .filter(u -> s.memberRoleIds(u, p.id()).stream().anyMatch(roles::contains)).toList();
-                    if (!people.isEmpty()) parts.add(t.PROJECT_ID.eq(p.id()).and(t.ASSIGNEE_ID.in(people)));
+                    if (!people.isEmpty()) parts.add(t.PROJECT_ID.eq(p.id()).and(team(t, "eq", people, false)));
                 }
                 var in = parts.isEmpty() ? falseCondition() : or(parts);
-                yield "eq".equals(f.op()) ? in : in.not().or(t.ASSIGNEE_ID.isNull());
+                yield "eq".equals(f.op()) ? in : in.not();
             }
             case "number" -> {
                 var nums = new ArrayList<Long>();

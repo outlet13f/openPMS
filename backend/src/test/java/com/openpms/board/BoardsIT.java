@@ -122,7 +122,10 @@ class BoardsIT {
             assertThat(board.get("filters").get(0).get("field").asString()).isEqualTo("assignee");
             int mine = 0;
             for (var c : board.get("columns")) for (var card : c.get("cards")) {
-                assertThat(card.get("assignee").get("id").asString()).isEqualTo(me);
+                // 공동 담당자: the filter matches anyone who has the card, not only its main assignee
+                var ids = new java.util.ArrayList<String>();
+                card.get("assignees").forEach(a -> ids.add(a.get("user").get("id").asString()));
+                assertThat(ids).contains(me);
                 mine++;
             }
             assertThat(mine).isLessThan(all);

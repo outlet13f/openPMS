@@ -30,6 +30,10 @@ public class NotificationTexts {
         this.journals = journals;
     }
 
+    private static boolean listed(Object list, java.util.UUID userId) {
+        return list instanceof java.util.List<?> l && l.stream().anyMatch(x -> x instanceof java.util.Map<?, ?> m && userId.toString().equals(String.valueOf(m.get("userId"))));
+    }
+
     public String summary(Ctx ctx, NotificationsRecord n, JournalsRecord j, Snapshot.ProjectRow project) {
         var day = n.getAlertDate() == null ? "" : Dates.format(n.getAlertDate());
         switch (n.getReason()) {
@@ -42,6 +46,9 @@ public class NotificationTexts {
         if (j != null && "assigned".equals(n.getReason())) {
             var change = journals.changesOf(j).get("assigneeId");
             if (change != null && change.size() > 1 && ctx.userId().toString().equals(String.valueOf(change.get(1)))) return actor + "님이 나를 담당자로 지정했습니다";
+            // 공동 담당자: added to the list (not as the main assignee)
+            var team = journals.changesOf(j).get("assignees");
+            if (team != null && team.size() > 1 && listed(team.get(1), ctx.userId()) && !listed(team.get(0), ctx.userId())) return actor + "님이 나를 공동 담당자로 지정했습니다";
         }
         var text = String.format(REASON_TEXT.getOrDefault(n.getReason(), "작업이 바뀌었습니다"), actor);
         if (j != null && !"mentioned".equals(n.getReason())) {

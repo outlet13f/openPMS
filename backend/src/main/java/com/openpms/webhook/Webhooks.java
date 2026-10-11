@@ -116,6 +116,16 @@ public class Webhooks {
         m.put("status", s.status(w.getStatusId()).map(Refs::status).orElse(null));
         m.put("priority", Refs.priority(s, w.getPriorityId()));
         m.put("assignee", Refs.user(s, w.getAssigneeId()));
+        // 공동 담당자: everyone, in order (the first is "assignee"), with their own estimate in hours
+        m.put("assignees", db.select(com.openpms.db.Tables.WORK_PACKAGE_ASSIGNEES.USER_ID, com.openpms.db.Tables.WORK_PACKAGE_ASSIGNEES.WORK_HOURS)
+                .from(com.openpms.db.Tables.WORK_PACKAGE_ASSIGNEES).where(com.openpms.db.Tables.WORK_PACKAGE_ASSIGNEES.WORK_PACKAGE_ID.eq(w.getId()))
+                .orderBy(com.openpms.db.Tables.WORK_PACKAGE_ASSIGNEES.POSITION)
+                .fetch(r -> {
+                    var a = new java.util.LinkedHashMap<String, Object>();
+                    a.put("user", Refs.user(s, r.value1()));
+                    a.put("workHours", r.value2() == null ? null : r.value2().doubleValue());
+                    return a;
+                }));
         m.put("startDate", w.getStartDate());
         m.put("dueDate", w.getDueDate());
         m.put("doneRatio", w.getDoneRatio());

@@ -124,8 +124,11 @@ public class AdminController {
     private final JsonMapper json;
     private final com.openpms.auth.PasswordPolicy passwordPolicy;
 
+    private final com.openpms.wp.Assignees assignees;
+
     public AdminController(Current current, DSLContext db, ScheduleStore schedules, SettingsRepo settings, Tokens tokens, Mailer mailer, Sessions sessions,
-                           JsonMapper json, com.openpms.auth.PasswordPolicy passwordPolicy) {
+                           JsonMapper json, com.openpms.auth.PasswordPolicy passwordPolicy, com.openpms.wp.Assignees assignees) {
+        this.assignees = assignees;
         this.passwordPolicy = passwordPolicy;
         this.json = json;
         this.current = current;
@@ -698,6 +701,10 @@ public class AdminController {
         db.deleteFrom(USER_GROUP_MEMBERS).where(USER_GROUP_MEMBERS.USER_ID.eq(id)).execute();
         db.deleteFrom(GLOBAL_ROLE_ASSIGNMENTS).where(GLOBAL_ROLE_ASSIGNMENTS.USER_ID.eq(id)).execute();
         db.deleteFrom(BOARD_COLUMNS).where(BOARD_COLUMNS.USER_ID.eq(id)).execute();
+        // 공동 담당자: off every list; where they were the main assignee the next person takes over
+        var theirs = db.select(com.openpms.db.Tables.WORK_PACKAGE_ASSIGNEES.WORK_PACKAGE_ID).from(com.openpms.db.Tables.WORK_PACKAGE_ASSIGNEES)
+                .where(com.openpms.db.Tables.WORK_PACKAGE_ASSIGNEES.USER_ID.eq(id)).fetch(r -> r.value1());
+        for (var wpId : theirs) assignees.write(wpId, assignees.of(wpId).stream().filter(e -> !e.userId().equals(id)).toList());
         db.update(WORK_PACKAGES).setNull(WORK_PACKAGES.ASSIGNEE_ID).where(WORK_PACKAGES.ASSIGNEE_ID.eq(id)).execute();
         db.update(WORK_PACKAGES).setNull(WORK_PACKAGES.RESPONSIBLE_ID).where(WORK_PACKAGES.RESPONSIBLE_ID.eq(id)).execute();
         sessions.endAll(id);

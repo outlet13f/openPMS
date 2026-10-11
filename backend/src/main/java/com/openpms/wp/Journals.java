@@ -45,12 +45,14 @@ public class Journals {
     private final JsonMapper json;
     private final CustomFields customFields;
     private final NotificationSettings settings;
+    private final Assignees assignees;
 
-    public Journals(DSLContext db, JsonMapper json, CustomFields customFields, NotificationSettings settings) {
+    public Journals(DSLContext db, JsonMapper json, CustomFields customFields, NotificationSettings settings, Assignees assignees) {
         this.db = db;
         this.json = json;
         this.customFields = customFields;
         this.settings = settings;
+        this.assignees = assignees;
     }
 
     public Map<String, List<Object>> changesOf(JournalsRecord j) {
@@ -130,14 +132,16 @@ public class Journals {
         if (changes.containsKey("priorityId")) events.add("priority_changed");
         if (changes.containsKey("startDate") || changes.containsKey("dueDate")) events.add("dates_changed");
         var people = new java.util.HashSet<UUID>();
-        if (wp.getAssigneeId() != null) people.add(wp.getAssigneeId());
+        // 공동 담당자: everyone who has the item hears about it as its assignee
+        var team = Assignees.ids(assignees.of(wp.getId()));
+        people.addAll(team);
         if (wp.getResponsibleId() != null) people.add(wp.getResponsibleId());
         var members = events.isEmpty() ? List.<UUID>of() : s.projectUsers(project.id()).stream().map(Snapshot.UserRow::id).toList();
         people.addAll(members);
         var effective = settings.effective(project.id(), people);
 
         mentioned.forEach(id -> offer.accept(id, "mentioned"));
-        if (wp.getAssigneeId() != null && effective.get(wp.getAssigneeId()).assignee()) offer.accept(wp.getAssigneeId(), "assigned");
+        for (var a : team) if (effective.get(a).assignee()) offer.accept(a, "assigned");
         if (wp.getResponsibleId() != null && effective.get(wp.getResponsibleId()).responsible()) offer.accept(wp.getResponsibleId(), "responsible");
         db.select(WATCHERS.USER_ID).from(WATCHERS).where(WATCHERS.WORK_PACKAGE_ID.eq(wp.getId())).fetch(WATCHERS.USER_ID).forEach(id -> offer.accept(id, "watched"));
         for (var userId : members) {
@@ -178,13 +182,13 @@ public class Journals {
 
     private static final Map<String, String> LABEL = Map.ofEntries(
             Map.entry("subject", "제목"), Map.entry("projectId", "프로젝트"), Map.entry("descriptionHtml", "설명"), Map.entry("typeId", "유형"), Map.entry("statusId", "상태"),
-            Map.entry("priorityId", "우선순위"), Map.entry("assigneeId", "담당자"), Map.entry("responsibleId", "책임자"), Map.entry("versionId", "버전"),
+            Map.entry("priorityId", "우선순위"), Map.entry("assigneeId", "담당자"), Map.entry("assignees", "담당자 목록"), Map.entry("responsibleId", "책임자"), Map.entry("versionId", "버전"),
             Map.entry("categoryId", "카테고리"), Map.entry("parentId", "상위 작업"), Map.entry("startDate", "시작일"), Map.entry("dueDate", "완료일"),
             Map.entry("duration", "기간"), Map.entry("scheduleManually", "일정 방식"), Map.entry("ignoreNonWorkingDays", "근무일만 계산"),
             Map.entry("workHours", "작업량"), Map.entry("remainingHours", "남은 작업"), Map.entry("doneRatio", "완료 %"),
             Map.entry("attachment", "첨부 파일"));
 
-    private static final List<String> ORDER = List.of("projectId", "subject", "descriptionHtml", "typeId", "statusId", "priorityId", "assigneeId", "responsibleId",
+    private static final List<String> ORDER = List.of("projectId", "subject", "descriptionHtml", "typeId", "statusId", "priorityId", "assigneeId", "assignees", "responsibleId",
             "versionId", "categoryId", "parentId", "startDate", "dueDate", "duration", "scheduleManually", "ignoreNonWorkingDays", "workHours",
             "remainingHours", "doneRatio", "attachment");
 
@@ -215,6 +219,12 @@ public class Journals {
             case "projectId" -> s.project(uuid(v)).map(Snapshot.ProjectRow::name).orElse("삭제된 프로젝트");
             case "priorityId" -> s.priority(uuid(v)).map(Snapshot.PriorityRow::name).orElse(null);
             case "assigneeId", "responsibleId" -> Refs.user(s, uuid(v)).name();
+            // 공동 담당자: "김서연 8시간, 박준호" (in order; the first is the main assignee)
+            case "assignees" -> v instanceof List<?> list && !list.isEmpty() ? String.join(", ", list.stream().map(x -> {
+                var m = x instanceof Map<?, ?> mm ? mm : Map.of();
+                var name = Refs.user(s, uuid(m.get("userId"))).name();
+                return m.get("workHours") == null ? name : name + " " + trimNumber(m.get("workHours")) + "시간";
+            }).toList()) : null;
             case "versionId" -> s.version(uuid(v)).map(Snapshot.VersionRow::name).orElse(null);
             case "categoryId" -> s.category(uuid(v)).map(Snapshot.CategoryRow::name).orElse(null);
             case "parentId" -> {

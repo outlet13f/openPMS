@@ -75,6 +75,13 @@ public class DateAlerts {
 
         var ctxs = new HashMap<UUID, Ctx>();
         var created = OffsetDateTime.ofInstant(now, ZoneOffset.UTC);
+        // 공동 담당자: everyone who has an item gets its date alerts
+        var teams = new HashMap<UUID, List<UUID>>();
+        if (!wps.isEmpty()) db.select(com.openpms.db.Tables.WORK_PACKAGE_ASSIGNEES.WORK_PACKAGE_ID, com.openpms.db.Tables.WORK_PACKAGE_ASSIGNEES.USER_ID)
+                .from(com.openpms.db.Tables.WORK_PACKAGE_ASSIGNEES)
+                .where(com.openpms.db.Tables.WORK_PACKAGE_ASSIGNEES.WORK_PACKAGE_ID.in(wps.stream().map(w -> w.getId()).toList()))
+                .orderBy(com.openpms.db.Tables.WORK_PACKAGE_ASSIGNEES.POSITION)
+                .fetch().forEach(r -> teams.computeIfAbsent(r.value1(), k -> new java.util.ArrayList<>()).add(r.value2()));
         int added = 0;
         for (var wp : wps) {
             var project = s.project(wp.getProjectId()).orElse(null);
@@ -82,6 +89,7 @@ public class DateAlerts {
             boolean milestone = s.type(wp.getTypeId()).map(Snapshot.TypeRow::isMilestone).orElse(false);
             var people = new LinkedHashSet<UUID>();
             if (wp.getAssigneeId() != null) people.add(wp.getAssigneeId());
+            people.addAll(teams.getOrDefault(wp.getId(), List.of()));
             if (wp.getResponsibleId() != null) people.add(wp.getResponsibleId());
             people.addAll(watchers.getOrDefault(wp.getId(), List.of()));
             for (var userId : people) {

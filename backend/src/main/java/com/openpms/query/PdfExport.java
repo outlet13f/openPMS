@@ -245,7 +245,7 @@ public class PdfExport {
                 var heading = d.wrap(d.bold, 11.5f, "#" + w.number() + " " + w.subject(), full);
                 var attrs = new ArrayList<String>();
                 attrs.add("유형 " + w.type().name() + " · 상태 " + w.status().name() + " · 우선순위 " + w.priority().name());
-                attrs.add("담당자 " + (w.assignee() == null ? "-" : w.assignee().name()) + " · 책임자 " + (w.responsible() == null ? "-" : w.responsible().name())
+                attrs.add("담당자 " + (w.assignees().isEmpty() ? (w.assignee() == null ? "-" : w.assignee().name()) : String.join(", ", w.assignees().stream().map(a -> a.user().name()).toList())) + " · 책임자 " + (w.responsible() == null ? "-" : w.responsible().name())
                         + (w.version() == null ? "" : " · 버전 " + w.version().name()));
                 var dates = (w.startDate() == null ? "-" : Dates.format(w.startDate())) + " ~ " + (w.dueDate() == null ? "-" : Dates.format(w.dueDate()));
                 attrs.add("기간 " + dates + (w.doneRatio() == null ? "" : " · 완료 " + w.doneRatio() + "%") + " · 프로젝트 " + w.project().name());

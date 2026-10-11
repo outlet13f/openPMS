@@ -34,10 +34,12 @@ public class WorkPackageTransfers {
     private final Journals journals;
     private final CustomFields customFields;
     private final com.openpms.webhook.Webhooks webhooks;
+    private final Assignees assignees;
 
     public WorkPackageTransfers(DSLContext db, WorkPackageService service, Assembler assembler, Journals journals, CustomFields customFields,
-                                com.openpms.webhook.Webhooks webhooks) {
+                                com.openpms.webhook.Webhooks webhooks, Assignees assignees) {
         this.webhooks = webhooks;
+        this.assignees = assignees;
         this.db = db;
         this.service = service;
         this.assembler = assembler;
@@ -90,7 +92,8 @@ public class WorkPackageTransfers {
         in.put("descriptionHtml", w.getDescriptionHtml());
         in.put("statusId", w.getStatusId().toString());
         in.put("priorityId", w.getPriorityId().toString());
-        if (w.getAssigneeId() != null && s.isMember(w.getAssigneeId(), target.id())) in.put("assigneeId", w.getAssigneeId().toString());
+        var team = assignees.of(w.getId()).stream().filter(e -> s.isMember(e.userId(), target.id())).toList();
+        if (!team.isEmpty()) in.put("assignees", Assignees.journal(team));
         if (w.getResponsibleId() != null && s.isMember(w.getResponsibleId(), target.id())) in.put("responsibleId", w.getResponsibleId().toString());
         if (target.id().equals(w.getProjectId())) {
             if (w.getVersionId() != null && ctx.can(target, "wp.assign_versions")) in.put("versionId", w.getVersionId().toString());
@@ -166,9 +169,14 @@ public class WorkPackageTransfers {
                 changes.put("categoryId", Journals.listOf(w.getCategoryId().toString(), null));
                 w.setCategoryId(null);
             }
-            if (w.getAssigneeId() != null && !s.isMember(w.getAssigneeId(), target.id())) {
-                changes.put("assigneeId", Journals.listOf(w.getAssigneeId().toString(), null));
-                w.setAssigneeId(null);
+            var team = assignees.of(w.getId());
+            var staying = team.stream().filter(e -> s.isMember(e.userId(), target.id())).toList();
+            if (staying.size() != team.size()) {
+                var main = staying.isEmpty() ? null : staying.get(0).userId();
+                if (!java.util.Objects.equals(main, w.getAssigneeId()))
+                    changes.put("assigneeId", Journals.listOf(w.getAssigneeId() == null ? null : w.getAssigneeId().toString(), main == null ? null : main.toString()));
+                if (Assignees.beyondMain(team) || Assignees.beyondMain(staying)) changes.put("assignees", Journals.listOf(Assignees.journal(team), Assignees.journal(staying)));
+                w.setAssigneeId(main);
             }
             if (w.getResponsibleId() != null && !s.isMember(w.getResponsibleId(), target.id())) {
                 changes.put("responsibleId", Journals.listOf(w.getResponsibleId().toString(), null));
@@ -177,6 +185,7 @@ public class WorkPackageTransfers {
             w.setLockVersion(w.getLockVersion() + 1);
             w.setUpdatedAt(OffsetDateTime.now());
             w.store();
+            if (staying.size() != team.size()) assignees.write(w.getId(), staying);
             com.openpms.time.TimeController.follow(db, w.getId(), w.getProjectId()); // its time entries move with it
             var j = journals.write(ctx, w, changes, "", null, false);
             // a move is a change of the item (its project); webhooks hear it as an update

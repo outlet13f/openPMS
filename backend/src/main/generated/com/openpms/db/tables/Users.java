@@ -34,6 +34,7 @@ import com.openpms.db.tables.UserPreferences.UserPreferencesPath;
 import com.openpms.db.tables.UserTokens.UserTokensPath;
 import com.openpms.db.tables.Watchers.WatchersPath;
 import com.openpms.db.tables.Webhooks.WebhooksPath;
+import com.openpms.db.tables.WorkPackageAssignees.WorkPackageAssigneesPath;
 import com.openpms.db.tables.WorkPackageShares.WorkPackageSharesPath;
 import com.openpms.db.tables.WorkPackages.WorkPackagesPath;
 import com.openpms.db.tables.records.UsersRecord;
@@ -582,6 +583,19 @@ public class Users extends TableImpl<UsersRecord> {
         return _webhooks;
     }
 
+    private transient WorkPackageAssigneesPath _workPackageAssignees;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.work_package_assignees</code> table
+     */
+    public WorkPackageAssigneesPath workPackageAssignees() {
+        if (_workPackageAssignees == null)
+            _workPackageAssignees = new WorkPackageAssigneesPath(this, null, Keys.WORK_PACKAGE_ASSIGNEES__WORK_PACKAGE_ASSIGNEES_USER_ID_FKEY.getInverseKey());
+
+        return _workPackageAssignees;
+    }
+
     private transient WorkPackageSharesPath _workPackageSharesCreatedByFkey;
 
     /**
@@ -701,6 +715,15 @@ public class Users extends TableImpl<UsersRecord> {
      */
     public WorkPackagesPath watchersWorkPackageIdFkey() {
         return watchers().workPackages();
+    }
+
+    /**
+     * Get the implicit many-to-many join path to the
+     * <code>public.work_packages</code> table, via the
+     * <code>work_package_assignees_work_package_id_fkey</code> key
+     */
+    public WorkPackagesPath workPackageAssigneesWorkPackageIdFkey() {
+        return workPackageAssignees().workPackages();
     }
 
     /**

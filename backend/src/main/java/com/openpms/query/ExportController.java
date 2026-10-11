@@ -184,7 +184,9 @@ public class ExportController {
             case "type" -> w.type().name();
             case "status" -> w.status().name();
             case "priority" -> w.priority().name();
-            case "assignee" -> w.assignee() == null ? null : w.assignee().name();
+            // 공동 담당자: everyone, the main assignee first
+            case "assignee" -> w.assignees().isEmpty() ? (w.assignee() == null ? null : w.assignee().name())
+                    : String.join(", ", w.assignees().stream().map(a -> a.user().name()).toList());
             case "responsible" -> w.responsible() == null ? null : w.responsible().name();
             case "author" -> w.author().name();
             case "version" -> w.version() == null ? null : w.version().name();

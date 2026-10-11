@@ -47,15 +47,17 @@ public class WorkPackageService {
 
     private final CustomFields customFields;
     private final com.openpms.webhook.Webhooks webhooks;
+    private final Assignees assignees;
 
     public WorkPackageService(DSLContext db, Assembler assembler, Journals journals, ScheduleStore schedules, CustomFields customFields,
-                              com.openpms.webhook.Webhooks webhooks) {
+                              com.openpms.webhook.Webhooks webhooks, Assignees assignees) {
         this.webhooks = webhooks;
         this.customFields = customFields;
         this.db = db;
         this.assembler = assembler;
         this.journals = journals;
         this.schedules = schedules;
+        this.assignees = assignees;
     }
 
     /** Visible work package by number; invisible and missing are the same 404. */
@@ -84,7 +86,7 @@ public class WorkPackageService {
         if (types.isEmpty()) throw ApiException.unprocessable("쓸 수 있는 유형이 없습니다.", "프로젝트 설정에서 유형을 하나 이상 켜세요.");
         var type = types.stream().filter(t -> t.id().toString().equals(typeId)).findFirst().orElse(types.get(0));
         var def = s.defaultStatus();
-        var next = Assembler.allowedStatusIds(ctx, type.id(), def.id(), p.id(), ctx.userId(), null);
+        var next = Assembler.allowedStatusIds(ctx, type.id(), def.id(), p.id(), ctx.userId(), List.of());
         return new Dto.WorkPackageForm(
                 Refs.type(s, type.id()),
                 types.stream().map(t -> Refs.type(s, t.id())).toList(),
@@ -102,7 +104,7 @@ public class WorkPackageService {
 
     public List<Dto.StatusRef> allowedStatuses(Ctx ctx, long number) {
         var w = find(ctx, number).wp();
-        var ids = Assembler.allowedStatusIds(ctx, w.getTypeId(), w.getStatusId(), w.getProjectId(), w.getAuthorId(), w.getAssigneeId());
+        var ids = Assembler.allowedStatusIds(ctx, w.getTypeId(), w.getStatusId(), w.getProjectId(), w.getAuthorId(), Assignees.ids(assignees.of(w.getId())));
         return ctx.s().statuses().stream().filter(x -> ids.contains(x.id())).map(Refs::status).toList();
     }
 
@@ -166,7 +168,9 @@ public class WorkPackageService {
         if (subject.length() > 255) throw ApiException.field("subject", "제목은 255자 이하로 입력하세요.");
         var typeId = In.uuid(in, "typeId", "type");
         if (typeId == null || !p.typeIds().contains(typeId)) throw ApiException.field("type", "이 프로젝트에서 쓰지 않는 유형입니다.");
-        var assigneeId = In.uuid(in, "assigneeId", "assignee");
+        // 공동 담당자: "assignees" (everyone, in order, with hours) or the older single "assigneeId"
+        var team = In.has(in, "assignees") ? Assignees.read(in.get("assignees"), s, p.id()) : null;
+        var assigneeId = team != null ? (team.isEmpty() ? null : team.get(0).userId()) : In.uuid(in, "assigneeId", "assignee");
         if (assigneeId != null && !s.isMember(assigneeId, p.id())) throw ApiException.field("assignee", "프로젝트 멤버만 지정할 수 있습니다.");
         var responsibleId = In.uuid(in, "responsibleId", "responsible");
         if (responsibleId != null && !s.isMember(responsibleId, p.id())) throw ApiException.field("responsible", "프로젝트 멤버만 지정할 수 있습니다.");
@@ -235,6 +239,8 @@ public class WorkPackageService {
         w.setUpdatedAt(now);
         w.store();
         w.refresh();
+        if (team != null && !team.isEmpty()) assignees.write(w.getId(), team);
+        else if (assigneeId != null) assignees.write(w.getId(), List.of(new Assignees.Entry(assigneeId, null)));
 
         var j = journals.write(ctx, w, new LinkedHashMap<>(Map.of(Journals.CREATED, Journals.listOf(null, true))), "", null, false);
         journals.fanOut(ctx, w, j, List.of());
@@ -287,6 +293,8 @@ public class WorkPackageService {
 
         var changes = new LinkedHashMap<String, List<Object>>();
         var before = wp.copy();
+        var team = assignees.of(wp.getId());
+        List<Assignees.Entry> nextTeam = null;
         Setter set = (field, current, next, apply) -> {
             if (!same(current, next)) {
                 changes.put(field, Journals.listOf(jsonValue(current), jsonValue(next)));
@@ -297,7 +305,7 @@ public class WorkPackageService {
         if (In.has(patch, "statusId")) {
             var next = In.uuid(patch, "statusId", "status");
             if (next != null && !next.equals(wp.getStatusId())) {
-                var allowed = Assembler.allowedStatusIds(ctx, wp.getTypeId(), wp.getStatusId(), wp.getProjectId(), wp.getAuthorId(), wp.getAssigneeId());
+                var allowed = Assembler.allowedStatusIds(ctx, wp.getTypeId(), wp.getStatusId(), wp.getProjectId(), wp.getAuthorId(), Assignees.ids(team));
                 if (!allowed.contains(next)) {
                     var to = s.status(next).map(Snapshot.StatusRow::name).orElse("?");
                     throw ApiException.unprocessable("허용되지 않는 상태 전환입니다.", "내 역할로는 '" + status.name() + "'에서 '" + to + "'(으)로 바꿀 수 없습니다.");
@@ -328,11 +336,18 @@ public class WorkPackageService {
             if (next == null || s.priority(next).isEmpty()) throw ApiException.field("priority", "알 수 없는 우선순위입니다.");
             set.put("priorityId", wp.getPriorityId(), next, () -> wp.setPriorityId(next));
         }
-        if (In.has(patch, "assigneeId")) {
+        // 공동 담당자: the whole list ("assignees"), or the main assignee the older way ("assigneeId")
+        if (In.has(patch, "assignees")) nextTeam = Assignees.read(patch.get("assignees"), s, project.id());
+        else if (In.has(patch, "assigneeId")) {
             var next = In.uuid(patch, "assigneeId", "assignee");
             if (next != null && !s.isMember(next, project.id())) throw ApiException.field("assignee", "프로젝트 멤버만 지정할 수 있습니다.");
-            set.put("assigneeId", wp.getAssigneeId(), next, () -> wp.setAssigneeId(next));
+            nextTeam = Assignees.withMain(team, next);
         }
+        if (nextTeam != null && !Assignees.same(team, nextTeam)) {
+            var main = nextTeam.isEmpty() ? null : nextTeam.get(0).userId();
+            set.put("assigneeId", wp.getAssigneeId(), main, () -> wp.setAssigneeId(main));
+            if (Assignees.beyondMain(team) || Assignees.beyondMain(nextTeam)) changes.put("assignees", Journals.listOf(Assignees.journal(team), Assignees.journal(nextTeam)));
+        } else nextTeam = null;
         if (In.has(patch, "responsibleId")) {
             var next = In.uuid(patch, "responsibleId", "responsible");
             if (next != null && !s.isMember(next, project.id())) throw ApiException.field("responsible", "프로젝트 멤버만 지정할 수 있습니다.");
@@ -403,6 +418,7 @@ public class WorkPackageService {
         wp.setUpdatedAt(OffsetDateTime.now());
         int n = db.executeUpdate(wp, WORK_PACKAGES.ID.eq(wp.getId()).and(WORK_PACKAGES.LOCK_VERSION.eq(before.getLockVersion())));
         if (n == 0) throw ApiException.conflict("다른 사람이 먼저 수정했습니다.", "최신 내용을 불러온 뒤 다시 저장하세요.", assembler.one(ctx, reload(wp.getId())));
+        if (nextTeam != null) assignees.write(wp.getId(), nextTeam);
         var saved = reload(wp.getId());
         var j = journals.write(ctx, saved, changes, "", null, false);
         journals.fanOut(ctx, saved, j, List.of());

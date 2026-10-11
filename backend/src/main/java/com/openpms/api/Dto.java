@@ -90,11 +90,14 @@ public final class Dto {
     public record WorkPackageShare(UUID id, UserRef user, String role, UserRef sharedBy, OffsetDateTime createdAt) {}
 
     public record WorkPackage(UUID id, long number, ProjectRef project, TypeRef type, StatusRef status, PriorityRef priority, String subject,
-                              String descriptionHtml, UserRef author, UserRef assignee, UserRef responsible, IdName version, IdName category,
+                              String descriptionHtml, UserRef author, UserRef assignee, List<Assignee> assignees, UserRef responsible, IdName version, IdName category,
                               WorkPackageRef parent, int childCount, LocalDate startDate, LocalDate dueDate, Integer duration,
                               boolean ignoreNonWorkingDays, boolean scheduleManually, Double workHours, Double remainingHours, Integer doneRatio,
                               boolean watching, int watcherCount, int relationCount, int attachmentCount, Map<String, CustomValue> customValues,
                               Totals totals, int lockVersion, OffsetDateTime createdAt, OffsetDateTime updatedAt, @JsonProperty("_meta") Meta meta) {}
+
+    /** 공동 담당자: one of the people who have an item (the first is the main assignee) and their own estimate in hours */
+    public record Assignee(UserRef user, Double workHours) {}
 
     /** S28: one group of the detail's attributes, in order (built-in keys or cf:<id>) */
     public record AttributeGroup(String name, List<String> attributes) {}

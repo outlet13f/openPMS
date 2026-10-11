@@ -109,6 +109,17 @@ from perf_wp w cross join projects p
 where p.identifier = 'perf-1000'
 order by w.n;
 
+-- 담당자 목록(공동 담당자, V18): 주 담당자가 첫 사람, 다섯 개 중 하나는 한 사람 더(예상 시간을 나눠 가짐)
+insert into work_package_assignees (work_package_id, user_id, position, work_hours)
+select w.id, w.assignee_id, 0, case when pw.n % 5 = 0 and w.work_hours is not null then round(w.work_hours / 2, 2) end
+from work_packages w join perf_wp pw on pw.id = w.id where w.assignee_id is not null;
+insert into work_package_assignees (work_package_id, user_id, position, work_hours)
+select w.id, u.id, 1, case when w.work_hours is not null then round(w.work_hours / 2, 2) end
+from work_packages w join perf_wp pw on pw.id = w.id
+join users u on u.id = (array['c48ce4ad-3a64-55ab-a95c-2902395dbb46', 'f0712dee-a7e4-5b9a-a9c5-7d3682ce763a', '1fe0bccd-f730-556b-bc23-09b76271d5ab',
+                               '50aa22c1-a4af-5b91-905b-7c48aa4619c2', '9c86b115-f372-542f-9d5d-25b2297d9558', '1976e561-6423-589e-aa23-3ceab10de751']::uuid[])[1 + (pw.n / 5) % 6]
+where w.assignee_id is not null and pw.n % 5 = 0 and u.id <> w.assignee_id;
+
 update work_packages c set parent_id = e.id
 from perf_wp cw join perf_wp e on e.i = -1 and e.epic = cw.epic
 where cw.i >= 0 and c.id = cw.id;

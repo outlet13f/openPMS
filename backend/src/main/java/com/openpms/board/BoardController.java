@@ -58,10 +58,12 @@ public class BoardController {
     private final QueryEngine engine;
     private final JsonMapper json;
     private final com.openpms.wp.WorkPackageTransfers transfers;
+    private final com.openpms.wp.Assignees assignees;
 
     public BoardController(Current current, DSLContext db, Assembler assembler, WorkPackageService workPackages, QueryEngine engine, JsonMapper json,
-                           com.openpms.wp.WorkPackageTransfers transfers) {
+                           com.openpms.wp.WorkPackageTransfers transfers, com.openpms.wp.Assignees assignees) {
         this.transfers = transfers;
+        this.assignees = assignees;
         this.current = current;
         this.db = db;
         this.assembler = assembler;
@@ -107,6 +109,8 @@ public class BoardController {
                 .fetchMap(BOARD_CARDS.WORK_PACKAGE_ID, BOARD_CARDS.POSITION);
         var placed = db.select(BOARD_CARDS.WORK_PACKAGE_ID, BOARD_CARDS.COLUMN_ID).from(BOARD_CARDS)
                 .where(BOARD_CARDS.BOARD_ID.eq(b.getId()), BOARD_CARDS.COLUMN_ID.isNotNull()).fetchMap(BOARD_CARDS.WORK_PACKAGE_ID, BOARD_CARDS.COLUMN_ID);
+        // 공동 담당자: on an assignee board a card stands in the column of each person who has it
+        var teams = "assignee".equals(b.getKind()) ? assignees.of(wps.stream().map(WorkPackagesRecord::getId).toList()) : Map.<UUID, List<com.openpms.wp.Assignees.Entry>>of();
         var out = new LinkedHashMap<UUID, List<WorkPackagesRecord>>();
         for (var c : cols) {
             var cards = new ArrayList<WorkPackagesRecord>();
@@ -117,7 +121,8 @@ public class BoardController {
             else if (c.valueId() != null) for (var w : wps) {
                 boolean in = switch (b.getKind()) {
                     case "status" -> c.valueId().equals(w.getStatusId());
-                    case "assignee" -> c.valueId().equals(w.getAssigneeId()) && !s.status(w.getStatusId()).map(Snapshot.StatusRow::isClosed).orElse(false);
+                    case "assignee" -> com.openpms.wp.Assignees.has(teams.getOrDefault(w.getId(), List.of()), c.valueId())
+                            && !s.status(w.getStatusId()).map(Snapshot.StatusRow::isClosed).orElse(false);
                     case "version" -> c.valueId().equals(w.getVersionId());
                     case "subproject" -> c.valueId().equals(w.getProjectId());
                     case "parent_child" -> c.valueId().equals(w.getParentId());
@@ -392,7 +397,14 @@ public class BoardController {
         Map<String, Object> patch = new HashMap<>();
         patch.put("lockVersion", lockVersion);
         if ("status".equals(b.getKind()) && col.valueId() != null && !col.valueId().equals(wp.getStatusId())) patch.put("statusId", col.valueId().toString());
-        if ("assignee".equals(b.getKind()) && col.valueId() != null && !col.valueId().equals(wp.getAssigneeId())) patch.put("assigneeId", col.valueId().toString());
+        // 공동 담당자: from one person's column to another's hands that person's place over (the others stay); without the
+        // column it came from (older clients) the target person becomes the main assignee
+        if ("assignee".equals(b.getKind()) && col.valueId() != null) {
+            var team = assignees.of(wp.getId());
+            var from = cols.stream().filter(c -> c.id().equals(In.uuid(in, "fromColumnId", "fromColumnId"))).map(Col::valueId).findFirst().orElse(null);
+            var next = from != null ? com.openpms.wp.Assignees.swap(team, from, col.valueId()) : com.openpms.wp.Assignees.withMain(team, col.valueId());
+            if (!com.openpms.wp.Assignees.same(team, next)) patch.put("assignees", com.openpms.wp.Assignees.journal(next));
+        }
         if ("version".equals(b.getKind()) && !java.util.Objects.equals(col.valueId(), wp.getVersionId())) patch.put("versionId", col.valueId() == null ? null : col.valueId().toString());
         // 상위-하위: the column's work package becomes the parent (the normal hierarchy rules apply)
         if ("parent_child".equals(b.getKind()) && col.valueId() != null && !col.valueId().equals(wp.getParentId())) {

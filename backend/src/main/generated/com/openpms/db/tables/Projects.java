@@ -485,7 +485,7 @@ public class Projects extends TableImpl<ProjectsRecord> {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("projects_custom_values_object"), "((jsonb_typeof(custom_values) = 'object'::text))", true),
             Internal.createCheck(this, DSL.name("projects_identifier_check"), "((identifier ~ '^[a-z][a-z0-9-]{0,99}$'::text))", true),
-            Internal.createCheck(this, DSL.name("projects_known_modules"), "((enabled_modules <@ ARRAY['work_packages'::text, 'gantt'::text, 'boards'::text, 'calendar'::text, 'team_planner'::text]))", true),
+            Internal.createCheck(this, DSL.name("projects_known_modules"), "((enabled_modules <@ ARRAY['work_packages'::text, 'gantt'::text, 'boards'::text, 'calendar'::text, 'team_planner'::text, 'time_tracking'::text]))", true),
             Internal.createCheck(this, DSL.name("projects_name_check"), "(((length(name) >= 1) AND (length(name) <= 255)))", true),
             Internal.createCheck(this, DSL.name("projects_not_own_parent"), "((parent_id <> id))", true),
             Internal.createCheck(this, DSL.name("projects_status_check"), "((status = ANY (ARRAY['on_track'::text, 'at_risk'::text, 'off_track'::text])))", true)

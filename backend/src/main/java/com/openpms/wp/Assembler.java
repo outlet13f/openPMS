@@ -32,10 +32,12 @@ import org.springframework.stereotype.Component;
 public class Assembler {
     private final DSLContext db;
     private final CustomFields customFields;
+    private final Assignees assignees;
 
-    public Assembler(DSLContext db, CustomFields customFields) {
+    public Assembler(DSLContext db, CustomFields customFields, Assignees assignees) {
         this.db = db;
         this.customFields = customFields;
+        this.assignees = assignees;
     }
 
     /** Editable fields in the order dto.ts lists them. */
@@ -53,7 +55,8 @@ public class Assembler {
     }
 
     /** The statuses this user may move this work package to (architecture.md §3.2). */
-    public static List<UUID> allowedStatusIds(Ctx ctx, UUID typeId, UUID statusId, UUID projectId, UUID authorId, UUID assigneeId) {
+    /** @param assigneeIds everyone who has the item: a "담당자일 때" rule applies to each of them (공동 담당자) */
+    public static List<UUID> allowedStatusIds(Ctx ctx, UUID typeId, UUID statusId, UUID projectId, UUID authorId, java.util.Collection<UUID> assigneeIds) {
         var s = ctx.s();
         if (ctx.isAdmin()) return s.statuses().stream().map(Snapshot.StatusRow::id).filter(id -> !id.equals(statusId)).toList();
         var roleIds = s.memberRoleIds(ctx.userId(), projectId);
@@ -62,7 +65,7 @@ public class Assembler {
             if (!w.typeId().equals(typeId) || !w.from().equals(statusId) || !roleIds.contains(w.roleId())) continue;
             boolean applies = switch (w.appliesTo()) {
                 case "author" -> ctx.userId().equals(authorId);
-                case "assignee" -> ctx.userId().equals(assigneeId);
+                case "assignee" -> assigneeIds.contains(ctx.userId());
                 default -> true;
             };
             if (applies && !out.contains(w.to())) out.add(w.to());
@@ -128,6 +131,7 @@ public class Assembler {
         if (!parentIds.isEmpty()) db.selectFrom(WORK_PACKAGES).where(WORK_PACKAGES.ID.in(parentIds)).fetch().forEach(p -> parents.put(p.getId(), p));
 
         var totals = totals(s, rows.stream().filter(w -> childCount.getOrDefault(w.getId(), 0) > 0).map(WorkPackagesRecord::getId).toList());
+        var teams = assignees.of(ids);
         var out = new ArrayList<Dto.WorkPackage>(rows.size());
         for (var w : rows) {
             var project = s.project(w.getProjectId()).orElseThrow();
@@ -147,7 +151,7 @@ public class Assembler {
                 // % and remaining work follow the status in status mode (or a closed status with closedSets100)
                 if (Progress.locked(s.settings().progress(), status.isClosed())) editable.removeAll(List.of("doneRatio", "remainingWork"));
                 editable.removeAll(derived);
-                if (!allowedStatusIds(ctx, w.getTypeId(), w.getStatusId(), w.getProjectId(), w.getAuthorId(), w.getAssigneeId()).isEmpty()) editable.add("status");
+                if (!allowedStatusIds(ctx, w.getTypeId(), w.getStatusId(), w.getProjectId(), w.getAuthorId(), Assignees.ids(teams.getOrDefault(w.getId(), List.of()))).isEmpty()) editable.add("status");
             }
             var parent = w.getParentId() == null ? null : parents.get(w.getParentId());
             boolean overdue = w.getDueDate() != null && !status.isClosed() && w.getDueDate().isBefore(ctx.today());
@@ -159,6 +163,7 @@ public class Assembler {
                     editable, derived, overdue, ctx.shareRole(w.getId()));
             out.add(new Dto.WorkPackage(w.getId(), w.getNumber(), Refs.project(project), Refs.type(s, w.getTypeId()), Refs.status(status),
                     Refs.priority(s, w.getPriorityId()), w.getSubject(), w.getDescriptionHtml(), Refs.user(s, w.getAuthorId()), Refs.user(s, w.getAssigneeId()),
+                    teams.getOrDefault(w.getId(), List.of()).stream().map(e -> new Dto.Assignee(Refs.user(s, e.userId()), num(e.workHours()))).toList(),
                     Refs.user(s, w.getResponsibleId()), Refs.version(s, w.getVersionId()), Refs.category(s, w.getCategoryId()),
                     parent == null ? null : ref(s, parent), kids, w.getStartDate(), w.getDueDate(), w.getDuration(), w.getIgnoreNonWorkingDays(),
                     w.getScheduleManually(), num(w.getWorkHours()), num(w.getRemainingHours()), w.getDoneRatio() == null ? null : w.getDoneRatio().intValue(),

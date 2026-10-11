@@ -46,6 +46,7 @@ import com.openpms.db.tables.Versions;
 import com.openpms.db.tables.Watchers;
 import com.openpms.db.tables.WebhookDeliveries;
 import com.openpms.db.tables.Webhooks;
+import com.openpms.db.tables.WorkPackageAssignees;
 import com.openpms.db.tables.WorkPackageShares;
 import com.openpms.db.tables.WorkPackages;
 import com.openpms.db.tables.Workflows;
@@ -266,6 +267,11 @@ public class Tables {
      * The table <code>public.webhooks</code>.
      */
     public static final Webhooks WEBHOOKS = Webhooks.WEBHOOKS;
+
+    /**
+     * The table <code>public.work_package_assignees</code>.
+     */
+    public static final WorkPackageAssignees WORK_PACKAGE_ASSIGNEES = WorkPackageAssignees.WORK_PACKAGE_ASSIGNEES;
 
     /**
      * The table <code>public.work_package_shares</code>.

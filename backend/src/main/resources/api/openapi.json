@@ -33,7 +33,8 @@
           "type": { "$ref": "#/components/schemas/Ref" },
           "status": { "$ref": "#/components/schemas/Ref" },
           "priority": { "$ref": "#/components/schemas/Ref" },
-          "assignee": { "oneOf": [{ "$ref": "#/components/schemas/Ref" }, { "type": "null" }] },
+          "assignee": { "oneOf": [{ "$ref": "#/components/schemas/Ref" }, { "type": "null" }], "description": "주 담당자(assignees의 첫 사람)" },
+          "assignees": { "type": "array", "description": "공동 담당자: 작업을 맡은 모든 사람, 순서대로(첫 사람이 주 담당자). workHours는 그 사람의 예상 시간", "items": { "type": "object", "properties": { "user": { "$ref": "#/components/schemas/Ref" }, "workHours": { "type": ["number", "null"] } } } },
           "startDate": { "type": ["string", "null"], "format": "date" },
           "dueDate": { "type": ["string", "null"], "format": "date" },
           "doneRatio": { "type": ["integer", "null"] },
@@ -87,7 +88,7 @@
       "post": {
         "summary": "작업 만들기",
         "parameters": [{ "name": "project", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["subject", "typeId"], "properties": { "subject": { "type": "string" }, "typeId": { "type": "string" }, "statusId": { "type": "string" }, "assigneeId": { "type": "string" }, "startDate": { "type": "string", "format": "date" }, "dueDate": { "type": "string", "format": "date" }, "descriptionHtml": { "type": "string" }, "parentNumber": { "type": "integer" } } } } } },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["subject", "typeId"], "properties": { "subject": { "type": "string" }, "typeId": { "type": "string" }, "statusId": { "type": "string" }, "assigneeId": { "type": "string" }, "assignees": { "type": "array", "description": "담당자 전원, 순서대로(첫 사람이 주 담당자). assigneeId 대신 씀. [] = 아무도 맡지 않음", "items": { "type": "object", "required": ["userId"], "properties": { "userId": { "type": "string" }, "workHours": { "type": ["number", "null"] } } } }, "startDate": { "type": "string", "format": "date" }, "dueDate": { "type": "string", "format": "date" }, "descriptionHtml": { "type": "string" }, "parentNumber": { "type": "integer" } } } } } },
         "responses": { "201": { "description": "만든 작업", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkPackage" } } } }, "422": { "$ref": "#/components/responses/Problem" } }
       }
     },
@@ -96,7 +97,7 @@
       "patch": {
         "summary": "작업 고치기(lockVersion 필수)",
         "parameters": [{ "name": "number", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["lockVersion"], "properties": { "lockVersion": { "type": "integer" }, "subject": { "type": "string" }, "statusId": { "type": "string" }, "assigneeId": { "type": ["string", "null"] }, "priorityId": { "type": "string" }, "startDate": { "type": ["string", "null"] }, "dueDate": { "type": ["string", "null"] }, "doneRatio": { "type": ["integer", "null"] } } } } } },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["lockVersion"], "properties": { "lockVersion": { "type": "integer" }, "subject": { "type": "string" }, "statusId": { "type": "string" }, "assigneeId": { "type": ["string", "null"], "description": "주 담당자만 바꿈(이미 목록에 있는 사람이면 맨 앞으로, 새 사람이면 주 담당자 자리를 넘겨받음, null이면 아무도 맡지 않음)" }, "assignees": { "type": "array", "description": "담당자 전원, 순서대로(첫 사람이 주 담당자). assigneeId 대신 씀. [] = 아무도 맡지 않음", "items": { "type": "object", "required": ["userId"], "properties": { "userId": { "type": "string" }, "workHours": { "type": ["number", "null"] } } } }, "priorityId": { "type": "string" }, "startDate": { "type": ["string", "null"] }, "dueDate": { "type": ["string", "null"] }, "doneRatio": { "type": ["integer", "null"] } } } } } },
         "responses": { "200": { "description": "고친 작업" }, "409": { "$ref": "#/components/responses/Problem" }, "422": { "$ref": "#/components/responses/Problem" } }
       }
     },
