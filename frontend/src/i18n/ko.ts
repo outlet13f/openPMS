@@ -506,6 +506,7 @@ const ko = {
     versions: "경로는 /api/v1 아래입니다. v1 안에서는 응답 필드를 더하기만 합니다. 필드를 빼거나 뜻을 바꾸는 변경은 /api/v2로 냅니다.",
     errors: "오류는 application/problem+json(title, detail, errors[{field, message}])으로 옵니다. 401 토큰 문제, 403 권한·범위, 404 없음(볼 수 없는 것 포함), 409 동시 수정, 422 입력 확인.",
     locking: "작업을 고칠 때는 받은 lockVersion을 그대로 보냅니다. 그 사이 다른 사람이 고쳤으면 409와 최신 값을 받습니다.",
+    idempotency: "무언가를 만드는 POST에는 Idempotency-Key 헤더(요청마다 새 임의 값)를 붙이세요. 연결이 끊겨 같은 키로 다시 보내면 처음 응답을 그대로 돌려주고(Idempotent-Replayed: true, 하루 보관) 두 번 만들지 않습니다. 같은 키를 다른 본문에 쓰면 422, 처음 요청을 처리 중이면 409입니다.",
     pathsTitle: "주요 경로",
     pathsHint: "자세한 요청·응답 모양은 OpenAPI 문서에 있습니다:",
     method: "메서드",

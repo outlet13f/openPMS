@@ -78,7 +78,7 @@ test.describe("F03 보기 저장·공유", () => {
     await expect(row.getByText("기준선 때: 보통")).toHaveCount(0);
   });
 
-  test("F03-B2 baseline: an item that matched the list then but not now is listed below it, with then → now", async ({ page }) => {
+  test("F03-B3 baseline: an item that matched the list then but not now is listed below it, with then → now", async ({ page }) => {
     const opts = await api<{ priorities: { id: string; name: string }[] }>(page, "return await api.workPackages.filterOptions('web-platform')");
     const normal = opts.priorities.find((p) => p.name === "보통")!.id;
     const high = opts.priorities.find((p) => p.name === "긴급")!.id;

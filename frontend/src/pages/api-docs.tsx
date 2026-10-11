@@ -43,6 +43,7 @@ export function ApiDocsPage() {
             <li>{t("apiDocs.versions")}</li>
             <li>{t("apiDocs.errors")}</li>
             <li>{t("apiDocs.locking")}</li>
+            <li>{t("apiDocs.idempotency")}</li>
           </ul>
         </section>
         <section aria-labelledby="api-paths">
