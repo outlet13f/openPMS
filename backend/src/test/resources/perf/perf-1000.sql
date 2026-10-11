@@ -1,8 +1,25 @@
 -- 성능 예산(replica/fixes.md 4번)의 측정 데이터: 작업 1,000건짜리 프로젝트 하나.
--- 요약 작업 50개 아래에 작업 19개씩(950개), 선후행 250개·관련 100개, 작업마다 이력 1~4건, 상세 측정용 작업 하나에 이력 40건,
--- 상태 보드 하나(카드 1,000장). 개발 시드(V1000)의 사람·유형·상태를 그대로 씁니다. 몇 번 실행해도 같은 모양이 됩니다.
---   JUnit: PerfBudgetIT가 읽어 실행   e2e: perf.spec.ts가 psql로 실행   부하 측정: scripts/perf/load.py 앞에 compose의 db에서 실행
+-- 요약 작업 50개 아래에 작업 19개씩(950개), 선후행 250개·관련 99개, 작업마다 이력 1~4건, 상세 측정용 작업 하나에 이력 40건,
+-- 상태 보드 하나(카드 1,000장). 유형·상태·우선순위·역할은 스키마 시드(V3), 사람 6명은 개발 데이터와 같은 id(없으면 비밀번호 없이
+-- 만듦)라 개발 DB에도 새로 설치한 시험용 DB에도 들어갑니다. 몇 번 실행해도 같은 모양이 됩니다.
+--   JUnit: PerfBudgetIT가 읽어 실행   e2e: perf.spec.ts가 dev.sh perf-seed로 실행   부하 측정(scripts/perf_load.py) 전: 시험용 설치의 db에 psql로
 delete from projects where identifier = 'perf-1000';
+
+-- The six people the items are assigned to. The dev data has them already; on a fresh installation (a test one) they are
+-- made here without a password, so nobody can sign in as them — measure with your own administrator account, which sees
+-- every project. Types, statuses, priorities and roles come from the schema's own seed (V3), present everywhere.
+insert into users (id, email, name, status, is_admin) values
+  ('1976e561-6423-589e-aa23-3ceab10de751', 'seoyeon.kim@openpms.local', '김서연', 'active', false),
+  ('c48ce4ad-3a64-55ab-a95c-2902395dbb46', 'junho.park@openpms.local', '박준호', 'active', false),
+  ('f0712dee-a7e4-5b9a-a9c5-7d3682ce763a', 'haneul.lee@openpms.local', '이하늘', 'active', false),
+  ('1fe0bccd-f730-556b-bc23-09b76271d5ab', 'minji.choi@openpms.local', '최민지', 'active', false),
+  ('50aa22c1-a4af-5b91-905b-7c48aa4619c2', 'doyoon.han@openpms.local', '한도윤', 'active', false),
+  ('9c86b115-f372-542f-9d5d-25b2297d9558', 'alex.kim@openpms.local', 'Alex Kim', 'active', false)
+on conflict do nothing;
+insert into user_preferences (user_id)
+select id from users where email in ('seoyeon.kim@openpms.local', 'junho.park@openpms.local', 'haneul.lee@openpms.local',
+                                     'minji.choi@openpms.local', 'doyoon.han@openpms.local', 'alex.kim@openpms.local')
+on conflict do nothing;
 
 insert into projects (identifier, name, description_html, description_text, is_public, enabled_modules, created_by)
 values ('perf-1000', '성능 측정 (작업 1,000건)', '<p>응답 시간 예산을 재는 데 쓰는 프로젝트입니다.</p>', '응답 시간 예산을 재는 데 쓰는 프로젝트입니다.', false,

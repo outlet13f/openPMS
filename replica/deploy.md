@@ -1,7 +1,7 @@
 # 배포 안내 (openPMS 사내 서버 운영)
 
-- 작성: 2026-10-10 · 빌드: 11fb59b · 갱신: 2026-10-11 (384a2f9: 프록시 뒤 클라이언트 주소, SSO 사용자의 비밀번호 만들기 / 86e58a9: 마이그레이션 V11–V15, API 토큰, 웹훅, PDF 글꼴 / 99e0287: 마이그레이션 V16(Idempotency-Key), 웹훅 사내망 주소 막기 `OPENPMS_WEBHOOK_BLOCK_PRIVATE` / 3f9d5c0: 마이그레이션 V17(시간 기록), 새 모듈 `time_tracking` / 5966874: 업그레이드 전 자동 DB 백업과 관리 · 시스템 정보, 볼륨 `backups`, 이미지에 PostgreSQL 17 클라이언트, `OPENPMS_BACKUP_*`)
-- 기준 파일: `Dockerfile`, `compose.yaml`, `.env.example`, `.dockerignore`, `backend/src/main/resources/application.yml`, `backend/src/main/java/com/openpms/auth/FirstAdmin.java`, `frontend/vite.config.ts`, `backend/src/main/java/com/openpms/auth/ApiTokenFilter.java`, `backend/src/main/java/com/openpms/webhook/Webhooks.java`, `backend/src/main/java/com/openpms/common/IdempotencyFilter.java`, `backend/src/main/resources/fonts/`, `backend/src/main/java/com/openpms/system/Backups.java`·`MigrateWithBackup.java`·`SystemController.java`(5966874)
+- 작성: 2026-10-10 · 빌드: 11fb59b · 갱신: 2026-10-11 (384a2f9: 프록시 뒤 클라이언트 주소, SSO 사용자의 비밀번호 만들기 / 86e58a9: 마이그레이션 V11–V15, API 토큰, 웹훅, PDF 글꼴 / 99e0287: 마이그레이션 V16(Idempotency-Key), 웹훅 사내망 주소 막기 `OPENPMS_WEBHOOK_BLOCK_PRIVATE` / 3f9d5c0: 마이그레이션 V17(시간 기록), 새 모듈 `time_tracking` / 5966874: 업그레이드 전 자동 DB 백업과 관리 · 시스템 정보, 볼륨 `backups`, 이미지에 PostgreSQL 17 클라이언트, `OPENPMS_BACKUP_*` / a81a4f6: 응답 gzip 압축·화면 파일 캐시, 실측 권장 사양, CPU 2개 서버의 30초 멈춤(BUG-012) 고침)
+- 기준 파일: `Dockerfile`, `compose.yaml`, `.env.example`, `.dockerignore`, `backend/src/main/resources/application.yml`, `backend/src/main/java/com/openpms/auth/FirstAdmin.java`, `frontend/vite.config.ts`, `backend/src/main/java/com/openpms/auth/ApiTokenFilter.java`, `backend/src/main/java/com/openpms/webhook/Webhooks.java`, `backend/src/main/java/com/openpms/common/IdempotencyFilter.java`, `backend/src/main/resources/fonts/`, `backend/src/main/java/com/openpms/system/Backups.java`·`MigrateWithBackup.java`·`SystemController.java`(5966874), `backend/src/main/java/com/openpms/common/SpaConfig.java`, `backend/scripts/perf_load.py`(a81a4f6)
 - 이 문서는 위 파일에 실제로 있는 것만 적습니다. 파일이 바뀌면 이 문서도 같이 고칩니다.
 
 ## 구성
@@ -35,6 +35,7 @@
 | 컨테이너 런타임 | Docker + Compose, 또는 Podman (`podman compose`) |
 | 빌드 메모리 | 2GB면 충분합니다. Gradle 힙을 768MB로 제한해 두었습니다. |
 | 실행 메모리 | JVM은 컨테이너 메모리의 75%까지 씁니다(`-XX:MaxRAMPercentage=75`). |
+| 권장 사양(a81a4f6 실측, `replica/perf.md`) | 동시에 화면을 누르는 사람 100명까지(가입자로는 보통 수백 명): 앱 컨테이너 CPU 2개·메모리 1 GB, DB 컨테이너 CPU 2개·메모리 1 GB면 충분합니다(측정에서 앱은 1.2코어·430 MiB, DB는 0.4코어·140 MiB를 넘지 않음). 서버 한 대라면 4 vCPU · 4 GB 메모리(OS와 여유분 포함). 50명 이하라면 2 vCPU · 2 GB(50명일 때 앱 0.6코어·410 MiB, DB 0.2코어·130 MiB). CPU 2개 앱의 한계는 쉬지 않는 요청 기준 화면 약 90번/초(요청 약 160개/초), 화면 사이 2초 쉰다고 보면 동시 약 180명(계산한 값, 직접 재지 않음). 그보다 많으면 앱 컨테이너에 CPU를 더 줍니다. 측정 DB(작업 1,000건)는 19 MB. 제공하는 `compose.yaml`에는 CPU·메모리 제한이 없습니다. |
 | 디스크 | 이미지 약 405MB(2026-10-10 측정. 그 뒤 PDF용 글꼴 파일 2개 약 5.4MB와 PDFBox가 jar에 더해짐, 다시 재지 않음), 그 밖에 DB와 첨부 파일, 백업 공간(5966874부터 `backups` 볼륨에 덤프가 종류마다 5개까지, 덤프 하나는 대략 DB 크기. 아래 "백업과 복원"). 웹훅 전송 기록(`webhook_deliveries`)은 끝난 지 30일 지나면 `token-cleanup`이 지웁니다(dfde416, 아래 "웹훅과 API 토큰") |
 | 빌드 시 네트워크 | 베이스 이미지(node, eclipse-temurin, postgres)와 npm·Gradle 의존성을 내려받습니다. 5966874부터 실행용 이미지 단계가 Ubuntu 패키지 저장소, `apt.postgresql.org`, `www.postgresql.org`(서명 키)에도 접속합니다. 사내 미러를 쓴다면 미리 맞춰 둡니다. |
 | 리버스 프록시 | TLS를 끝내는 사내 프록시(nginx 등). 업로드 한도는 30MB 이상으로 둡니다(첨부 한도 25MB, 앱의 요청 한도 30MB). |
@@ -127,6 +128,7 @@
 - `OPENPMS_SECURE_COOKIES=true`(기본)이면 세션 쿠키가 https에서만 갑니다. 프록시가 https라면 그대로 둡니다. 평문 http로 시험할 때만 `false`로 바꾸고, 운영에서는 다시 `true`로 둡니다.
 - 프록시의 업로드 한도(nginx의 `client_max_body_size`)는 30MB 이상으로 둡니다.
 - `/actuator/**`(헬스 체크)는 로그인 없이 응답합니다. 외부에 열 필요가 없으면 프록시에서 막는 것을 권합니다.
+- (a81a4f6) 앱이 응답을 gzip으로 압축하고(`server.compression`: JSON·HTML·CSS·JS·SVG·CSV, 2 KB 이상), 이름에 해시가 붙은 `/assets/*`는 `Cache-Control: max-age=31536000, public, immutable`, `index.html`과 화면 주소는 `no-cache`로 보냅니다(`SpaConfig`). 프록시에서 압축을 더 켤 필요는 없고, 켜더라도 앱의 `Cache-Control`은 지우거나 바꾸지 않습니다. 확인: `curl -sI -H "Accept-Encoding: gzip" http://127.0.0.1:8090/assets/<index-….js>` → `Content-Encoding: gzip`과 1년 캐시.
 
 ### 프록시 헤더와 클라이언트 주소 (384a2f9, 90006c2)
 
@@ -484,6 +486,7 @@ curl -s http://127.0.0.1:8090/actuator/health
 | 업그레이드 뒤 앱이 시작하지 않고 로그에 "업그레이드 전 백업에 실패해 마이그레이션을 하지 않았습니다." | DB는 바뀌지 않음. 뒤의 원인: "백업 파일을 쓸 수 없습니다(…)"면 디스크 공간·`backups` 볼륨 권한(uid 10001), "pg_dump가 실패했습니다: …"면 pg_dump 출력(DB 접속 등), "pg_dump를 실행할 수 없습니다"면 클라이언트 없는 이미지, "30분 안에 끝나지 않았습니다"면 큰 DB. 고치고 `docker compose up -d`. 바로 못 고치면 손으로 덤프한 뒤 `OPENPMS_BACKUP_BEFORE_UPGRADE=false`로 띄우고, 시작한 뒤 그 줄을 지우고 다시 `docker compose up -d` |
 | 관리 · 시스템 정보의 **지금 백업**이 회색, pg_dump "실행할 수 없음 — 이 환경에서는 백업할 수 없습니다(운영 이미지에는 들어 있음)" | `pg_dump`가 없는 환경(개발, 클라이언트를 뺀 이미지). 저장소 `Dockerfile`로 만든 이미지에는 있음. 이대로면 업그레이드 전 백업도 실패함 |
 | **지금 백업**이 "백업하지 못했습니다."(503) / "다른 백업이 진행 중입니다. 끝난 뒤 다시 시도하세요."(409) | 503은 위 줄과 같은 원인(메시지에 pg_dump 출력). 409는 다른 백업이 진행 중이므로 기다림 |
+| 요청이 30초씩 멈추고 로그에 `HikariPool-1 - Connection is not available, request timed out after 30000ms` | a81a4f6에서 고친 BUG-012의 증상(CPU 2개 서버에서 가상 스레드가 잠금 안에서 DB를 기다리며 캐리어 스레드를 붙잡음). 그 뒤 이미지에서 다시 보이면 `.env`에 `JAVA_TOOL_OPTIONS=-Djdk.tracePinnedThreads=full`을 넣고 `docker compose up -d`, 증상이 다시 날 때 `docker compose logs app`을 모아(`<== monitors:`가 든 스택) 알린 뒤 그 줄을 지웁니다 |
 | PDF 내보내기가 422 | 1,000건 넘음. 필터로 줄이거나 CSV·Excel로 |
 | `.env`의 DB 비밀번호를 바꿨더니 앱이 DB에 못 붙음 | PostgreSQL 이미지는 `db` 볼륨을 처음 만들 때만 비밀번호를 정합니다. 바꾸려면 DB 안에서 `ALTER USER openpms PASSWORD '...'`를 먼저 하고 `.env`를 같은 값으로 고칩니다. |
 
@@ -639,3 +642,17 @@ V17 첫 초안의 검사 제약 문제(위 "업그레이드")는 이 점검 전�
 | 다시 보통으로 | 환경 변수를 빼고 다시 시작 → 백업한 뒤 마이그레이션 |
 
 `backups` 볼륨을 서버 밖으로 복사하는 일은 이 점검에서 하지 않았습니다. 복원은 문서 점검 뒤 같은 이미지·스크래치 compose에서 위 "DB 복원" 절차 그대로(덤프 꺼내기 → 앱 정지 → `pg_restore --clean --if-exists --no-owner` → 앱 시작) 실행해, 지운 작업과 바꾼 프로젝트 이름이 돌아오는 것을 확인했습니다(종료 코드 0, 현재 버전 17). 복원 연습(새 DB에 넣고 수 확인 후 삭제)도 같은 날 확인했습니다.
+
+### 2026-10-11 성능 측정 (a81a4f6 기준 운영 이미지: 부하)
+
+운영 이미지(`Dockerfile`)와 `compose.yaml`, 앱 컨테이너 CPU 2개·메모리 1 GB, DB 컨테이너 CPU 2개·메모리 1 GB, Windows 11 노트북의 Podman(WSL, 8코어). 데이터는 작업 1,000건 프로젝트(`backend/src/test/resources/perf/perf-1000.sql`), 도구는 같은 기계의 `backend/scripts/perf_load.py`(망 지연 없음), 20명·40초 예열 뒤. 자세한 표는 `replica/perf.md`.
+
+| 시나리오 | 결과 |
+| --- | --- |
+| 동시 50명, 2초 쉼, 120초 | 화면 24.1/초, 화면 p99 110 ms, 앱 CPU 0.57 / 0.83코어·408 MiB, DB 0.17 / 0.20코어·126 MiB, 오류 0 |
+| 동시 100명, 2초 쉼, 120초 | 화면 47.5/초, 화면 p99 236 ms, 앱 0.99 / 1.19코어·427 MiB, DB 0.33 / 0.40코어·139 MiB, 오류 0 |
+| 20명이 쉬지 않고, 60초(한계) | 화면 88.2/초(요청 159/초), 화면 p99 593 ms, 앱 1.88 / 1.95코어·451 MiB, DB 0.70 / 0.76코어·158 MiB, 오류 0 |
+| 고정·풀 타임아웃 | 세 시나리오 모두 JDK 고정 추적(`-Djdk.tracePinnedThreads`)에 걸린 곳 없음, 커넥션 풀 타임아웃 0건 |
+| 고치기 전(0268278 이미지) | 동시 50명 로그인과 20명 무휴식에서 커넥션 풀이 30초 멈추고 일부 요청 500(BUG-012) |
+
+이번에는 배포 스모크(새 설치·업그레이드)를 다시 하지 않았습니다. 마이그레이션과 `Dockerfile`·`compose.yaml`이 바뀌지 않았고, 마지막 스모크는 재검증 8(5966874)입니다.

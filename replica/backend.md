@@ -1,7 +1,7 @@
 # 백엔드 (openPMS)
 
 - 기준: `replica/architecture.md`, 화면 계약은 `frontend/src/api/api.ts`·`types.ts`, 동작 규칙은 가짜 계층(`frontend/src/api/fake`)
-- 작성: 2026-10-09 · 갱신: 2026-10-11 (그룹화·합계 2bb76a8, 보드 보강 88153b7, 날짜 형식 84f6e6c, 문서 점검 후속 384a2f9·31e39bd, 남은 should a3aee0b·0af87f8·388400b·d0023b1·5d641d1, could 4fb4ca5..86e58a9: 내부 코멘트, 프로젝트 복사, 고대비 테마, 개요 위젯, 기준선, PDF, API 토큰, 웹훅 / 22ed5db..99e0287: 기준선 빠진 작업, Idempotency-Key(V16), 웹훅 보강, 알림 필터 서버 처리 / 789bb9d: 시간 기록(V17, 주간 입력표·보고서·Excel) / 2f7ffb9·b63eaa0: 새 시작일 / 5966874: 업그레이드 전 백업·시스템 정보)
+- 작성: 2026-10-09 · 갱신: 2026-10-11 (그룹화·합계 2bb76a8, 보드 보강 88153b7, 날짜 형식 84f6e6c, 문서 점검 후속 384a2f9·31e39bd, 남은 should a3aee0b·0af87f8·388400b·d0023b1·5d641d1, could 4fb4ca5..86e58a9: 내부 코멘트, 프로젝트 복사, 고대비 테마, 개요 위젯, 기준선, PDF, API 토큰, 웹훅 / 22ed5db..99e0287: 기준선 빠진 작업, Idempotency-Key(V16), 웹훅 보강, 알림 필터 서버 처리 / 789bb9d: 시간 기록(V17, 주간 입력표·보고서·Excel) / 2f7ffb9·b63eaa0: 새 시작일 / 5966874: 업그레이드 전 백업·시스템 정보 / a81a4f6: 성능 예산·가상 스레드 고정 고침·응답 압축)
 - 스택: Spring Boot 4.1.1 · Java 21(가상 스레드) · jOOQ 3.21 · Flyway 12 · PostgreSQL 17 · Spring Session JDBC · Spring Security 7 · Gradle 9.7
 - 개발 환경: PC에 아무것도 설치하지 않고 Podman 컨테이너로만 빌드·실행합니다(`backend/scripts/dev.sh`).
 
@@ -14,6 +14,7 @@ scripts/dev.sh run           # 빌드 후 앱 실행 → http://127.0.0.1:8090 (
 scripts/dev.sh test          # JUnit (시드 복원 지점의 복사본 DB에서)
 scripts/dev.sh snapshot-db   # 현재 DB를 복원 지점으로 저장 (앱을 멈춘 상태에서)
 scripts/dev.sh restore-db    # 복원 지점으로 1초 만에 되돌리기
+scripts/dev.sh perf-seed     # 성능 예산의 작업 1,000건 프로젝트(perf-1000)를 개발 DB에 넣기 (보드 ID와 상세 작업 번호 출력)
 cd ../frontend
 npm run dev:api              # 화면을 실제 API에 붙여 실행 → http://localhost:5174
 npm run build                # 운영 빌드(실제 API)를 backend 정적 리소스로 출력 → jar 하나로 배포
@@ -59,6 +60,7 @@ npm run build                # 운영 빌드(실제 API)를 backend 정적 리�
 - 2026-10-11 시간 기록(789bb9d·3f9d5c0): `TimeEntriesIT` 4개(주간 입력표: 주 중간 날짜로 열기, 새 칸·바꾼 칸·지운 칸, 새 기록은 기본 활동, 여러 건 칸이 섞이면 전부 422·아무것도 안 바뀜, 주 밖 날짜·하루 24시간 초과·소수 셋째 자리 422 / 누가: 멤버는 자기 것 기록·모두 보기, 남의 것 고치기·남의 몫 기록 403, 관리자는 남의 것 고침, 참관자는 기록 403·목록 0·보고서 0, 모듈을 끄면 기록 403과 `canLog` false / 보고서 사람별 합계·순서, 활동별, 날짜별 순서, 모르는 묶기·1년 넘는 기간 422, Excel `PK` / 작업을 옮기면 기록의 프로젝트도 바뀜, 활동 관리는 관리자만·같은 이름 422·기본 활동 끄기 422·꺼진 활동은 목록에 없고 기록 422). 3f9d5c0 기준 JUnit 91개 모두 통과. 후속 6d816e4(보고서 DB 집계)·39c8974 뒤 39c8974 기준으로도 JUnit 91개 모두 통과(같은 기대값).
 - 2026-10-11 템플릿 복사 때 새 시작일(2f7ffb9·b63eaa0): `TemplatesIT` +1(`aNewStartDateMovesTheCopiedScheduleInWorkingDays`: 웹 플랫폼을 `startDate` 2027-01-04(월)로 작업·버전 복사 → 가장 이른 복사 날짜 = 새 시작일, 근무일 작업마다 시작–완료 근무일 수 그대로, 시작일 순서 유지, 버전 끝 날짜는 같은 달력일 수만큼, `startDate: "내일"` 422). b63eaa0 기준 JUnit 92개 모두 통과.
 - 2026-10-11 업그레이드 안전장치(5966874): `BackupsTest` 4개(JDBC URL 읽기: 포트 생략은 5432, 쿼리 문자열 무시, PostgreSQL이 아니면 오류 / 대역 pg_dump 스크립트로 덤프: `--format=custom`·호스트·포트·사용자·DB 이름 인자와 환경 변수의 비밀번호, 직접 백업 5번 + 업그레이드 전 1번 → 직접 3개(keep 3)·업그레이드 전 1개만 남고 최근 것부터, `.part` 없음 / 실패하는 pg_dump는 그 출력("connection refused")을 담은 오류·파일 없음, 없는 pg_dump는 "pg_dump를 실행할 수 없습니다"·버전 null / Flyway 대역으로 마이그레이션 전략: v16 → v17 업그레이드는 `before-upgrade`·`v16-to-v17` 덤프 뒤 migrate, 새 설치·대기 0은 덤프 없음, 덤프 실패("disk full")면 migrate 안 함·메시지에 `OPENPMS_BACKUP_BEFORE_UPGRADE`, 끄면 덤프 없이 migrate), `SystemIT` 1개(관리자: 버전·Java·DB 17·크기·대기 0·적용 17개 이상·최근 적용·dev는 업그레이드 전 백업 꺼짐·프로젝트 수 / pg_dump 없는 빌드 컨테이너에서 지금 백업 503 "백업하지 못했습니다." / 멤버는 두 경로 모두 403). 5966874 기준 JUnit 97개 모두 통과. 이미지 스모크(5966874 이미지, 포트 18090)는 `replica/deploy.md`.
+- 2026-10-11 성능 예산(a81a4f6, `replica/fixes.md` #4, 실측 `replica/perf.md`): `PerfBudgetIT` 2개(작업 1,000건 프로젝트 `perf/perf-1000.sql`을 넣고 요청 8가지를 예열 5번 뒤 20번 재서 p95 시간·SQL 문장 수(jOOQ `ExecuteListener`)·응답 크기가 예산 이하, 잰 값은 `build/reports/perf-budget.md` / 가상 스레드 20개로 같은 요청을 동시에 보내며 JFR `jdk.VirtualThreadPinned`가 우리 코드에서 0건, 고치기 전 코드로 실패 확인), `NoPinningTest` 1개(`src/main/java`에 `synchronized` 없음). 재다가 찾아 고친 것: CPU 2개 서버에서 여럿이 동시에 쓰면 모든 요청이 30초 멈춤(BUG-012: `Snapshot`의 지연 로더가 synchronized, `shares`가 `computeIfAbsent` 안에서 DB를 기다려 가상 스레드가 캐리어를 붙잡음 → `ReentrantLock`, 맵 밖 조회 뒤 `putIfAbsent`, 로그인은 트랜잭션 없이), 응답 압축·캐시 없음(BUG-014: `server.compression`, `SpaConfig`의 `/assets/**` 1년 캐시·나머지 `no-cache`). a81a4f6 기준 JUnit 100개 모두 통과.
 - 시간 기록을 만들며 찾아 고친 문제: V17 첫 초안이 `time_tracking`을 켜면서 `projects_known_modules` 검사 제약을 넓히지 않아, 프로젝트가 있는 기존 DB에서는 마이그레이션이 실패했을 것. 출시 전에 제약을 지우고 다시 만들게 고쳤고, 99e0287 이미지로 만든 V16 DB를 3f9d5c0 이미지로 올려 확인(`replica/deploy.md` 재검증 7).
 - 점검 중에 찾아 고친 문제: 세션 없는 로그인 요청의 500, 저널 필드 순서(jsonb가 키 순서를 바꿈), 멘션 직후 빠른 입력 시 글자 순서가 섞이던 프론트 버그.
 
@@ -142,4 +144,5 @@ npm run build                # 운영 빌드(실제 API)를 backend 정적 리�
 | 웹훅 보강 | 남은 것: 여러 인스턴스 중복 전송 확인, 연결·응답 시간 제한 테스트. 06b48f5·93d1a74에서 끝난 것: 자동 일정·첨부·프로젝트 복사 이벤트, 요청 자신의 `changes`, 사내·루프백 받는 주소 막기 스위치, V16 `webhooks_created_by_idx`·`webhooks_set_updated_at`. dfde416에서 끝난 것: 작업 옮기기 이벤트, `webhook_deliveries`·`api_tokens` 정리(`token-cleanup`), 메타데이터 주소 차단 |
 | 시간 기록 남은 것 | 789bb9d·3f9d5c0에서 시간 기록·주간 입력표·보고서·Excel 완료. 없는 것: 비용·단가·예산, 지난 주 승인·잠금, 다른 사람 대신 입력하는 화면(API는 `userId` + `time.manage`), 작업 목록의 시간 열·합계, 시간 기록의 저널·웹훅 이벤트·프로젝트 복사, 기록 목록 2,000행·Excel 50,000행을 넘을 때의 안내(보고서 합계는 6d816e4부터 DB 집계라 한도 없음), 프로젝트 삭제 때 시간 기록 경고 |
 | 백업 남은 것 | 5966874에서 업그레이드 전 자동 덤프·지금 백업·시스템 정보 완료. 없는 것: 매일 정해진 시각의 덤프(예약 작업), 서버 밖 보관(덤프는 같은 서버의 `backups` 볼륨), 첨부(`files` 볼륨) 백업, 화면에서 복원·내려받기(복원은 `pg_restore`로 손으로) |
+| 성능 남은 것 | a81a4f6에서 성능 예산(서버·화면 예산, 고정 검사, 부하 도구) 완료. 재지 않은 것: 사내 프록시·실제 망을 거친 시간, 작업 1만 건 이상, 첨부 업로드·내보내기 부하, 알림 메일 발송량, 여러 앱 인스턴스(`replica/perf.md`). 보드 응답은 여전히 전체 카드(화면이 열마다 50장만 그림) |
 | ~~알림 필터의 서버 쪽~~ | 완료(0ef1888). 설계의 이름(`reason`·`projectId`) 대신 `reasons`(쉼표로 여러 개)·`project`(식별자 또는 id). 목록은 배열 그대로(page 없음, 최대 500건), 건수는 `GET /notifications/counts` |
