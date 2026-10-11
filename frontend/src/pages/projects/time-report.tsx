@@ -36,7 +36,8 @@ export function ProjectTimeReportPage() {
   // the server answers at most a year at a time; say so here instead of asking
   const tooLong = !!from && !!to && (Date.parse(to) - Date.parse(from)) / 86_400_000 >= 366;
   const okRange = !!from && !!to && from <= to && !tooLong;
-  const report = useTimeReport({ project: project.identifier, from: okRange ? from : undefined, to: okRange ? to : undefined, groupBy });
+  // a wrong range asks nothing (the table would otherwise show the server's default month)
+  const report = useTimeReport({ project: project.identifier, from, to, groupBy }, okRange);
   const [downloading, setDownloading] = useState(false);
 
   const download = async () => {
@@ -86,7 +87,7 @@ export function ProjectTimeReportPage() {
         </div>
       </div>
 
-      {report.isPending ? (
+      {!okRange ? null : report.isPending ? (
         <Skeleton className="h-40 w-full" />
       ) : report.isError ? (
         <ErrorState error={report.error} onRetry={() => report.refetch()} />

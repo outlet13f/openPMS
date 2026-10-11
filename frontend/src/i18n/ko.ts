@@ -335,6 +335,7 @@ const ko = {
     subjectRequired: "제목을 입력하세요.",
     deleteTitle: "작업을 삭제할까요?",
     deleteBody: "#{{number}} {{subject}}와 활동 기록이 모두 지워집니다. 되돌릴 수 없습니다.",
+    deleteTime: "이 작업에 기록된 시간 {{hours}}시간도 함께 지워지고 공수 보고서에서 빠집니다.",
     deleteChildren: "하위 작업 {{count}}개도 함께 삭제",
     keepChildren: "하위 작업은 남기고 한 단계 위로 올리기",
     deleted: "작업을 삭제했습니다",

@@ -46,6 +46,12 @@ test.describe("F16 시간 기록", () => {
     await expect(page.getByText("모두 7.25시간")).toBeVisible();
     await expect(page.getByText("디자인 QA")).toBeVisible();
     await axe(page, "S08 시간 탭");
+    // deleting the item would take its 7.25 hours along: the confirmation says so (cancelled here)
+    await page.getByRole("button", { name: "더 보기" }).first().click();
+    await page.getByRole("menuitem", { name: "삭제" }).click();
+    const confirm = page.getByRole("dialog", { name: "작업을 삭제할까요?" });
+    await expect(confirm.getByText("이 작업에 기록된 시간 7.25시간도 함께 지워지고 공수 보고서에서 빠집니다.")).toBeVisible();
+    await confirm.getByRole("button", { name: "취소" }).click();
   });
 
   test("F16-H3 the project report: by person and by work package, and the Excel file", async ({ page }) => {
@@ -58,6 +64,11 @@ test.describe("F16 시간 기록", () => {
     // 박준호's week is untouched by the tests above (김서연 logged more in F16-H1·H2)
     await expect(table.getByRole("row", { name: /박준호 15/ })).toBeVisible();
     await expect(table.getByRole("row", { name: /^합계/ })).toBeVisible();
+    // a reversed range shows the hint and no table
+    await page.getByLabel("끝").fill("2026-10-01");
+    await expect(page.getByText("끝 날짜가 시작 날짜보다 빠릅니다")).toBeVisible();
+    await expect(page.getByRole("table")).toHaveCount(0);
+    await page.getByLabel("끝").fill("2026-10-11");
     await page.getByRole("radio", { name: "작업별" }).click();
     await expect(table.getByRole("row", { name: /#4 결제 API 연동 12.5/ })).toBeVisible();
     await axe(page, "X11 공수 보고서");

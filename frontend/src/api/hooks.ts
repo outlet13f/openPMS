@@ -285,8 +285,8 @@ export const useTimeWeek = (start?: string) =>
   useQuery({ queryKey: ["time", "week", start ?? ""], queryFn: () => api.time.week(start), placeholderData: keepPreviousData });
 export const useTimeEntries = (params: TimeFilter & { workPackage?: number }, enabled = true) =>
   useQuery({ queryKey: ["time", "entries", params], queryFn: () => api.time.list(params), enabled });
-export const useTimeReport = (params: TimeFilter & { groupBy: TimeGroupBy }) =>
-  useQuery({ queryKey: ["time", "report", params], queryFn: () => api.time.report(params), placeholderData: keepPreviousData });
+export const useTimeReport = (params: TimeFilter & { groupBy: TimeGroupBy }, enabled = true) =>
+  useQuery({ queryKey: ["time", "report", params], queryFn: () => api.time.report(params), placeholderData: keepPreviousData, enabled });
 
 /** Every change refreshes the week, the lists and the report. */
 export function useTimeMutations() {

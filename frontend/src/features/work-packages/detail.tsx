@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Copy, Eye, EyeOff, FolderInput, Link2, Maximize2, MoreHorizontal, Pencil, Share2, Trash2, X } from "lucide-react";
 import type { WorkPackage } from "@/api";
-import { useDeleteWorkPackage, useProject, useWatch, useWorkPackage } from "@/api/hooks";
+import { useDeleteWorkPackage, useProject, useTimeEntries, useWatch, useWorkPackage } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/choice";
 import { Banner, useToast } from "@/components/ui/feedback";
@@ -93,6 +93,9 @@ function DeleteDialog({ wp, open, onOpenChange, onDeleted }: { wp: WorkPackage; 
   const { t } = useTranslation();
   const del = useDeleteWorkPackage();
   const [withChildren, setWithChildren] = useState(false);
+  // logged time goes with the item (and out of the reports): say how much, as far as I can see it
+  const time = useTimeEntries({ workPackage: wp.number }, open);
+  const logged = Math.round((time.data ?? []).reduce((s, e) => s + e.hours, 0) * 100) / 100;
   return (
     <Dialog
       open={open}
@@ -110,6 +113,7 @@ function DeleteDialog({ wp, open, onOpenChange, onDeleted }: { wp: WorkPackage; 
           </Button>
         </>
       }
+      banner={logged > 0 ? <Banner tone="warning">{t("wp.deleteTime", { hours: logged })}</Banner> : undefined}
     >
       {wp.childCount > 0 ? (
         <Checkbox
