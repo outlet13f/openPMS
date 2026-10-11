@@ -234,4 +234,36 @@ class BoardsIT {
             send(admin, delete("/api/v1/boards/" + id), "").andExpect(status().isNoContent());
         }
     }
+
+    @Test
+    void withoutBoardManageABoardCanBeLookedAtButNotChanged() throws Exception {
+        var admin = login("seoyeon.kim@openpms.local");
+        // 최민지 is 참관자 in 웹 플랫폼: board.view without board.manage
+        var viewer = login("minji.choi@openpms.local");
+        var board = body(send(admin, post("/api/v1/projects/web-platform/boards"), "{\"name\":\"함께 보는 보드\",\"kind\":\"basic\",\"isPublic\":true}").andExpect(status().isCreated()));
+        var id = board.get("id").asString();
+        try {
+            var todo = column(board, "할 일").get("id").asString();
+            send(admin, post("/api/v1/boards/" + id + "/cards"), "{\"columnId\":\"" + todo + "\",\"number\":3}").andExpect(status().isOk());
+            assertThat(numbers(column(body(send(viewer, get("/api/v1/boards/" + id), "").andExpect(status().isOk())), "할 일"))).containsExactly(3L);
+            // a look through filters, without saving: allowed
+            send(viewer, get("/api/v1/boards/" + id).param("filters", "[{\"field\":\"status\",\"op\":\"open\",\"values\":[]}]"), "")
+                    .andExpect(status().isOk());
+            // every change: refused
+            send(viewer, post("/api/v1/boards/" + id + "/columns"), "{\"name\":\"진행\"}").andExpect(status().isForbidden());
+            send(viewer, post("/api/v1/boards/" + id + "/cards"), "{\"columnId\":\"" + todo + "\",\"number\":5}").andExpect(status().isForbidden());
+            send(viewer, post("/api/v1/boards/" + id + "/moves"), "{\"number\":3,\"toColumnId\":\"" + todo + "\",\"beforeNumber\":null}").andExpect(status().isForbidden());
+            send(viewer, delete("/api/v1/boards/" + id + "/cards/3"), "").andExpect(status().isForbidden());
+            send(viewer, patch("/api/v1/boards/" + id), "{\"filters\":[{\"field\":\"status\",\"op\":\"open\",\"values\":[]}]}").andExpect(status().isForbidden());
+            send(viewer, patch("/api/v1/board-columns/" + todo), "{\"name\":\"바꾼 이름\"}").andExpect(status().isForbidden());
+            send(viewer, delete("/api/v1/board-columns/" + todo), "").andExpect(status().isForbidden());
+            send(viewer, delete("/api/v1/boards/" + id), "").andExpect(status().isForbidden());
+            // nothing moved
+            var now = body(send(admin, get("/api/v1/boards/" + id), "").andExpect(status().isOk()));
+            assertThat(numbers(column(now, "할 일"))).containsExactly(3L);
+            assertThat(now.get("filters").size()).isZero();
+        } finally {
+            send(admin, delete("/api/v1/boards/" + id), "").andExpect(status().isNoContent());
+        }
+    }
 }

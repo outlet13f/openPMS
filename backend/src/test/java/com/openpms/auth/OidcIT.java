@@ -34,6 +34,9 @@ import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jooq.DSLContext;
 import org.junit.jupiter.api.AfterAll;
@@ -176,7 +179,11 @@ class OidcIT {
 
     /** The whole round trip; returns where openPMS sends the browser at the end. */
     String signIn(MockHttpSession s, Map<String, Object> claims, boolean badSignature) throws Exception {
-        var start = mvc.perform(get(OidcProviders.START + "company").param("next", "/projects").session(s)).andExpect(status().isFound()).andReturn();
+        return signIn(s, claims, badSignature, "/projects");
+    }
+
+    String signIn(MockHttpSession s, Map<String, Object> claims, boolean badSignature, String next) throws Exception {
+        var start = mvc.perform(get(OidcProviders.START + "company").param("next", next).session(s)).andExpect(status().isFound()).andReturn();
         var authorize = UriComponentsBuilder.fromUriString(start.getResponse().getRedirectedUrl()).build();
         assertThat(authorize.toUriString()).startsWith(idp.issuer + "/authorize");
         var q = authorize.getQueryParams();
@@ -296,5 +303,40 @@ class OidcIT {
 
         mvc.perform(delete("/api/v1/admin/oidc-providers/" + id).session(admin).with(csrf())).andExpect(status().isNoContent());
         assertThat(db.fetchCount(OIDC_PROVIDERS)).isZero();
+    }
+
+    UUID account(String email, String status) {
+        return db.insertInto(USERS).set(USERS.EMAIL, email).set(USERS.NAME, "시험 계정").set(USERS.STATUS, status).returning(USERS.ID).fetchOne().getId();
+    }
+
+    @Test
+    void invitedAccountsBecomeActiveTemporaryLocksHoldDeletedAccountsAndForeignPagesDoNot() throws Exception {
+        provider(false);
+        // invited: signing in proves the address, the account becomes active
+        var invited = account("invited@sso.example", "invited");
+        var s = new MockHttpSession();
+        assertThat(signIn(s, Map.of("sub", "u-500", "email", "invited@sso.example"))).isEqualTo("/projects");
+        assertThat(db.select(USERS.STATUS).from(USERS).where(USERS.ID.eq(invited)).fetchOne(USERS.STATUS)).isEqualTo("active");
+        mvc.perform(get("/api/v1/auth/me").session(s)).andExpect(status().isOk());
+
+        // locked for a while after failed passwords: SSO waits too
+        var paused = account("paused@sso.example", "active");
+        db.update(USERS).set(USERS.LOCKED_UNTIL, OffsetDateTime.now().plusMinutes(10)).where(USERS.ID.eq(paused)).execute();
+        var t = new MockHttpSession();
+        assertThat(signIn(t, Map.of("sub", "u-501", "email", "paused@sso.example"))).isEqualTo("/login?sso_error=locked");
+        mvc.perform(get("/api/v1/auth/me").session(t)).andExpect(status().isUnauthorized());
+        db.update(USERS).set(USERS.LOCKED_UNTIL, OffsetDateTime.now().minusMinutes(1)).where(USERS.ID.eq(paused)).execute();
+        assertThat(signIn(new MockHttpSession(), Map.of("sub", "u-501", "email", "paused@sso.example"))).isEqualTo("/projects");
+
+        // deleted: by address and by an existing link alike, no account
+        account("gone@sso.example", "deleted");
+        assertThat(signIn(new MockHttpSession(), Map.of("sub", "u-502", "email", "gone@sso.example"))).isEqualTo("/login?sso_error=no_account");
+        db.update(USERS).set(USERS.STATUS, "deleted").where(USERS.ID.eq(invited)).execute();
+        assertThat(signIn(new MockHttpSession(), Map.of("sub", "u-500", "email", "invited@sso.example"))).isEqualTo("/login?sso_error=no_account");
+
+        // the page to return to stays on this site
+        for (var foreign : List.of("//evil.example/x", "https://evil.example", "/\\evil.example", "evil"))
+            assertThat(signIn(new MockHttpSession(), Map.of("sub", "u-501", "email", "paused@sso.example"), false, foreign)).as(foreign).isEqualTo("/");
+        assertThat(signIn(new MockHttpSession(), Map.of("sub", "u-501", "email", "paused@sso.example"), false, "/projects/web-platform")).isEqualTo("/projects/web-platform");
     }
 }
