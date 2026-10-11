@@ -497,35 +497,53 @@ public class TimeController {
         var ctx = current.ctx();
         if (!GROUPS.contains(groupBy)) throw ApiException.field("groupBy", "묶는 기준을 확인하세요.");
         var r = range(ctx, from, to);
+        // summed in the database over everything I may see (no row cap): everyone's in projects with time.view, my own where I only log
+        var s = ctx.s();
+        var all = new ArrayList<UUID>();
+        var mineOnly = new ArrayList<UUID>();
+        for (var p : s.projects().values()) {
+            if (ctx.can(p, "time.view")) all.add(p.id());
+            else if (ctx.can(p, "time.log")) mineOnly.add(p.id());
+        }
+        Condition seen = (all.isEmpty() ? DSL.falseCondition() : TIME_ENTRIES.PROJECT_ID.in(all))
+                .or(mineOnly.isEmpty() ? DSL.falseCondition() : TIME_ENTRIES.PROJECT_ID.in(mineOnly).and(TIME_ENTRIES.USER_ID.eq(ctx.userId())));
+        Condition c = seen.and(TIME_ENTRIES.SPENT_ON.between(r[0], r[1])).and(owner(ctx, user));
+        if (project != null && !project.isBlank()) c = c.and(TIME_ENTRIES.PROJECT_ID.eq(ctx.findProject(project).id()));
+        org.jooq.Field<?> by = switch (groupBy) {
+            case "workPackage" -> TIME_ENTRIES.WORK_PACKAGE_ID;
+            case "activity" -> TIME_ENTRIES.ACTIVITY_ID;
+            case "project" -> TIME_ENTRIES.PROJECT_ID;
+            case "day" -> TIME_ENTRIES.SPENT_ON;
+            default -> TIME_ENTRIES.USER_ID;
+        };
+        var grouped = db.select(by, DSL.sum(TIME_ENTRIES.HOURS)).from(TIME_ENTRIES).where(c).groupBy(by).fetch();
+        var wpLabels = new HashMap<UUID, String>();
+        var wpNumbers = new HashMap<UUID, Long>();
+        if ("workPackage".equals(groupBy)) {
+            var ids = grouped.stream().map(g -> (UUID) g.value1()).toList();
+            if (!ids.isEmpty()) db.select(WORK_PACKAGES.ID, WORK_PACKAGES.NUMBER, WORK_PACKAGES.SUBJECT).from(WORK_PACKAGES).where(WORK_PACKAGES.ID.in(ids)).fetch()
+                    .forEach(w -> {
+                        wpLabels.put(w.value1(), "#" + w.value2() + " " + w.value3());
+                        wpNumbers.put(w.value1(), w.value2());
+                    });
+        }
+        var names = "activity".equals(groupBy) ? activityNames() : Map.<UUID, String>of();
         var sums = new LinkedHashMap<String, Object[]>();
         var total = BigDecimal.ZERO;
-        for (var e : visibleIn(ctx, from, to, project, user, r)) {
-            String key, label;
-            switch (groupBy) {
-                case "workPackage" -> {
-                    key = String.valueOf(e.workPackage().number());
-                    label = "#" + e.workPackage().number() + " " + e.workPackage().subject();
-                }
-                case "activity" -> {
-                    key = e.activity() == null ? "" : e.activity().id().toString();
-                    label = e.activity() == null ? "활동 없음" : e.activity().name();
-                }
-                case "project" -> {
-                    key = e.project().id().toString();
-                    label = e.project().name();
-                }
-                case "day" -> {
-                    key = e.spentOn().toString();
-                    label = Dates.format(e.spentOn());
-                }
-                default -> {
-                    key = e.user().id().toString();
-                    label = e.user().name();
-                }
-            }
-            var acc = sums.computeIfAbsent(key, k -> new Object[] {label, BigDecimal.ZERO});
-            acc[1] = ((BigDecimal) acc[1]).add(e.hours());
-            total = total.add(e.hours());
+        for (var g : grouped) {
+            var v = g.value1();
+            var hours = g.value2() == null ? BigDecimal.ZERO : g.value2();
+            // a work package's key is its number (what the screens link with), everything else its id or date
+            String key = v == null ? "" : "workPackage".equals(groupBy) ? String.valueOf(wpNumbers.get((UUID) v)) : v.toString();
+            String label = switch (groupBy) {
+                case "workPackage" -> wpLabels.getOrDefault((UUID) v, "#?");
+                case "activity" -> v == null ? "활동 없음" : names.getOrDefault((UUID) v, "?");
+                case "project" -> s.project((UUID) v).map(Snapshot.ProjectRow::name).orElse("?");
+                case "day" -> Dates.format((LocalDate) v);
+                default -> Refs.user(s, (UUID) v).name();
+            };
+            sums.put(key, new Object[] {label, hours});
+            total = total.add(hours);
         }
         var rows = sums.entrySet().stream().map(x -> new ReportRow(x.getKey(), (String) x.getValue()[0], (BigDecimal) x.getValue()[1])).toList();
         var sorted = new ArrayList<>(rows);
