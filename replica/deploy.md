@@ -1,7 +1,7 @@
 # 배포 안내 (openPMS 사내 서버 운영)
 
-- 작성: 2026-10-10 · 빌드: 11fb59b · 갱신: 2026-10-11 (384a2f9: 프록시 뒤 클라이언트 주소, SSO 사용자의 비밀번호 만들기 / 86e58a9: 마이그레이션 V11–V15, API 토큰, 웹훅, PDF 글꼴)
-- 기준 파일: `Dockerfile`, `compose.yaml`, `.env.example`, `.dockerignore`, `backend/src/main/resources/application.yml`, `backend/src/main/java/com/openpms/auth/FirstAdmin.java`, `frontend/vite.config.ts`, `backend/src/main/java/com/openpms/auth/ApiTokenFilter.java`, `backend/src/main/java/com/openpms/webhook/Webhooks.java`, `backend/src/main/resources/fonts/`
+- 작성: 2026-10-10 · 빌드: 11fb59b · 갱신: 2026-10-11 (384a2f9: 프록시 뒤 클라이언트 주소, SSO 사용자의 비밀번호 만들기 / 86e58a9: 마이그레이션 V11–V15, API 토큰, 웹훅, PDF 글꼴 / 99e0287: 마이그레이션 V16(Idempotency-Key), 웹훅 사내망 주소 막기 `OPENPMS_WEBHOOK_BLOCK_PRIVATE`)
+- 기준 파일: `Dockerfile`, `compose.yaml`, `.env.example`, `.dockerignore`, `backend/src/main/resources/application.yml`, `backend/src/main/java/com/openpms/auth/FirstAdmin.java`, `frontend/vite.config.ts`, `backend/src/main/java/com/openpms/auth/ApiTokenFilter.java`, `backend/src/main/java/com/openpms/webhook/Webhooks.java`, `backend/src/main/java/com/openpms/common/IdempotencyFilter.java`, `backend/src/main/resources/fonts/`
 - 이 문서는 위 파일에 실제로 있는 것만 적습니다. 파일이 바뀌면 이 문서도 같이 고칩니다.
 
 ## 구성
@@ -103,6 +103,7 @@
 | `OPENPMS_JOBS_ENABLED` | 날짜 알림, 알림 메일, 정리 작업을 이 인스턴스에서 돌림 | `true` | 선택 |
 | `OPENPMS_TRUSTED_PROXIES` | `X-Forwarded-For`·`X-Forwarded-Proto`를 믿을 프록시 주소(정규식). 넣으면 기본값을 통째로 바꿉니다 | 주석(기본값 사용) | 선택. 기본: 이 호스트(`127.x`, `::1`), Docker 브리지(`172.16`–`172.31.x`), Podman 네트워크(`10.88.x`, `10.89.x`). 아래 "리버스 프록시·TLS" |
 | `OPENPMS_FORWARD_HEADERS` | 프록시 헤더 처리 방식. `native`(기본)는 위 주소에서 온 헤더를 씀, `none`은 헤더를 무시 | 주석(`native`) | 선택. 프록시 없이 앱에 바로 붙을 때만 `none` |
+| `OPENPMS_WEBHOOK_BLOCK_PRIVATE` | `true`면 웹훅을 루프백·사설 주소(127.x, 10.x, 172.16–31.x, 192.168.x, 100.64.0.0/10, fc00::/7, 0.0.0.0)로 보내지 않음. 등록할 때 422, 보낼 때도 DNS를 다시 풀어 막고 기록에 "보내지 않음: …". 링크 로컬(169.254.x, fe80:, metadata.google.internal)은 이 값과 상관없이 늘 막음 | 주석(`false`) | 선택(06b48f5). 받는 사내 시스템이 사설 주소에 있으면 켤 수 없음. 아래 "웹훅" |
 
 `.env`에 넣지 않는 값(compose와 이미지가 정합니다):
 
@@ -279,8 +280,8 @@
 
 ## 웹훅과 API 토큰
 
-- 기준: 커밋 f835e1c(API 토큰), 86e58a9(웹훅), dfde416(연동 설정 토큰 차단·옮기기 이벤트·정리·주소 제한). 관리 화면은 **관리 → 연동 → API와 웹훅**(`/admin/integrations`)입니다.
-- **새 환경 변수는 없습니다.** 둘 다 DB(`api_tokens`, `settings`의 `api.tokens_enabled`, `webhooks`, `webhook_deliveries`)에 둡니다.
+- 기준: 커밋 f835e1c(API 토큰), 86e58a9(웹훅), dfde416(연동 설정 토큰 차단·옮기기 이벤트·정리·주소 제한), 93d1a74(Idempotency-Key, V16), 06b48f5(자동 일정·첨부·복사 이벤트, 사설 주소 막기 스위치). 관리 화면은 **관리 → 연동 → API와 웹훅**(`/admin/integrations`)입니다.
+- 설정은 DB(`api_tokens`, `settings`의 `api.tokens_enabled`, `webhooks`, `webhook_deliveries`)에 둡니다. 환경 변수는 06b48f5의 `OPENPMS_WEBHOOK_BLOCK_PRIVATE`(웹훅 사설 주소 막기, 기본 false) 하나뿐입니다.
 
 ### API 토큰 (들어오는 연동)
 
@@ -292,20 +293,21 @@
 - 만든 사람을 잠그거나 삭제하면 그 사람의 토큰은 바로 401입니다. 퇴사자 처리 때 따로 할 일은 없습니다.
 - 폐기했거나 만료된 토큰 행은 30일 뒤 예약 작업 `token-cleanup`(매일 03:30)이 지웁니다(dfde416).
 - 계약: `/api/v1/openapi.json`(로그인 없이, OpenAPI 3.1, 주요 경로)과 화면 **도움말 → API 문서**(`/help/api`). 버전 정책: v1 안에서는 응답 필드를 더하기만 하고, 빼거나 뜻을 바꾸는 변경은 `/api/v2`로 냅니다. 연동하는 쪽은 모르는 필드를 무시하도록 만듭니다.
-- 리버스 프록시는 `Authorization` 헤더를 그대로 넘겨야 합니다(nginx 기본값은 넘김).
+- 리버스 프록시는 `Authorization` 헤더를 그대로 넘겨야 합니다(nginx 기본값은 넘김). `Idempotency-Key` 요청 헤더와 `Idempotent-Replayed` 응답 헤더도 그대로 둡니다(nginx 기본값은 넘김).
+- **재시도와 `Idempotency-Key`**(93d1a74): 연동이 무언가를 만드는 POST(작업·코멘트·복사 등)에 `Idempotency-Key: <요청마다 새 임의 값>`을 붙이면, 응답을 못 받아 같은 키로 다시 보내도 한 번만 만들어지고 처음 응답이 `Idempotent-Replayed: true`와 함께 돌아옵니다. 같은 키에 다른 본문은 422, 처음 요청이 아직 처리 중이면 409, 실패(2xx 아님)한 요청은 기억하지 않아 고쳐서 같은 키로 보내도 됩니다. 화면(브라우저)도 만들기 요청에 키를 붙입니다. 보관한 응답(`idempotency_keys`)은 24시간 뒤 `token-cleanup`이 지웁니다. 키는 사람(토큰을 만든 사람)마다 따로입니다.
 
 ### 웹훅 (나가는 연동)
 
-1. **관리 → API와 웹훅 → 웹훅 추가**: 이름, 받는 주소(http:// 또는 https://. 169.254.x·[fe80:…]·metadata.google.internal은 "이 주소로는 보낼 수 없습니다."), 보낼 이벤트(작업 생성·작업 변경·작업 삭제·코멘트), 프로젝트(고르지 않으면 모든 프로젝트), 켜기.
+1. **관리 → API와 웹훅 → 웹훅 추가**: 이름, 받는 주소(http:// 또는 https://. 169.254.x·[fe80:…]·metadata.google.internal은 "이 주소로는 보낼 수 없습니다.", `OPENPMS_WEBHOOK_BLOCK_PRIVATE=true`면 루프백·사설 주소도 422), 보낼 이벤트(작업 생성·작업 변경·작업 삭제·코멘트), 프로젝트(고르지 않으면 모든 프로젝트), 켜기.
 2. 저장하면 **서명 키**(`whsec_…`)가 한 번만 보입니다. 받는 쪽에 저장합니다. 잃어버리면 **서명 키 새로 만들기**(옛 키는 바로 무효).
 3. **테스트 전송**으로 `ping`을 한 번 보내 봅니다. 결과와 **최근 전송 기록**(30건)이 화면에 나옵니다. 실패한 전송은 **다시 보내기**.
 
 - 요청: `POST`, `Content-Type: application/json`, `User-Agent: openPMS-Webhook/1`, `X-OpenPMS-Event`, `X-OpenPMS-Delivery`(전송 id, 중복 거르기용), `X-OpenPMS-Signature: sha256=<본문을 서명 키로 HMAC-SHA256 한 16진수>`. 받는 쪽은 받은 본문 그대로 HMAC을 계산해 비교합니다.
 - 보내는 방식: 작업이 바뀌는 트랜잭션 안에서 보낼 일을 `webhook_deliveries`에 쌓고, 예약 작업 `webhook-delivery`가 15초마다 보냅니다(`OPENPMS_JOBS_ENABLED=true`인 인스턴스에서만). 2xx면 성공, 아니면 1·5·30·120분 뒤 다시 보내고 다섯 번째에도 실패하면 실패로 끝냅니다. "적어도 한 번"이라 같은 전송이 두 번 갈 수 있습니다.
 - 리다이렉트(3xx)는 따라가지 않습니다(실패로 셈). 연결 5초, 응답 10초 안에 2xx를 돌려줘야 합니다. 받는 쪽은 저장만 하고 바로 응답하는 것이 좋습니다.
-- 내부 코멘트는 보내지 않습니다. 작업을 다른 프로젝트로 옮기면(하위 프로젝트 보드의 카드 이동 포함) `work_package.updated`로 갑니다(dfde416). 자동 일정으로 바뀐 다른 작업, 첨부 추가·삭제, 프로젝트 복사·템플릿으로 생긴 작업도 이벤트가 없습니다(지금 버전의 한계).
+- 내부 코멘트는 보내지 않습니다. 작업을 다른 프로젝트로 옮기면(하위 프로젝트 보드의 카드 이동 포함) `work_package.updated`로 갑니다(dfde416). 06b48f5부터 자동 일정으로 밀린 다른 작업과 첨부 추가·삭제도 `work_package.updated`, 프로젝트 복사·템플릿으로 생긴 작업은 작업마다 `work_package.created`로 갑니다. 본문 `changes`는 그 요청이 바꾼 항목만 담습니다(전에는 5분 안에 합쳐진 변경 전체). 자동 일정이 많은 작업을 한꺼번에 밀면 그만큼 전송이 생깁니다.
 - **전송 기록은 30일 뒤 자동으로 지웁니다**(dfde416). 예약 작업 `token-cleanup`(매일 03:30, `OPENPMS_JOBS_ENABLED=true`인 인스턴스)이 `pending`이 아니고 만든 지 30일 지난 행을 지웁니다. 웹훅을 지우면 그 웹훅의 기록도 같이 지워집니다. 30일보다 오래 남겨야 하면 받는 쪽에 보관합니다.
-- 받는 주소는 링크 로컬(169.254.x, [fe80:…])과 metadata.google.internal(클라우드 메타데이터)만 막습니다(dfde416). 그 밖의 사내 주소나 이 서버 자신(127.0.0.1)으로는 여전히 보낼 수 있습니다(SSRF 성격). 관리자만 설정하지만, 막으려면 방화벽 egress를 받는 쪽 주소만 허용합니다.
+- 받는 주소: 링크 로컬(169.254.x, [fe80:…])과 metadata.google.internal(클라우드 메타데이터)은 늘 막습니다(dfde416, 06b48f5부터 이름이 그 주소로 풀려도). 사내 주소나 이 서버 자신(127.0.0.1)은 **기본으로는 허용**합니다(SSRF 성격). 받는 사내 시스템이 모두 공인·DMZ 주소라면 `.env`에 `OPENPMS_WEBHOOK_BLOCK_PRIVATE=true`를 넣어 루프백·사설 주소를 막습니다(등록 때 422 "사내망·루프백 주소로는 보낼 수 없습니다(운영 설정에서 막혀 있음).", 이미 등록한 웹훅도 보낼 때 다시 검사해 기록 오류 "보내지 않음: …"). 받는 쪽이 사설 주소라 켤 수 없으면 방화벽 egress를 받는 쪽 주소만 허용합니다.
 - 실패 로그: `webhook delivery <전송 id> to <웹훅 id> not accepted: <오류>`(INFO). 작업 처리 건수는 `webhook-delivery: N`.
 
 ## PDF 내보내기와 글꼴
@@ -382,6 +384,7 @@ docker compose exec -T app tar xzf - -C /data/files < files-2026-10-10.tar.gz
    ```
 
 - 마이그레이션이 실패하면 앱이 뜨지 않습니다. 원인을 고치거나, 이전 소스로 되돌려 빌드하고 백업에서 DB를 복원합니다.
+- 99e0287 기준으로 올리면 V16 하나가 적용됩니다(`idempotency_keys` 테이블, `webhooks_created_by_idx` 인덱스, `webhooks_set_updated_at` 트리거). 테이블·인덱스·트리거를 더할 뿐 기존 데이터를 바꾸지 않습니다. 9252851 이미지로 만든 V15 DB에서 올려 프로젝트·작업이 그대로인 것을 확인했습니다(아래 재검증 6). 새 환경 변수 `OPENPMS_WEBHOOK_BLOCK_PRIVATE`는 선택이고 넣지 않으면 지금처럼 동작합니다. 사용자에게 보이는 변화: 목록 기준선 아래 "기준선 이후 목록에서 빠진 작업", 알림 필터·건수가 최근 500건에 묶이지 않음. 웹훅 받는 쪽에는 자동 일정·첨부·프로젝트 복사 이벤트가 새로 가므로 미리 알립니다.
 - 86e58a9 기준으로 올리면 V11–V15 다섯 개가 적용됩니다(내부 코멘트 켜기, 고대비 테마 값, 개요 위젯, API 토큰, 웹훅). 모두 컬럼·테이블을 더하거나 검사 조건을 넓히는 것이라 기존 데이터를 바꾸지 않습니다. V10 DB에서 올려 데이터가 그대로인 것을 확인했습니다(아래 재검증 4). 새 환경 변수는 없습니다. API 토큰은 기본으로 켜져 있으므로, 연동을 쓰지 않을 거면 올린 뒤 관리 → API와 웹훅에서 끕니다. 키보드 단축키도 이번에 처음 동작하는데, 환경설정 기본값(`user_preferences.keyboard_shortcuts`)이 켬이라 기존 사용자 모두에게 켜진 채로 시작합니다(끄기는 계정 설정 → 화면 → 키보드 단축키). 사용자에게 미리 알립니다.
 - 세션은 DB(Spring Session JDBC)에 있으므로 재시작해도 사용자는 다시 로그인하지 않아도 됩니다.
 
@@ -421,7 +424,9 @@ curl -s http://127.0.0.1:8090/actuator/health
 | 여러 사람이 동시에 로그인할 때 모두 429 "요청이 너무 많습니다." | 프록시 뒤의 모든 사람이 프록시 주소 하나로 보이는 경우입니다. 프록시가 `X-Forwarded-For`·`X-Forwarded-Proto`를 보내는지, 프록시가 들어오는 주소가 `OPENPMS_TRUSTED_PROXIES`(기본: 127.x, ::1, 172.16–31.x, 10.88–89.x)에 맞는지 봅니다("프록시 헤더와 클라이언트 주소"). 한도는 1분 뒤 저절로 풀립니다. |
 | 관리 → 사용자에 "일시 잠김", "로그인 실패가 많아 {시각}까지" | 비밀번호를 연속으로 틀려 잠금 시간 중입니다(관리 → 로그인·비밀번호의 횟수·시간). 상태는 활성 그대로이고 "잠김" 필터로도 찾습니다. 기다리지 않으려면 행 메뉴의 **잠금 해제**(실패 횟수와 잠금 시각을 지움). |
 | 웹훅이 계속 "실패" | 관리 → API와 웹훅의 전송 기록 오류. `ConnectException`·시간 초과면 방화벽 egress·DNS, `SSLHandshakeException`이면 JRE가 받는 쪽 인증서(사내 CA)를 믿지 않음, `HTTP 3xx`면 리다이렉트(주소를 최종 주소로), `HTTP 4xx·5xx`면 받는 쪽(서명 검증 실패 포함). 받는 쪽은 10초 안에 2xx를 돌려줘야 합니다 |
-| 웹훅이 아예 가지 않음(기록도 없음) | 웹훅이 켜져 있는지, 이벤트·프로젝트를 골랐는지, 그 변경이 이벤트를 만드는 종류인지(작업 옮기기·자동 일정·첨부·프로젝트 복사는 없음), 기록은 있는데 "다시 보낼 예정"에 머물면 `OPENPMS_JOBS_ENABLED=true`인지 |
+| 웹훅 기록에 "보내지 않음: 사내망·루프백 주소로는 보낼 수 없습니다…" | `OPENPMS_WEBHOOK_BLOCK_PRIVATE=true`인데 받는 주소(또는 그 이름이 풀린 주소)가 사설·루프백입니다. 받는 쪽을 공인 주소로 옮기거나 스위치를 끕니다. "이 주소로는 보낼 수 없습니다."는 링크 로컬이라 스위치와 상관없이 막힙니다 |
+| 같은 키로 보낸 연동 요청이 409 "같은 요청을 아직 처리하고 있습니다." 또는 422 "같은 Idempotency-Key를 다른 요청에 썼습니다." | 409는 처음 요청이 끝나지 않은 것(잠시 뒤 같은 키로 다시), 422는 연동 쪽이 키를 재사용하는 것(요청마다 새 키) |
+| 웹훅이 아예 가지 않음(기록도 없음) | 웹훅이 켜져 있는지, 이벤트·프로젝트를 골랐는지, 그 변경이 이벤트를 만드는 종류인지(06b48f5부터 작업 옮기기·자동 일정·첨부·프로젝트 복사도 이벤트가 있음, 내부 코멘트는 없음), 기록은 있는데 "다시 보낼 예정"에 머물면 `OPENPMS_JOBS_ENABLED=true`인지 |
 | 연동이 401 "API 토큰이 올바르지 않거나 만료되었습니다." | 토큰을 폐기했거나 만료됐거나, 만든 사람이 잠김·삭제됨. 관리 → API와 웹훅에서 끈 경우는 "API 토큰을 쓰지 않도록 설정되어 있습니다." |
 | 연동이 403 "읽기 전용 토큰입니다." 또는 "…로그인·비밀번호·토큰·연동 설정을 다룰 수 없습니다." | 읽기·쓰기 토큰을 새로 만들거나, 토큰으로 부를 수 없는 경로입니다(dfde416부터 토큰 스위치·웹훅 설정도 포함, 관리자 토큰도 403). 그 밖의 403은 만든 사람에게 그 권한이 없는 것 |
 | 연동이 429 | 토큰 하나로 분당 300회를 넘음. 1분 뒤 풀림 |
@@ -440,7 +445,8 @@ curl -s http://127.0.0.1:8090/actuator/health
 - 기본 비밀번호는 없습니다. 첫 관리자 설정 링크는 로그에 한 번 나옵니다. 링크가 유효한 24시간 동안은 로그를 다룰 때 주의합니다.
 - API 토큰은 원문을 저장하지 않습니다(SHA-256). 토큰은 비밀번호처럼 다루라고 사용자에게 안내합니다. 토큰으로 한 변경은 활동 기록에 만든 사람으로 남고, 토큰으로 했다는 표시는 없습니다.
 - **웹훅 서명 키는 DB(`webhooks.secret`)에 평문으로 저장됩니다**(HMAC 계산에 원문이 필요). SSO 클라이언트 시크릿과 같이 DB 덤프를 비밀값처럼 다룹니다. 샜다고 의심되면 **서명 키 새로 만들기**.
-- 웹훅 받는 주소는 관리자가 정하며 링크 로컬·메타데이터 주소 말고는 사내 주소 제한이 없습니다(위 "웹훅"). 관리자 계정 관리와 egress 방화벽이 방어선입니다.
+- 웹훅 받는 주소는 관리자가 정하며, 기본으로는 링크 로컬·메타데이터 주소 말고는 사내 주소 제한이 없습니다. `OPENPMS_WEBHOOK_BLOCK_PRIVATE=true`면 루프백·사설 주소도 막습니다(06b48f5, 위 "웹훅"). 그 밖에는 관리자 계정 관리와 egress 방화벽이 방어선입니다.
+- `idempotency_keys.body`에는 만들기 요청의 응답(만든 작업·코멘트 내용)이 하루 동안 남습니다. DB 덤프를 비밀값처럼 다루는 기존 원칙에 포함됩니다.
 - 번들 글꼴(Pretendard, SIL OFL 1.1)의 라이선스 원문을 지우지 않습니다(위 "PDF 내보내기와 글꼴").
 
 ## 검증 기록
@@ -531,3 +537,19 @@ curl -s http://127.0.0.1:8090/actuator/health
 | 웹훅 받는 주소 | `http://169.254.169.254/` → 422 |
 | OpenAPI | `/work-packages/export/count` 있음 |
 | 콘솔·5xx | 5xx 없음. 로그아웃 상태의 401과 위 확인에서 일부러 낸 403·422, 확인 스크립트가 부른 개발용 모듈 경로의 404뿐 |
+
+### 2026-10-11 재검증 6 (99e0287 기준 이미지: 마이그레이션 V16, Idempotency-Key, 웹훅 보강, 알림 필터)
+
+99e0287 코드로 만든 이미지(`localhost/openpms:test`)를 스크래치 compose(포트 18090)로 띄워 두 가지를 확인했습니다.
+
+| 항목 | 결과 |
+| --- | --- |
+| 업그레이드(V15 DB) | 9252851 이미지로 만든 V15 DB에 새 이미지를 띄움 → V16 적용, 프로젝트와 작업이 그대로 |
+| 새 설치 | 빈 스키마에 16개 적용, 헬스 UP |
+| 브라우저 흐름 | 초대 링크로 가입 → 프로젝트·작업 만들기 → 홈·관리·보드·Gantt·계정 → 로그아웃 뒤 폼 로그인 → API와 웹훅·권한 보고서·API 문서·프로젝트 개요, 모두 통과 |
+| PDF | 200, `%PDF-` |
+| 토큰 | 읽기·쓰기 토큰으로 `GET /admin/webhooks` 403 |
+| 웹훅 받는 주소 | `http://169.254.169.254/` → 422 |
+| Idempotency-Key | 화면이 만든 두 생성 요청(`POST /api/v1/projects` 201, `POST /api/v1/projects/{id}/work-packages` 201)이 `idempotency_keys`에 상태·응답과 함께 남음 |
+
+`OPENPMS_WEBHOOK_BLOCK_PRIVATE=true`로 띄운 확인과 실제 사내 시스템으로 받는 웹훅은 배포 때 위 "웹훅과 API 토큰" 순서대로 합니다.

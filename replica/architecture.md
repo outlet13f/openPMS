@@ -59,6 +59,7 @@ openPMS/
       V11–V13             내부 코멘트(projects.internal_comments), 고대비 테마(users.theme 검사), 개요 위젯(projects.overview_widgets)
       V14__api_tokens.sql 개인 API 토큰
       V15__webhooks.sql   웹훅: webhooks, webhook_deliveries
+      V16__idempotency_keys.sql  생성 POST의 Idempotency-Key 응답 보관, webhooks 인덱스·트리거 보완
   frontend/                     Vite + React + TS. 빌드 결과는 backend 정적 리소스로 복사
   Dockerfile                    저장소 최상위. 멀티 스테이지(프론트 빌드 → 백엔드 빌드 → JRE 런타임)
   compose.yaml                  저장소 최상위. app, db (mailpit 없음. 개발용 Mailpit은 backend/scripts/dev.sh가 띄움)
@@ -93,7 +94,7 @@ openPMS/
 
 ## 2. 스키마
 
-테이블 36개(자체) + 라이브러리 테이블 3개(spring_session, spring_session_attributes, scheduled_tasks). 전문은 `replica/schema.sql`(= Flyway V1). 구현 중 V4–V9로 바뀐 것(work_package_shares 테이블, user_preferences.last_digest_at·my_page_widgets, 알림 기본값, updated_at 트리거 예외, types.attribute_groups를 유형 양식으로 쓰며 기본값 '[]'로 초기화)은 `replica/review-2026-10-10.md` §2.3에 정리했습니다(V9는 그 뒤 추가). V10은 사내 SSO의 `oidc_providers`, `user_identities` 두 테이블을 더합니다(아래 목록과 설계 결정). 2026-10-11(4fb4ca5..86e58a9)에 V11 `projects.internal_comments`, V12 `users.theme`에 `high_contrast`, V13 `projects.overview_widgets`, V14 `api_tokens`, V15 `webhooks`·`webhook_deliveries`를 더했습니다. 구현 기준 테이블은 자체 42개 + 라이브러리 3개입니다(`docs/deliverables/05-데이터베이스설계서.md`).
+테이블 36개(자체) + 라이브러리 테이블 3개(spring_session, spring_session_attributes, scheduled_tasks). 전문은 `replica/schema.sql`(= Flyway V1). 구현 중 V4–V9로 바뀐 것(work_package_shares 테이블, user_preferences.last_digest_at·my_page_widgets, 알림 기본값, updated_at 트리거 예외, types.attribute_groups를 유형 양식으로 쓰며 기본값 '[]'로 초기화)은 `replica/review-2026-10-10.md` §2.3에 정리했습니다(V9는 그 뒤 추가). V10은 사내 SSO의 `oidc_providers`, `user_identities` 두 테이블을 더합니다(아래 목록과 설계 결정). 2026-10-11(4fb4ca5..86e58a9)에 V11 `projects.internal_comments`, V12 `users.theme`에 `high_contrast`, V13 `projects.overview_widgets`, V14 `api_tokens`, V15 `webhooks`·`webhook_deliveries`를 더했습니다. 같은 날 93d1a74의 V16이 `idempotency_keys`와 `webhooks_created_by_idx` 인덱스·`webhooks_set_updated_at` 트리거를 더했습니다. 구현 기준 테이블은 자체 43개 + 라이브러리 3개입니다(`docs/deliverables/05-데이터베이스설계서.md`).
 
 **접근 규칙: 데이터 계층 검사.** RLS는 쓰지 않습니다. 앱이 DB 계정 하나로 접속하기 때문입니다. 대신 모든 서비스 메서드가 `PermissionService`로 권한을 확인하고, 모든 목록 쿼리는 `VisibleProjects.condition(user, permission)` 조건을 반드시 포함합니다(§4.1). 보이지 않는 리소스에는 403이 아니라 404를 돌려줘 존재 여부가 드러나지 않게 합니다.
 
@@ -104,7 +105,7 @@ openPMS/
 
 | 영역 | 테이블 | 소유 기준 |
 | --- | --- | --- |
-| 사용자·인증 | users, user_preferences, user_tokens, user_groups, user_group_members, roles, global_role_assignments, oidc_providers(V10 추가), user_identities(V10 추가), api_tokens(V14 추가) | 사용자(user_id) 또는 인스턴스(관리자). SSO 공급자는 인스턴스(관리자), 연결은 user_id + provider_id. API 토큰은 user_id(본인, 관리자는 전체 폐기) |
+| 사용자·인증 | users, user_preferences, user_tokens, user_groups, user_group_members, roles, global_role_assignments, oidc_providers(V10 추가), user_identities(V10 추가), api_tokens(V14 추가), idempotency_keys(V16 추가) | 사용자(user_id) 또는 인스턴스(관리자). SSO 공급자는 인스턴스(관리자), 연결은 user_id + provider_id. API 토큰은 user_id(본인, 관리자는 전체 폐기). Idempotency-Key 응답은 user_id + key(본인만, 앱 필터가 씀) |
 | 프로젝트·멤버 | projects, project_favorites, members, member_roles | project_id, 즐겨찾기는 user_id |
 | 작업 설정 | types, project_types, statuses, workflows, priorities, versions, categories, custom_fields, custom_field_options, custom_field_types, project_custom_fields | 인스턴스(관리자), 버전·카테고리는 project_id |
 | 작업 패키지 | work_packages, relations, watchers, attachments, journals, work_package_shares(V6 추가) | project_id (작업 패키지를 통해), 공유는 work_package_id + user_id |
@@ -126,7 +127,8 @@ openPMS/
 - **돈 컬럼은 없습니다.** 시간·비용은 이번 범위 밖입니다.
 - **SSO 공급자는 DB에 둡니다(V10).** `oidc_providers`: slug(콜백 주소에 들어감, `^[a-z0-9][a-z0-9-]{0,39}$`, 유일), display_name(1–60자), issuer, client_id, client_secret(평문, API로 내보내지 않음), scopes(기본 `openid email profile`), claim_email·claim_name(기본 `email`·`name`), auto_create(기본 false), enabled, position, updated_at 트리거. `user_identities`: user_id → users(cascade), provider_id → oidc_providers(cascade, 공급자를 지우면 연결만 사라짐), subject, last_login_at. 유일 (provider_id, subject)와 (provider_id, user_id): 공급자마다 계정 하나에 sub 하나. 공급자의 토큰은 저장하지 않습니다.
 - **API 토큰은 해시만 둡니다(V14).** `api_tokens`: user_id(cascade), name(1–60자), token_hash(SHA-256, 유일), scope(`read`·`write`), last_used_at(1분에 한 번만 갱신), expires_at(null = 없음), revoked_at(폐기해도 행은 남김). 토큰 원문(`opms_` + 32바이트)은 만들 때 응답에 한 번만 있습니다.
-- **웹훅은 보낼 일을 테이블에 쌓습니다(V15).** `webhooks`: name, url(`^https?://`), secret(HMAC 키, 평문, API로는 만들 때만), events(4종 부분집합, CHECK), project_ids(null = 전체), enabled, created_by. `webhook_deliveries`: 업무 변경과 같은 트랜잭션에서 넣는 아웃박스 행(event, payload jsonb, status pending·succeeded·failed, attempts, next_attempt_at, response_status, error). 보낼 차례인 행은 부분 인덱스(`status = 'pending'`)로 찾습니다. 웹훅을 지우면 전송 기록도 cascade로 지워지고, 그 밖에는 `token-cleanup`이 `pending`이 아니고 30일 지난 행을 지웁니다(dfde416).
+- **웹훅은 보낼 일을 테이블에 쌓습니다(V15).** `webhooks`: name, url(`^https?://`), secret(HMAC 키, 평문, API로는 만들 때만), events(4종 부분집합, CHECK), project_ids(null = 전체), enabled, created_by. `webhook_deliveries`: 업무 변경과 같은 트랜잭션에서 넣는 아웃박스 행(event, payload jsonb, status pending·succeeded·failed, attempts, next_attempt_at, response_status, error). 보낼 차례인 행은 부분 인덱스(`status = 'pending'`)로 찾습니다. 웹훅을 지우면 전송 기록도 cascade로 지워지고, 그 밖에는 `token-cleanup`이 `pending`이 아니고 30일 지난 행을 지웁니다(dfde416). V16(93d1a74)이 `webhooks.created_by` 인덱스(`webhooks_created_by_idx`, 인덱스 없는 FK가 다시 0개)와 다른 테이블과 같은 `updated_at` 트리거(`webhooks_set_updated_at`)를 더했습니다.
+- **생성 POST의 재시도는 DB에서 한 번으로 묶습니다(V16).** `idempotency_keys`: PK (user_id, key), user_id → users(cascade), key(1–255자, CHECK), method, path(쿼리 포함), request_hash(메서드·경로·본문의 SHA-256: 같은 키를 다른 요청에 쓰면 422), status(null = 처리 중, 같은 키가 또 오면 409), content_type, body(bytea, 처음 2xx 응답), created_at(인덱스 `idempotency_keys_created_idx`). 처음 요청이 행을 먼저 넣어(`on conflict do nothing`) 동시에 온 같은 요청 중 하나만 실행되게 하고, 2xx가 아니면 행을 지워 다시 보낼 수 있게 합니다. 24시간 뒤 `token-cleanup`이 지웁니다. 설계(§5)는 "10분 보관"이었지만 사람이 다음 날 다시 시도하는 경우까지 덮도록 하루로 늘렸습니다.
 - PostgreSQL 18로 올리면 시간순 정렬되는 `uuidv7()`을 기본값으로 바꾸는 것을 검토합니다.
 
 ### 권한 키
@@ -279,6 +281,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 
 - 경로 앞부분은 `/api/v1`, JSON 필드는 camelCase입니다. 인증은 세션 쿠키, CSRF는 `X-XSRF-TOKEN` 헤더로 합니다.
 - 구현(f835e1c): 사내 연동은 개인 API 토큰을 `Authorization: Bearer opms_…`로 보냅니다. 세션·쿠키가 없으므로 CSRF를 보지 않고, 그 요청만 만든 사람의 권한으로 처리합니다. 읽기 전용 토큰은 GET(과 목록 조회·내보내기 POST)만, 로그인·비밀번호·토큰 관리 경로는 토큰으로 부를 수 없고, 토큰마다 분당 300회입니다. 버전 정책: v1 안에서는 응답 필드를 더하기만 하고, 빼거나 뜻을 바꾸는 변경은 `/api/v2`로 냅니다. 주요 경로의 OpenAPI 3.1 문서는 `GET /openapi.json`(공개).
+- 구현(93d1a74): 무언가를 만드는 POST에 `Idempotency-Key: <요청마다 새 임의 값>` 헤더를 붙이면 같은 키의 재전송에 처음 2xx 응답을 그대로 돌려줍니다(응답 헤더 `Idempotent-Replayed: true`, 하루 보관). 같은 키에 다른 본문 422, 처음 요청이 처리 중이면 409, 키 255자 초과 422. 2xx가 아닌 응답은 보관하지 않고, multipart와 1MB 넘는 응답은 대상이 아닙니다. 화면은 프로젝트 만들기·복사, 작업 만들기·복사, 코멘트에 키를 붙입니다.
 - **식별자**: 작업 패키지는 `number`, 프로젝트는 `identifier`(또는 uuid), 나머지는 uuid입니다.
 - **오류**: RFC 9457 `application/problem+json` 형식입니다.
 
@@ -295,9 +298,9 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 - **작업 패키지 응답의 `_meta`**: `editableFields`, `allowedActions`(edit, delete, move, comment, manageRelations…), `derived`(파생 필드 목록)를 담습니다. 화면은 이 값으로 편집 가능 여부를 그리고, 권한 규칙을 프론트에 복제하지 않습니다.
 - 원본 앱의 내부 API는 참고하지 않습니다. 모든 경로는 openPMS가 정의한 것입니다.
 
-### 4.2 경로 (총 164개: 설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1 + 비밀번호 만들기 1 + 전역 역할 배정 1 + 프로젝트 복사 1 + API 토큰·OpenAPI 8 + 웹훅 8)
+### 4.2 경로 (총 165개: 설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1 + 비밀번호 만들기 1 + 전역 역할 배정 1 + 프로젝트 복사 1 + API 토큰·OpenAPI 8 + 웹훅 8 + 알림 건수 1)
 
-이 표는 설계에 구현 기록을 덧붙인 것입니다. 실제 컨트롤러 매핑 수(86e58a9 기준 173개, dev 전용 1개 포함)와 경로별 차이는 `docs/deliverables/04-인터페이스정의서.md` 부록에 있습니다.
+이 표는 설계에 구현 기록을 덧붙인 것입니다. 실제 컨트롤러 매핑 수(99e0287 기준 174개, dev 전용 1개 포함)와 경로별 차이는 `docs/deliverables/04-인터페이스정의서.md` 부록에 있습니다.
 
 #### 인증·계정 (18)
 
@@ -391,7 +394,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 
 | method path | 하는 일 | 호출 가능 | 입력 | 출력 | 흐름 |
 | --- | --- | --- | --- | --- | --- |
-| POST /work-packages/query | 쿼리 실행 (읽기 전용. spec이 복잡해서 POST). 구현: `spec.baseline`이면 행마다 `baseline`, 결과에 `baselineAt`(1728c3c) | 로그인 (결과는 wp.view 가능한 프로젝트로 제한) | spec, projectId, page | rows(행마다 groupKey·baseline), ancestors, groups, sums, total, baselineAt (§3.5) | S06 S13 S15 S17 S18 S21 F03 |
+| POST /work-packages/query | 쿼리 실행 (읽기 전용. spec이 복잡해서 POST). 구현: `spec.baseline`이면 행마다 `baseline`, 결과에 `baselineAt`(1728c3c)과 `baselineRemoved`(그때는 맞았지만 지금은 빠진 작업, 번호 낮은 순 최대 200건, 22ed5db) | 로그인 (결과는 wp.view 가능한 프로젝트로 제한) | spec, projectId, page | rows(행마다 groupKey·baseline), ancestors, groups, sums, total, baselineAt, baselineRemoved[{id, number, subject, project, then, now}] (§3.5) | S06 S13 S15 S17 S18 S21 F03 |
 | GET /work-packages/filters | 쓸 수 있는 필터·연산자·값 (사용자 정의 필드 포함) | wp.view | projectId | filters[] | S06 S11 |
 | GET /queries | 기본 보기 + 비공개 + 공개 + 즐겨찾기 | wp.view | projectId, view | queries[] | S06 S13 |
 | POST /queries | 보기 저장 | query.save (공개: query.manage_public) | name, view, isPublic, spec | 201 query | F03 |
@@ -428,13 +431,14 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | DELETE /boards/{id}/cards/{number} | 기본 보드: 카드를 보드에서 뺌. 작업은 그대로. 88153b7 | board.manage | - | 200 board | S15 |
 | POST /boards/{id}/cards/new | 열에서 새 작업 만들기: 그 열의 상태·담당자·버전을 넣고 유형은 프로젝트 기본(typeId로 바꿀 수 있음). 기본 보드면 그 열에 넣음. 보통의 생성 규칙·권한을 그대로 거침. 88153b7. 388400b: subproject 열이면 그 하위 프로젝트에 만들고(쓰지 않는 유형이면 그 프로젝트 기본 유형), parent_child 열이면 그 작업의 하위로 | wp.create (basic 보드는 board.manage도) | columnId, subject, typeId? | 201 {board, workPackage} / 422 | S15 |
 
-#### 알림 — F09 (4)
+#### 알림 — F09 (5, 건수는 구현에서 더함)
 
 | method path | 하는 일 | 호출 가능 | 입력 | 출력 | 흐름 |
 | --- | --- | --- | --- | --- | --- |
-| GET /notifications | 받은 편지함 (읽지 않음·모두, 이유, 프로젝트, 같은 작업끼리 묶음). 구현: `filter`만 받고 배열(최근 500건). 이유·프로젝트 거르기(57722a9)는 화면이 이 결과에서 함(URL `?reason=&project=`) | 본인 | filter, reason, projectId, page | page<NotificationGroup> | S19 |
+| GET /notifications | 받은 편지함 (읽지 않음·모두, 이유, 프로젝트, 같은 작업끼리 묶음). 구현: 배열(조건에 맞는 최근 500건). 이유·프로젝트 거르기는 57722a9에서 화면이 했고 0ef1888부터 서버가 500건 제한 전에 함 | 본인 | filter, reason, projectId, page. 구현: filter, reasons(쉼표로 여러 개), project(식별자 또는 id) | page<NotificationGroup>. 구현: NotificationGroup[] | S19 |
+| GET /notifications/counts | 필터 선택지의 읽지 않은 수(전체 알림 기준, 500건 제한 없음). `wp.view`가 있는 프로젝트만. 구현에서 더함(0ef1888) | 본인 | reasons, project | {all, byReason, projects[{identifier, name, unread}], allProjects}: all·byReason은 고른 프로젝트 안에서, projects·allProjects는 고른 이유 안에서 | S19 |
 | GET /notifications/unread-count | 헤더 배지 (60초 폴링, ETag) | 본인 | - | {count} / 304 | 공통 |
-| POST /notifications/read | 읽음 처리 (ids, 작업 단위, 현재 필터 전체) | 본인 | ids[] \| workPackageNumber \| all + filter | {updated} | S19 F09 |
+| POST /notifications/read | 읽음 처리 (ids, 작업 단위, 현재 필터 전체) | 본인 | ids[] \| workPackageNumber \| all + filter. 구현: ids \| workPackageNumber \| all \| {reasons?, project?}(필터에 맞는 읽지 않은 알림 전부, 0ef1888) | {updated}. 구현: 204 | S19 F09 |
 | POST /notifications/unread | 읽지 않음으로 되돌리기 | 본인 | ids[] | {updated} | S19 |
 
 #### 검색·홈 (3)
@@ -476,7 +480,7 @@ seed의 역할과 코드의 상수가 같아야 합니다. 이름은 openPMS가 
 | PUT /admin/settings/api | 켜기·끄기(`api.tokens_enabled`). 끄면 있는 토큰도 바로 401 | 관리자(세션만) | tokensEnabled | {tokensEnabled} | 관리 · API와 웹훅 |
 | GET /openapi.json | 주요 경로의 OpenAPI 3.1 문서(`resources/api/openapi.json`) | 익명 | - | JSON | 도움말 · API 문서 |
 | GET /admin/webhooks | 웹훅 목록(서명 키는 끝 4자리만) | 관리자(세션만) | - | webhooks[] | 관리 · API와 웹훅 |
-| POST /admin/webhooks | 웹훅 만들기. 서명 키 `whsec_…`는 이 응답에만 | 관리자(세션만) | name, url(http\|https, 169.254.x·[fe80:…]·metadata.google.internal은 422, dfde416), events[], projectIds[](비면 전체), enabled | 201 webhook + secret | 관리 · API와 웹훅 |
+| POST /admin/webhooks | 웹훅 만들기. 서명 키 `whsec_…`는 이 응답에만 | 관리자(세션만) | name, url(http\|https, 169.254.x·[fe80:…]·metadata.google.internal은 422(dfde416, 06b48f5부터 이름이 그쪽으로 풀려도), `OPENPMS_WEBHOOK_BLOCK_PRIVATE=true`면 루프백·사설 주소도 422(06b48f5)), events[], projectIds[](비면 전체), enabled | 201 webhook + secret | 관리 · API와 웹훅 |
 | PATCH /admin/webhooks/{id} | 수정(보낸 필드만) | 관리자(세션만) | 부분 | webhook | 관리 · API와 웹훅 |
 | DELETE /admin/webhooks/{id} | 삭제(보내지 못한 이벤트·전송 기록도) | 관리자(세션만) | - | 204 | 관리 · API와 웹훅 |
 | POST /admin/webhooks/{id}/secret | 서명 키 새로 만들기(옛 키는 바로 무효) | 관리자(세션만) | - | webhook + secret | 관리 · API와 웹훅 |
@@ -517,7 +521,7 @@ S10–S12는 모달이라 라우트가 없습니다.
 ### 4.4 웹훅·작업
 
 - **들어오는 웹훅**: 없음 (결제·외부 캘린더 연동이 없음).
-- **나가는 웹훅**: 없음. 작업 변경 웹훅은 could 단계에서 추가합니다. 구현(86e58a9): 작업 생성·변경·삭제·코멘트(내부 코멘트 제외)를 관리자가 등록한 주소로 서명한 JSON으로 보냄. 업무 트랜잭션 안에서 `webhook_deliveries`에 쌓고 아래 `webhook-delivery` 작업이 보냄(아웃박스). 작업 옮기기(다른 프로젝트)는 dfde416부터 `work_package.updated`로 보냄. 자동 일정·첨부·프로젝트 복사는 이벤트가 없음.
+- **나가는 웹훅**: 없음. 작업 변경 웹훅은 could 단계에서 추가합니다. 구현(86e58a9): 작업 생성·변경·삭제·코멘트(내부 코멘트 제외)를 관리자가 등록한 주소로 서명한 JSON으로 보냄. 업무 트랜잭션 안에서 `webhook_deliveries`에 쌓고 아래 `webhook-delivery` 작업이 보냄(아웃박스). 작업 옮기기(다른 프로젝트)는 dfde416부터 `work_package.updated`로 보냄. 06b48f5부터 자동 일정 전파로 밀린 작업과 첨부 추가·삭제도 `work_package.updated`, 프로젝트 복사·템플릿으로 생긴 작업은 `work_package.created`. `changes`는 그 요청이 바꾼 것만. 사설·루프백 받는 주소는 운영 스위치(`OPENPMS_WEBHOOK_BLOCK_PRIVATE`, 기본 꺼짐)로 막음(등록·전송 때 검사).
 - **들어오는 연동**: 구현(f835e1c): 사내 시스템이 개인 API 토큰으로 `/api/v1`을 부름(§4.1).
 - **나가는 메일**: 사내 SMTP.
 
@@ -534,7 +538,7 @@ S10–S12는 모달이라 라우트가 없습니다.
 | user-anonymize | 일회성 | 사용자 익명화, 멤버십·주시·알림 정리 |
 | attachment-orphans | 매일 03:00 KST | 24시간 넘게 연결되지 않은 임시 첨부와 파일 삭제 |
 | file-sweep | 매주 일요일 04:00 KST | DB에 없는 저장소 파일 삭제 (커밋 후 삭제가 실패한 경우를 정리) |
-| token-cleanup | 매일 | 만료된 user_tokens 삭제 (세션은 Spring Session이 정리). 구현: 03:30 KST, 폐기·만료 30일 지난 api_tokens와 끝난 지 30일 지난 webhook_deliveries도 삭제(dfde416) |
+| token-cleanup | 매일 | 만료된 user_tokens 삭제 (세션은 Spring Session이 정리). 구현: 03:30 KST, 폐기·만료 30일 지난 api_tokens와 끝난 지 30일 지난 webhook_deliveries도 삭제(dfde416), 하루 지난 idempotency_keys도 삭제(93d1a74) |
 | exports-cleanup | 매시간 | 24시간 지난 내보내기 파일 삭제 |
 | webhook-delivery | 15초 간격(구현에서 더함, 86e58a9) | 보낼 차례인 웹훅 전송을 50건까지. 2xx 아니면 1·5·30·120분 뒤 다시, 그다음 실패. 리다이렉트 안 따라감, 연결 5초·응답 10초 |
 
@@ -548,7 +552,7 @@ S10–S12는 모달이라 라우트가 없습니다.
 - **근무일·한국 공휴일**: 설날, 추석, 대체공휴일은 해마다 날짜가 바뀝니다. 휴무일을 관리자가 연초에 입력해야 하고, 빠뜨리면 일정 계산이 틀립니다. could 단계에서 공공데이터포털의 특일 정보 API(사내 키 사용)로 "올해 공휴일 가져오기"를 추가합니다. 근무일을 바꾸면 전체 재계산이 일어나므로 화면에서 경고를 보여줍니다.
 - **멱등성**: 들어오는 웹훅은 없습니다. 나가는 웹훅(구현)은 "적어도 한 번"이라 받는 쪽이 `X-OpenPMS-Delivery`로 중복을 거릅니다.
   - 수정: `lockVersion`이 중복 저장을 막습니다.
-  - 생성: 더블 클릭에 대비해 `Idempotency-Key` 헤더를 받습니다(10분 보관).
+  - 생성: 더블 클릭에 대비해 `Idempotency-Key` 헤더를 받습니다(10분 보관). 구현(93d1a74): 더블 클릭은 화면이 막고(BUG-001), 서버는 네트워크 재시도를 막습니다. 보관은 24시간(V16 `idempotency_keys`, §2 설계 결정), 2xx 응답만 보관.
   - 날짜 알림: 유니크 인덱스가 중복을 막습니다.
   - 메일: 적어도 한 번 발송합니다. 발송 후 `emailed_at`을 기록하기 전에 장애가 나면 중복 발송될 수 있고, 이는 감수합니다.
 - **경쟁 조건**:
@@ -641,7 +645,7 @@ S10–S12는 모달이라 라우트가 없습니다.
 
 ### M4. could 항목
 
-- 목록: 기준선 비교(일부: 지금은 빠진 작업은 안 보임, 1728c3c), 강조 표시(완료), PDF 내보내기(한글 폰트, 완료), 합계 행(완료)
+- 목록: 기준선 비교(완료: 1728c3c, 빠진 작업 22ed5db), 강조 표시(완료), PDF 내보내기(한글 폰트, 완료), 합계 행(완료)
 - 사용성: 키보드 단축키(완료), 다크 모드·고대비(완료)
 - 화면: 홈과 내 페이지 위젯(`/home` 경로 없이 완료), 프로젝트 개요 위젯(완료), 활동 필터(완료)
 - 협업: 내부 코멘트(완료), 작업 공유(완료), 비참여 이벤트 구독, 프로젝트별 알림 재정의(완료)
@@ -651,14 +655,14 @@ S10–S12는 모달이라 라우트가 없습니다.
 
 ### M5. replica-entrepreneur 개선 사항
 
-아직 실행하지 않았습니다. `/replica-entrepreneur`를 실행하면 실제 사용자 불만을 바탕으로 이 자리에 추가합니다.
+진행 중입니다(2026-10-11, 99e0287 뒤). 기능 패리티가 100이 되어 다음 단계로 시작했고, 실제 사용자 불만을 바탕으로 한 개선 사항은 끝나면 이 자리에 추가합니다.
 
 ---
 
 ## 7. 요약
 
 - **스택**: Spring Boot 4 + Java 21 · jOOQ + Flyway · PostgreSQL 17 · React 19 + Vite + TanStack · db-scheduler · 사내 SMTP · Docker Compose 셀프 호스팅
-- **규모**: 테이블 36개(+ 라이브러리 3개. 구현은 V15까지 자체 42개), API 경로 164개(설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1 + 비밀번호 만들기 1 + 전역 역할 배정 1 + 프로젝트 복사 1 + API 토큰·OpenAPI 8 + 웹훅 8. 실제 컨트롤러 매핑은 173개), 작업 13종(구현은 6종 + 요청 안 동기 처리)
+- **규모**: 테이블 36개(+ 라이브러리 3개. 구현은 V16까지 자체 43개), API 경로 165개(설계 134 + 사내 SSO 7 + 보드 카드 3 + 날짜 형식 1 + 비밀번호 만들기 1 + 전역 역할 배정 1 + 프로젝트 복사 1 + API 토큰·OpenAPI 8 + 웹훅 8 + 알림 건수 1. 실제 컨트롤러 매핑은 174개), 작업 13종(구현은 6종 + 요청 안 동기 처리)
 - **가장 위험한 세 가지**:
   1. 스케줄링 엔진: 근무일, lag, 자동 모드, 부모 파생, 전파, 순환 검출
   2. 쿼리 엔진: 필터 30여 종과 계층·그룹 합계를 권한 조건 아래에서 빠르게 처리
