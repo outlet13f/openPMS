@@ -39,6 +39,10 @@ import { can, useCurrentProject } from "@/app/project";
 import { WorkPackageDetail, asDetailTab } from "@/features/work-packages/detail";
 
 const cardId = (n: number) => `card-${n}`;
+/** A long column draws this many cards first and the rest on request (성능 예산: 1,000 cards at once took 1.5 s and 250 MB). */
+const COLUMN_PAGE = 50;
+/** Where a card dropped on the column itself (not on a card) goes: the end, or the end of what is drawn when the column is cut short. */
+const dropEnd = (count: number, limit: number) => (count > limit ? limit - 1 : count);
 
 /**
  * ←/→ jump to the neighbouring column, ↑/↓ move within the column. dnd-kit's sortable getter alone
@@ -222,6 +226,8 @@ function Column({
   onAddExisting,
   onRemoveCard,
   actions,
+  limit,
+  onMore,
 }: {
   column: BoardColumn;
   hrefOf: (wp: WorkPackage) => string;
@@ -233,9 +239,14 @@ function Column({
   /** basic boards: take a card off the board */
   onRemoveCard?: (wp: WorkPackage) => void;
   actions?: ColumnActions;
+  /** cards drawn; the rest wait behind 더 보기 */
+  limit: number;
+  onMore: () => void;
 }) {
   const { t } = useTranslation();
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
+  const drawn = column.cards.length > limit ? column.cards.slice(0, limit) : column.cards;
+  const hidden = column.cards.length - drawn.length;
   const [creating, setCreating] = useState(false);
   const addLabel = t("boards.addCard", { column: column.title });
   return (
@@ -274,9 +285,9 @@ function Column({
           )}
         </div>
       </header>
-      <SortableContext items={column.cards.map((c) => cardId(c.number))} strategy={verticalListSortingStrategy}>
+      <SortableContext items={drawn.map((c) => cardId(c.number))} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className="flex min-h-24 flex-1 flex-col gap-2">
-          {column.cards.map((wp) => (
+          {drawn.map((wp) => (
             <SortableCard
               key={wp.id}
               wp={wp}
@@ -294,6 +305,11 @@ function Column({
           )}
         </ul>
       </SortableContext>
+      {hidden > 0 && (
+        <Button variant="ghost" size="sm" className="mt-2 w-full" onClick={onMore} aria-label={t("boards.moreLabel", { column: column.title, count: Math.min(COLUMN_PAGE * 2, hidden), total: hidden })}>
+          {t("boards.more", { count: Math.min(COLUMN_PAGE * 2, hidden) })}
+        </Button>
+      )}
       {creating && onCreate && <NewCard column={column} onCreate={onCreate} onClose={() => setCreating(false)} />}
     </section>
   );
@@ -400,6 +416,9 @@ export function BoardPage() {
   const [columns, setColumns] = useState<BoardColumn[] | null>(null);
   const [active, setActive] = useState<WorkPackage | null>(null);
   const [origin, setOrigin] = useState<string | null>(null);
+  // cards drawn per column (COLUMN_PAGE until 더 보기); kept while the board refreshes after a move
+  const [limits, setLimits] = useState<Record<string, number>>({});
+  const limitOf = (columnId: string) => limits[columnId] ?? COLUMN_PAGE;
   useEffect(() => setColumns(board.data?.columns ?? null), [board.data]);
   useDocumentTitle(board.data ? `${board.data.name} · ${project.name}` : undefined);
   const base = `/projects/${project.identifier}/boards/${id}`;
@@ -460,7 +479,7 @@ export function BoardPage() {
         if (c.id === to) {
           const idx = c.cards.findIndex((w) => cardId(w.number) === over.id);
           const cards = [...c.cards];
-          cards.splice(idx >= 0 ? idx : cards.length, 0, card);
+          cards.splice(idx >= 0 ? idx : dropEnd(cards.length, limitOf(c.id)), 0, card);
           return { ...c, cards };
         }
         return c;
@@ -642,6 +661,8 @@ export function BoardPage() {
                 onAddExisting={basic && b.canManage ? () => setAdding(c) : undefined}
                 onRemoveCard={basic && b.canManage ? (wp) => quietly(apply(api.boards.removeCard(b.id, wp.number), t("boards.cardRemoved", { number: wp.number }))) : undefined}
                 actions={columnActions(c, i)}
+                limit={limitOf(c.id)}
+                onMore={() => setLimits((l) => ({ ...l, [c.id]: (l[c.id] ?? COLUMN_PAGE) + COLUMN_PAGE * 2 }))}
               />
             ))}
           </div>

@@ -1,6 +1,12 @@
 # openPMS configuration. Every deploy-specific value comes from an environment variable (see .env.example).
 server:
   port: ${PORT:8090}
+  # 성능 예산: JSON and the SPA's files go out compressed (a 1,000-card board is 2.3 MB raw, a fraction of that gzipped).
+  # Small answers (sign-in, a new API token shown once) stay below the threshold and are sent as they are.
+  compression:
+    enabled: true
+    min-response-size: 2KB
+    mime-types: application/json,application/problem+json,text/html,text/css,text/javascript,application/javascript,image/svg+xml,text/csv
   servlet:
     session:
       timeout: ${OPENPMS_SESSION_TIMEOUT:8h}

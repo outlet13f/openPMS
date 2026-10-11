@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.jooq.DSLContext;
@@ -97,14 +98,28 @@ public final class Snapshot {
         this.json = json;
     }
 
+    /**
+     * Loads on first use. A lock, not synchronized: requests run on virtual threads, and on Java 21 a virtual thread that
+     * waits for a database connection inside synchronized keeps its carrier thread. With as many carriers as CPUs (two
+     * on a small server) two such waits stopped every request until the pool gave up after 30 s (found by the load check
+     * of the performance budget, replica/fixes.md 4).
+     */
     private static <T> Supplier<T> lazy(Supplier<T> s) {
         return new Supplier<>() {
-            private T value;
+            private final ReentrantLock lock = new ReentrantLock();
+            private volatile T value;
 
             @Override
-            public synchronized T get() {
-                if (value == null) value = s.get();
-                return value;
+            public T get() {
+                var v = value;
+                if (v != null) return v;
+                lock.lock();
+                try {
+                    if (value == null) value = s.get();
+                    return value;
+                } finally {
+                    lock.unlock();
+                }
             }
         };
     }
@@ -230,17 +245,21 @@ public final class Snapshot {
     private final Map<UUID, Shares> shares = new java.util.concurrent.ConcurrentHashMap<>();
 
     public Shares shares(UUID userId) {
-        return shares.computeIfAbsent(userId, id -> {
-            var roles = new HashMap<UUID, String>();
-            var projectIds = new HashSet<UUID>();
-            this.db.select(WORK_PACKAGE_SHARES.WORK_PACKAGE_ID, WORK_PACKAGE_SHARES.ROLE, WORK_PACKAGES.PROJECT_ID).from(WORK_PACKAGE_SHARES)
-                    .join(WORK_PACKAGES).on(WORK_PACKAGES.ID.eq(WORK_PACKAGE_SHARES.WORK_PACKAGE_ID))
-                    .where(WORK_PACKAGE_SHARES.USER_ID.eq(id)).fetch().forEach(r -> {
-                        roles.put(r.value1(), r.value2());
-                        projectIds.add(r.value3());
-                    });
-            return new Shares(roles, projectIds);
-        });
+        var known = shares.get(userId);
+        if (known != null) return known;
+        // queried outside computeIfAbsent: its bin lock is a monitor, and a virtual thread waiting on the database inside
+        // it keeps its carrier thread (see lazy above)
+        var roles = new HashMap<UUID, String>();
+        var projectIds = new HashSet<UUID>();
+        this.db.select(WORK_PACKAGE_SHARES.WORK_PACKAGE_ID, WORK_PACKAGE_SHARES.ROLE, WORK_PACKAGES.PROJECT_ID).from(WORK_PACKAGE_SHARES)
+                .join(WORK_PACKAGES).on(WORK_PACKAGES.ID.eq(WORK_PACKAGE_SHARES.WORK_PACKAGE_ID))
+                .where(WORK_PACKAGE_SHARES.USER_ID.eq(userId)).fetch().forEach(r -> {
+                    roles.put(r.value1(), r.value2());
+                    projectIds.add(r.value3());
+                });
+        var loaded = new Shares(roles, projectIds);
+        var raced = shares.putIfAbsent(userId, loaded);
+        return raced != null ? raced : loaded;
     }
 
     /** Work package custom fields, in order. */

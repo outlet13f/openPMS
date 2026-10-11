@@ -9,6 +9,7 @@
 #   scripts/dev.sh reset-db      drop and recreate the dev database (migrations and dev data run on next start)
 #   scripts/dev.sh snapshot-db   save the database as a restore point (app stopped); restore-db goes back to it
 #   scripts/dev.sh test          run the JUnit tests on a copy of the restore point
+#   scripts/dev.sh perf-seed     add the 1,000-item project of the performance budget (perf-1000) to the dev database
 #   scripts/dev.sh down          stop the containers (data stays in volumes)
 #
 # The dev database password is generated once into backend/.env.local (git-ignored).
@@ -92,6 +93,9 @@ case "${1:-}" in
             podman exec openpms-db psql -U openpms -d postgres -c "drop database if exists openpms_seed" -c "create database openpms_seed template openpms" ;;
   restore-db) # back to the restore point in a second; the running app reconnects by itself
             podman exec openpms-db psql -U openpms -d postgres -q -c "drop database if exists openpms with (force)" -c "create database openpms template openpms_seed" ;;
+  perf-seed) # the performance budget's project (replica/fixes.md 4); prints the board id and the detail item's number for perf.spec.ts
+            podman exec -i openpms-db psql -U openpms -d openpms -q -v ON_ERROR_STOP=1 -c "set client_min_messages = warning" -f - < src/test/resources/perf/perf-1000.sql
+            podman exec openpms-db psql -U openpms -d openpms -At -F ' ' -c "select b.id, w.number from projects p join boards b on b.project_id = p.id join work_packages w on w.project_id = p.id and w.subject = '상세 화면 측정용 작업' where p.identifier = 'perf-1000'" ;;
   test) # JUnit on a throwaway copy of the restore point (run snapshot-db once first)
         ensure_infra
         podman exec openpms-db psql -U openpms -d postgres -q -c "drop database if exists openpms_test with (force)" -c "create database openpms_test template openpms_seed"

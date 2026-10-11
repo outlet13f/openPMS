@@ -88,8 +88,9 @@ public class AuthController {
         contextRepo.saveContext(ctx, req, res);
     }
 
+    // no transaction: each update stands alone, and a connection is not held while the password hash is checked
+    // (about 0.1 s of CPU) — many people signing in at nine o'clock would otherwise take the whole pool
     @PostMapping("/login")
-    @Transactional(noRollbackFor = ApiException.class)
     public Dto.Me login(@RequestBody LoginInput in, HttpServletRequest req, HttpServletResponse res) {
         limiter.check("login:" + req.getRemoteAddr(), loginsPerMinute);
         var u = byEmail(in.email());

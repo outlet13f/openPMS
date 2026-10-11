@@ -1606,6 +1606,8 @@ const ko = {
     resetFilters: "저장된 필터로 되돌리기",
     emptyColumn: "카드 없음",
     emptyColumnBody: "여기로 끌어다 놓으세요.",
+    more: "{{count}}장 더 보기",
+    moreLabel: "{{column}} 열에서 카드 {{count}}장 더 보기 (남은 카드 {{total}}장)",
     cardRole: "옮길 수 있는 카드",
     moveCard: "#{{number}} {{subject}} 옮기기",
     moveRejected: "이 열로 옮길 수 없습니다",
