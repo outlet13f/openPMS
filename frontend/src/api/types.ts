@@ -553,7 +553,12 @@ export interface QuerySpec {
   text?: string;
   /** Gantt views: when visible, the result also carries the precedes relations between its rows; labels: what each bar shows beside it. */
   timeline?: { visible: boolean; zoom: "day" | "week" | "month" | "auto"; labels?: GanttLabels };
+  /** S11 강조 표시: none; inline = priority and due date cells tinted; status/priority/type = whole rows in that attribute's colour */
+  highlight?: Highlight;
 }
+
+export type Highlight = "none" | "inline" | "status" | "priority" | "type";
+export const HIGHLIGHTS: Highlight[] = ["none", "inline", "status", "priority", "type"];
 
 export const GANTT_LABELS = ["none", "subject", "assignee", "status", "dates", "type", "priority", "doneRatio"] as const;
 export type GanttLabel = (typeof GANTT_LABELS)[number];

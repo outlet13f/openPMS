@@ -66,4 +66,16 @@ test.describe("F03 그룹화와 합계", () => {
     await viewMenu(page, ["합계 표시"]);
     await expect(table.getByText("전체 합계")).toHaveCount(0);
   });
+  test("F03-G3 highlighting: whole rows in the status colour, or the priority and due date cells", async ({ page }) => {
+    await page.goto("/projects/web-platform/work-packages");
+    await viewMenu(page, ["강조 표시", "행 색: 상태"]);
+    const row = page.getByRole("row").filter({ hasText: "화면 설계 검토" });
+    await expect(row).toHaveAttribute("style", /color-mix/);
+    await expect(page).toHaveURL(/[?&]q=/);
+    await axe(page, "S06 행 강조");
+    await viewMenu(page, ["강조 표시", "셀 강조(우선순위, 완료일 지남·임박)"]);
+    await expect(row).not.toHaveAttribute("style", /color-mix/);
+    await expect(row.locator("span[style*='color-mix']").first()).toBeVisible();
+    await axe(page, "S06 셀 강조");
+  });
 });

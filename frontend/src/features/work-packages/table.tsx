@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/field";
 import { useToast } from "@/components/ui/feedback";
 import { WorkPackageCard } from "@/components/domain/work-package-card";
 import { cn } from "@/lib/cn";
-import { formatDate, relativeTime } from "@/lib/dates";
+import { formatDate, relativeTime, todayIso } from "@/lib/dates";
 import { isApiError } from "@/api";
 import { StatusMenu } from "./status-menu";
 import { InlinePick } from "./inline-pick";
@@ -25,7 +25,17 @@ const WIDTH: Partial<Record<ColumnKey, string>> = {
 };
 const SORTABLE: ColumnKey[] = ["number", "subject", "type", "status", "priority", "assignee", "responsible", "author", "version", "startDate", "dueDate", "work", "remainingWork", "updatedAt", "project"];
 
-function Cell({ wp, column, options }: { wp: WorkPackage; column: ColumnKey; options?: FilterOptions }) {
+/** A colour at a low strength, for a tinted cell or row (readable in light and dark themes). */
+export const tint = (color: string, percent = 14) => `color-mix(in srgb, ${color} ${percent}%, transparent)`;
+
+/** Due within three days, not done yet (inline highlighting). */
+function dueSoon(wp: WorkPackage) {
+  if (!wp.dueDate || wp._meta.overdue || wp.status.isClosed) return false;
+  const days = (Date.parse(wp.dueDate) - Date.parse(todayIso())) / 86_400_000;
+  return days >= 0 && days <= 3;
+}
+
+function Cell({ wp, column, options, inline }: { wp: WorkPackage; column: ColumnKey; options?: FilterOptions; inline?: boolean }) {
   const { t } = useTranslation();
   const { save } = useSaveWorkPackage();
   const editable = (f: WorkPackage["_meta"]["editableFields"][number]) => wp._meta.editableFields.includes(f);
@@ -59,16 +69,30 @@ function Cell({ wp, column, options }: { wp: WorkPackage; column: ColumnKey; opt
           onPick={(v) => v && void save(wp, { priorityId: v })}
           options={(options?.priorities ?? []).map((p) => ({ value: p.id, label: p.name, icon: <span className="size-2.5 rounded-full" style={{ backgroundColor: p.color }} /> }))}
         >
-          <Priority name={wp.priority.name} color={wp.priority.color} />
+          {inline ? (
+            <span className="-mx-1 rounded-sm px-1 py-0.5" style={{ backgroundColor: tint(wp.priority.color, 18) }}>
+              <Priority name={wp.priority.name} color={wp.priority.color} />
+            </span>
+          ) : (
+            <Priority name={wp.priority.name} color={wp.priority.color} />
+          )}
         </InlinePick>
       );
     case "startDate":
       return <span className="tabular-nums">{formatDate(wp.startDate) || <span className="text-fg-muted">-</span>}</span>;
     case "dueDate":
       return wp.dueDate ? (
-        <span className={cn("tabular-nums", wp._meta.overdue && "font-semibold text-danger")}>
+        <span
+          className={cn(
+            "tabular-nums",
+            wp._meta.overdue && "font-semibold text-danger",
+            inline && wp._meta.overdue && "-mx-1 rounded-sm bg-danger-subtle px-1 py-0.5",
+            inline && dueSoon(wp) && "-mx-1 rounded-sm bg-warning-subtle px-1 py-0.5 font-medium text-warning",
+          )}
+        >
           {formatDate(wp.dueDate)}
           {wp._meta.overdue && <span className="sr-only"> {t("wp.overdueSr")}</span>}
+          {inline && dueSoon(wp) && <span className="sr-only"> {t("wp.dueSoonSr")}</span>}
         </span>
       ) : (
         <span className="text-fg-muted">-</span>
@@ -280,6 +304,8 @@ export function WorkPackageTable({
               const endsGroup = grouped && (i === visible.length - 1 || (visible[i + 1].groupKey ?? "") !== gk);
               const closed = grouped && closedGroups.has(gk);
               const groupName = group?.key === "" ? t("wp.grouping.empty") : (group?.label ?? "");
+              const highlight = spec.highlight ?? "none";
+              const rowColor = highlight === "status" ? wp.status.color : highlight === "priority" ? wp.priority.color : highlight === "type" ? wp.type.color : null;
               const rowEl = (
                 <tr
                   aria-selected={isSel}
@@ -289,6 +315,7 @@ export function WorkPackageTable({
                     isSel && "bg-accent-subtle hover:bg-accent-subtle",
                     context && "text-fg-muted",
                   )}
+                  style={rowColor && !isSel ? { backgroundColor: tint(rowColor, 6), boxShadow: `inset 4px 0 0 ${rowColor}` } : undefined}
                 >
                   {onCheck && (
                     <td className="px-3 py-1">
@@ -331,7 +358,7 @@ export function WorkPackageTable({
                           {context && <span className="sr-only">{t("wp.contextRow")}</span>}
                         </span>
                       ) : (
-                        <Cell wp={wp} column={c} options={options} />
+                        <Cell wp={wp} column={c} options={options} inline={highlight === "inline"} />
                       )}
                     </td>
                   ))}

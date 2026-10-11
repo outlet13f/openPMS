@@ -2,8 +2,8 @@
 import { useState } from "react";
 import { Outlet, useMatch, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { Columns3, Download, Filter, FolderTree, Group, ListTodo, Maximize2, MoreHorizontal, PanelRight, Pencil, Plus, RotateCcw, Save, Sigma, Star, Trash2 } from "lucide-react";
-import { GROUPABLE_COLUMNS, type ColumnKey, type Project, type QuerySpec, type SavedQuery, type WorkPackage } from "@/api";
+import { Columns3, Download, Filter, FolderTree, Group, Highlighter, ListTodo, Maximize2, MoreHorizontal, PanelRight, Pencil, Plus, RotateCcw, Save, Sigma, Star, Trash2 } from "lucide-react";
+import { GROUPABLE_COLUMNS, HIGHLIGHTS, type ColumnKey, type Project, type QuerySpec, type SavedQuery, type WorkPackage } from "@/api";
 import { isApiError } from "@/api";
 import { useFilterOptions, useSavedQueryMutations, useWpForm, useWpQuery } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
@@ -194,6 +194,12 @@ export function WorkPackagesPage() {
           ],
         },
         { label: t("wp.grouping.sums"), icon: <Sigma />, checked: spec.sums, onSelect: () => state.setSpec((s) => ({ ...s, sums: !s.sums })) },
+        {
+          kind: "sub" as const,
+          label: t("wp.highlight.menu"),
+          icon: <Highlighter />,
+          items: HIGHLIGHTS.map((h) => ({ label: t(`wp.highlight.${h}`), checked: (spec.highlight ?? "none") === h, onSelect: () => state.setSpec((s) => ({ ...s, highlight: h })) })),
+        },
         ...(view && view.kind !== "default"
           ? [
               { kind: "separator" as const },
