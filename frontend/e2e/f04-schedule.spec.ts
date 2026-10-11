@@ -102,6 +102,27 @@ test.describe("F04 일정", () => {
     await axe(page, "S13 Gantt 날짜 대화상자");
   });
 
+  test("F04-H4 Gantt labels: what shows left, right and at the far right of the bars is part of the view", async ({ page }) => {
+    await page.goto("/projects/web-platform/gantt");
+    const chart = page.getByRole("group", { name: "Gantt 차트" });
+    await expect(chart.getByRole("button", { name: /^#3 화면 설계 검토/ })).toBeVisible();
+    const pick = async (position: RegExp, value: string) => {
+      await page.getByRole("button", { name: "라벨" }).click();
+      await page.getByRole("menuitem", { name: position }).focus();
+      await page.keyboard.press("ArrowRight");
+      await page.getByRole("menuitemcheckbox", { name: value, exact: true }).focus();
+      await page.keyboard.press("Enter");
+    };
+    await pick(/^왼쪽:/, "담당자");
+    await pick(/^먼 오른쪽:/, "상태");
+    await expect(page).toHaveURL(/[?&]q=/);
+    await expect(chart.getByText("이하늘", { exact: true }).first()).toBeVisible(); // #3's assignee, left of its bar
+    await expect(chart.getByText("진행 중", { exact: true }).first()).toBeVisible();
+    await page.reload();
+    await expect(chart.getByText("이하늘", { exact: true }).first()).toBeVisible();
+    await axe(page, "S13 Gantt 라벨");
+  });
+
   test("F04-N1 a milestone has one date", async ({ page }) => {
     const r = await api<string>(page, "const w = await api.workPackages.get(6); try { await api.workPackages.update(6, { lockVersion: w.lockVersion, startDate: '2026-11-02', dueDate: '2026-11-05' }) } catch (e) { return 'refused ' + e.status } const n = await api.workPackages.get(6); return n.startDate === n.dueDate ? 'one date' : 'two dates'");
     expect(["one date", "refused 422"]).toContain(r);

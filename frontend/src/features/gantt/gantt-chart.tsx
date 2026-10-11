@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { QueryResult, WorkPackage } from "@/api";
+import { DEFAULT_GANTT_LABELS, type GanttLabel, type GanttLabels, type QueryResult, type WorkPackage } from "@/api";
 import { useNonWorkingDays } from "@/api/hooks";
 import { TypeLabel } from "@/components/ui/badges";
 import { cn } from "@/lib/cn";
@@ -53,8 +53,39 @@ function useRange(rows: QueryResult["rows"]) {
   }, [rows]);
 }
 
-export function GanttChart({ result, zoom, detailsHref }: { result: QueryResult; zoom: Zoom; detailsHref: (wp: WorkPackage) => string }) {
+export function GanttChart({
+  result,
+  zoom,
+  detailsHref,
+  labels = DEFAULT_GANTT_LABELS,
+}: {
+  result: QueryResult;
+  zoom: Zoom;
+  detailsHref: (wp: WorkPackage) => string;
+  labels?: GanttLabels;
+}) {
   const { t } = useTranslation();
+  /** The text a label position shows for an item (S13 라벨). */
+  const labelText = (wp: WorkPackage, what: GanttLabel, start: string | null, due: string | null): string => {
+    switch (what) {
+      case "subject":
+        return wp.subject;
+      case "assignee":
+        return wp.assignee?.name ?? "";
+      case "status":
+        return wp.status.name;
+      case "dates":
+        return formatDateRange(start, due);
+      case "type":
+        return wp.type.name;
+      case "priority":
+        return wp.priority.name;
+      case "doneRatio":
+        return wp.doneRatio === null ? "" : `${wp.doneRatio}%`;
+      default:
+        return "";
+    }
+  };
   const LEFT_W = useLeftWidth();
   const { from, to, days, today } = useRange(result.rows);
   const scale = zoom === "auto" ? autoZoom(days) : zoom;
@@ -266,6 +297,12 @@ export function GanttChart({ result, zoom, detailsHref }: { result: QueryResult;
                       {t("gantt.setDates", { number: wp.number })}
                     </button>
                   )}
+                  {labels.farRight !== "none" && (
+                    // far right: pinned to the visible right edge of the chart while it scrolls
+                    <span className="pointer-events-none sticky right-2 z-[1] ml-auto block w-fit max-w-60 truncate rounded-sm bg-bg/80 px-1 text-xs leading-10 text-fg-muted" aria-hidden="true">
+                      {labelText(wp, labels.farRight, p.start, p.due)}
+                    </span>
+                  )}
                   {p.start && p.due && (
                     <>
                       {wp.type.isMilestone ? (
@@ -328,12 +365,25 @@ export function GanttChart({ result, zoom, detailsHref }: { result: QueryResult;
                           )}
                         </button>
                       )}
+                      {labels.left !== "none" && (
+                        <span
+                          className="pointer-events-none absolute truncate text-right text-xs whitespace-nowrap text-fg-muted"
+                          style={{ right: width - x(p.start) + (wp.type.isMilestone ? 10 - dayW / 2 : 6), top: (ROW_H - 16) / 2, maxWidth: 200 }}
+                          aria-hidden="true"
+                        >
+                          {labelText(wp, labels.left, p.start, p.due)}
+                        </span>
+                      )}
                       <span
                         className={cn("pointer-events-none absolute truncate text-xs whitespace-nowrap", wp._meta.overdue ? "font-semibold text-danger" : "text-fg-muted")}
                         style={{ left: x(p.due) + dayW + (wp.type.isMilestone ? 10 : 6), top: (ROW_H - 16) / 2, maxWidth: 260 }}
                         aria-hidden="true"
                       >
-                        {drag?.number === wp.number ? formatDateRange(p.start, p.due) : `${formatDate(p.due)} ${wp.subject}`}
+                        {drag?.number === wp.number
+                          ? formatDateRange(p.start, p.due)
+                          : labels.right === "subject"
+                            ? `${formatDate(p.due)} ${wp.subject}`
+                            : labelText(wp, labels.right, p.start, p.due)}
                       </span>
                     </>
                   )}

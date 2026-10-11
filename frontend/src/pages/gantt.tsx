@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { Outlet, useMatch, useParams } from "react-router";
 import { useTranslation } from "react-i18next";
-import { CalendarSearch, Filter, GanttChart as GanttIcon } from "lucide-react";
+import { CalendarSearch, Filter, GanttChart as GanttIcon, Tags } from "lucide-react";
+import { DEFAULT_GANTT_LABELS, GANTT_LABELS, type GanttLabel, type GanttLabels } from "@/api";
+import { Menu } from "@/components/ui/overlay";
 import { useFilterOptions, useWpQuery } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Badge, Counter } from "@/components/ui/badges";
@@ -23,7 +25,11 @@ export function GanttPage() {
   const state = useListState(project?.id);
   const [zoom, setZoom] = useState<Zoom>("auto");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const spec = state.spec ? { ...state.spec, timeline: { visible: true, zoom } } : undefined;
+  const spec = state.spec ? { ...state.spec, timeline: { ...state.spec.timeline, visible: true, zoom } } : undefined;
+  const labels = { ...DEFAULT_GANTT_LABELS, ...state.spec?.timeline?.labels };
+  // S13 라벨: part of the view (saved with it, carried in the URL)
+  const setLabel = (pos: keyof GanttLabels, value: GanttLabel) =>
+    state.setSpec((s) => ({ ...s, timeline: { visible: true, zoom, ...s.timeline, labels: { ...DEFAULT_GANTT_LABELS, ...s.timeline?.labels, [pos]: value } } }));
   const result = useWpQuery(spec, project?.id, 1, 200);
   const options = useFilterOptions(project?.id).data;
   const base = project ? `/projects/${project.identifier}/gantt` : "/gantt";
@@ -61,6 +67,14 @@ export function GanttPage() {
                   { value: "month", label: t("gantt.zoomMonth") },
                 ]}
               />
+              <Menu
+                trigger={<Button icon={<Tags />}>{t("gantt.labels")}</Button>}
+                items={(["left", "right", "farRight"] as const).map((pos) => ({
+                  kind: "sub" as const,
+                  label: `${t(`gantt.labelPositions.${pos}`)}: ${t(`gantt.labelValues.${labels[pos]}`)}`,
+                  items: GANTT_LABELS.map((v) => ({ label: t(`gantt.labelValues.${v}`), checked: labels[pos] === v, onSelect: () => setLabel(pos, v) })),
+                }))}
+              />
               <Button icon={<CalendarSearch />} onClick={scrollToToday}>
                 {t("gantt.today")}
               </Button>
@@ -83,7 +97,7 @@ export function GanttPage() {
           </div>
         ) : (
           <>
-            <GanttChart result={result.data} zoom={zoom} detailsHref={(wp) =>
+            <GanttChart result={result.data} zoom={zoom} labels={labels} detailsHref={(wp) =>
                 project && wp.project.id === project.id ? `${base}/details/${wp.number}/overview${state.search}` : `/projects/${wp.project.identifier}/work-packages/${wp.number}/activity`
               } />
             <p className="mt-2 text-xs text-fg-muted">{t("gantt.help")}</p>

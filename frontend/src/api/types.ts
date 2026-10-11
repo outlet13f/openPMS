@@ -551,9 +551,19 @@ export interface QuerySpec {
   includeSubprojects: boolean;
   /** Free text over subject and #number (the "텍스트로 필터링" box). */
   text?: string;
-  /** Gantt views: when visible, the result also carries the precedes relations between its rows. */
-  timeline?: { visible: boolean; zoom: "day" | "week" | "month" | "auto" };
+  /** Gantt views: when visible, the result also carries the precedes relations between its rows; labels: what each bar shows beside it. */
+  timeline?: { visible: boolean; zoom: "day" | "week" | "month" | "auto"; labels?: GanttLabels };
 }
+
+export const GANTT_LABELS = ["none", "subject", "assignee", "status", "dates", "type", "priority", "doneRatio"] as const;
+export type GanttLabel = (typeof GANTT_LABELS)[number];
+/** S13 라벨: left of the bar, right of it, and at the far right of the chart */
+export interface GanttLabels {
+  left: GanttLabel;
+  right: GanttLabel;
+  farRight: GanttLabel;
+}
+export const DEFAULT_GANTT_LABELS: GanttLabels = { left: "none", right: "subject", farRight: "none" };
 
 /** S12 내보내기: every item matching the spec (not just the page), in its order; at most EXPORT_LIMIT. */
 export type ExportFormat = "csv" | "xlsx";

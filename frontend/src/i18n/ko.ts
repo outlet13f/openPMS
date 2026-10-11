@@ -725,6 +725,9 @@ const ko = {
     },
   },
   gantt: {
+    labels: "라벨",
+    labelPositions: { left: "왼쪽", right: "오른쪽", farRight: "먼 오른쪽" },
+    labelValues: { none: "없음", subject: "제목", assignee: "담당자", status: "상태", dates: "기간", type: "유형", priority: "우선순위", doneRatio: "완료 %" },
     drawHint: "날짜가 없습니다. 끌어서 막대를 그리면 그 기간이 시작일·완료일이 됩니다(누르기만 하면 하루)",
     setDates: "#{{number}} 날짜 정하기",
     chart: "Gantt 차트",
