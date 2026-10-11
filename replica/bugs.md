@@ -1,6 +1,6 @@
 # 버그 목록
 
-`/replica-test` 2026-10-10. 그 뒤 기능을 만들며 e2e가 찾은 것, 2026-10-11 산출물 점검에서 나온 것(BUG-007–011)도 이어 적습니다. 재현한 것만 적습니다. 의심만 가는 것은 `replica/test-plan.md`의 "확인할 것"에 있습니다.
+`/replica-test` 2026-10-10. 그 뒤 기능을 만들며 e2e가 찾은 것, 2026-10-11 산출물 점검에서 나온 것(BUG-007–011), 같은 날 성능 예산 부하 측정에서 나온 것(BUG-012–014, `replica/perf.md`)도 이어 적습니다. 재현한 것만 적습니다. 의심만 가는 것은 `replica/test-plan.md`의 "확인할 것"에 있습니다.
 빌드: 2e89d53 · 브라우저: Chrome(Playwright), 1424px · 실제 API(Spring Boot) + 시드 데이터
 
 | ID | 심각도 | 제목 | 상태 |
@@ -16,8 +16,11 @@
 | BUG-009 | S3 | SSO로 들어온 사람은 비밀번호를 만들 수 없음 | 고침 (384a2f9) |
 | BUG-010 | S3 | 합계의 완료 %가 진행률 설정을 따르지 않고, 남은 작업이 비어 있으면 끝난 것으로 셈 (신규 합계 100%) | 고침 (384a2f9, 31e39bd) |
 | BUG-011 | S4 | 보기 메뉴에서 빠르게 연달아 바꾸면 앞의 변경이 사라짐 | 고침 (31e39bd) |
+| BUG-012 | S1 | CPU 2개 서버에서 동시에 여러 명이 쓰면 모든 요청이 30초 멈추고 일부는 오류 | 고침 (a81a4f6) |
+| BUG-013 | S3 | 카드 1,000장 보드가 1.6초 걸리고 브라우저 메모리를 250 MB 씀 | 고침 (a81a4f6) |
+| BUG-014 | S3 | 화면 파일(JS 1.4 MB)을 압축도 캐시도 없이 페이지를 열 때마다 다시 받음 | 고침 (a81a4f6) |
 
-S1은 없었습니다. S2는 BUG-008 하나입니다(2026-10-11 산출물 점검).
+S1은 BUG-012 하나입니다(2026-10-11 성능 예산 부하 측정, 같은 날 고침). S2는 BUG-008 하나입니다(2026-10-11 산출물 점검).
 
 ### BUG-001: 저장을 두 번 누르면 작업이 두 개 생김
 
@@ -201,3 +204,54 @@ S1은 없었습니다. S2는 BUG-008 하나입니다(2026-10-11 산출물 점검
 원인: 메뉴 항목이 렌더 때의 `spec`으로 새 spec을 만들고, 라우터는 URL 변경을 transition으로 적용함
 상태: fixed in 31e39bd
 고침: `useListState().setSpec`이 최신 spec을 받는 updater를 받고(`useRef`), 보기 메뉴·도구 막대가 모두 updater로 바꿈. 별개로, 저장된 보기를 받기 전에 바꾼 것은 저장된 보기가 도착하면 덮일 수 있어 e2e(`f03-grouping`)는 목록이 뜬 뒤 메뉴를 열도록 고침(384a2f9). 앱 쪽은 그대로임
+
+### BUG-012: CPU 2개 서버에서 동시에 여러 명이 쓰면 모든 요청이 30초 멈추고 일부는 오류
+
+- 심각도: S1 (서버 전체가 30초 동안 응답하지 않고, 그동안의 요청이 500으로 끝남. 작은 사내 VM에서 아침 로그인 몰림만으로 일어날 수 있음)
+- 흐름 / 케이스: 전체 (부하 측정 PERF-L1, PERF-L3)
+- 화면: 모든 화면 (API 전체)
+- 빌드: 0268278, 운영 이미지, 앱 컨테이너 CPU 2개·메모리 1 GB
+
+단계
+1. 작업 1,000건 프로젝트를 넣음(`perf-1000.sql`)
+2. `scripts/perf_load.py --users 50 --think 2` (50명이 각자 로그인한 뒤 목록·Gantt·보드·상세를 돎) 또는 `--users 20 --think 0`
+
+기대: 모든 요청이 1초 안에 답하고 오류 없음
+실제: 시작 직후 응답이 멈추고 30초 뒤 `HikariPool-1 - Connection is not available, request timed out after 30000ms (total=10, active=10, idle=0, waiting=20)`로 500. 어떤 로그에는 `active=2, idle=8, waiting=0`인데도 30초를 기다림(커넥션은 있는데 기다리던 요청이 실행되지 못함). 그동안 DB의 커넥션은 모두 `idle`(ClientRead)
+증거: 운영 이미지 로그, 개발 컨테이너(CPU 2개)의 `jcmd Thread.dump_to_file`(가상 스레드 50개 중 다수가 `Snapshot$1.get`(synchronized) → `HikariPool.getConnection`), `-Djdk.tracePinnedThreads=full` 출력(`ConcurrentHashMap.computeIfAbsent <== monitors:1` ← `Snapshot.shares`, 60초에 259번)
+원인: 요청은 가상 스레드에서 돌고, Java 21에서는 가상 스레드가 모니터(synchronized, `ConcurrentHashMap.computeIfAbsent`의 잠금) 안에서 기다리면 캐리어 스레드를 놓지 않음. `Snapshot`의 지연 로더가 synchronized 안에서, `shares`가 computeIfAbsent 안에서 DB 커넥션과 쿼리를 기다렸음. 캐리어는 CPU 수만큼(2개)이라 둘이 묶이면 커넥션을 쥔 요청도 실행되지 못해 풀이 30초 타임아웃까지 멈춤. CPU 8개인 개발 PC에서는 드물어 보이지 않았음. 로그인도 트랜잭션으로 커넥션을 쥔 채 비밀번호 해시(약 0.1초)를 확인해 몰릴 때 풀을 더 빨리 비웠음
+상태: fixed in a81a4f6
+고침: 지연 로더는 `ReentrantLock`, `shares`는 맵 밖에서 조회한 뒤 `putIfAbsent`. 로그인은 트랜잭션 없이(각 갱신은 한 문장). 회귀 테스트: `PerfBudgetIT.noRequestKeepsItsCarrierThreadWhileWaiting`(가상 스레드 20개로 주요 화면을 동시에 요청하며 JFR `jdk.VirtualThreadPinned`를 받아, 우리 코드의 고정이 하나라도 있으면 실패. 고치기 전 코드로 실패 확인), `NoPinningTest`(`src/main/java`에 synchronized 금지). 고친 뒤 같은 조건: 50명 p99 110 ms, 100명 p99 236 ms, 20명 무휴식 화면 88번/초 p99 593 ms, 오류·고정·풀 타임아웃 0건
+
+### BUG-013: 카드 1,000장 보드가 1.6초 걸리고 브라우저 메모리를 250 MB 씀
+
+- 심각도: S3 (쓸 수는 있지만 느리고, 사양이 낮은 PC에서는 더 느림)
+- 흐름 / 케이스: F06 / PERF-3
+- 화면: S15 보드
+- 빌드: 0268278, 빌드된 화면(8090)
+
+단계
+1. `scripts/dev.sh perf-seed`
+2. 성능 측정 프로젝트 → 보드 → 상태 보드
+
+기대: 1.5초 안에 다 그려짐
+실제: 1,564 ms, JS 힙 246 MB(개발 서버 2,739 ms, 259 MB). 열마다 모든 카드(신규 406장 등)를 끌어 놓기 가능한 카드로 한 번에 그림
+증거: `frontend/e2e/perf.spec.ts` PERF-3 첫 실행
+상태: fixed in a81a4f6
+고침: 열마다 50장을 먼저 그리고 **100장 더 보기**(접근 이름에 열 이름과 남은 장수). 열 머리 개수는 전체 장수. 열 자체에 놓은 카드는 보이는 마지막 자리로. 고친 뒤 505 ms, JS 힙 30–70 MB
+
+### BUG-014: 화면 파일(JS 1.4 MB)을 압축도 캐시도 없이 페이지를 열 때마다 다시 받음
+
+- 심각도: S3 (로컬에서는 티가 안 나지만 사내 VPN·느린 망에서 페이지마다 1.4 MB)
+- 흐름 / 케이스: 전체 / PERF-5
+- 화면: 모든 화면
+- 빌드: 0268278, 백엔드가 내주는 빌드된 화면
+
+단계
+1. `curl -sI -H "Accept-Encoding: gzip" http://localhost:8090/assets/index-*.js`
+
+기대: gzip으로 압축되고, 이름에 해시가 붙은 파일은 오래 캐시
+실제: `Content-Encoding` 없음(1,368,556 B 그대로), `Cache-Control: no-cache, no-store, max-age=0, must-revalidate`. API JSON도 압축 없음(보드 2.3 MB)
+원인: `server.compression`을 켜지 않았고, 정적 파일에 캐시 설정이 없어 Spring Security의 기본 no-store가 붙음
+상태: fixed in a81a4f6
+고침: `server.compression`(JSON·HTML·CSS·JS·SVG·CSV, 2 KB 이상). `/assets/**`는 `max-age=31536000, public, immutable`, 나머지(`index.html`과 화면 주소)는 `no-cache`. 고친 뒤 JS 390 KB 한 번, 다시 열면 17 KB, 보드 응답 약 92–135 KB. 10 Mbps·왕복 40 ms에서 목록 처음 1.0초·다시 0.6초
