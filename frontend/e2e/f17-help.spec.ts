@@ -45,7 +45,7 @@ test("F17-H2 사용자 매뉴얼: contents, search, and an address that goes to 
   await expect(page).toHaveURL(/\/help#69-/);
   await expect(page.getByRole("heading", { name: "6.9 기준선 비교" })).toBeInViewport();
   await page.getByRole("searchbox", { name: "매뉴얼 검색" }).fill("없는말쯤되는검색어");
-  await expect(page.getByText("찾는 말이 들어간 절이 없습니다.")).toBeVisible();
+  await expect(results.getByText("찾는 말이 들어간 절이 없습니다.")).toBeVisible();
   // the table of contents
   await page.getByRole("searchbox", { name: "매뉴얼 검색" }).fill("");
   await page.getByRole("navigation", { name: "목차" }).getByRole("link", { name: "7.1 Gantt" }).click();
