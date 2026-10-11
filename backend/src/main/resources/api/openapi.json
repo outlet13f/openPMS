@@ -116,6 +116,9 @@
     },
     "/work-packages/export": {
       "post": { "summary": "CSV·Excel·PDF로 내보내기(읽기 전용 토큰도 가능)", "responses": { "200": { "description": "파일" } } }
+    },
+    "/work-packages/export/count": {
+      "post": { "summary": "내보내기 전 건수: total 목록에 맞는 작업, count 파일에 들어갈 작업(내보내기 권한), excluded 권한이 없어 빠지는 작업, limit 최대 건수(total이 넘으면 count·excluded 0). 본문은 내보내기와 같음(읽기 전용 토큰도 가능)", "responses": { "200": { "description": "{ total, count, excluded, limit }" }, "403": { "$ref": "#/components/responses/Problem" } } }
     }
   }
 }
