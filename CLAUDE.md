@@ -1,0 +1,51 @@
+# openPMS — Claude Code 작업 규칙
+
+이 저장소에서 일하는 Claude Code가 지킬 규칙과 지금까지의 맥락입니다. 개발 환경 꾸리기는 `README.md`를 보세요.
+
+## 언어
+- 사용자와의 대화, 산출물 문서, 화면 문구, 커밋 본문의 설명은 **한국어**로 씁니다(코드 주석·식별자는 기존 코드처럼 영어 위주).
+
+## 클린룸과 보안 (반드시 지킴)
+- **OpenProject의 소스 코드, GitHub 저장소, JS 번들, 네트워크 호출은 절대 읽지 않습니다**(GPLv3, 클린룸). 공개 문서·리뷰·포럼은 읽어도 됩니다. 리뷰어 인용은 조사 자료일 뿐 홍보 문구로 쓰지 않고, 리뷰·인용을 지어내지 않습니다.
+- `replica/screens/`(원본 화면 캡처)는 참고용이며 **절대 커밋하지 않습니다**(.gitignore). `replica/diffs/`도 커밋하지 않습니다.
+- 계정에 대신 로그인하거나, 비밀번호를 묻거나, 기본 자격 증명을 쓰지 않습니다. 개발 데이터의 비밀번호 `openpms!`는 dev 프로필에만 있습니다.
+- 비밀값은 환경 변수로만. `.env`·`backend/.env.local`은 커밋하지 않습니다(새 PC에서는 `dev.sh up`이 새로 만듦). 토큰을 출력·붙여 넣지 않습니다.
+- 커밋은 경로를 지정해서 합니다(`git add -A` 금지).
+
+## 일하는 방식
+- 산출물(`docs/deliverables/`)과 문서 갱신은 **백그라운드 서브에이전트**에게 맡기고, 결과를 검토한 뒤 커밋합니다. 판 번호는 README의 개정 이력을 따릅니다(지금 2.1).
+- 큰 수정은 스크래치 폴더에 Python 스크립트를 써서 적용합니다. **bash heredoc은 따옴표·백슬래시를 망가뜨리므로** 코드 패치에 쓰지 않습니다.
+- **prettier를 돌리지 않습니다**(저장소의 포매터가 아니어서 파일 전체가 바뀜).
+- 문서 줄바꿈을 그대로 둡니다: `docs/deliverables`의 03·04·05·10과 `replica/` 문서는 CRLF, 01·02·06·07·08·09와 README는 LF.
+- Windows Git Bash에서 `podman exec`에 `/data/...` 같은 경로를 넘길 때는 `MSYS_NO_PATHCONV=1`.
+- Windows의 Python `urllib`로 `localhost`를 부르면 요청마다 약 2초 늦어집니다(IPv6 먼저 시도). `127.0.0.1`을 쓰세요.
+
+## 개발 순서에서 잊기 쉬운 것
+- 백엔드를 고쳤으면 e2e 전에 `bash backend/scripts/dev.sh run`으로 다시 띄웁니다.
+- 마이그레이션 뒤 복원 지점: 앱 정지 → `reset-db` → `run` → `gradle jooqCodegen` → 앱 정지 → `snapshot-db`.
+- 개발 데이터 마이그레이션(V1000번대)은 스키마 마이그레이션 **뒤에** 돕니다. 새 스키마에 개발 데이터가 필요하면 V100x를 새로 만듭니다(예: V1002 시간 기록, V1003 공동 담당자). 새 모듈을 넣으면 `projects_known_modules` check 제약도 넓힙니다.
+- jOOQ 생성 코드(`backend/src/main/generated`)는 커밋합니다(빌드에 DB가 필요 없게).
+- `work_package_assignees`에 `ON CONFLICT`를 쓸 때는 `(work_package_id, user_id)`를 꼭 적습니다(지연 unique 제약 때문에).
+- 요청은 가상 스레드에서 돕니다(Java 21). **`synchronized`나 `ConcurrentHashMap.computeIfAbsent` 안에서 DB를 기다리지 않습니다**. 캐리어 스레드를 붙잡아 서버 전체가 멈춥니다(BUG-012). `NoPinningTest`와 `PerfBudgetIT`의 JFR 검사가 막습니다.
+- 앱 도움말(`frontend/src/features/help/topics.ts`)은 화면을 매뉴얼 **절 번호**로 잇습니다. `07-사용자매뉴얼.md`·`10-운영자매뉴얼.md`의 기존 번호 붙은 제목은 **번호를 바꾸거나 지우지 말고**, 새 내용은 새 번호로 덧붙입니다(e2e f17-H3가 확인).
+- 가짜 데이터 계층(`frontend/src/api/fake`)도 실제 API와 같은 규칙으로 맞춥니다. 시드 모양을 바꾸면 `db.ts`의 `SCHEMA`를 올립니다. `seed.ts`가 db를 import하는 모듈을 import하면 TDZ 순환이 생깁니다(시간 기록 시드는 `fake/time-seed.ts`).
+- 측정 예산: 서버는 `PerfBudgetIT`(p95·SQL 수·응답 크기), 화면은 `e2e/perf.spec.ts`(`E2E_BASE=http://localhost:8090`이면 빌드된 화면), 부하는 `backend/scripts/perf_load.py`(시험용 설치에서만, 비밀번호는 `OPENPMS_PERF_PASSWORD`). 부하 측정은 CPU를 제한한 컨테이너로 합니다(8코어 PC에서는 BUG-012가 안 보였음). `podman stats`의 CPU %는 시작 이후 평균이므로 `CPUNano` 차이를 씁니다.
+- 운영 이미지 확인은 스크래치 폴더에 compose를 복사해 별도 프로젝트 이름·포트로 띄웁니다(개발 컨테이너와 겹치지 않게).
+
+## 지금까지 (2026-10-11 기준)
+- 범위: 작업 패키지 핵심 + 계획 화면(Gantt, 보드, 캘린더, 팀 플래너), 사내 도구. 기준 원본은 사용자의 자체 설치 OpenProject 17.9.1 Community(로컬 8080, 사용자 본인 계정).
+- 원본 기능 패리티 100(필수 64/64). 스키마 V1–V18, 개발 데이터 V1000–V1003.
+- `/replica-entrepreneur`의 개선 계획 `replica/fixes.md`:
+  - 1 주간 공수 입력표(시간 기록)
+  - 2 템플릿 새 시작일
+  - 3 업그레이드 전 자동 백업 + 관리 · 시스템 정보
+  - 4 성능 예산(`replica/perf.md`)
+  - 5 화면별 도움말(`/help`, `/help/admin`)
+  - 6 공동 담당자(`work_package_assignees`, 첫 사람 = 주 담당자 = `assignee_id`)
+  - — 모두 완료. **7 반복 작업은 사용자 결정으로 보류.**
+- 테스트: JUnit 104, e2e 133 통과 + 1 건너뜀(PERF-5 느린 망은 개발 서버에서 의도적으로 건너뜀).
+- 남은 일:
+  - 손으로 할 것(사내 SMTP·SSO·웹훅·프록시, NVDA, 회사 서버 부하 측정, 원본 캡처로 레이아웃 비교)
+  - 정할 것(워크플로 '담당자일 때만' 조건을 화면에서 만들지, 템플릿 복사의 비공개 보기, 내보내기 시각 형식)
+  - 테스트 빈틈(`replica/test-plan.md`의 "확인할 것")
+- 이전 PC의 세션 스크래치 폴더에만 있던 브라우저 점검 스크립트 27묶음과 이미지 스모크 스크립트는 저장소에 없습니다. e2e로 옮기는 것이 다음 후보입니다.
