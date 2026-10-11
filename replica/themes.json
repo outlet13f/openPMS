@@ -1,0 +1,380 @@
+{
+ "_about": "Themes for openPMS (OpenProject clone) review analysis. Adapted from the replica-entrepreneur default themes for project-management software. Patterns are Python regular expressions, matched case-insensitively. kind: complaint or request.",
+ "request_patterns": [
+  "\\bi wish\\b",
+  "\\bplease add\\b",
+  "\\bwould be (nice|great|good|helpful|gold|a huge plus)\\b",
+  "\\bwould love\\b",
+  "\\bneeds? (a|an|the|to|more|some)\\b",
+  "\\bno way to\\b",
+  "\\bthere'?s no (way|option)\\b",
+  "\\bis (it|there) (possible|a way|any ?way)\\b",
+  "\\b(can'?t|cannot|unable to) (even )?(add|change|edit|set|choose|export|import|customi[sz]e|connect|undo|delete|turn off|create|assign|find|do)\\b",
+  "\\b(missing|lacks|lacking)\\b",
+  "\\bdoesn'?t (have|support|let|allow)\\b",
+  "\\bif only\\b",
+  "\\bfeature request\\b",
+  "\\bwhy (can'?t|isn'?t|doesn'?t)\\b",
+  "\\bany chance\\b",
+  "\\bhave you thought about\\b"
+ ],
+ "themes": [
+  {
+   "id": "paywall",
+   "label": "Enterprise-edition paywall, open-core, upsell banners, pricing",
+   "kind": "complaint",
+   "patterns": [
+    "\\benterprise (edition|version|plan|feature|offering|add-?on|trial|license|blockers|clients)",
+    "\\bpremium\\b",
+    "\\bpaywall",
+    "\\bpaid feature",
+    "\\bsubscription\\b",
+    "\\bopen.?core\\b",
+    "\\bfreemium\\b",
+    "\\bprice\\b",
+    "\\bpricing\\b",
+    "\\bupsel",
+    "\\bbanners?\\b",
+    "\\badvertis",
+    "\\badds\\b",
+    "\\bcommunity (edition|version)\\b",
+    "\\bfree version\\b",
+    "\\bannoying limitations\\b",
+    "\\bover a plan\\b",
+    "\\bshim",
+    "\\bcrippleware\\b",
+    "\\bper-seat\\b",
+    "\\buser licensee?\\b",
+    "\\bfree trial\\b",
+    "\\bsales funnel\\b",
+    "\\bpartly open sourced\\b"
+   ]
+  },
+  {
+   "id": "performance",
+   "label": "Slow, sluggish, resource-hungry",
+   "kind": "complaint",
+   "patterns": [
+    "\\bslow(er|ly|ness)?\\b",
+    "\\bsluggish\\b",
+    "\\blag(gy|s)?\\b",
+    "\\btakes forever\\b",
+    "\\bmemory\\b",
+    "\\bcpu\\b",
+    "\\b100% ruby\\b",
+    "\\bmore resources\\b",
+    "\\bsnappy\\b",
+    "\\b10x\\b",
+    "\\bmore responsive than\\b",
+    "\\bunderperformed\\b",
+    "\\bpage loads\\b",
+    "\\bunbearably\\b"
+   ]
+  },
+  {
+   "id": "ux",
+   "label": "UI/UX dated, clunky, cluttered or confusing",
+   "kind": "complaint",
+   "patterns": [
+    "\\bconfus",
+    "\\bhard to (use|find|navigate|understand)\\b",
+    "\\bcomplicated\\b",
+    "\\bclutter",
+    "\\bunintuitive\\b",
+    "\\bnot (so )?intuitiv",
+    "\\bmore intuitive\\b",
+    "\\bclunky\\b",
+    "\\bclumsy\\b",
+    "\\btoo many (steps|clicks|taps)\\b",
+    "\\boutdated\\b",
+    "\\bold-fashioned\\b",
+    "\\bmessy\\b",
+    "\\bprettiest\\b",
+    "\\bux\\b",
+    "\\bui\\b",
+    "\\buser.?interface\\b",
+    "\\buser experience\\b",
+    "\\bvisual\\b",
+    "\\bannoying!",
+    "\\bpainful\\b"
+   ]
+  },
+  {
+   "id": "complexity",
+   "label": "Too heavy / overkill / steep learning curve",
+   "kind": "complaint",
+   "patterns": [
+    "\\blearning curve\\b",
+    "\\bonboarding\\b",
+    "\\beinarbeitung",
+    "\\bbeginners?\\b",
+    "\\boverwhelm",
+    "\\bget familiar\\b",
+    "\\boverkill\\b",
+    "\\btoo complex\\b",
+    "\\btoo much for\\b",
+    "\\bheavy enterprise\\b",
+    "\\bbloat",
+    "\\bsimpler tool\\b",
+    "\\bprefer a simpler\\b",
+    "\\bburdensome\\b",
+    "\\bentrepreneurial\\b"
+   ]
+  },
+  {
+   "id": "scheduling",
+   "label": "Gantt, scheduling, dependencies, durations",
+   "kind": "request",
+   "patterns": [
+    "\\bgantt\\b",
+    "\\bschedul",
+    "\\bduration",
+    "\\bmilestones?\\b",
+    "\\bdependenc",
+    "\\bpredecessors?\\b",
+    "\\bsuccessors?\\b",
+    "\\bcritical path\\b",
+    "\\bdags?\\b",
+    "\\bblockers?\\b",
+    "\\bstart (and|date)\\b",
+    "\\bfinish dates\\b",
+    "\\bgraph/network view\\b",
+    "\\blose a good amount of days\\b"
+   ]
+  },
+  {
+   "id": "agile",
+   "label": "Agile boards, backlogs, sprints, story points",
+   "kind": "request",
+   "patterns": [
+    "\\bboards?\\b",
+    "\\bkanban\\b",
+    "\\bscrum\\b",
+    "\\bsprints?\\b",
+    "\\bbacklogs?\\b",
+    "\\bburn ?down\\b",
+    "\\bstory points?\\b",
+    "\\bswimlanes?\\b",
+    "\\bcards?\\b",
+    "\\bagile\\b"
+   ]
+  },
+  {
+   "id": "time_cost",
+   "label": "Time tracking, cost and budgets",
+   "kind": "request",
+   "patterns": [
+    "\\btime tracking\\b",
+    "\\btrack time\\b",
+    "\\blog(ged|ging)? (time|hours|the hours|more hours)\\b",
+    "\\bworking hours\\b",
+    "\\bhours\\b",
+    "\\btimesheet",
+    "\\bcosts?\\b",
+    "\\bcosting\\b",
+    "\\bbudget",
+    "\\b8-hour\\b",
+    "\\bpart-time\\b"
+   ]
+  },
+  {
+   "id": "resources",
+   "label": "Resource management, workload, team planning",
+   "kind": "request",
+   "patterns": [
+    "\\bresource",
+    "\\bworkload\\b",
+    "\\butili[sz]ation\\b",
+    "\\bunderutilized\\b",
+    "\\boverutilized\\b",
+    "\\bcapacity\\b",
+    "\\bteam planner\\b",
+    "\\bplanning view\\b",
+    "\\bplanned work\\b"
+   ]
+  },
+  {
+   "id": "assignment",
+   "label": "Multiple assignees, permissions and roles",
+   "kind": "request",
+   "patterns": [
+    "\\bmultiple (members|responsible|assignees|users)\\b",
+    "\\bonly allows you to assign one\\b",
+    "\\bassign(ed)? (a|to|by|single)\\b",
+    "\\bpermissions?\\b",
+    "\\broles?\\b",
+    "\\bedit/manage only\\b",
+    "\\bgroups?\\b",
+    "\\bldap\\b",
+    "\\bsingle.sign.on\\b"
+   ]
+  },
+  {
+   "id": "recurring",
+   "label": "Recurring tasks, templates, checklists",
+   "kind": "request",
+   "patterns": [
+    "\\brecurr",
+    "\\brepeat",
+    "\\bperiodic",
+    "\\btemplates?\\b",
+    "\\bchecklists?\\b",
+    "\\bauto tasks\\b",
+    "\\bcopy the template\\b"
+   ]
+  },
+  {
+   "id": "selfhost",
+   "label": "Self-hosting: install, upgrades, Docker, PostgreSQL migrations",
+   "kind": "complaint",
+   "patterns": [
+    "\\bupgrad",
+    "\\bupdates? (are|is) broken\\b",
+    "\\bupdate path\\b",
+    "\\bupdate informations\\b",
+    "\\bpostgres",
+    "\\bmigrat(e|ion|ions)\\b",
+    "\\bomnibus\\b",
+    "\\binodes?\\b",
+    "\\bapt-get\\b",
+    "\\bcrashed my instance\\b",
+    "\\bconfigs\\b",
+    "\\ball-in-one\\b",
+    "\\binstall instructions\\b",
+    "\\bpackage based\\b",
+    "\\bcontainers break\\b",
+    "\\bcontainer fails\\b",
+    "\\bdocker compose installation\\b",
+    "\\bwindows operating systems\\b",
+    "\\bslows down to the bottom\\b",
+    "\\bmaintaining three\\b"
+   ]
+  },
+  {
+   "id": "mobile",
+   "label": "Mobile app, responsive layout, offline",
+   "kind": "request",
+   "patterns": [
+    "\\bmobile\\b",
+    "\\bandroid\\b",
+    "\\bios\\b",
+    "\\biphone\\b",
+    "\\boffline\\b",
+    "\\bnot responsive\\b",
+    "\\bapps? version\\b"
+   ]
+  },
+  {
+   "id": "notifications",
+   "label": "Notifications and email",
+   "kind": "complaint",
+   "patterns": [
+    "\\bnotification",
+    "\\be-?mails?\\b",
+    "\\breminders?\\b"
+   ]
+  },
+  {
+   "id": "editor_wiki",
+   "label": "Text editor, wiki and documents",
+   "kind": "request",
+   "patterns": [
+    "\\beditor\\b",
+    "\\bwiki\\b",
+    "\\bmarkdown\\b",
+    "\\bfont size\\b",
+    "\\bheadings?\\b",
+    "\\bconfluence\\b",
+    "\\bsolution for documents\\b",
+    "\\bdocument repository\\b",
+    "\\bentered code is lost\\b"
+   ]
+  },
+  {
+   "id": "reporting",
+   "label": "Reporting, dashboards, export and print",
+   "kind": "request",
+   "patterns": [
+    "\\breports?\\b",
+    "\\breporting\\b",
+    "\\bdashboards?\\b",
+    "\\bexport",
+    "\\bpdf\\b",
+    "\\bprint",
+    "\\bget the data back out\\b"
+   ]
+  },
+  {
+   "id": "integrations",
+   "label": "Integrations, API, import from other tools",
+   "kind": "request",
+   "patterns": [
+    "\\bintegrat",
+    "\\bapi\\b",
+    "\\bapis\\b",
+    "\\bwebhooks?\\b",
+    "\\bexcel\\b",
+    "\\bxray\\b",
+    "\\bzephyr\\b",
+    "\\bimport\\b",
+    "\\bmigration tool\\b"
+   ]
+  },
+  {
+   "id": "docs_support",
+   "label": "Documentation, discoverability, support responsiveness",
+   "kind": "complaint",
+   "patterns": [
+    "\\bdocumentation\\b",
+    "\\bnot documented\\b",
+    "\\bdocs\\b",
+    "\\buser'?s guide\\b",
+    "\\breally hard to find\\b",
+    "\\bcould not determine\\b",
+    "\\bfeature matrix\\b",
+    "\\bhandled properly\\b",
+    "\\bsmaller features\\b",
+    "\\bslow to come out\\b",
+    "\\bbroken link\\b"
+   ]
+  },
+  {
+   "id": "terminology",
+   "label": "Confusing terminology (work package, project)",
+   "kind": "complaint",
+   "patterns": [
+    "\\bwork packages\\\" \\(what",
+    "\\bterm project\\b",
+    "\\bneutral\\b",
+    "\\bzugewiesen an\\b"
+   ]
+  },
+  {
+   "id": "localization",
+   "label": "Localization and i18n",
+   "kind": "request",
+   "patterns": [
+    "\\bi18n\\b",
+    "\\btranslat",
+    "\\blocali[sz]",
+    "\\besperanto\\b"
+   ]
+  },
+  {
+   "id": "bugs",
+   "label": "Bugs, data loss, things not saving",
+   "kind": "complaint",
+   "patterns": [
+    "\\bbugs?\\b",
+    "\\bbroken\\b",
+    "\\bcrash",
+    "\\berror\\b",
+    "\\bfail(s|ed|ing)?\\b",
+    "\\b(doesn'?t|does not|won'?t) (work|save)\\b",
+    "\\bnot working\\b",
+    "\\blost\\b",
+    "\\bbusted\\b"
+   ]
+  }
+ ]
+}
