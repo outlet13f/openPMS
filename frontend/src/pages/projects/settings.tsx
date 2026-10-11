@@ -66,6 +66,7 @@ function CopyProjectDialog({ project, onClose }: { project: Project; onClose: ()
   const [name, setName] = useState(t("settings.copyName", { name: project.name }));
   const [identifier, setIdentifier] = useState(`${project.identifier}-copy`.slice(0, 100));
   const [parts, setParts] = useState<TemplatePart[]>([...TEMPLATE_PARTS]);
+  const [startDate, setStartDate] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const fieldErr = (f: string) => (isApiError(error) ? error.fieldErrors.find((e) => e.field === f)?.message : undefined);
@@ -74,7 +75,7 @@ function CopyProjectDialog({ project, onClose }: { project: Project; onClose: ()
     setError(null);
     try {
       const made = await runToast(
-        api.projects.copy(project.id, { name, identifier, parentId: project.parent?.id ?? null, copy: parts }).catch((e) => {
+        api.projects.copy(project.id, { name, identifier, parentId: project.parent?.id ?? null, copy: parts, startDate: startDate || null }).catch((e) => {
           setError(e);
           throw e;
         }),
@@ -121,6 +122,9 @@ function CopyProjectDialog({ project, onClose }: { project: Project; onClose: ()
             ))}
           </div>
         </fieldset>
+        <Field label={t("projectNew.startDate")} hint={t("projectNew.startDateHint")} error={fieldErr("startDate")}>
+          <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-48" />
+        </Field>
       </div>
     </Dialog>
   );

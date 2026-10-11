@@ -200,4 +200,62 @@ class TemplatesIT {
             send(admin, delete("/api/v1/queries/" + view.get("id").asString()), "").andExpect(status().is2xxSuccessful());
         }
     }
+
+    /** Working days in [from, to], as the instance's calendar counts them. */
+    int workingDays(java.time.LocalDate from, java.time.LocalDate to) {
+        var cal = new com.openpms.core.Snapshot(db, json).calendar();
+        int n = 0;
+        for (var d = from; !d.isAfter(to); d = d.plusDays(1)) if (cal.isWorking(d, false)) n++;
+        return n;
+    }
+
+    @Test
+    void aNewStartDateMovesTheCopiedScheduleInWorkingDays() throws Exception {
+        var template = id("web-platform");
+        var start = java.time.LocalDate.parse("2027-01-04"); // a Monday
+        send(admin, post("/api/v1/projects/web-platform/copy"), "{\"name\":\"새 일정으로 복사\",\"identifier\":\"copied-project\",\"copy\":[\"workPackages\",\"versions\"],"
+                + "\"startDate\":\"" + start + "\"}").andExpect(status().isCreated());
+        var made = id("copied-project");
+        var sources = db.selectFrom(WORK_PACKAGES).where(WORK_PACKAGES.PROJECT_ID.eq(template)).orderBy(WORK_PACKAGES.NUMBER).fetch();
+        var copies = db.selectFrom(WORK_PACKAGES).where(WORK_PACKAGES.PROJECT_ID.eq(made)).orderBy(WORK_PACKAGES.NUMBER).fetch();
+        assertThat(copies).hasSize(sources.size());
+        // the earliest copied date is the new start
+        var earliest = copies.stream().map(w -> w.getStartDate() != null ? w.getStartDate() : w.getDueDate()).filter(java.util.Objects::nonNull)
+                .min(java.util.Comparator.naturalOrder()).orElseThrow();
+        assertThat(earliest).isEqualTo(start);
+        int checked = 0;
+        for (int i = 0; i < sources.size(); i++) {
+            var s = sources.get(i);
+            var c = copies.get(i);
+            assertThat(c.getSubject()).isEqualTo(s.getSubject());
+            assertThat(c.getStartDate() == null).isEqualTo(s.getStartDate() == null);
+            assertThat(c.getDueDate() == null).isEqualTo(s.getDueDate() == null);
+            if (s.getStartDate() != null && s.getDueDate() != null && !Boolean.TRUE.equals(s.getIgnoreNonWorkingDays())) {
+                // as long in working days as before
+                assertThat(workingDays(c.getStartDate(), c.getDueDate())).as(s.getSubject()).isEqualTo(workingDays(s.getStartDate(), s.getDueDate()));
+                checked++;
+            }
+            // the order of start dates holds
+            for (int j = 0; j < sources.size(); j++) {
+                var s2 = sources.get(j);
+                var c2 = copies.get(j);
+                if (s.getStartDate() != null && s2.getStartDate() != null && s.getStartDate().isBefore(s2.getStartDate()))
+                    assertThat(c.getStartDate()).as(s.getSubject() + " before " + s2.getSubject()).isBeforeOrEqualTo(c2.getStartDate());
+            }
+        }
+        assertThat(checked).isPositive();
+        // versions move by the same number of calendar days as the earliest date
+        var anchor = sources.stream().map(w -> w.getStartDate() != null ? w.getStartDate() : w.getDueDate()).filter(java.util.Objects::nonNull)
+                .min(java.util.Comparator.naturalOrder()).orElseThrow();
+        long days = java.time.temporal.ChronoUnit.DAYS.between(anchor, start);
+        var tv = db.selectFrom(VERSIONS).where(VERSIONS.PROJECT_ID.eq(template), VERSIONS.END_DATE.isNotNull()).orderBy(VERSIONS.NAME).fetch();
+        for (var v : tv) {
+            var cv = db.selectFrom(VERSIONS).where(VERSIONS.PROJECT_ID.eq(made), VERSIONS.NAME.eq(v.getName())).fetchOne();
+            assertThat(cv.getEndDate()).isEqualTo(v.getEndDate().plusDays(days));
+        }
+        // without a start date the dates stay as they were (the other tests); a start date that is not a date is refused
+        send(admin, delete("/api/v1/projects/copied-project"), "{\"confirmIdentifier\":\"copied-project\"}").andExpect(status().isNoContent());
+        send(admin, post("/api/v1/projects/web-platform/copy"), "{\"name\":\"x\",\"identifier\":\"copied-project\",\"copy\":[\"workPackages\"],\"startDate\":\"내일\"}")
+                .andExpect(status().isUnprocessableContent());
+    }
 }

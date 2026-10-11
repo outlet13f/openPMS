@@ -4,6 +4,7 @@
 
 import type { Api } from "../api";
 import type {
+  IsoDate,
   ProjectInput,
   QueryResult,
   QuerySpec,
@@ -31,7 +32,7 @@ import type {
   SearchResults,
 } from "../types";
 import { ApiError } from "../errors";
-import { addDays, countWorkingDays, nowIso, todayIso } from "@/lib/dates";
+import { addDays, countWorkingDays, diffDays, isWorkingDay, nowIso, todayIso } from "@/lib/dates";
 import { db, newId, persist, type DbBoard, type DbJournal, type DbProject, type DbUser, type DbWp } from "./db";
 import { allowedStatusIds, can, findProject, findWp, globalPermissions, memberRoleIds, projectUserIds, requirePerm, sessionUser, visibleProjects } from "./permissions";
 import { clone, display, projectRef, statusRef, toJournal, toProject, toWp, typeRef, priorityRef, userRef, wpRef } from "./dto";
@@ -63,8 +64,47 @@ function normalizeOnce() {
 normalizeOnce();
 
 
+/**
+ * 새 시작일 (server: ProjectCopy.Shift): working-day items keep their place counted in working days from the earliest date,
+ * calendar-day items and versions move by the same number of calendar days.
+ */
+function scheduleShift(anchor: IsoDate | null, start: IsoDate | null | undefined) {
+  if (!anchor || !start) return null;
+  const cal = workCalendar();
+  const firstWorking = (d: IsoDate) => {
+    let x = d;
+    for (let i = 0; i < 366 && !isWorkingDay(x, cal); i++) x = addDays(x, 1);
+    return x;
+  };
+  const from = firstWorking(anchor);
+  const base = firstWorking(start);
+  const days = diffDays(anchor, start);
+  return {
+    calendar: (d: IsoDate | null) => (d ? addDays(d, days) : null),
+    working: (d: IsoDate | null) => {
+      if (!d) return null;
+      let index = 0;
+      for (let x = from; x < d; x = addDays(x, 1)) if (isWorkingDay(x, cal)) index++;
+      let out = base;
+      while (index > 0) {
+        out = addDays(out, 1);
+        if (isWorkingDay(out, cal)) index--;
+      }
+      return out;
+    },
+    due: (startDate: IsoDate, duration: number) => {
+      let out = startDate;
+      for (let left = duration - 1; left > 0; ) {
+        out = addDays(out, 1);
+        if (isWorkingDay(out, cal)) left--;
+      }
+      return out;
+    },
+  };
+}
+
 /** S04, same rules as the server's ProjectCopy: modules, types, fields always; the chosen parts; nobody is notified. */
-function copyTemplate(t: DbProject, p: DbProject, parts: Set<string>, user: DbUser) {
+function copyTemplate(t: DbProject, p: DbProject, parts: Set<string>, user: DbUser, startDate?: IsoDate | null) {
   const now = nowIso();
   Object.assign(p, {
     enabledModules: [...t.enabledModules], typeIds: [...t.typeIds], descriptionHtml: p.descriptionHtml || t.descriptionHtml,
@@ -79,11 +119,16 @@ function copyTemplate(t: DbProject, p: DbProject, parts: Set<string>, user: DbUs
     }
   const keep = (u: Id | null) => (u && isMember(u, p.id) ? u : null);
   const ids = new Map<Id, Id>();
+  const earliest = (ds: (IsoDate | null)[]) => ds.filter((d): d is IsoDate => !!d).sort()[0] ?? null;
+  const anchor =
+    (parts.has("workPackages") ? earliest(db.workPackages.filter((w) => w.projectId === t.id).map((w) => w.startDate ?? w.dueDate)) : null) ??
+    (parts.has("versions") ? earliest(db.versions.filter((v) => v.projectId === t.id).map((v) => v.startDate ?? v.endDate)) : null);
+  const shift = scheduleShift(anchor, startDate);
   if (parts.has("versions"))
     for (const v of db.versions.filter((x) => x.projectId === t.id)) {
       const id = newId("v");
       ids.set(v.id, id);
-      db.versions.push({ ...v, id, projectId: p.id });
+      db.versions.push({ ...v, id, projectId: p.id, ...(shift ? { startDate: shift.calendar(v.startDate), endDate: shift.calendar(v.endDate) } : {}) });
     }
   if (parts.has("categories"))
     for (const c of db.categories.filter((x) => x.projectId === t.id)) {
@@ -100,6 +145,13 @@ function copyTemplate(t: DbProject, p: DbProject, parts: Set<string>, user: DbUs
         assigneeId: keep(w.assigneeId), responsibleId: keep(w.responsibleId), versionId: w.versionId ? (ids.get(w.versionId) ?? null) : null,
         categoryId: w.categoryId ? (ids.get(w.categoryId) ?? null) : null, lockVersion: 0, createdAt: now, updatedAt: now,
       };
+      if (shift) {
+        if (w.ignoreNonWorkingDays) (c.startDate = shift.calendar(w.startDate)), (c.dueDate = shift.calendar(w.dueDate));
+        else {
+          c.startDate = shift.working(w.startDate);
+          c.dueDate = c.startDate && w.duration && w.dueDate ? shift.due(c.startDate, w.duration) : shift.working(w.dueDate);
+        }
+      }
       ids.set(w.id, c.id);
       db.workPackages.push(c);
       return c;
@@ -156,7 +208,7 @@ function createProjectFor(user: DbUser, input: ProjectInput, source: DbProject |
   };
   db.projects.push(p);
   db.members.push({ id: newId("m"), projectId: p.id, userId: user.id, groupId: null, roleIds: ["r-manager"], createdAt: now });
-  if (template) copyTemplate(template, p, new Set(input.copy ?? []), user);
+  if (template) copyTemplate(template, p, new Set(input.copy ?? []), user, input.startDate);
   return p;
 }
 

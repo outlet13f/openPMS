@@ -194,7 +194,9 @@ public class ProjectController {
         for (var t : ctx.s().types()) if (t.isDefault()) db.insertInto(PROJECT_TYPES).set(PROJECT_TYPES.PROJECT_ID, p.getId()).set(PROJECT_TYPES.TYPE_ID, t.id()).execute();
         var m = db.insertInto(MEMBERS).set(MEMBERS.PROJECT_ID, p.getId()).set(MEMBERS.USER_ID, ctx.userId()).returning(MEMBERS.ID).fetchOne();
         db.insertInto(MEMBER_ROLES).set(MEMBER_ROLES.MEMBER_ID, m.getId()).set(MEMBER_ROLES.ROLE_ID, MANAGER_ROLE).execute();
-        if (template != null) copier.copy(ctx, template, p.getId(), parts, !html.isBlank());
+        // 새 시작일: the copied schedule moves so that it begins then (ProjectCopy.Shift)
+        var startDate = In.date(in, "startDate", "startDate");
+        if (template != null) copier.copy(ctx, template, p.getId(), parts, !html.isBlank(), startDate);
         ctx.refresh();
         return ResponseEntity.status(HttpStatus.CREATED).body(toDto(ctx, ctx.findProject(p.getId())));
     }

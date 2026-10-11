@@ -87,6 +87,22 @@ test.describe("F10 프로젝트와 멤버", () => {
     expect(wps.total).toBeGreaterThan(5);
   });
 
+  test("F10-H6 a copy with a new start date moves the schedule in working days", async ({ page }) => {
+    await page.goto("/projects/web-platform/settings/general");
+    await page.getByRole("button", { name: "프로젝트 복사" }).click();
+    const dlg = page.getByRole("dialog", { name: "웹 플랫폼 개편 복사" });
+    await dlg.getByLabel(/^식별자/).fill("web-platform-2027");
+    await dlg.getByLabel("새 시작일").fill("2027-01-04");
+    await dlg.getByRole("button", { name: "복사해서 만들기" }).click();
+    await page.waitForURL(/\/projects\/web-platform-2027$/);
+    const spec = "{ v: 1, filters: [], columns: ['subject'], sort: [{ field: 'startDate', dir: 'asc' }], groupBy: null, hierarchy: false, sums: false, includeSubprojects: false }";
+    const rows = await api<{ rows: { wp: { startDate: string | null; dueDate: string | null } }[] }>(
+      page, `return await api.workPackages.query(${spec}, { projectId: 'web-platform-2027', page: 1, pageSize: 100 })`);
+    const dates = rows.rows.map((r) => r.wp.startDate ?? r.wp.dueDate).filter((d): d is string => !!d).sort();
+    expect(dates[0]).toBe("2027-01-04");
+    expect(dates.every((d) => d >= "2027-01-04")).toBe(true);
+  });
+
   test("F10-H5 the overview is a dashboard its managers arrange", async ({ page }) => {
     await page.goto("/projects/web-platform");
     for (const name of ["설명", "작업 현황", "프로젝트 상태", "멤버"]) await expect(page.getByRole("region", { name, exact: true })).toBeVisible();

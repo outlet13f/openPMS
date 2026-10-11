@@ -15,9 +15,11 @@ import static com.openpms.db.Tables.USER_GROUP_MEMBERS;
 import static com.openpms.db.Tables.VERSIONS;
 import static com.openpms.db.Tables.WORK_PACKAGES;
 
+import com.openpms.common.Dates;
 import com.openpms.core.Ctx;
 import com.openpms.core.Snapshot.ProjectRow;
 import com.openpms.wp.Journals;
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -26,6 +28,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.jooq.DSLContext;
+import org.jooq.impl.DSL;
 import org.jooq.JSONB;
 import org.springframework.stereotype.Service;
 
@@ -50,8 +53,58 @@ public class ProjectCopy {
         this.journals = journals;
     }
 
+    /**
+     * Moves a template's schedule to a new start. Dates of items scheduled in working days keep their place counted in working
+     * days from the earliest date (so durations and the gaps between linked items survive weekends and holidays); items that
+     * ignore non-working days, and versions, move by the same number of calendar days.
+     */
+    record Shift(Dates.WorkCalendar cal, LocalDate anchor, LocalDate base, long calendarDays) {
+        static Shift of(Dates.WorkCalendar cal, LocalDate anchor, LocalDate start) {
+            if (anchor == null || start == null) return null;
+            return new Shift(cal, firstWorking(cal, anchor), firstWorking(cal, start), java.time.temporal.ChronoUnit.DAYS.between(anchor, start));
+        }
+
+        static LocalDate firstWorking(Dates.WorkCalendar cal, LocalDate d) {
+            var x = d;
+            for (int i = 0; i < 366 && !cal.isWorking(x, false); i++) x = x.plusDays(1);
+            return x;
+        }
+
+        /** The working day as many working days after the new start as d was after the old one (a non-working d: the next one). */
+        LocalDate working(LocalDate d) {
+            if (d == null) return null;
+            int index = 0;
+            for (var x = anchor; x.isBefore(d); x = x.plusDays(1)) if (cal.isWorking(x, false)) index++;
+            var out = base;
+            while (index > 0) {
+                out = out.plusDays(1);
+                if (cal.isWorking(out, false)) index--;
+            }
+            return out;
+        }
+
+        /** The working day duration - 1 working days after start (a duration counts its first day). */
+        LocalDate due(LocalDate start, int duration) {
+            var out = start;
+            for (int left = duration - 1; left > 0; ) {
+                out = out.plusDays(1);
+                if (cal.isWorking(out, false)) left--;
+            }
+            return out;
+        }
+
+        LocalDate calendar(LocalDate d) {
+            return d == null ? null : d.plusDays(calendarDays);
+        }
+    }
+
     /** Copies into a project just created (its creator is already a member with the manager role). */
     public void copy(Ctx ctx, ProjectRow template, UUID target, Set<String> parts, boolean keepDescription) {
+        copy(ctx, template, target, parts, keepDescription, null);
+    }
+
+    /** start: the day the copied schedule should begin (null: dates as in the template). */
+    public void copy(Ctx ctx, ProjectRow template, UUID target, Set<String> parts, boolean keepDescription, LocalDate start) {
         var src = db.selectFrom(PROJECTS).where(PROJECTS.ID.eq(template.id())).fetchOne();
         var update = db.update(PROJECTS).set(PROJECTS.ENABLED_MODULES, src.getEnabledModules()).set(PROJECTS.CUSTOM_VALUES, src.getCustomValues())
                 .set(PROJECTS.OVERVIEW_WIDGETS, src.getOverviewWidgets()).set(PROJECTS.INTERNAL_COMMENTS, src.getInternalComments());
@@ -69,9 +122,10 @@ public class ProjectCopy {
         if (parts.contains("members")) copyMembers(template.id(), target);
         var people = members(target);
         var ids = new HashMap<UUID, UUID>(); // template version/category/work package id → copy
-        if (parts.contains("versions")) copyVersions(template.id(), target, ids);
+        var shift = start == null ? null : Shift.of(ctx.s().calendar(), anchor(template.id(), parts), start);
+        if (parts.contains("versions")) copyVersions(template.id(), target, ids, shift);
         if (parts.contains("categories")) copyCategories(template.id(), target, people, ids);
-        if (parts.contains("workPackages")) copyWorkPackages(ctx, template.id(), target, people, ids);
+        if (parts.contains("workPackages")) copyWorkPackages(ctx, template.id(), target, people, ids, shift);
         if (parts.contains("boards")) copyBoards(ctx, template.id(), target, people, ids, parts.contains("workPackages"));
         if (parts.contains("queries")) copyQueries(ctx, template.id(), target, ids);
     }
@@ -101,11 +155,23 @@ public class ProjectCopy {
         }
     }
 
-    private void copyVersions(UUID template, UUID target, Map<UUID, UUID> ids) {
+    /** The earliest date of what is copied: work packages' start (or due) dates, else versions' dates. */
+    private LocalDate anchor(UUID template, Set<String> parts) {
+        if (parts.contains("workPackages")) {
+            var d = db.select(DSL.min(DSL.coalesce(WORK_PACKAGES.START_DATE, WORK_PACKAGES.DUE_DATE))).from(WORK_PACKAGES).where(WORK_PACKAGES.PROJECT_ID.eq(template)).fetchOne().value1();
+            if (d != null) return d;
+        }
+        if (parts.contains("versions"))
+            return db.select(DSL.min(DSL.coalesce(VERSIONS.START_DATE, VERSIONS.END_DATE))).from(VERSIONS).where(VERSIONS.PROJECT_ID.eq(template)).fetchOne().value1();
+        return null;
+    }
+
+    private void copyVersions(UUID template, UUID target, Map<UUID, UUID> ids, Shift shift) {
         for (var v : db.selectFrom(VERSIONS).where(VERSIONS.PROJECT_ID.eq(template)).fetch()) {
             var made = db.insertInto(VERSIONS).set(VERSIONS.PROJECT_ID, target).set(VERSIONS.NAME, v.getName()).set(VERSIONS.DESCRIPTION, v.getDescription())
-                    .set(VERSIONS.STATUS, v.getStatus()).set(VERSIONS.SHARING, v.getSharing()).set(VERSIONS.START_DATE, v.getStartDate())
-                    .set(VERSIONS.END_DATE, v.getEndDate()).returning(VERSIONS.ID).fetchOne();
+                    .set(VERSIONS.STATUS, v.getStatus()).set(VERSIONS.SHARING, v.getSharing())
+                    .set(VERSIONS.START_DATE, shift == null ? v.getStartDate() : shift.calendar(v.getStartDate()))
+                    .set(VERSIONS.END_DATE, shift == null ? v.getEndDate() : shift.calendar(v.getEndDate())).returning(VERSIONS.ID).fetchOne();
             ids.put(v.getId(), made.getId());
         }
     }
@@ -118,7 +184,7 @@ public class ProjectCopy {
         }
     }
 
-    private void copyWorkPackages(Ctx ctx, UUID template, UUID target, Set<UUID> people, Map<UUID, UUID> ids) {
+    private void copyWorkPackages(Ctx ctx, UUID template, UUID target, Set<UUID> people, Map<UUID, UUID> ids, Shift shift) {
         var sources = db.selectFrom(WORK_PACKAGES).where(WORK_PACKAGES.PROJECT_ID.eq(template)).orderBy(WORK_PACKAGES.NUMBER).fetch();
         var made = new LinkedHashMap<UUID, com.openpms.db.tables.records.WorkPackagesRecord>();
         for (var w : sources) {
@@ -132,6 +198,17 @@ public class ProjectCopy {
             c.setResponsibleId(keepIf(w.getResponsibleId(), people));
             c.setVersionId(w.getVersionId() == null ? null : ids.get(w.getVersionId()));
             c.setCategoryId(w.getCategoryId() == null ? null : ids.get(w.getCategoryId()));
+            if (shift != null) {
+                if (Boolean.TRUE.equals(w.getIgnoreNonWorkingDays())) {
+                    c.setStartDate(shift.calendar(w.getStartDate()));
+                    c.setDueDate(shift.calendar(w.getDueDate()));
+                } else {
+                    c.setStartDate(shift.working(w.getStartDate()));
+                    // the duration (working days) holds; without a start or a duration the due date moves like any date
+                    c.setDueDate(c.getStartDate() != null && w.getDuration() != null && w.getDueDate() != null ? shift.due(c.getStartDate(), w.getDuration())
+                            : shift.working(w.getDueDate()));
+                }
+            }
             c.store();
             c.refresh();
             made.put(w.getId(), c);

@@ -276,6 +276,8 @@ export interface ProjectInput {
   templateId?: Id | null;
   /** with a template: what to take over besides modules, types and project attributes */
   copy?: TemplatePart[];
+  /** with a template: the day the copied schedule begins (work packages keep their place in working days; versions move by calendar days) */
+  startDate?: IsoDate | null;
 }
 
 export const TEMPLATE_PARTS = ["members", "versions", "categories", "workPackages", "boards", "queries"] as const;

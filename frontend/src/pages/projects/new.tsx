@@ -39,6 +39,7 @@ export function NewProjectPage() {
   const templates = useProjects({ filter: "templates", pageSize: 100 });
   const [templateId, setTemplateId] = useState("");
   const [parts, setParts] = useState<TemplatePart[]>([...TEMPLATE_PARTS]);
+  const [startDate, setStartDate] = useState("");
   const hasTemplates = (templates.data?.items.length ?? 0) > 0;
   useEffect(() => {
     if (mode === "template" && !templateId && templates.data?.items[0]) setTemplateId(templates.data.items[0].id);
@@ -48,7 +49,7 @@ export function NewProjectPage() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      const fromTemplate = mode === "template" && templateId ? { templateId, copy: parts } : {};
+      const fromTemplate = mode === "template" && templateId ? { templateId, copy: parts, startDate: startDate || null } : {};
       const p = await create.mutateAsync({ name, identifier, descriptionHtml: textToHtml(description), isPublic, parentId: parentId || null, ...fromTemplate });
       toast({ tone: "success", title: t("projectNew.created"), description: p.name });
       navigate(`/projects/${p.identifier}`);
@@ -90,6 +91,9 @@ export function NewProjectPage() {
                 ))}
               </div>
             </fieldset>
+            <Field label={t("projectNew.startDate")} hint={t("projectNew.startDateHint")} error={fieldErr("startDate")}>
+              <Input id="np-startDate" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-48" />
+            </Field>
           </div>
         )}
         {isApiError(create.error) && !create.error.fieldErrors.length && <Banner tone="danger">{create.error.message}</Banner>}
