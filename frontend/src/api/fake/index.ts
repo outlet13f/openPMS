@@ -92,14 +92,6 @@ function scheduleShift(anchor: IsoDate | null, start: IsoDate | null | undefined
       }
       return out;
     },
-    due: (startDate: IsoDate, duration: number) => {
-      let out = startDate;
-      for (let left = duration - 1; left > 0; ) {
-        out = addDays(out, 1);
-        if (isWorkingDay(out, cal)) left--;
-      }
-      return out;
-    },
   };
 }
 
@@ -149,7 +141,7 @@ function copyTemplate(t: DbProject, p: DbProject, parts: Set<string>, user: DbUs
         if (w.ignoreNonWorkingDays) (c.startDate = shift.calendar(w.startDate)), (c.dueDate = shift.calendar(w.dueDate));
         else {
           c.startDate = shift.working(w.startDate);
-          c.dueDate = c.startDate && w.duration && w.dueDate ? shift.due(c.startDate, w.duration) : shift.working(w.dueDate);
+          c.dueDate = shift.working(w.dueDate);
         }
       }
       ids.set(w.id, c.id);

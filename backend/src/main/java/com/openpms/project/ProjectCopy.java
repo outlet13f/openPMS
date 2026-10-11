@@ -83,16 +83,6 @@ public class ProjectCopy {
             return out;
         }
 
-        /** The working day duration - 1 working days after start (a duration counts its first day). */
-        LocalDate due(LocalDate start, int duration) {
-            var out = start;
-            for (int left = duration - 1; left > 0; ) {
-                out = out.plusDays(1);
-                if (cal.isWorking(out, false)) left--;
-            }
-            return out;
-        }
-
         LocalDate calendar(LocalDate d) {
             return d == null ? null : d.plusDays(calendarDays);
         }
@@ -203,10 +193,9 @@ public class ProjectCopy {
                     c.setStartDate(shift.calendar(w.getStartDate()));
                     c.setDueDate(shift.calendar(w.getDueDate()));
                 } else {
+                    // both ends through the same working-day mapping: the span in working days holds (whatever the duration field says)
                     c.setStartDate(shift.working(w.getStartDate()));
-                    // the duration (working days) holds; without a start or a duration the due date moves like any date
-                    c.setDueDate(c.getStartDate() != null && w.getDuration() != null && w.getDueDate() != null ? shift.due(c.getStartDate(), w.getDuration())
-                            : shift.working(w.getDueDate()));
+                    c.setDueDate(shift.working(w.getDueDate()));
                 }
             }
             c.store();
