@@ -149,7 +149,10 @@ public final class Dto {
     /* ---------- queries ---------- */
 
     /** groupKey: the row's group when the list is grouped (QueryGroup.key), else null. */
-    public record QueryRow(WorkPackage wp, int depth, boolean hasChildren, boolean context, String groupKey) {}
+    public record QueryRow(WorkPackage wp, int depth, boolean hasChildren, boolean context, String groupKey, RowBaseline baseline) {}
+
+    /** S06 기준선: made after the baseline point, or the values the changed columns had then (column → text, null for empty). */
+    public record RowBaseline(boolean added, Map<String, String> changed) {}
 
     public record TimelineLink(long fromNumber, long toNumber, int lag) {}
 
@@ -158,7 +161,7 @@ public final class Dto {
 
     /** groups: only when grouped; sums: totals over every matching item, only when sums are on. */
     public record QueryResult(List<QueryRow> rows, long total, int page, int pageSize, List<TimelineLink> relations, List<QueryGroup> groups,
-                              Map<String, BigDecimal> sums) {}
+                              Map<String, BigDecimal> sums, OffsetDateTime baselineAt) {}
 
     public record SavedQuery(String id, String name, String kind, String view, Object spec, boolean favorite, UUID projectId, boolean canEdit) {}
 

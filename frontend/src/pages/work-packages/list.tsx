@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Outlet, useMatch, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { Columns3, Download, Filter, FolderTree, Group, Highlighter, ListTodo, Maximize2, MoreHorizontal, PanelRight, Pencil, Plus, RotateCcw, Save, Sigma, Star, Trash2 } from "lucide-react";
+import { Columns3, Download, Filter, FolderTree, Group, Highlighter, History, ListTodo, Maximize2, MoreHorizontal, PanelRight, Pencil, Plus, RotateCcw, Save, Sigma, Star, Trash2 } from "lucide-react";
 import { GROUPABLE_COLUMNS, HIGHLIGHTS, type ColumnKey, type Project, type QuerySpec, type SavedQuery, type WorkPackage } from "@/api";
 import { isApiError } from "@/api";
 import { useFilterOptions, useSavedQueryMutations, useWpForm, useWpQuery } from "@/api/hooks";
@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge, Counter, TypeLabel } from "@/components/ui/badges";
 import { Checkbox } from "@/components/ui/choice";
 import { Field, Input } from "@/components/ui/field";
-import { EmptyState, useToast } from "@/components/ui/feedback";
+import { Banner, EmptyState, useToast } from "@/components/ui/feedback";
 import { Pagination } from "@/components/ui/nav";
 import { Dialog, Menu, type MenuEntry } from "@/components/ui/overlay";
 import { Skeleton } from "@/components/ui/spinner";
@@ -23,6 +23,7 @@ import { FilterPanel } from "@/features/work-packages/filter-panel";
 import { ExportDialog } from "@/features/work-packages/export-dialog";
 import { BulkBar, useBulkActions } from "@/features/work-packages/bulk-bar";
 import { useListState } from "@/features/work-packages/view-state";
+import { formatDateTime, todayIso } from "@/lib/dates";
 
 const ALL_COLUMNS: ColumnKey[] = ["number", "subject", "type", "status", "priority", "assignee", "responsible", "author", "version", "startDate", "dueDate", "duration", "work", "remainingWork", "doneRatio", "updatedAt", "project"];
 
@@ -122,6 +123,8 @@ export function WorkPackagesPage() {
   const [saveAs, setSaveAs] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [pickingBaseline, setPickingBaseline] = useState(false);
+  const [baselineDate, setBaselineDate] = useState("");
   // S06: rows checked for a bulk change; a different list or page starts empty
   const [checked, setChecked] = useState<ReadonlySet<number>>(new Set());
   const listKey = `${JSON.stringify(spec ?? null)}|${page}|${pageSize}`;
@@ -254,6 +257,24 @@ export function WorkPackagesPage() {
               <Button aria-expanded={filtersOpen} aria-controls="wp-filters" icon={<Filter />} onClick={() => setFiltersOpen((o) => !o)}>
                 {t("wp.filters")} {filterCount > 0 && <Counter>{filterCount}</Counter>}
               </Button>
+              {spec && (
+                <Menu
+                  trigger={
+                    <Button aria-pressed={!!spec.baseline} icon={<History />}>
+                      <span className="hidden xl:inline">{t("baseline.button")}</span>
+                      <span className="sr-only xl:hidden">{t("baseline.button")}</span>
+                    </Button>
+                  }
+                  items={[
+                    ...(["off", "yesterday", "lastWeek", "lastMonth"] as const).map((k) => ({
+                      label: t(`baseline.kinds.${k}`),
+                      checked: k === "off" ? !spec.baseline : spec.baseline?.kind === k,
+                      onSelect: () => state.setSpec((s) => ({ ...s, baseline: k === "off" ? null : { kind: k } })),
+                    })),
+                    { label: t("baseline.kinds.date"), checked: spec.baseline?.kind === "date", onSelect: () => setPickingBaseline(true) },
+                  ]}
+                />
+              )}
               {project && spec && (
                 <Button aria-pressed={spec.includeSubprojects} icon={<FolderTree />} onClick={() => state.setSpec((s) => ({ ...s, includeSubprojects: !s.includeSubprojects }))}>
                   <span className="hidden xl:inline">{t("wp.includeSubprojects")}</span>
@@ -277,6 +298,48 @@ export function WorkPackagesPage() {
         />
 
         <div id="wp-filters">{filtersOpen && spec && <FilterPanel spec={spec} onSpec={state.setSpec} options={options} />}</div>
+        {spec?.baseline && result.data?.baselineAt && (
+          <div className="mb-3">
+          <Banner tone="info">
+            <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+              {t("baseline.banner", { at: formatDateTime(result.data.baselineAt) })}
+              <span className="inline-flex items-center gap-1 text-xs">
+                <History className="size-3.5" aria-hidden="true" />
+                {t("baseline.legendChanged")}
+              </span>
+              <span className="rounded-sm bg-success-subtle px-1.5 text-xs font-medium text-success">{t("baseline.added")}</span>
+              <Button size="sm" variant="ghost" onClick={() => state.setSpec((s) => ({ ...s, baseline: null }))}>
+                {t("baseline.off")}
+              </Button>
+            </span>
+          </Banner>
+          </div>
+        )}
+        {pickingBaseline && (
+          <Dialog
+            open
+            onOpenChange={(o) => !o && setPickingBaseline(false)}
+            size="sm"
+            title={t("baseline.pickTitle")}
+            description={t("baseline.pickHint")}
+            footer={
+              <>
+                <Button onClick={() => setPickingBaseline(false)}>{t("app.cancel")}</Button>
+                <Button
+                  variant="primary"
+                  disabled={!baselineDate || baselineDate > todayIso()}
+                  onClick={() => (state.setSpec((s) => ({ ...s, baseline: { kind: "date", date: baselineDate } })), setPickingBaseline(false))}
+                >
+                  {t("baseline.apply")}
+                </Button>
+              </>
+            }
+          >
+            <Field label={t("baseline.date")}>
+              <Input type="date" max={todayIso()} value={baselineDate} onChange={(e) => setBaselineDate(e.target.value)} />
+            </Field>
+          </Dialog>
+        )}
 
         {!spec || result.isPending ? (
           <div className="flex flex-col gap-2 rounded-md border border-border p-3" aria-busy="true">

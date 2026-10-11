@@ -172,7 +172,7 @@ const FIELD_LABEL: Record<string, string> = {
   attachment: "첨부 파일",
 };
 
-function display(field: string, v: unknown): string | null {
+export function display(field: string, v: unknown): string | null {
   if (v === null || v === undefined || v === "") return null;
   switch (field) {
     case "statusId":

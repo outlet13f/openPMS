@@ -561,6 +561,16 @@ export interface QuerySpec {
   timeline?: { visible: boolean; zoom: "day" | "week" | "month" | "auto"; labels?: GanttLabels };
   /** S11 강조 표시: none; inline = priority and due date cells tinted; status/priority/type = whole rows in that attribute's colour */
   highlight?: Highlight;
+  /** S06 기준선: mark what changed since the start of that day */
+  baseline?: Baseline | null;
+}
+
+export type Baseline = { kind: "yesterday" | "lastWeek" | "lastMonth" } | { kind: "date"; date: IsoDate };
+export interface RowBaseline {
+  /** made after the baseline point */
+  added: boolean;
+  /** column → the value it had then (null: empty) */
+  changed: Record<string, string | null>;
 }
 
 export type Highlight = "none" | "inline" | "status" | "priority" | "type";
@@ -637,6 +647,8 @@ export interface QueryRow {
   context: boolean;
   /** the row's QueryGroup.key when the list is grouped */
   groupKey?: string | null;
+  /** with spec.baseline: what changed since then (null: nothing) */
+  baseline?: RowBaseline | null;
 }
 
 /** A group of a grouped list, over every matching item (not only this page). key "" = no value. */
@@ -660,6 +672,8 @@ export interface QueryResult {
   groups?: QueryGroup[] | null;
   /** only with spec.sums: totals of the summable visible columns over every matching item */
   sums?: Record<string, number | null> | null;
+  /** with spec.baseline: the point compared against */
+  baselineAt?: IsoDateTime | null;
 }
 
 /** queries.view: list and Gantt share the work package views; calendars and team planners are their own lists. */

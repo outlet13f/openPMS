@@ -207,7 +207,7 @@ public class Journals {
         return s.endsWith(".0") ? s.substring(0, s.length() - 2) : s;
     }
 
-    String display(Snapshot s, String field, Object v) {
+    public String display(Snapshot s, String field, Object v) {
         if (v == null || "".equals(v)) return null;
         return switch (field) {
             case "statusId" -> s.status(uuid(v)).map(Snapshot.StatusRow::name).orElse(null);

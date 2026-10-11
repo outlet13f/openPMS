@@ -2,7 +2,7 @@
 import { Fragment, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, ChevronRight, EyeOff, ListPlus, ListX, Plus } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, ChevronRight, EyeOff, History, ListPlus, ListX, Plus } from "lucide-react";
 import { ContextMenu, Menu, type MenuEntry } from "@/components/ui/overlay";
 import type { ColumnKey, FilterOptions, QueryGroup, QueryRow, QuerySpec, WorkPackage } from "@/api";
 import { useCreateWorkPackage } from "@/api/hooks";
@@ -33,6 +33,18 @@ function dueSoon(wp: WorkPackage) {
   if (!wp.dueDate || wp._meta.overdue || wp.status.isClosed) return false;
   const days = (Date.parse(wp.dueDate) - Date.parse(todayIso())) / 86_400_000;
   return days >= 0 && days <= 3;
+}
+
+/** S06 기준선: a changed cell keeps its value and gets a mark with the value it had then. */
+function BaselineMark({ old }: { old: string | null }) {
+  const { t } = useTranslation();
+  const text = t("baseline.was", { value: old ?? t("baseline.empty") });
+  return (
+    <span title={text} className="ml-1 inline-flex size-4 items-center justify-center rounded-full bg-accent-subtle align-middle text-accent-subtle-text">
+      <History className="size-3" aria-hidden="true" />
+      <span className="sr-only">{text}</span>
+    </span>
+  );
 }
 
 function Cell({ wp, column, options, inline }: { wp: WorkPackage; column: ColumnKey; options?: FilterOptions; inline?: boolean }) {
@@ -296,7 +308,7 @@ export function WorkPackageTable({
             </tr>
           </thead>
           <tbody>
-            {visible.map(({ wp, depth, hasChildren, context, groupKey }, i) => {
+            {visible.map(({ wp, depth, hasChildren, context, groupKey, baseline }, i) => {
               const isSel = selected === wp.number;
               const gk = groupKey ?? "";
               const group = groupByKey.get(gk);
@@ -356,10 +368,12 @@ export function WorkPackageTable({
                             {wp.subject}
                           </Link>
                           {context && <span className="sr-only">{t("wp.contextRow")}</span>}
+                          {baseline?.added && <span className="shrink-0 rounded-sm bg-success-subtle px-1.5 text-xs font-medium text-success">{t("baseline.added")}</span>}
                         </span>
                       ) : (
                         <Cell wp={wp} column={c} options={options} inline={highlight === "inline"} />
                       )}
+                      {baseline && c in baseline.changed && <BaselineMark old={baseline.changed[c]} />}
                     </td>
                   ))}
                 </tr>

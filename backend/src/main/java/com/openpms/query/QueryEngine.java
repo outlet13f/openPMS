@@ -683,7 +683,7 @@ public class QueryEngine {
         dtos.forEach(d -> byId.put(d.id(), d));
         var result = rows.stream().filter(r -> byId.containsKey(r.id()))
                 .map(r -> new Dto.QueryRow(byId.get(r.id()), r.depth(), r.hasChildren(), r.context(),
-                        groupOfRow.containsKey(r.id()) ? groupOfRow.get(r.id()).key() : null)).toList();
+                        groupOfRow.containsKey(r.id()) ? groupOfRow.get(r.id()).key() : null, null)).toList();
 
         List<Dto.TimelineLink> links = null;
         if (spec.timeline()) {
@@ -693,6 +693,6 @@ public class QueryEngine {
                     .where(RELATIONS.TYPE.eq("precedes"), RELATIONS.FROM_ID.in(numbers.keySet()), RELATIONS.TO_ID.in(numbers.keySet()))
                     .fetch(r -> new Dto.TimelineLink(numbers.get(r.value1()), numbers.get(r.value2()), r.value3()));
         }
-        return new Dto.QueryResult(result, total, page, pageSize, links, groups, sums);
+        return new Dto.QueryResult(result, total, page, pageSize, links, groups, sums, null);
     }
 }

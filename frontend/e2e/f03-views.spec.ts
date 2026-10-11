@@ -1,5 +1,5 @@
 // F03 필터한 보기를 저장해 팀과 공유 (S06, S11)
-import { test, expect, login, resetDb, axe } from "./support";
+import { test, expect, login, resetDb, axe, api } from "./support";
 
 test.beforeAll(resetDb);
 
@@ -62,5 +62,19 @@ test.describe("F03 보기 저장·공유", () => {
     await page.getByRole("menuitem", { name: "다른 이름으로 저장" }).click();
     await expect(page.getByRole("dialog").getByLabel(/^보기 이름/)).toBeVisible();
     await expect(page.getByRole("dialog").getByRole("checkbox")).toHaveCount(0);
+  });
+  test("F03-B1 baseline: what changed since yesterday is marked with the value it had then, new items too", async ({ page }) => {
+    const w = await api<{ lockVersion: number }>(page, "return await api.workPackages.get(12)");
+    const high = await api<string>(page, "return (await api.workPackages.filterOptions('web-platform')).priorities.find((p) => p.name === '긴급').id");
+    await api(page, "await api.workPackages.update(12, { lockVersion: args[0], priorityId: args[1] })", w.lockVersion, high);
+    await page.goto("/projects/web-platform/work-packages");
+    await page.getByRole("button", { name: "기준선" }).click();
+    await page.getByRole("menuitemcheckbox", { name: "어제" }).click();
+    await expect(page.getByText(/기준선 .+ 이후의 변경을 표시합니다/)).toBeVisible();
+    const row = page.getByRole("row").filter({ hasText: "알림 메일 하루 요약" });
+    await expect(row.getByText("기준선 때: 보통")).toBeAttached();
+    await axe(page, "S06 기준선");
+    await page.getByRole("button", { name: "기준선 끄기" }).click();
+    await expect(row.getByText("기준선 때: 보통")).toHaveCount(0);
   });
 });

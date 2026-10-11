@@ -51,7 +51,10 @@ public class QueryController {
 
     private final CustomFields customFields;
 
-    public QueryController(Current current, QueryEngine engine, DSLContext db, JsonMapper json, CustomFields customFields) {
+    private final Baselines baselines;
+
+    public QueryController(Current current, QueryEngine engine, DSLContext db, JsonMapper json, CustomFields customFields, Baselines baselines) {
+        this.baselines = baselines;
         this.customFields = customFields;
         this.current = current;
         this.engine = engine;
@@ -88,7 +91,13 @@ public class QueryController {
         var project = projectId == null || projectId.isBlank() ? null : ctx.findProject(projectId);
         var page = In.integer(body, "page", "page");
         var size = In.integer(body, "pageSize", "pageSize");
-        return engine.run(ctx, parse(body.get("spec")), project, page == null ? 1 : page, size == null ? 20 : size);
+        var result = engine.run(ctx, parse(body.get("spec")), project, page == null ? 1 : page, size == null ? 20 : size);
+        // S06 기준선: what changed since then, per row
+        var at = body.get("spec") instanceof Map<?, ?> m ? Baselines.at(m.get("baseline"), ctx.today(), ctx.user().timeZone()) : null;
+        if (at == null) return result;
+        var marks = baselines.of(ctx, result.rows().stream().map(Dto.QueryRow::wp).toList(), at);
+        var rows = result.rows().stream().map(r -> new Dto.QueryRow(r.wp(), r.depth(), r.hasChildren(), r.context(), r.groupKey(), marks.get(r.wp().id()))).toList();
+        return new Dto.QueryResult(rows, result.total(), result.page(), result.pageSize(), result.relations(), result.groups(), result.sums(), at);
     }
 
     @GetMapping("/work-packages/filters")

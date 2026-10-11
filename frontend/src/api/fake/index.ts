@@ -5,6 +5,9 @@
 import type { Api } from "../api";
 import type {
   ProjectInput,
+  QueryResult,
+  QuerySpec,
+  CustomValue,
   QueryFilter,
   Board,
   BoardColumn,
@@ -25,15 +28,15 @@ import type {
   SearchResults,
 } from "../types";
 import { ApiError } from "../errors";
-import { countWorkingDays, nowIso, todayIso } from "@/lib/dates";
+import { addDays, countWorkingDays, nowIso, todayIso } from "@/lib/dates";
 import { db, newId, persist, type DbBoard, type DbJournal, type DbProject, type DbUser, type DbWp } from "./db";
 import { allowedStatusIds, can, findProject, findWp, globalPermissions, memberRoleIds, projectUserIds, requirePerm, sessionUser, visibleProjects } from "./permissions";
-import { clone, projectRef, statusRef, toJournal, toProject, toWp, typeRef, priorityRef, userRef, wpRef } from "./dto";
+import { clone, display, projectRef, statusRef, toJournal, toProject, toWp, typeRef, priorityRef, userRef, wpRef } from "./dto";
 import { propagate, resolveDates, wouldCycle, workCalendar } from "./scheduling";
 import { matches, defaultSpec, runQuery } from "./query";
 import { DEFAULT_COLUMNS } from "./seed";
 import { fieldError, run } from "./util";
-import { activeFields, applyValues, fieldsInProjects, initialValues, toField } from "./custom-fields";
+import { activeFields, applyValues, cfText, fieldsInProjects, initialValues, toField } from "./custom-fields";
 import { accountApi, effectiveSetting } from "./notification-settings";
 import { exportCount, exportWorkPackages } from "./export";
 import { deriveProgress, progressLocked } from "./progress";
@@ -151,6 +154,45 @@ function createProjectFor(user: DbUser, input: ProjectInput, source: DbProject |
   db.members.push({ id: newId("m"), projectId: p.id, userId: user.id, groupId: null, roleIds: ["r-manager"], createdAt: now });
   if (template) copyTemplate(template, p, new Set(input.copy ?? []), user);
   return p;
+}
+
+/** S06 기준선 (same rule as the server's Baselines): the first change after the point holds the value from then. */
+const BASELINE_COLUMNS: Record<string, string> = {
+  subject: "subject", typeId: "type", statusId: "status", priorityId: "priority", assigneeId: "assignee", responsibleId: "responsible",
+  versionId: "version", startDate: "startDate", dueDate: "dueDate", duration: "duration", doneRatio: "doneRatio", workHours: "work",
+  remainingHours: "remainingWork", projectId: "project",
+};
+function withBaseline(spec: QuerySpec, result: QueryResult): QueryResult {
+  const b = spec.baseline;
+  if (!b) return result;
+  const today = todayIso();
+  const monthAgo = () => {
+    const d = new Date(`${today}T00:00:00Z`);
+    d.setUTCMonth(d.getUTCMonth() - 1);
+    return d.toISOString().slice(0, 10);
+  };
+  const day = b.kind === "yesterday" ? addDays(today, -1) : b.kind === "lastWeek" ? addDays(today, -7) : b.kind === "lastMonth" ? monthAgo() : b.kind === "date" ? b.date : null;
+  if (!day || day > today) return result;
+  const at = new Date(`${day}T00:00:00+09:00`).toISOString();
+  const rows = result.rows.map((r) => {
+    if (r.wp.createdAt > at) return { ...r, baseline: { added: true, changed: {} } };
+    const first: Record<string, unknown> = {};
+    const last: Record<string, unknown> = {};
+    for (const j of db.journals.filter((x) => x.wpId === r.wp.id && x.createdAt >= at).sort((x, y) => x.version - y.version))
+      for (const [field, [from, to]] of Object.entries(j.changes)) {
+        if (!(field in first)) first[field] = from;
+        last[field] = to;
+      }
+    const changed: Record<string, string | null> = {};
+    for (const [field, from] of Object.entries(first)) {
+      if (String(from) === String(last[field])) continue;
+      const cf = field.startsWith("cf:") ? db.customFields.find((x) => `cf:${x.id}` === field) : undefined;
+      if (cf) changed[field] = cfText(cf, from as CustomValue) || null;
+      else if (BASELINE_COLUMNS[field]) changed[BASELINE_COLUMNS[field]] = display(field, from);
+    }
+    return { ...r, baseline: Object.keys(changed).length ? { added: false, changed } : null };
+  });
+  return { ...result, rows, baselineAt: at };
 }
 
 function toMe(u: DbUser): Me {
@@ -1257,7 +1299,7 @@ export const fakeApi: Api = {
       run(() => {
         const user = sessionUser();
         const projectId = opts.projectId ? findProject(user, opts.projectId).id : undefined;
-        return runQuery(user, spec, { ...opts, projectId });
+        return withBaseline(spec, runQuery(user, spec, { ...opts, projectId }));
       }),
     export: (input) => run(() => exportWorkPackages(sessionUser(), input)),
     exportCount: (input) => run(() => exportCount(sessionUser(), input)),
