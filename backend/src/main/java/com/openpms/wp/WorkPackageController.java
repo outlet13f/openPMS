@@ -91,7 +91,7 @@ public class WorkPackageController {
 
     @PostMapping("/work-packages/{number}/comments")
     public ResponseEntity<Dto.Journal> comment(@PathVariable long number, @RequestBody Map<String, Object> body) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.comment(current.ctx(), number, In.str(body, "bodyHtml")));
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.comment(current.ctx(), number, In.str(body, "bodyHtml"), Boolean.TRUE.equals(In.bool(body, "internal"))));
     }
 
     @PatchMapping("/comments/{id}")

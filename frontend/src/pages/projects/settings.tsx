@@ -253,6 +253,14 @@ function WorkPackagesSection() {
   const canCats = can(project, "project.manage_categories");
   return (
     <div className="flex flex-col gap-10">
+      <Section title={t("settings.internalComments.title")} hint={t("settings.internalComments.hint")}>
+        <Checkbox
+          label={t("settings.internalComments.enable")}
+          checked={project.internalComments}
+          disabled={!can(project, "project.edit") || m.update.isPending}
+          onCheckedChange={(c) => void runToast(m.update.mutateAsync({ internalComments: c === true }), t("app.saved"))}
+        />
+      </Section>
       <Section title={t("settings.types.title")} hint={t("settings.types.hint")}>
         {types.isPending ? (
           <Skeleton className="h-24 w-full" />

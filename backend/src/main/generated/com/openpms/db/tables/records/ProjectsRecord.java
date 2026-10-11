@@ -262,6 +262,21 @@ public class ProjectsRecord extends UpdatableRecordImpl<ProjectsRecord> {
         return (OffsetDateTime) get(15);
     }
 
+    /**
+     * Setter for <code>public.projects.internal_comments</code>.
+     */
+    public ProjectsRecord setInternalComments(Boolean value) {
+        set(16, value);
+        return this;
+    }
+
+    /**
+     * Getter for <code>public.projects.internal_comments</code>.
+     */
+    public Boolean getInternalComments() {
+        return (Boolean) get(16);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -285,7 +300,7 @@ public class ProjectsRecord extends UpdatableRecordImpl<ProjectsRecord> {
     /**
      * Create a detached, initialised ProjectsRecord
      */
-    public ProjectsRecord(UUID id, String identifier, String name, String descriptionHtml, String descriptionText, String status, String statusExplanation, Boolean isPublic, Boolean isTemplate, OffsetDateTime archivedAt, UUID parentId, String[] enabledModules, JSONB customValues, UUID createdBy, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
+    public ProjectsRecord(UUID id, String identifier, String name, String descriptionHtml, String descriptionText, String status, String statusExplanation, Boolean isPublic, Boolean isTemplate, OffsetDateTime archivedAt, UUID parentId, String[] enabledModules, JSONB customValues, UUID createdBy, OffsetDateTime createdAt, OffsetDateTime updatedAt, Boolean internalComments) {
         super(Projects.PROJECTS);
 
         setId(id);
@@ -304,6 +319,7 @@ public class ProjectsRecord extends UpdatableRecordImpl<ProjectsRecord> {
         setCreatedBy(createdBy);
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
+        setInternalComments(internalComments);
         resetTouchedOnNotNull();
     }
 }

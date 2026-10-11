@@ -124,6 +124,8 @@ export interface Project extends ProjectRef {
   statusExplanation: string;
   isPublic: boolean;
   isTemplate: boolean;
+  /** 내부 코멘트 on: roles with wp.add_internal_comments may write comments only wp.view_internal_comments roles read */
+  internalComments: boolean;
   archivedAt: IsoDateTime | null;
   parent: ProjectRef | null;
   enabledModules: ModuleKey[];
@@ -298,6 +300,8 @@ export interface WorkPackage {
       addWatchers: boolean;
       /** upload and delete files (wp.attach) */
       attach: boolean;
+      /** write an internal comment here (the project has them on, wp.add_internal_comments) */
+      commentInternal: boolean;
       /** share this item with people outside the project (wp.share) */
       share: boolean;
     };

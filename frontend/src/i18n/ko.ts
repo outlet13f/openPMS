@@ -321,6 +321,15 @@ const ko = {
     categoryHint: "담당자를 비워 두면 카테고리의 기본 담당자가 들어갑니다.",
   },
   activity: {
+    filter: "활동 거르기",
+    filters: { all: "모두", comments: "코멘트만", changes: "변경만" },
+    emptyFiltered: "이 조건에 맞는 활동이 없습니다",
+    newestFirst: "최신 순",
+    oldestFirst: "오래된 순",
+    sortToggle: "정렬 바꾸기 (지금: {{order}})",
+    internal: "내부",
+    markInternal: "내부 코멘트",
+    markInternalHint: "내부 코멘트를 볼 수 있는 역할만 읽습니다.",
     title: "활동",
     created: "작업을 만들었습니다",
     commentLabel: "코멘트",
@@ -654,6 +663,11 @@ const ko = {
     },
   },
   settings: {
+    internalComments: {
+      title: "내부 코멘트",
+      hint: "켜면 '내부 코멘트 쓰기' 권한이 있는 사람이 코멘트를 내부로 표시할 수 있고, '내부 코멘트 보기' 권한이 있는 역할만 그 코멘트와 알림을 받습니다.",
+      enable: "이 프로젝트에서 내부 코멘트 쓰기",
+    },
     isTemplate: "템플릿으로 쓰기",
     isTemplateHint: "새 프로젝트를 만들 때 이 프로젝트를 골라 구성과 작업을 복사할 수 있습니다.",
     nav: "프로젝트 설정 구역",

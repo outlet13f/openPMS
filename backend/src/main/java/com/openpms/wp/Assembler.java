@@ -155,7 +155,7 @@ public class Assembler {
                     new Dto.AllowedActions(canEdit, ctx.can(project, "wp.delete"), ctx.can(project, "wp.move"), ctx.can(project, w.getId(), "wp.comment"),
                             ctx.can(project, "wp.manage_relations"), ctx.can(project, "wp.manage_subtasks"), true,
                             ctx.can(project, "wp.view_watchers"), ctx.can(project, "wp.add_watchers"), ctx.can(project, w.getId(), "wp.attach"),
-                            ctx.can(project, "wp.share")),
+                            ctx.can(project, "wp.share"), project.internalComments() && ctx.can(project, "wp.add_internal_comments")),
                     editable, derived, overdue, ctx.shareRole(w.getId()));
             out.add(new Dto.WorkPackage(w.getId(), w.getNumber(), Refs.project(project), Refs.type(s, w.getTypeId()), Refs.status(status),
                     Refs.priority(s, w.getPriorityId()), w.getSubject(), w.getDescriptionHtml(), Refs.user(s, w.getAuthorId()), Refs.user(s, w.getAssigneeId()),

@@ -169,7 +169,7 @@ export function useDeleteWorkPackage() {
 export function useComment(n: number) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (bodyHtml: string) => api.workPackages.comment(n, bodyHtml),
+    mutationFn: ({ bodyHtml, internal }: { bodyHtml: string; internal?: boolean }) => api.workPackages.comment(n, bodyHtml, internal),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.wpActivities(n) });
       qc.invalidateQueries({ queryKey: ["notifications"] });

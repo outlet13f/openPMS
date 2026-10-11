@@ -62,7 +62,7 @@ public final class Snapshot {
 
     public record ProjectRow(UUID id, String identifier, String name, String descriptionHtml, String status, String statusExplanation,
                              boolean isPublic, boolean isTemplate, OffsetDateTime archivedAt, UUID parentId, List<String> enabledModules,
-                             List<UUID> typeIds, OffsetDateTime createdAt, OffsetDateTime updatedAt) {}
+                             List<UUID> typeIds, OffsetDateTime createdAt, OffsetDateTime updatedAt, boolean internalComments) {}
 
     public record MemberRow(UUID id, UUID projectId, UUID userId, UUID groupId, List<UUID> roleIds, OffsetDateTime createdAt) {}
 
@@ -132,7 +132,7 @@ public final class Snapshot {
         return this.db.selectFrom(PROJECTS).orderBy(PROJECTS.NAME).fetch().stream()
                 .map(r -> new ProjectRow(r.getId(), r.getIdentifier(), r.getName(), r.getDescriptionHtml(), r.getStatus(), r.getStatusExplanation(),
                         r.getIsPublic(), r.getIsTemplate(), r.getArchivedAt(), r.getParentId(), Arrays.asList(r.getEnabledModules()),
-                        types.getOrDefault(r.getId(), List.of()), r.getCreatedAt(), r.getUpdatedAt()))
+                        types.getOrDefault(r.getId(), List.of()), r.getCreatedAt(), r.getUpdatedAt(), r.getInternalComments()))
                 .collect(Collectors.toMap(ProjectRow::id, p -> p, (a, b) -> a, LinkedHashMap::new));
     });
 

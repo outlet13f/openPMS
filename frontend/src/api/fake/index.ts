@@ -1020,13 +1020,17 @@ export const fakeApi: Api = {
         const internalOk = can(user, project, "wp.view_internal_comments");
         return db.journals.filter((j) => j.wpId === wp.id && (!j.isInternal || internalOk)).sort((a, b) => a.version - b.version).map((j) => toJournal(j, user));
       }),
-    comment: (number, bodyHtml) =>
+    comment: (number, bodyHtml, internal = false) =>
       run(() => {
         const user = sessionUser();
         const { wp, project } = findWp(user, number);
         requirePerm(user, project, "wp.comment", "코멘트를 쓸 권한이 없습니다.", wp);
+        if (internal) {
+          if (!project.internalComments) throw new ApiError(422, "이 프로젝트는 내부 코멘트를 쓰지 않습니다.", "프로젝트 설정 · 작업 설정에서 켤 수 있습니다.");
+          requirePerm(user, project, "wp.add_internal_comments", "내부 코멘트를 쓸 권한이 없습니다.");
+        }
         if (!bodyHtml.replace(/<[^>]*>/g, "").trim()) throw fieldError("comment", "코멘트를 입력하세요.");
-        const j = writeJournal(wp, user, {}, bodyHtml);
+        const j = writeJournal(wp, user, {}, bodyHtml, null, internal);
         fanOut(wp, j, user, mentionsIn(bodyHtml));
         return toJournal(j, user);
       }),

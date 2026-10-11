@@ -501,13 +501,18 @@ public class WorkPackageService {
 
     /* ---------- comments, watchers ---------- */
 
+    /** internal: a comment only roles with wp.view_internal_comments read (the project must have them on). */
     @Transactional
-    public Dto.Journal comment(Ctx ctx, long number, String bodyHtml) {
+    public Dto.Journal comment(Ctx ctx, long number, String bodyHtml, boolean internal) {
         var f = find(ctx, number);
         ctx.require(f.project(), f.wp().getId(), "wp.comment", "코멘트를 쓸 권한이 없습니다.");
+        if (internal) {
+            if (!f.project().internalComments()) throw ApiException.unprocessable("이 프로젝트는 내부 코멘트를 쓰지 않습니다.", "프로젝트 설정 · 작업 설정에서 켤 수 있습니다.");
+            ctx.require(f.project(), "wp.add_internal_comments", "내부 코멘트를 쓸 권한이 없습니다.");
+        }
         var html = Html.sanitize(bodyHtml);
         if (Html.text(html).isEmpty()) throw ApiException.field("comment", "코멘트를 입력하세요.");
-        var j = journals.write(ctx, f.wp(), new LinkedHashMap<>(), html, null, false);
+        var j = journals.write(ctx, f.wp(), new LinkedHashMap<>(), html, null, internal);
         journals.fanOut(ctx, f.wp(), j, Html.mentions(html));
         return journals.toDto(ctx, j, f.project());
     }

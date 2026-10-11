@@ -48,7 +48,7 @@ public final class Dto {
     public record Project(UUID id, String identifier, String name, String descriptionHtml, String status, String statusExplanation,
                           boolean isPublic, boolean isTemplate, OffsetDateTime archivedAt, ProjectRef parent, List<String> enabledModules,
                           boolean favorite, List<String> myPermissions, OffsetDateTime createdAt, OffsetDateTime updatedAt,
-                          OffsetDateTime latestActivityAt) {}
+                          OffsetDateTime latestActivityAt, boolean internalComments) {}
 
     public record OverviewMember(IdName user, List<String> roles) {}
 
@@ -77,8 +77,9 @@ public final class Dto {
     public record WorkPackageRefDated(UUID id, long number, String subject, TypeRef type, StatusRef status, ProjectRef project,
                                       LocalDate startDate, LocalDate dueDate) {}
 
+    /** commentInternal: the project has internal comments on and the person may write them (wp.add_internal_comments). */
     public record AllowedActions(boolean edit, boolean delete, boolean move, boolean comment, boolean manageRelations, boolean manageSubtasks,
-                                 boolean watch, boolean viewWatchers, boolean addWatchers, boolean attach, boolean share) {}
+                                 boolean watch, boolean viewWatchers, boolean addWatchers, boolean attach, boolean share, boolean commentInternal) {}
 
     /** S08 주시자 탭: anyone may remove themselves; removing others needs wp.delete_watchers. */
     public record Watcher(UserRef user, boolean canRemove) {}

@@ -94,7 +94,8 @@ public class ProjectController {
             var latest = activity.get(p.id());
             if (latest == null || latest.isBefore(p.updatedAt())) latest = p.updatedAt();
             return new Dto.Project(p.id(), p.identifier(), p.name(), p.descriptionHtml(), p.status(), p.statusExplanation(), p.isPublic(), p.isTemplate(),
-                    p.archivedAt(), parent, p.enabledModules(), favs.contains(p.id()), List.copyOf(ctx.perms(p)), p.createdAt(), p.updatedAt(), latest);
+                    p.archivedAt(), parent, p.enabledModules(), favs.contains(p.id()), List.copyOf(ctx.perms(p)), p.createdAt(), p.updatedAt(), latest,
+                    p.internalComments());
         }).toList();
     }
 
@@ -204,6 +205,8 @@ public class ProjectController {
         }
         if (In.has(patch, "statusExplanation")) u = u.set(PROJECTS.STATUS_EXPLANATION, In.str(patch, "statusExplanation") == null ? "" : In.str(patch, "statusExplanation"));
         if (In.has(patch, "isPublic")) u = u.set(PROJECTS.IS_PUBLIC, Boolean.TRUE.equals(In.bool(patch, "isPublic")));
+        // 내부 코멘트: comments only roles with wp.view_internal_comments read
+        if (In.has(patch, "internalComments")) u = u.set(PROJECTS.INTERNAL_COMMENTS, Boolean.TRUE.equals(In.bool(patch, "internalComments")));
         // 템플릿으로 쓰기: offered when someone creates a project
         if (In.has(patch, "isTemplate")) u = u.set(PROJECTS.IS_TEMPLATE, Boolean.TRUE.equals(In.bool(patch, "isTemplate")));
         // 상위 프로젝트: a project the person may edit, never the project itself or one below it; null makes it a top project

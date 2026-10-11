@@ -32,6 +32,7 @@ export interface DbProject {
   statusExplanation: string;
   isPublic: boolean;
   isTemplate: boolean;
+  internalComments?: boolean;
   archivedAt: IsoDateTime | null;
   parentId: Id | null;
   enabledModules: ModuleKey[];

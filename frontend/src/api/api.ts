@@ -122,7 +122,7 @@ export interface Api {
     /** POST /projects */
     create(input: ProjectInput): Promise<Project>;
     /** PATCH /projects/{project} */
-    update(id: Id, patch: Partial<Pick<Project, "name" | "descriptionHtml" | "status" | "statusExplanation" | "isPublic" | "isTemplate" | "enabledModules">> & { parentId?: Id | null }): Promise<Project>;
+    update(id: Id, patch: Partial<Pick<Project, "name" | "descriptionHtml" | "status" | "statusExplanation" | "isPublic" | "isTemplate" | "internalComments" | "enabledModules">> & { parentId?: Id | null }): Promise<Project>;
     /** PUT|DELETE /projects/{project}/favorite */
     setFavorite(id: Id, favorite: boolean): Promise<void>;
     /** GET /projects/{project}/overview */
@@ -205,7 +205,8 @@ export interface Api {
     /** GET /work-packages/{number}/activities */
     activities(number: number): Promise<Journal[]>;
     /** POST /work-packages/{number}/comments */
-    comment(number: number, bodyHtml: string): Promise<Journal>;
+    /** internal: only roles with wp.view_internal_comments read it (422 when the project has internal comments off) */
+    comment(number: number, bodyHtml: string, internal?: boolean): Promise<Journal>;
     /** PATCH /comments/{journalId} */
     editComment(journalId: Id, bodyHtml: string): Promise<Journal>;
     /** POST|DELETE /work-packages/{number}/watchers */

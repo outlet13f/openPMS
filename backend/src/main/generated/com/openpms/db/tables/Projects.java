@@ -157,6 +157,11 @@ public class Projects extends TableImpl<ProjectsRecord> {
      */
     public final TableField<ProjectsRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
 
+    /**
+     * The column <code>public.projects.internal_comments</code>.
+     */
+    public final TableField<ProjectsRecord, Boolean> INTERNAL_COMMENTS = createField(DSL.name("internal_comments"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
+
     private Projects(Name alias, Table<ProjectsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
