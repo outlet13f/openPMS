@@ -29,7 +29,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * S12 내보내기: every item of a list (its filters and sort, all pages) as CSV or XLSX, with the chosen columns.
+ * S12 내보내기: every item of a list (its filters and sort, all pages) as CSV or XLSX with the chosen columns, or as a PDF
+ * (a table of those columns, a report of each item, or a Gantt chart; at most PDF_LIMIT items).
  * Up to LIMIT items, streamed in one answer (architecture.md planned a job above 500; an internal list of a few
  * thousand rows writes in well under a second, so the job is not needed yet). frontend/src/api/fake/export.ts
  * writes the same headers and cells.
@@ -38,6 +39,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1")
 public class ExportController {
     static final int LIMIT = 5000;
+    static final int PDF_LIMIT = 1000;
+    private static final List<String> PDF_TYPES = List.of("table", "report", "gantt");
     private static final List<String> BUILT_IN = List.of("number", "subject", "type", "status", "priority", "assignee", "responsible", "author", "version",
             "startDate", "dueDate", "duration", "work", "remainingWork", "doneRatio", "updatedAt", "project");
     private static final Map<String, String> HEADERS = Map.ofEntries(
@@ -50,10 +53,12 @@ public class ExportController {
 
     private final Current current;
     private final QueryEngine engine;
+    private final PdfExport pdf;
 
-    public ExportController(Current current, QueryEngine engine) {
+    public ExportController(Current current, QueryEngine engine, PdfExport pdf) {
         this.current = current;
         this.engine = engine;
+        this.pdf = pdf;
     }
 
     /** What a request would export: items matching the list, and of those the ones I may export. */
@@ -96,7 +101,9 @@ public class ExportController {
         var ctx = current.ctx();
         var s = ctx.s();
         var format = In.str(body, "format");
-        if (!"csv".equals(format) && !"xlsx".equals(format)) throw ApiException.unprocessable("형식을 고르세요.", "CSV 또는 Excel만 내보낼 수 있습니다.");
+        if (!"csv".equals(format) && !"xlsx".equals(format) && !"pdf".equals(format)) throw ApiException.unprocessable("형식을 고르세요.", "CSV, Excel, PDF만 내보낼 수 있습니다.");
+        var pdfType = In.str(body, "pdfType") == null ? "table" : In.str(body, "pdfType");
+        if ("pdf".equals(format) && !PDF_TYPES.contains(pdfType)) throw ApiException.field("pdfType", "PDF 종류를 고르세요.");
         var columns = In.strings(body, "columns");
         if (columns == null || columns.isEmpty()) throw ApiException.unprocessable("열을 하나 이상 고르세요.", null);
         for (var c : columns) {
@@ -111,6 +118,8 @@ public class ExportController {
         if (sel.allowed().isEmpty() && sel.total() > 0)
             throw ApiException.unprocessable("내보낼 수 있는 작업이 없습니다.", "목록의 작업이 모두 내보내기 권한이 없는 프로젝트에 있습니다.");
         var allowed = sel.allowed();
+        if ("pdf".equals(format) && allowed.size() > PDF_LIMIT)
+            throw ApiException.unprocessable("PDF로 내보내기에는 작업이 너무 많습니다.", "PDF는 한 번에 " + String.format("%,d", PDF_LIMIT) + "건까지입니다. 필터로 줄이거나 CSV·Excel을 쓰세요.");
 
         var zone = zone(ctx);
         var rows = new ArrayList<List<Object>>();
@@ -130,11 +139,21 @@ public class ExportController {
         if (safe.isEmpty()) safe = "작업";
         if (safe.length() > 80) safe = safe.substring(0, 80);
         var fileName = safe + "-" + LocalDate.now(zone).format(DateTimeFormatter.BASIC_ISO_DATE) + "." + format;
-        var bytes = "csv".equals(format) ? csv(rows) : xlsx(rows);
+        byte[] bytes;
+        if ("pdf".equals(format)) {
+            var subtitle = allowed.size() + "건 · " + com.openpms.common.Dates.formatDateTime(java.time.ZonedDateTime.now(zone)) + " · " + ctx.user().name();
+            var heads = rows.get(0).stream().map(String::valueOf).toList();
+            bytes = switch (pdfType) {
+                case "report" -> pdf.report(safe, subtitle, allowed);
+                case "gantt" -> pdf.gantt(safe, subtitle, allowed, LocalDate.now(zone));
+                default -> pdf.table(safe, subtitle, heads, rows.subList(1, rows.size()));
+            };
+        } else bytes = "csv".equals(format) ? csv(rows) : xlsx(rows);
         var encoded = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"export." + format + "\"; filename*=UTF-8''" + encoded)
                 .contentType("csv".equals(format) ? new MediaType("text", "csv", StandardCharsets.UTF_8)
+                        : "pdf".equals(format) ? MediaType.APPLICATION_PDF
                         : MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .body(bytes);
     }

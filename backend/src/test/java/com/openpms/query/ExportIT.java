@@ -92,4 +92,23 @@ class ExportIT {
             db.deleteFrom(WORK_PACKAGE_SHARES).where(WORK_PACKAGE_SHARES.WORK_PACKAGE_ID.eq(wp4), WORK_PACKAGE_SHARES.USER_ID.eq(doyoonId)).execute();
         }
     }
+
+    /** S12 PDF: a table, a report and a Gantt chart, Korean text embedded (the file's text layer has it). */
+    @Test
+    void pdfTablesReportsAndGanttChartsCarryTheKoreanText() throws Exception {
+        var admin = login("seoyeon.kim@openpms.local");
+        for (var type : new String[] {"table", "report", "gantt"}) {
+            var res = post_(admin, "/work-packages/export", "{\"spec\":" + spec(null) + ",\"format\":\"pdf\",\"pdfType\":\"" + type + "\",\"columns\":[\"number\",\"subject\",\"status\"],\"title\":\"웹 플랫폼\"}")
+                    .andExpect(status().isOk()).andReturn().getResponse();
+            assertThat(res.getContentType()).isEqualTo("application/pdf");
+            var bytes = res.getContentAsByteArray();
+            assertThat(new String(bytes, 0, 5, StandardCharsets.US_ASCII)).isEqualTo("%PDF-");
+            try (var doc = org.apache.pdfbox.Loader.loadPDF(bytes)) {
+                var text = new org.apache.pdfbox.text.PDFTextStripper().getText(doc);
+                assertThat(text).as(type).contains("웹 플랫폼").contains("화면 설계 검토");
+            }
+        }
+        post_(admin, "/work-packages/export", "{\"spec\":" + spec(null) + ",\"format\":\"pdf\",\"pdfType\":\"poster\",\"columns\":[\"subject\"],\"title\":\"t\"}")
+                .andExpect(status().isUnprocessableContent());
+    }
 }

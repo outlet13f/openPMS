@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { ArrowDown, ArrowUp, Download, Plus, X } from "lucide-react";
-import { api, isApiError, type ColumnKey, type ExportFormat, type QuerySpec } from "@/api";
+import { api, isApiError, type ColumnKey, type ExportFormat, type PdfType, type QuerySpec } from "@/api";
 import { Button } from "@/components/ui/button";
 import { Checkbox, RadioCards } from "@/components/ui/choice";
 import { Banner, useToast } from "@/components/ui/feedback";
@@ -33,6 +33,7 @@ export function ExportDialog({
   const { t } = useTranslation();
   const toast = useToast();
   const [format, setFormat] = useState<ExportFormat>("xlsx");
+  const [pdfType, setPdfType] = useState<PdfType>("table");
   const [columns, setColumns] = useState<ColumnKey[]>(spec.columns);
   const [adding, setAdding] = useState("");
   const [description, setDescription] = useState(false);
@@ -54,7 +55,7 @@ export function ExportDialog({
     setBusy(true);
     setError(null);
     try {
-      const { blob, fileName } = await api.workPackages.export({ spec, projectId, format, columns, includeDescription: description, title });
+      const { blob, fileName } = await api.workPackages.export({ spec, projectId, format, columns, includeDescription: description, title, ...(format === "pdf" ? { pdfType } : {}) });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -110,9 +111,21 @@ export function ExportDialog({
             aria-label={t("export.format")}
             value={format}
             onValueChange={(v) => setFormat(v as ExportFormat)}
-            options={(["xlsx", "csv"] as const).map((f) => ({ value: f, title: t(`export.formats.${f}`), description: t(`export.formatHints.${f}`) }))}
+            options={(["xlsx", "csv", "pdf"] as const).map((f) => ({ value: f, title: t(`export.formats.${f}`), description: t(`export.formatHints.${f}`) }))}
           />
         </div>
+        {format === "pdf" && (
+          <div className="flex flex-col gap-2">
+            <h3 className="text-sm font-medium text-fg">{t("export.pdfType")}</h3>
+            <RadioCards
+              aria-label={t("export.pdfType")}
+              value={pdfType}
+              onValueChange={(v) => setPdfType(v as PdfType)}
+              options={(["table", "report", "gantt"] as const).map((p) => ({ value: p, title: t(`export.pdfTypes.${p}`), description: t(`export.pdfTypeHints.${p}`) }))}
+            />
+          </div>
+        )}
+        {(format !== "pdf" || pdfType === "table") && (
         <div className="flex flex-col gap-2">
           <h3 className="text-sm font-medium text-fg">{t("export.columns")}</h3>
           <p className="text-xs text-fg-muted">{t("export.columnsHint")}</p>
@@ -139,7 +152,10 @@ export function ExportDialog({
             </div>
           )}
         </div>
-        <Checkbox label={t("export.includeDescription")} checked={description} onCheckedChange={(c) => setDescription(c === true)} />
+        )}
+        {(format !== "pdf" || pdfType === "table") && (
+          <Checkbox label={t("export.includeDescription")} checked={description} onCheckedChange={(c) => setDescription(c === true)} />
+        )}
       </div>
     </Dialog>
   );

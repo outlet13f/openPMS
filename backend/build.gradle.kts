@@ -41,6 +41,8 @@ dependencies {
     implementation("com.bucket4j:bucket4j_jdk17-core:8.21.0")
     implementation("org.apache.tika:tika-core:3.3.2")
     implementation("org.apache.poi:poi-ooxml:5.4.1")
+    // S12 PDF 내보내기 (Apache 2.0); the Korean font (Pretendard, SIL OFL 1.1) is in src/main/resources/fonts
+    implementation("org.apache.pdfbox:pdfbox:3.0.4")
     runtimeOnly("org.postgresql:postgresql")
 
     jooqCodegen("org.postgresql:postgresql")

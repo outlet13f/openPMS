@@ -185,6 +185,8 @@ export function exportCount(user: DbUser, input: Pick<ExportInput, "spec" | "pro
 }
 
 export function exportWorkPackages(user: DbUser, input: ExportInput): { blob: Blob; fileName: string } {
+  // the demo makes no PDF (the server does, with the Korean font embedded)
+  if (input.format === "pdf") throw new ApiError(422, "데모에서는 PDF를 만들 수 없습니다.", "서버에 연결된 openPMS에서 PDF로 내보낼 수 있습니다. 데모에서는 CSV나 Excel을 쓰세요.");
   if (!["csv", "xlsx"].includes(input.format)) throw new ApiError(422, "형식을 고르세요.", "CSV 또는 Excel만 내보낼 수 있습니다.");
   if (!input.columns.length) throw new ApiError(422, "열을 하나 이상 고르세요.");
   const { total, allowed } = select(user, input);

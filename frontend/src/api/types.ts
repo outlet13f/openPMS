@@ -587,7 +587,10 @@ export interface GanttLabels {
 export const DEFAULT_GANTT_LABELS: GanttLabels = { left: "none", right: "subject", farRight: "none" };
 
 /** S12 내보내기: every item matching the spec (not just the page), in its order; at most EXPORT_LIMIT. */
-export type ExportFormat = "csv" | "xlsx";
+export type ExportFormat = "csv" | "xlsx" | "pdf";
+export type PdfType = "table" | "report" | "gantt";
+/** PDF: the server makes it, up to this many items */
+export const PDF_LIMIT = 1000;
 export const EXPORT_LIMIT = 5000;
 
 export interface ExportInput {
@@ -599,6 +602,8 @@ export interface ExportInput {
   includeDescription: boolean;
   /** names the file: "<title>-<yyyymmdd>.<format>" */
   title: string;
+  /** with format pdf: a table of the columns, a report of each item, or a Gantt chart */
+  pdfType?: PdfType;
 }
 
 /** S12: what an export would contain, asked before downloading. */
