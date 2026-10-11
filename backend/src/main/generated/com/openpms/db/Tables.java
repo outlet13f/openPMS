@@ -14,6 +14,7 @@ import com.openpms.db.tables.CustomFieldOptions;
 import com.openpms.db.tables.CustomFieldTypes;
 import com.openpms.db.tables.CustomFields;
 import com.openpms.db.tables.GlobalRoleAssignments;
+import com.openpms.db.tables.IdempotencyKeys;
 import com.openpms.db.tables.Journals;
 import com.openpms.db.tables.MemberRoles;
 import com.openpms.db.tables.Members;
@@ -103,6 +104,11 @@ public class Tables {
      * The table <code>public.global_role_assignments</code>.
      */
     public static final GlobalRoleAssignments GLOBAL_ROLE_ASSIGNMENTS = GlobalRoleAssignments.GLOBAL_ROLE_ASSIGNMENTS;
+
+    /**
+     * The table <code>public.idempotency_keys</code>.
+     */
+    public static final IdempotencyKeys IDEMPOTENCY_KEYS = IdempotencyKeys.IDEMPOTENCY_KEYS;
 
     /**
      * The table <code>public.journals</code>.

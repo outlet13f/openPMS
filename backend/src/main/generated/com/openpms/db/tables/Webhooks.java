@@ -4,6 +4,7 @@
 package com.openpms.db.tables;
 
 
+import com.openpms.db.Indexes;
 import com.openpms.db.Keys;
 import com.openpms.db.Public;
 import com.openpms.db.tables.Users.UsersPath;
@@ -20,6 +21,7 @@ import org.jooq.Check;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
+import org.jooq.Index;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
 import org.jooq.Path;
@@ -176,6 +178,11 @@ public class Webhooks extends TableImpl<WebhooksRecord> {
     @Override
     public Schema getSchema() {
         return aliased() ? null : Public.PUBLIC;
+    }
+
+    @Override
+    public List<Index> getIndexes() {
+        return Arrays.asList(Indexes.WEBHOOKS_CREATED_BY_IDX);
     }
 
     @Override

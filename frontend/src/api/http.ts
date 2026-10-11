@@ -10,14 +10,24 @@ function csrfToken() {
   return m ? decodeURIComponent(m[1]) : undefined;
 }
 
-async function call<T>(method: string, path: string, body?: unknown, query?: Record<string, unknown>): Promise<T> {
+async function call<T>(method: string, path: string, body?: unknown, query?: Record<string, unknown>, idempotencyKey?: string): Promise<T> {
   const url = new URL(BASE + path, window.location.origin);
   for (const [k, v] of Object.entries(query ?? {})) if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
   const headers: Record<string, string> = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   const token = csrfToken();
   if (token && method !== "GET") headers["X-XSRF-TOKEN"] = token;
-  const res = await fetch(url, { method, headers, credentials: "same-origin", body: body === undefined ? undefined : JSON.stringify(body) });
+  if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
+  const send = () => fetch(url, { method, headers, credentials: "same-origin", body: body === undefined ? undefined : JSON.stringify(body) });
+  let res: Response;
+  try {
+    res = await send();
+  } catch (e) {
+    // the connection dropped: a keyed request is safe to send once more (the server answers a repeat with the first result)
+    if (!idempotencyKey) throw e;
+    await new Promise((r) => setTimeout(r, 800));
+    res = await send();
+  }
   if (res.status === 204) return undefined as T;
   const data = res.headers.get("content-type")?.includes("json") ? await res.json() : undefined;
   if (!res.ok) {
@@ -57,6 +67,8 @@ async function download(path: string, body: unknown): Promise<{ blob: Blob; file
 
 const get = <T>(p: string, q?: Record<string, unknown>) => call<T>("GET", p, undefined, q);
 const post = <T>(p: string, b?: unknown) => call<T>("POST", p, b ?? {});
+/** a POST that makes something: sent with an Idempotency-Key, so a retry cannot make it twice */
+const create = <T>(p: string, b?: unknown) => call<T>("POST", p, b ?? {}, undefined, crypto.randomUUID());
 const patch = <T>(p: string, b: unknown) => call<T>("PATCH", p, b);
 const put = <T>(p: string, b?: unknown) => call<T>("PUT", p, b ?? {});
 const del = <T>(p: string, q?: Record<string, unknown>) => call<T>("DELETE", p, undefined, q);
@@ -98,8 +110,8 @@ export const httpApi: Api = {
   projects: {
     list: (params) => get("/projects", { ...params }),
     get: (id) => get(`/projects/${encodeURIComponent(id)}`),
-    create: (input) => post("/projects", input),
-    copy: (id, input) => post(`/projects/${id}/copy`, input),
+    create: (input) => create("/projects", input),
+    copy: (id, input) => create(`/projects/${id}/copy`, input),
     update: (id, p) => patch(`/projects/${id}`, p),
     setFavorite: (id, fav) => (fav ? put(`/projects/${id}/favorite`) : del(`/projects/${id}/favorite`)),
     overview: (id) => get(`/projects/${id}/overview`),
@@ -134,17 +146,17 @@ export const httpApi: Api = {
   },
   workPackages: {
     form: (projectId, typeId) => get(`/projects/${projectId}/work-packages/form`, { typeId }),
-    create: (projectId, input) => post(`/projects/${projectId}/work-packages`, input),
+    create: (projectId, input) => create(`/projects/${projectId}/work-packages`, input),
     get: (n) => get(`/work-packages/${n}`),
     update: (n, p) => patch(`/work-packages/${n}`, p),
     remove: (n, children) => del(`/work-packages/${n}`, { children }),
     allowedStatuses: (n) => get(`/work-packages/${n}/allowed-statuses`),
     autocomplete: (q, projectId) => get("/work-packages/autocomplete", { q, projectId }),
     activities: (n) => get(`/work-packages/${n}/activities`),
-    comment: (n, bodyHtml, internal) => post(`/work-packages/${n}/comments`, { bodyHtml, internal: !!internal }),
+    comment: (n, bodyHtml, internal) => create(`/work-packages/${n}/comments`, { bodyHtml, internal: !!internal }),
     editComment: (id, bodyHtml) => patch(`/comments/${id}`, { bodyHtml }),
     export: (input) => download("/work-packages/export", input),
-    copy: (number, { targetProjectId, ...rest }) => post(`/work-packages/${number}/copy`, { ...rest, targetProject: targetProjectId }),
+    copy: (number, { targetProjectId, ...rest }) => create(`/work-packages/${number}/copy`, { ...rest, targetProject: targetProjectId }),
     move: (number, { targetProjectId, ...rest }) => post(`/work-packages/${number}/move`, { ...rest, targetProject: targetProjectId }),
     bulk: ({ targetProjectId, ...rest }) => post("/work-packages/bulk", { ...rest, targetProject: targetProjectId }),
     exportCount: (input) => post("/work-packages/export/count", input),

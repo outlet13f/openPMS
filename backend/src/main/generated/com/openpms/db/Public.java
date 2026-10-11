@@ -14,6 +14,7 @@ import com.openpms.db.tables.CustomFieldOptions;
 import com.openpms.db.tables.CustomFieldTypes;
 import com.openpms.db.tables.CustomFields;
 import com.openpms.db.tables.GlobalRoleAssignments;
+import com.openpms.db.tables.IdempotencyKeys;
 import com.openpms.db.tables.Journals;
 import com.openpms.db.tables.MemberRoles;
 import com.openpms.db.tables.Members;
@@ -119,6 +120,11 @@ public class Public extends SchemaImpl {
      * The table <code>public.global_role_assignments</code>.
      */
     public final GlobalRoleAssignments GLOBAL_ROLE_ASSIGNMENTS = GlobalRoleAssignments.GLOBAL_ROLE_ASSIGNMENTS;
+
+    /**
+     * The table <code>public.idempotency_keys</code>.
+     */
+    public final IdempotencyKeys IDEMPOTENCY_KEYS = IdempotencyKeys.IDEMPOTENCY_KEYS;
 
     /**
      * The table <code>public.journals</code>.
@@ -313,6 +319,7 @@ public class Public extends SchemaImpl {
             CustomFieldTypes.CUSTOM_FIELD_TYPES,
             CustomFields.CUSTOM_FIELDS,
             GlobalRoleAssignments.GLOBAL_ROLE_ASSIGNMENTS,
+            IdempotencyKeys.IDEMPOTENCY_KEYS,
             Journals.JOURNALS,
             MemberRoles.MEMBER_ROLES,
             Members.MEMBERS,

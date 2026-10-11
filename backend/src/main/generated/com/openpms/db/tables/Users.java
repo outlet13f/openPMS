@@ -13,6 +13,7 @@ import com.openpms.db.tables.BoardColumns.BoardColumnsPath;
 import com.openpms.db.tables.Boards.BoardsPath;
 import com.openpms.db.tables.Categories.CategoriesPath;
 import com.openpms.db.tables.GlobalRoleAssignments.GlobalRoleAssignmentsPath;
+import com.openpms.db.tables.IdempotencyKeys.IdempotencyKeysPath;
 import com.openpms.db.tables.Journals.JournalsPath;
 import com.openpms.db.tables.Members.MembersPath;
 import com.openpms.db.tables.NotificationSettings.NotificationSettingsPath;
@@ -316,6 +317,19 @@ public class Users extends TableImpl<UsersRecord> {
             _globalRoleAssignments = new GlobalRoleAssignmentsPath(this, null, Keys.GLOBAL_ROLE_ASSIGNMENTS__GLOBAL_ROLE_ASSIGNMENTS_USER_ID_FKEY.getInverseKey());
 
         return _globalRoleAssignments;
+    }
+
+    private transient IdempotencyKeysPath _idempotencyKeys;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.idempotency_keys</code> table
+     */
+    public IdempotencyKeysPath idempotencyKeys() {
+        if (_idempotencyKeys == null)
+            _idempotencyKeys = new IdempotencyKeysPath(this, null, Keys.IDEMPOTENCY_KEYS__IDEMPOTENCY_KEYS_USER_ID_FKEY.getInverseKey());
+
+        return _idempotencyKeys;
     }
 
     private transient JournalsPath _journals;

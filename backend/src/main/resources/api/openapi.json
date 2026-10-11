@@ -13,7 +13,7 @@
     },
     "schemas": {
       "Problem": {
-        "type": "object",
+        "type": "object 무언가를 만드는 POST(작업·코멘트·복사 등)에는 `Idempotency-Key: <요청마다 새 임의 값>` 헤더를 붙이세요. 같은 키로 다시 보내면 처음 응답을 그대로 돌려주고(`Idempotent-Replayed: true`, 하루 보관) 두 번 만들지 않습니다. 같은 키를 다른 본문에 쓰면 422, 처음 요청을 처리 중이면 409입니다.",
         "properties": {
           "status": { "type": "integer" },
           "title": { "type": "string" },

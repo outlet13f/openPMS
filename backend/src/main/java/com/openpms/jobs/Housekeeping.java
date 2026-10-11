@@ -26,7 +26,7 @@ public class Housekeeping {
 
     /**
      * Invitation and reset tokens a week past expiry or use; API tokens 30 days after they were revoked or ran out; webhook
-     * deliveries done (succeeded or failed) more than 30 days ago. @return rows deleted
+     * deliveries done (succeeded or failed) more than 30 days ago; Idempotency-Key answers after a day. @return rows deleted
      */
     public int tokens(Instant now) {
         var cutoff = OffsetDateTime.ofInstant(now.minus(Duration.ofDays(7)), ZoneOffset.UTC);
@@ -34,6 +34,9 @@ public class Housekeeping {
         int n = db.deleteFrom(USER_TOKENS).where(USER_TOKENS.EXPIRES_AT.lt(cutoff).or(USER_TOKENS.USED_AT.lt(cutoff))).execute();
         n += db.deleteFrom(com.openpms.db.Tables.API_TOKENS)
                 .where(com.openpms.db.Tables.API_TOKENS.REVOKED_AT.lt(month).or(com.openpms.db.Tables.API_TOKENS.EXPIRES_AT.lt(month))).execute();
+        // answers kept for Idempotency-Key retries: a day
+        n += db.deleteFrom(com.openpms.db.Tables.IDEMPOTENCY_KEYS)
+                .where(com.openpms.db.Tables.IDEMPOTENCY_KEYS.CREATED_AT.lt(OffsetDateTime.ofInstant(now.minus(com.openpms.common.IdempotencyFilter.KEEP), ZoneOffset.UTC))).execute();
         n += db.deleteFrom(com.openpms.db.Tables.WEBHOOK_DELIVERIES)
                 .where(com.openpms.db.Tables.WEBHOOK_DELIVERIES.STATUS.ne("pending"), com.openpms.db.Tables.WEBHOOK_DELIVERIES.CREATED_AT.lt(month)).execute();
         return n;
