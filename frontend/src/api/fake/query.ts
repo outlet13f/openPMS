@@ -362,6 +362,22 @@ function comparator(spec: QuerySpec) {
   };
 }
 
+/** Does the list (scope, filters, quick search) take this item? Shares are left out (기준선 only). */
+export function listTakes(user: DbUser, spec: QuerySpec, projectId: string | undefined, w: DbWp): boolean {
+  const projects = new Set(scopeProjects(user, projectId, spec.includeSubprojects).map((p) => p.id));
+  const text = spec.text?.trim().toLowerCase();
+  return (
+    projects.has(w.projectId) &&
+    spec.filters.every((f) => matches(w, f, user)) &&
+    (!text || w.subject.toLowerCase().includes(text) || `#${w.number}` === text || String(w.number) === text.replace("#", ""))
+  );
+}
+
+/** Projects where I may see work packages (every one, not only the list's). */
+export function viewableProjectIds(user: DbUser): Set<string> {
+  return new Set(scopeProjects(user, undefined, true).map((p) => p.id));
+}
+
 export function runQuery(user: DbUser, spec: QuerySpec, opts: { projectId?: string; page?: number; pageSize?: number }): QueryResult {
   const page = Math.max(1, opts.page ?? 1);
   const pageSize = Math.min(1000, Math.max(1, opts.pageSize ?? 20));

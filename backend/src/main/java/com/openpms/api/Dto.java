@@ -154,6 +154,12 @@ public final class Dto {
     /** S06 기준선: made after the baseline point, or the values the changed columns had then (column → text, null for empty). */
     public record RowBaseline(boolean added, Map<String, String> changed) {}
 
+    /**
+     * S06 기준선: an item that matched the list at the baseline point but no longer does. then / now: the changed columns'
+     * values at that point and today (column → text, null for empty).
+     */
+    public record BaselineRemoved(UUID id, long number, String subject, ProjectRef project, Map<String, String> then, Map<String, String> now) {}
+
     public record TimelineLink(long fromNumber, long toNumber, int lag) {}
 
     /** A group of a grouped list, over every matching item (not just the page). sums: per summable visible column. */
@@ -161,7 +167,7 @@ public final class Dto {
 
     /** groups: only when grouped; sums: totals over every matching item, only when sums are on. */
     public record QueryResult(List<QueryRow> rows, long total, int page, int pageSize, List<TimelineLink> relations, List<QueryGroup> groups,
-                              Map<String, BigDecimal> sums, OffsetDateTime baselineAt) {}
+                              Map<String, BigDecimal> sums, OffsetDateTime baselineAt, List<BaselineRemoved> baselineRemoved) {}
 
     public record SavedQuery(String id, String name, String kind, String view, Object spec, boolean favorite, UUID projectId, boolean canEdit) {}
 

@@ -628,6 +628,16 @@ export interface RowBaseline {
   /** column → the value it had then (null: empty) */
   changed: Record<string, string | null>;
 }
+/** S06 기준선: an item the list matched at the baseline point but no longer does */
+export interface BaselineRemoved {
+  id: Id;
+  number: number;
+  subject: string;
+  project: { id: Id; identifier: string; name: string } | null;
+  /** the changed columns: value then and today (null: empty) */
+  then: Record<string, string | null>;
+  now: Record<string, string | null>;
+}
 
 export type Highlight = "none" | "inline" | "status" | "priority" | "type";
 export const HIGHLIGHTS: Highlight[] = ["none", "inline", "status", "priority", "type"];
@@ -735,6 +745,8 @@ export interface QueryResult {
   sums?: Record<string, number | null> | null;
   /** with spec.baseline: the point compared against */
   baselineAt?: IsoDateTime | null;
+  /** with spec.baseline: items that matched then but not now (lowest numbers first, at most 200) */
+  baselineRemoved?: BaselineRemoved[] | null;
 }
 
 /** queries.view: list and Gantt share the work package views; calendars and team planners are their own lists. */

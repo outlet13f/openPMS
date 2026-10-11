@@ -95,9 +95,11 @@ public class QueryController {
         // S06 기준선: what changed since then, per row
         var at = body.get("spec") instanceof Map<?, ?> m ? Baselines.at(m.get("baseline"), ctx.today(), ctx.user().timeZone()) : null;
         if (at == null) return result;
+        var spec = parse(body.get("spec"));
         var marks = baselines.of(ctx, result.rows().stream().map(Dto.QueryRow::wp).toList(), at);
         var rows = result.rows().stream().map(r -> new Dto.QueryRow(r.wp(), r.depth(), r.hasChildren(), r.context(), r.groupKey(), marks.get(r.wp().id()))).toList();
-        return new Dto.QueryResult(rows, result.total(), result.page(), result.pageSize(), result.relations(), result.groups(), result.sums(), at);
+        return new Dto.QueryResult(rows, result.total(), result.page(), result.pageSize(), result.relations(), result.groups(), result.sums(), at,
+                baselines.removed(ctx, spec, project, at));
     }
 
     @GetMapping("/work-packages/filters")

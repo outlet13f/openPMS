@@ -33,7 +33,7 @@ import { db, newId, persist, type DbBoard, type DbJournal, type DbProject, type 
 import { allowedStatusIds, can, findProject, findWp, globalPermissions, memberRoleIds, projectUserIds, requirePerm, sessionUser, visibleProjects } from "./permissions";
 import { clone, display, projectRef, statusRef, toJournal, toProject, toWp, typeRef, priorityRef, userRef, wpRef } from "./dto";
 import { propagate, resolveDates, wouldCycle, workCalendar } from "./scheduling";
-import { matches, defaultSpec, runQuery } from "./query";
+import { matches, defaultSpec, runQuery, listTakes, viewableProjectIds } from "./query";
 import { DEFAULT_COLUMNS } from "./seed";
 import { fieldError, run } from "./util";
 import { activeFields, applyValues, cfText, fieldsInProjects, initialValues, toField } from "./custom-fields";
@@ -162,7 +162,7 @@ const BASELINE_COLUMNS: Record<string, string> = {
   versionId: "version", startDate: "startDate", dueDate: "dueDate", duration: "duration", doneRatio: "doneRatio", workHours: "work",
   remainingHours: "remainingWork", projectId: "project",
 };
-function withBaseline(spec: QuerySpec, result: QueryResult): QueryResult {
+function withBaseline(user: DbUser, projectId: string | undefined, spec: QuerySpec, result: QueryResult): QueryResult {
   const b = spec.baseline;
   if (!b) return result;
   const today = todayIso();
@@ -174,25 +174,52 @@ function withBaseline(spec: QuerySpec, result: QueryResult): QueryResult {
   const day = b.kind === "yesterday" ? addDays(today, -1) : b.kind === "lastWeek" ? addDays(today, -7) : b.kind === "lastMonth" ? monthAgo() : b.kind === "date" ? b.date : null;
   if (!day || day > today) return result;
   const at = new Date(`${day}T00:00:00+09:00`).toISOString();
+  /** field → [value then, value now], changed-and-back left out */
+  const history = (wpId: string) => {
+    const out: Record<string, [unknown, unknown]> = {};
+    for (const j of db.journals.filter((x) => x.wpId === wpId && x.createdAt >= at).sort((x, y) => x.version - y.version))
+      for (const [field, [from, to]] of Object.entries(j.changes)) {
+        if (!(field in out)) out[field] = [from, to];
+        else out[field][1] = to;
+      }
+    for (const [field, [from, to]] of Object.entries(out)) if (String(from) === String(to)) delete out[field];
+    return out;
+  };
+  const columns = (h: Record<string, [unknown, unknown]>, side: 0 | 1) => {
+    const out: Record<string, string | null> = {};
+    for (const [field, values] of Object.entries(h)) {
+      const cf = field.startsWith("cf:") ? db.customFields.find((x) => `cf:${x.id}` === field) : undefined;
+      if (cf) out[field] = cfText(cf, values[side] as CustomValue) || null;
+      else if (BASELINE_COLUMNS[field]) out[BASELINE_COLUMNS[field]] = display(field, values[side]);
+    }
+    return out;
+  };
   const rows = result.rows.map((r) => {
     if (r.wp.createdAt > at) return { ...r, baseline: { added: true, changed: {} } };
-    const first: Record<string, unknown> = {};
-    const last: Record<string, unknown> = {};
-    for (const j of db.journals.filter((x) => x.wpId === r.wp.id && x.createdAt >= at).sort((x, y) => x.version - y.version))
-      for (const [field, [from, to]] of Object.entries(j.changes)) {
-        if (!(field in first)) first[field] = from;
-        last[field] = to;
-      }
-    const changed: Record<string, string | null> = {};
-    for (const [field, from] of Object.entries(first)) {
-      if (String(from) === String(last[field])) continue;
-      const cf = field.startsWith("cf:") ? db.customFields.find((x) => `cf:${x.id}` === field) : undefined;
-      if (cf) changed[field] = cfText(cf, from as CustomValue) || null;
-      else if (BASELINE_COLUMNS[field]) changed[BASELINE_COLUMNS[field]] = display(field, from);
-    }
+    const changed = columns(history(r.wp.id), 0);
     return { ...r, baseline: Object.keys(changed).length ? { added: false, changed } : null };
   });
-  return { ...result, rows, baselineAt: at };
+  // matched then, not now: put the values from then back on a copy and ask the list again
+  const viewable = viewableProjectIds(user);
+  const baselineRemoved = db.workPackages
+    .filter((w) => w.createdAt <= at && viewable.has(w.projectId) && !listTakes(user, spec, projectId, w))
+    .flatMap((w) => {
+      const h = history(w.id);
+      if (!Object.keys(h).length) return [];
+      const then: DbWp = { ...w, customValues: { ...(w.customValues ?? {}) } };
+      for (const [field, [from]] of Object.entries(h)) {
+        if (field.startsWith("cf:")) {
+          if (from == null) delete then.customValues![field.slice(3)];
+          else then.customValues![field.slice(3)] = from as CustomValue;
+        } else if (field in then) (then as unknown as Record<string, unknown>)[field] = from;
+      }
+      if (!listTakes(user, spec, projectId, then)) return [];
+      const p = db.projects.find((x) => x.id === w.projectId);
+      return [{ id: w.id, number: w.number, subject: w.subject, project: p ? { id: p.id, identifier: p.identifier, name: p.name } : null, then: columns(h, 0), now: columns(h, 1) }];
+    })
+    .sort((a, b) => a.number - b.number)
+    .slice(0, 200);
+  return { ...result, rows, baselineAt: at, baselineRemoved };
 }
 
 function toMe(u: DbUser): Me {
@@ -1317,7 +1344,7 @@ export const fakeApi: Api = {
       run(() => {
         const user = sessionUser();
         const projectId = opts.projectId ? findProject(user, opts.projectId).id : undefined;
-        return withBaseline(spec, runQuery(user, spec, { ...opts, projectId }));
+        return withBaseline(user, projectId, spec, runQuery(user, spec, { ...opts, projectId }));
       }),
     export: (input) => run(() => exportWorkPackages(sessionUser(), input)),
     exportCount: (input) => run(() => exportCount(sessionUser(), input)),

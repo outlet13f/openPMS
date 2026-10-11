@@ -77,4 +77,22 @@ test.describe("F03 보기 저장·공유", () => {
     await page.getByRole("button", { name: "기준선 끄기" }).click();
     await expect(row.getByText("기준선 때: 보통")).toHaveCount(0);
   });
+
+  test("F03-B2 baseline: an item that matched the list then but not now is listed below it, with then → now", async ({ page }) => {
+    const opts = await api<{ priorities: { id: string; name: string }[] }>(page, "return await api.workPackages.filterOptions('web-platform')");
+    const normal = opts.priorities.find((p) => p.name === "보통")!.id;
+    const high = opts.priorities.find((p) => p.name === "긴급")!.id;
+    const w = await api<{ lockVersion: number; priority: { id: string } }>(page, "return await api.workPackages.get(12)");
+    if (w.priority.id !== high) await api(page, "await api.workPackages.update(12, { lockVersion: args[0], priorityId: args[1] })", w.lockVersion, high);
+    const spec = { v: 1, filters: [{ field: "priority", op: "eq", values: [normal] }], columns: ["number", "subject", "status", "priority"], sort: [{ field: "number", dir: "asc" }],
+      groupBy: null, hierarchy: false, sums: false, includeSubprojects: false, baseline: { kind: "yesterday" } };
+    await page.goto(`/projects/web-platform/work-packages?q=${Buffer.from(JSON.stringify(spec)).toString("base64url")}`);
+    const removed = page.getByRole("region", { name: /기준선 이후 목록에서 빠진 작업 \d+건/ });
+    await expect(removed).toBeVisible();
+    const item = removed.getByRole("listitem").filter({ hasText: "알림 메일 하루 요약" });
+    await expect(item.getByText("보통 → 긴급")).toBeVisible();
+    await expect(item.getByRole("link", { name: "#12" })).toHaveAttribute("href", "/projects/web-platform/work-packages/12/activity");
+    await expect(page.getByRole("row").filter({ hasText: "알림 메일 하루 요약" })).toHaveCount(0);
+    await axe(page, "S06 기준선 빠진 작업");
+  });
 });

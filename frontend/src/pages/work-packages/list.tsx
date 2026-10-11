@@ -23,6 +23,7 @@ import { FilterPanel } from "@/features/work-packages/filter-panel";
 import { ExportDialog } from "@/features/work-packages/export-dialog";
 import { BulkBar, useBulkActions } from "@/features/work-packages/bulk-bar";
 import { useListState } from "@/features/work-packages/view-state";
+import { BaselineRemovedSection } from "@/features/work-packages/baseline-removed";
 import { formatDateTime, todayIso } from "@/lib/dates";
 
 const ALL_COLUMNS: ColumnKey[] = ["number", "subject", "type", "status", "priority", "assignee", "responsible", "author", "version", "startDate", "dueDate", "duration", "work", "remainingWork", "doneRatio", "updatedAt", "project"];
@@ -393,6 +394,7 @@ export function WorkPackagesPage() {
             </div>
           </div>
         )}
+        {spec?.baseline && result.data?.baselineRemoved && <BaselineRemovedSection items={result.data.baselineRemoved} columnLabel={(c) => columnLabel(c as ColumnKey)} />}
       </div>
       {panelOpen && panel}
       {renaming && view && <RenameViewDialog view={view} projectId={project?.id} onClose={() => setRenaming(false)} />}

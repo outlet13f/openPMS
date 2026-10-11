@@ -56,7 +56,11 @@ class BaselineIT {
     }
 
     JsonNode query(MockHttpSession s, String baseline) throws Exception {
-        var spec = "{\"v\":1,\"filters\":[],\"columns\":[\"subject\",\"status\",\"priority\"],\"sort\":[{\"field\":\"number\",\"dir\":\"asc\"}],\"groupBy\":null,"
+        return query(s, baseline, "[]", "");
+    }
+
+    JsonNode query(MockHttpSession s, String baseline, String filters, String text) throws Exception {
+        var spec = "{\"v\":1,\"filters\":" + filters + ",\"text\":\"" + text + "\",\"columns\":[\"subject\",\"status\",\"priority\"],\"sort\":[{\"field\":\"number\",\"dir\":\"asc\"}],\"groupBy\":null,"
                 + "\"hierarchy\":false,\"sums\":false,\"includeSubprojects\":false,\"baseline\":" + baseline + "}";
         var res = send(s, post("/api/v1/work-packages/query"), "{\"projectId\":\"web-platform\",\"page\":1,\"pageSize\":100,\"spec\":" + spec + "}")
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
@@ -93,6 +97,39 @@ class BaselineIT {
             send(s, delete("/api/v1/work-packages/" + number), "").andExpect(status().is2xxSuccessful());
             var now = db.select(WORK_PACKAGES.LOCK_VERSION).from(WORK_PACKAGES).where(WORK_PACKAGES.NUMBER.eq(12L)).fetchOne(WORK_PACKAGES.LOCK_VERSION);
             send(s, patch("/api/v1/work-packages/12"), "{\"lockVersion\":" + now + ",\"priorityId\":\"" + wp.get("priority").get("id").asString() + "\"}").andExpect(status().isOk());
+        }
+    }
+
+    @Test
+    void itemsThatMatchedThenButNoLongerDoComeBackAsRemoved() throws Exception {
+        var s = login();
+        var wp = json.readTree(send(s, get("/api/v1/work-packages/12"), "").andReturn().getResponse().getContentAsString());
+        var before = wp.get("priority");
+        var high = db.select(com.openpms.db.Tables.PRIORITIES.ID).from(com.openpms.db.Tables.PRIORITIES).where(com.openpms.db.Tables.PRIORITIES.NAME.eq("긴급"))
+                .fetchOne(com.openpms.db.Tables.PRIORITIES.ID);
+        assertThat(before.get("id").asString()).isNotEqualTo(high.toString());
+        var byPriority = "[{\"field\":\"priority\",\"op\":\"eq\",\"values\":[\"" + before.get("id").asString() + "\"]}]";
+        send(s, patch("/api/v1/work-packages/12"), "{\"lockVersion\":" + wp.get("lockVersion").asInt() + ",\"priorityId\":\"" + high + "\"}").andExpect(status().isOk());
+        try {
+            var r = query(s, "{\"kind\":\"yesterday\"}", byPriority, "");
+            for (var row : r.get("rows")) assertThat(row.get("wp").get("number").asLong()).isNotEqualTo(12L);
+            JsonNode gone = null;
+            for (var x : r.get("baselineRemoved")) if (x.get("number").asLong() == 12) gone = x;
+            assertThat(gone).as("#12 matched the priority then").isNotNull();
+            assertThat(gone.get("then").get("priority").asString()).isEqualTo(before.get("name").asString());
+            assertThat(gone.get("now").get("priority").asString()).isEqualTo("긴급");
+            assertThat(gone.get("subject").asString()).isEqualTo(wp.get("subject").asString());
+            // only items changed since then: everything else that does not match stays out
+            assertThat(r.get("baselineRemoved").size()).isEqualTo(1);
+            // the quick search counts too: a text #12 never had leaves it out
+            assertThat(query(s, "{\"kind\":\"yesterday\"}", byPriority, "있을 수 없는 제목").get("baselineRemoved").size()).isZero();
+            // a filter #12 passes either way (any priority): nothing removed
+            assertThat(query(s, "{\"kind\":\"yesterday\"}", "[{\"field\":\"priority\",\"op\":\"any\",\"values\":[]}]", "").get("baselineRemoved").size()).isZero();
+            // without a baseline there is no such list
+            assertThat(query(s, "null", byPriority, "").get("baselineRemoved").isNull()).isTrue();
+        } finally {
+            var now = db.select(WORK_PACKAGES.LOCK_VERSION).from(WORK_PACKAGES).where(WORK_PACKAGES.NUMBER.eq(12L)).fetchOne(WORK_PACKAGES.LOCK_VERSION);
+            send(s, patch("/api/v1/work-packages/12"), "{\"lockVersion\":" + now + ",\"priorityId\":\"" + before.get("id").asString() + "\"}").andExpect(status().isOk());
         }
     }
 }

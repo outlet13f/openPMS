@@ -112,7 +112,7 @@ public class QueryEngine {
         };
     }
 
-    private Condition date(Field<LocalDate> col, String op, List<String> vals, LocalDate today, Set<UUID> closed) {
+    private Condition date(Field<LocalDate> col, String op, List<String> vals, LocalDate today, Set<UUID> closed, WorkPackages t) {
         int n = 7;
         try {
             if (!vals.isEmpty()) n = Math.max(1, Integer.parseInt(vals.get(0)));
@@ -122,7 +122,7 @@ public class QueryEngine {
         return switch (op) {
             case "any" -> col.isNotNull();
             case "none" -> col.isNull();
-            case "overdue" -> col.lt(today).and(closed.isEmpty() ? trueCondition() : W.STATUS_ID.notIn(closed));
+            case "overdue" -> col.lt(today).and(closed.isEmpty() ? trueCondition() : t.STATUS_ID.notIn(closed));
             case "today" -> col.eq(today);
             // the week as the calendars show it (관리 · 날짜 형식 · 주 시작 요일)
             case "this_week" -> col.between(com.openpms.common.Dates.startOfWeek(today), com.openpms.common.Dates.startOfWeek(today).plusDays(6));
@@ -173,16 +173,16 @@ public class QueryEngine {
      * A custom field filter over work_packages.custom_values. An item without the field (other type, or the field is
      * off in its project) counts as empty, whatever is stored for it.
      */
-    private Condition custom(Ctx ctx, Snapshot.CustomFieldRow cf, String op, List<String> vals, Set<UUID> closed) {
+    private Condition custom(Ctx ctx, Snapshot.CustomFieldRow cf, String op, List<String> vals, Set<UUID> closed, WorkPackages t) {
         var s = ctx.s();
         var id = cf.id().toString();
         var on = s.projects().values().stream().filter(p -> s.customFieldEnabledIn(cf, p.id())).map(Snapshot.ProjectRow::id).toList();
-        Condition active = (cf.typeIds().isEmpty() ? falseCondition() : W.TYPE_ID.in(cf.typeIds()))
-                .and(cf.isForAll() ? trueCondition() : on.isEmpty() ? falseCondition() : W.PROJECT_ID.in(on));
-        Condition has = active.and(DSL.condition("jsonb_exists({0}, {1})", W.CUSTOM_VALUES, DSL.val(id)));
+        Condition active = (cf.typeIds().isEmpty() ? falseCondition() : t.TYPE_ID.in(cf.typeIds()))
+                .and(cf.isForAll() ? trueCondition() : on.isEmpty() ? falseCondition() : t.PROJECT_ID.in(on));
+        Condition has = active.and(DSL.condition("jsonb_exists({0}, {1})", t.CUSTOM_VALUES, DSL.val(id)));
         if ("any".equals(op)) return has;
         if ("none".equals(op)) return has.not();
-        Field<JSONB> raw = DSL.field("({0} -> {1})", SQLDataType.JSONB, W.CUSTOM_VALUES, DSL.val(id));
+        Field<JSONB> raw = DSL.field("({0} -> {1})", SQLDataType.JSONB, t.CUSTOM_VALUES, DSL.val(id));
         String needle = vals.isEmpty() || vals.get(0) == null ? "" : vals.get(0);
         return switch (cf.format()) {
             case "list", "user" -> {
@@ -191,11 +191,11 @@ public class QueryEngine {
                 Condition hit = ids.length == 0 ? falseCondition() : has.and(DSL.condition("jsonb_exists_any({0}, {1}::text[])", raw, DSL.val(ids)));
                 yield "neq".equals(op) ? hit.not() : hit;
             }
-            case "integer", "float" -> has.and(num(DSL.field("({0} ->> {1})::numeric", SQLDataType.NUMERIC, W.CUSTOM_VALUES, DSL.val(id)), op, vals));
-            case "date" -> has.and(date(DSL.field("({0} ->> {1})::date", SQLDataType.LOCALDATE, W.CUSTOM_VALUES, DSL.val(id)), op, vals, ctx.today(), closed));
-            case "bool" -> has.and(DSL.condition("({0} -> {1}) = {2}::jsonb", W.CUSTOM_VALUES, DSL.val(id), DSL.val("true".equals(needle) ? "true" : "false")));
+            case "integer", "float" -> has.and(num(DSL.field("({0} ->> {1})::numeric", SQLDataType.NUMERIC, t.CUSTOM_VALUES, DSL.val(id)), op, vals));
+            case "date" -> has.and(date(DSL.field("({0} ->> {1})::date", SQLDataType.LOCALDATE, t.CUSTOM_VALUES, DSL.val(id)), op, vals, ctx.today(), closed, t));
+            case "bool" -> has.and(DSL.condition("({0} -> {1}) = {2}::jsonb", t.CUSTOM_VALUES, DSL.val(id), DSL.val("true".equals(needle) ? "true" : "false")));
             default -> {
-                Condition hit = has.and(DSL.field("({0} ->> {1})", SQLDataType.VARCHAR, W.CUSTOM_VALUES, DSL.val(id)).containsIgnoreCase(needle));
+                Condition hit = has.and(DSL.field("({0} ->> {1})", SQLDataType.VARCHAR, t.CUSTOM_VALUES, DSL.val(id)).containsIgnoreCase(needle));
                 yield "not_contains".equals(op) ? hit.not() : hit;
             }
         };
@@ -214,12 +214,21 @@ public class QueryEngine {
 
     /** All of these filters, as one condition on work_packages (boards use the list's fields and operators). */
     public Condition where(Ctx ctx, List<Filter> filters) {
+        return where(ctx, filters, W);
+    }
+
+    /** The same filters on another table shaped like work_packages (기준선: a copy holding the values items had then). */
+    public Condition where(Ctx ctx, List<Filter> filters, WorkPackages t) {
         Condition c = noCondition();
-        for (var f : filters) c = c.and(condition(ctx, f));
+        for (var f : filters) c = c.and(condition(ctx, f, t));
         return c;
     }
 
     Condition condition(Ctx ctx, Filter f) {
+        return condition(ctx, f, W);
+    }
+
+    Condition condition(Ctx ctx, Filter f, WorkPackages t) {
         var s = ctx.s();
         if (f.field() != null && f.field().startsWith("cf:")) {
             var cfId = CustomFields.idOf(f.field());
@@ -230,7 +239,7 @@ public class QueryEngine {
             if (NEEDS_VALUE.contains(f.op()) && vals.stream().allMatch(v -> v == null || v.isEmpty())) return noCondition();
             var closed = new HashSet<UUID>();
             s.statuses().stream().filter(Snapshot.StatusRow::isClosed).forEach(x -> closed.add(x.id()));
-            return custom(ctx, cf, f.op(), vals, closed);
+            return custom(ctx, cf, f.op(), vals, closed, t);
         }
         var allowed = OPS.get(f.field());
         if (allowed == null || !allowed.contains(f.op())) throw ApiException.unprocessable("필터를 확인하세요.", "연산자 " + f.op() + "는 " + f.field() + " 필드에 쓸 수 없습니다.");
@@ -244,28 +253,28 @@ public class QueryEngine {
 
         return switch (f.field()) {
             case "status" -> switch (f.op()) {
-                case "open" -> closed.isEmpty() ? trueCondition() : W.STATUS_ID.notIn(closed);
-                case "closed" -> closed.isEmpty() ? falseCondition() : W.STATUS_ID.in(closed);
-                default -> ref(W.STATUS_ID, f.op(), vals);
+                case "open" -> closed.isEmpty() ? trueCondition() : t.STATUS_ID.notIn(closed);
+                case "closed" -> closed.isEmpty() ? falseCondition() : t.STATUS_ID.in(closed);
+                default -> ref(t.STATUS_ID, f.op(), vals);
             };
-            case "type" -> ref(W.TYPE_ID, f.op(), vals);
-            case "priority" -> ref(W.PRIORITY_ID, f.op(), vals);
-            case "assignee" -> ref(W.ASSIGNEE_ID, f.op(), vals);
-            case "responsible" -> ref(W.RESPONSIBLE_ID, f.op(), vals);
-            case "author" -> ref(W.AUTHOR_ID, f.op(), vals);
-            case "version" -> ref(W.VERSION_ID, f.op(), vals);
-            case "category" -> ref(W.CATEGORY_ID, f.op(), vals);
-            case "project" -> ref(W.PROJECT_ID, f.op(), vals);
+            case "type" -> ref(t.TYPE_ID, f.op(), vals);
+            case "priority" -> ref(t.PRIORITY_ID, f.op(), vals);
+            case "assignee" -> ref(t.ASSIGNEE_ID, f.op(), vals);
+            case "responsible" -> ref(t.RESPONSIBLE_ID, f.op(), vals);
+            case "author" -> ref(t.AUTHOR_ID, f.op(), vals);
+            case "version" -> ref(t.VERSION_ID, f.op(), vals);
+            case "category" -> ref(t.CATEGORY_ID, f.op(), vals);
+            case "project" -> ref(t.PROJECT_ID, f.op(), vals);
             case "watcher" -> {
                 var ids = vals.stream().map(QueryEngine::uuid).filter(x -> x != null).toList();
-                var watched = selectOne().from(WATCHERS).where(WATCHERS.WORK_PACKAGE_ID.eq(W.ID), WATCHERS.USER_ID.in(ids));
+                var watched = selectOne().from(WATCHERS).where(WATCHERS.WORK_PACKAGE_ID.eq(t.ID), WATCHERS.USER_ID.in(ids));
                 yield "eq".equals(f.op()) ? exists(watched) : notExists(watched);
             }
             case "assigneeGroup" -> {
                 var people = new HashSet<UUID>();
                 vals.stream().map(QueryEngine::uuid).filter(x -> x != null && s.groups().containsKey(x)).forEach(g -> people.addAll(s.groups().get(g).memberIds()));
-                var in = people.isEmpty() ? falseCondition() : W.ASSIGNEE_ID.in(people);
-                yield "eq".equals(f.op()) ? in : in.not().or(W.ASSIGNEE_ID.isNull());
+                var in = people.isEmpty() ? falseCondition() : t.ASSIGNEE_ID.in(people);
+                yield "eq".equals(f.op()) ? in : in.not().or(t.ASSIGNEE_ID.isNull());
             }
             case "assigneeRole" -> {
                 var roles = vals.stream().map(QueryEngine::uuid).filter(x -> x != null).toList();
@@ -273,10 +282,10 @@ public class QueryEngine {
                 for (var p : s.projects().values()) {
                     var people = s.projectUsers(p.id()).stream().map(Snapshot.UserRow::id)
                             .filter(u -> s.memberRoleIds(u, p.id()).stream().anyMatch(roles::contains)).toList();
-                    if (!people.isEmpty()) parts.add(W.PROJECT_ID.eq(p.id()).and(W.ASSIGNEE_ID.in(people)));
+                    if (!people.isEmpty()) parts.add(t.PROJECT_ID.eq(p.id()).and(t.ASSIGNEE_ID.in(people)));
                 }
                 var in = parts.isEmpty() ? falseCondition() : or(parts);
-                yield "eq".equals(f.op()) ? in : in.not().or(W.ASSIGNEE_ID.isNull());
+                yield "eq".equals(f.op()) ? in : in.not().or(t.ASSIGNEE_ID.isNull());
             }
             case "number" -> {
                 var nums = new ArrayList<Long>();
@@ -288,11 +297,11 @@ public class QueryEngine {
                         // skip
                     }
                 }
-                yield "eq".equals(f.op()) ? (nums.isEmpty() ? falseCondition() : W.NUMBER.in(nums)) : (nums.isEmpty() ? trueCondition() : W.NUMBER.notIn(nums));
+                yield "eq".equals(f.op()) ? (nums.isEmpty() ? falseCondition() : t.NUMBER.in(nums)) : (nums.isEmpty() ? trueCondition() : t.NUMBER.notIn(nums));
             }
             case "parent" -> switch (f.op()) {
-                case "any" -> W.PARENT_ID.isNotNull();
-                case "none" -> W.PARENT_ID.isNull();
+                case "any" -> t.PARENT_ID.isNotNull();
+                case "none" -> t.PARENT_ID.isNull();
                 default -> {
                     long n;
                     try {
@@ -301,38 +310,38 @@ public class QueryEngine {
                         yield falseCondition();
                     }
                     var p = WORK_PACKAGES.as("p");
-                    yield W.PARENT_ID.in(db.select(p.ID).from(p).where(p.NUMBER.eq(n)));
+                    yield t.PARENT_ID.in(db.select(p.ID).from(p).where(p.NUMBER.eq(n)));
                 }
             };
-            case "subject" -> text(W.SUBJECT, f.op(), needle);
-            case "description" -> text(W.DESCRIPTION_TEXT, f.op(), needle);
+            case "subject" -> text(t.SUBJECT, f.op(), needle);
+            case "description" -> text(t.DESCRIPTION_TEXT, f.op(), needle);
             case "comment" -> {
-                var hit = selectOne().from(JOURNALS).where(JOURNALS.WORK_PACKAGE_ID.eq(W.ID), JOURNALS.NOTES_TEXT.containsIgnoreCase(needle));
+                var hit = selectOne().from(JOURNALS).where(JOURNALS.WORK_PACKAGE_ID.eq(t.ID), JOURNALS.NOTES_TEXT.containsIgnoreCase(needle));
                 yield "not_contains".equals(f.op()) ? notExists(hit) : exists(hit);
             }
             case "isMilestone" -> {
                 var ms = s.types().stream().filter(Snapshot.TypeRow::isMilestone).map(Snapshot.TypeRow::id).toList();
-                var in = ms.isEmpty() ? falseCondition() : W.TYPE_ID.in(ms);
+                var in = ms.isEmpty() ? falseCondition() : t.TYPE_ID.in(ms);
                 yield yes ? in : in.not();
             }
-            case "scheduleManually" -> W.SCHEDULE_MANUALLY.eq(yes);
+            case "scheduleManually" -> t.SCHEDULE_MANUALLY.eq(yes);
             case "blocked" -> {
                 var b = WORK_PACKAGES.as("b");
                 var blocker = selectOne().from(RELATIONS).join(b).on(b.ID.eq(RELATIONS.FROM_ID))
-                        .where(RELATIONS.TYPE.eq("blocks"), RELATIONS.TO_ID.eq(W.ID), closed.isEmpty() ? trueCondition() : b.STATUS_ID.notIn(closed));
+                        .where(RELATIONS.TYPE.eq("blocks"), RELATIONS.TO_ID.eq(t.ID), closed.isEmpty() ? trueCondition() : b.STATUS_ID.notIn(closed));
                 yield yes ? exists(blocker) : notExists(blocker);
             }
-            case "dueDate" -> date(W.DUE_DATE, f.op(), vals, today, closed);
-            case "startDate" -> date(W.START_DATE, f.op(), vals, today, closed);
-            case "createdAt" -> date(W.CREATED_AT.cast(LocalDate.class), f.op(), vals, today, closed);
-            case "updatedAt" -> date(W.UPDATED_AT.cast(LocalDate.class), f.op(), vals, today, closed);
-            case "duration" -> num(W.DURATION, f.op(), vals);
-            case "doneRatio" -> num(W.DONE_RATIO, f.op(), vals);
-            case "work" -> num(W.WORK_HOURS, f.op(), vals);
-            case "remainingWork" -> num(W.REMAINING_HOURS, f.op(), vals);
+            case "dueDate" -> date(t.DUE_DATE, f.op(), vals, today, closed, t);
+            case "startDate" -> date(t.START_DATE, f.op(), vals, today, closed, t);
+            case "createdAt" -> date(t.CREATED_AT.cast(LocalDate.class), f.op(), vals, today, closed, t);
+            case "updatedAt" -> date(t.UPDATED_AT.cast(LocalDate.class), f.op(), vals, today, closed, t);
+            case "duration" -> num(t.DURATION, f.op(), vals);
+            case "doneRatio" -> num(t.DONE_RATIO, f.op(), vals);
+            case "work" -> num(t.WORK_HOURS, f.op(), vals);
+            case "remainingWork" -> num(t.REMAINING_HOURS, f.op(), vals);
             case "dates" -> {
-                var start = coalesce(W.START_DATE, W.DUE_DATE);
-                var end = coalesce(W.DUE_DATE, W.START_DATE);
+                var start = coalesce(t.START_DATE, t.DUE_DATE);
+                var end = coalesce(t.DUE_DATE, t.START_DATE);
                 if ("any".equals(f.op())) yield start.isNotNull();
                 if ("none".equals(f.op())) yield start.isNull();
                 if ("overlaps".equals(f.op()) && vals.size() < 2) throw ApiException.unprocessable("필터를 확인하세요.", "날짜 범위 필터는 시작일과 종료일이 필요합니다.");
@@ -553,6 +562,30 @@ public class QueryEngine {
         return c.or(W.ID.in(shared).and(covered.isEmpty() ? falseCondition() : W.PROJECT_ID.in(covered)));
     }
 
+    /** The list's quick search: subject contains the text, or the number is it ("#12" or "12"). */
+    public static Condition text(String raw, WorkPackages t) {
+        var text = raw == null ? "" : raw.trim();
+        if (text.isEmpty()) return noCondition();
+        Condition byNumber = falseCondition();
+        try {
+            byNumber = t.NUMBER.eq(Long.parseLong(text.replace("#", "")));
+        } catch (NumberFormatException ignored) {
+            // text only
+        }
+        return t.SUBJECT.containsIgnoreCase(text).or(byNumber);
+    }
+
+    /** Projects a list covers for me (wp.view): the project, its subprojects when asked, or every visible one. */
+    public Set<UUID> scopeIds(Ctx ctx, Snapshot.ProjectRow project, boolean includeSubprojects) {
+        return scope(ctx, project, includeSubprojects);
+    }
+
+    /** Every item the list matches now (no paging). */
+    public Set<UUID> matchingIds(Ctx ctx, Spec spec, Snapshot.ProjectRow project) {
+        var where = visible(ctx, project, spec.includeSubprojects()).and(where(ctx, spec.filters())).and(text(spec.text(), W));
+        return new HashSet<>(db.select(W.ID).from(W).where(where).fetch(r -> r.value1()));
+    }
+
     public Dto.QueryResult run(Ctx ctx, Spec spec, Snapshot.ProjectRow project, int page, int pageSize) {
         var s = ctx.s();
         page = Math.max(1, page);
@@ -560,17 +593,7 @@ public class QueryEngine {
         var inScope = visible(ctx, project, spec.includeSubprojects());
         Condition where = inScope;
         for (var f : spec.filters()) where = where.and(condition(ctx, f));
-        var text = spec.text() == null ? "" : spec.text().trim();
-        if (!text.isEmpty()) {
-            var number = text.replace("#", "");
-            Condition byNumber = falseCondition();
-            try {
-                byNumber = W.NUMBER.eq(Long.parseLong(number));
-            } catch (NumberFormatException ignored) {
-                // text only
-            }
-            where = where.and(W.SUBJECT.containsIgnoreCase(text).or(byNumber));
-        }
+        where = where.and(text(spec.text(), W));
         var sortCmp = comparator(s, spec.sort());
         var matching = new ArrayList<>(fetchLight(where));
         // grouped: the group decides the order first (its own order: status position, names…; "none" last), then the sort
@@ -693,6 +716,6 @@ public class QueryEngine {
                     .where(RELATIONS.TYPE.eq("precedes"), RELATIONS.FROM_ID.in(numbers.keySet()), RELATIONS.TO_ID.in(numbers.keySet()))
                     .fetch(r -> new Dto.TimelineLink(numbers.get(r.value1()), numbers.get(r.value2()), r.value3()));
         }
-        return new Dto.QueryResult(result, total, page, pageSize, links, groups, sums, null);
+        return new Dto.QueryResult(result, total, page, pageSize, links, groups, sums, null, null);
     }
 }
