@@ -4,11 +4,14 @@ import static com.openpms.db.Tables.BOARDS;
 import static com.openpms.db.Tables.CATEGORIES;
 import static com.openpms.db.Tables.JOURNALS;
 import static com.openpms.db.Tables.MEMBERS;
+import static com.openpms.db.Tables.MEMBER_ROLES;
 import static com.openpms.db.Tables.NOTIFICATIONS;
 import static com.openpms.db.Tables.PROJECTS;
 import static com.openpms.db.Tables.PROJECT_TYPES;
 import static com.openpms.db.Tables.QUERIES;
 import static com.openpms.db.Tables.RELATIONS;
+import static com.openpms.db.Tables.ROLES;
+import static com.openpms.db.Tables.USERS;
 import static com.openpms.db.Tables.VERSIONS;
 import static com.openpms.db.Tables.WORK_PACKAGES;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -46,6 +49,8 @@ class TemplatesIT {
     WebApplicationContext context;
     @Autowired
     DSLContext db;
+    @Autowired
+    tools.jackson.databind.json.JsonMapper json;
 
     MockMvc mvc;
     MockHttpSession admin;
@@ -151,5 +156,48 @@ class TemplatesIT {
         var me = db.select(com.openpms.db.Tables.USERS.ID).from(com.openpms.db.Tables.USERS).where(com.openpms.db.Tables.USERS.EMAIL.eq("seoyeon.kim@openpms.local"))
                 .fetchOne(com.openpms.db.Tables.USERS.ID);
         return db.fetchCount(QUERIES, QUERIES.PROJECT_ID.eq(template), QUERIES.IS_PUBLIC.isFalse(), QUERIES.OWNER_ID.eq(me));
+    }
+
+    @Test
+    void whatTheCopyCannotKeepIsLeftOutAndWhatItCopiedIsPointedAt() throws Exception {
+        var template = id("web-platform");
+        var version = db.select(VERSIONS.ID).from(VERSIONS).where(VERSIONS.PROJECT_ID.eq(template)).limit(1).fetchOne(VERSIONS.ID);
+        var view = json.readTree(send(admin, post("/api/v1/queries"), "{\"projectId\":\"web-platform\",\"name\":\"이 버전의 일\",\"isPublic\":true,\"view\":\"table\","
+                + "\"spec\":{\"v\":1,\"filters\":[{\"field\":\"version\",\"op\":\"eq\",\"values\":[\"" + version + "\"]}],\"columns\":[\"subject\"],\"sort\":[],"
+                + "\"hierarchy\":false,\"sums\":false,\"includeSubprojects\":false}}").andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        try {
+            // without members: assignees and responsibles who are not in the new project are cleared, versions point at the copies
+            send(admin, post("/api/v1/projects/web-platform/copy"), "{\"name\":\"멤버 없는 사본\",\"identifier\":\"copied-project\",\"copy\":[\"workPackages\",\"versions\",\"queries\"]}")
+                    .andExpect(status().isCreated());
+            var made = id("copied-project");
+            var me = db.select(USERS.ID).from(USERS).where(USERS.EMAIL.eq("seoyeon.kim@openpms.local")).fetchOne(USERS.ID);
+            assertThat(db.selectFrom(WORK_PACKAGES).where(WORK_PACKAGES.PROJECT_ID.eq(template), WORK_PACKAGES.ASSIGNEE_ID.ne(me)).fetch()).as("the template has other assignees").isNotEmpty();
+            for (var w : db.selectFrom(WORK_PACKAGES).where(WORK_PACKAGES.PROJECT_ID.eq(made)).fetch()) {
+                assertThat(w.getAssigneeId() == null || w.getAssigneeId().equals(me)).as("#" + w.getNumber() + " assignee").isTrue();
+                assertThat(w.getResponsibleId() == null || w.getResponsibleId().equals(me)).as("#" + w.getNumber() + " responsible").isTrue();
+            }
+            var copiedVersion = db.select(VERSIONS.ID).from(VERSIONS).where(VERSIONS.PROJECT_ID.eq(made), VERSIONS.NAME.eq(
+                    db.select(VERSIONS.NAME).from(VERSIONS).where(VERSIONS.ID.eq(version)).fetchOne(VERSIONS.NAME))).fetchOne(VERSIONS.ID);
+            var spec = db.select(QUERIES.SPEC).from(QUERIES).where(QUERIES.PROJECT_ID.eq(made), QUERIES.NAME.eq("이 버전의 일")).fetchOne(QUERIES.SPEC).data();
+            assertThat(spec).contains(copiedVersion.toString()).doesNotContain(version.toString());
+            send(admin, delete("/api/v1/projects/copied-project"), "{\"confirmIdentifier\":\"copied-project\"}").andExpect(status().isNoContent());
+
+            // with members: a group member comes along, and the creator keeps the manager role plus what the template gave them
+            var grouped = db.select(PROJECTS.IDENTIFIER, PROJECTS.ID).from(MEMBERS).join(PROJECTS).on(PROJECTS.ID.eq(MEMBERS.PROJECT_ID))
+                    .where(MEMBERS.GROUP_ID.isNotNull()).limit(1).fetchOne();
+            send(admin, post("/api/v1/projects/" + grouped.value1() + "/copy"), "{\"name\":\"그룹 있는 사본\",\"identifier\":\"copied-project\",\"copy\":[\"members\"]}")
+                    .andExpect(status().isCreated());
+            made = id("copied-project");
+            assertThat(db.fetchCount(MEMBERS, MEMBERS.PROJECT_ID.eq(made), MEMBERS.GROUP_ID.isNotNull()))
+                    .isEqualTo(db.fetchCount(MEMBERS, MEMBERS.PROJECT_ID.eq(grouped.value2()), MEMBERS.GROUP_ID.isNotNull())).isPositive();
+            var myRolesThere = db.select(MEMBER_ROLES.ROLE_ID).from(MEMBER_ROLES).join(MEMBERS).on(MEMBERS.ID.eq(MEMBER_ROLES.MEMBER_ID))
+                    .where(MEMBERS.PROJECT_ID.eq(grouped.value2()), MEMBERS.USER_ID.eq(me)).fetch(MEMBER_ROLES.ROLE_ID);
+            var myRolesHere = db.select(MEMBER_ROLES.ROLE_ID).from(MEMBER_ROLES).join(MEMBERS).on(MEMBERS.ID.eq(MEMBER_ROLES.MEMBER_ID))
+                    .where(MEMBERS.PROJECT_ID.eq(made), MEMBERS.USER_ID.eq(me)).fetch(MEMBER_ROLES.ROLE_ID);
+            var manager = db.select(ROLES.ID).from(ROLES).where(ROLES.NAME.eq("프로젝트 관리자")).fetchOne(ROLES.ID);
+            assertThat(myRolesHere).contains(manager).containsAll(myRolesThere);
+        } finally {
+            send(admin, delete("/api/v1/queries/" + view.get("id").asString()), "").andExpect(status().is2xxSuccessful());
+        }
     }
 }

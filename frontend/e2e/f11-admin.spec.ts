@@ -88,6 +88,29 @@ test.describe("F11 관리", () => {
     expect(perms.includes("wp.export")).toBe(!was);
   });
 
+  test("F11-N2 a user manager who is not an administrator sees no global-role item and cannot hand roles out", async ({ page }) => {
+    const users = await api<{ id: string; email: string }[]>(page, "return await api.admin.users.list()");
+    const doyoon = users.find((u) => u.email === "doyoon.han@openpms.local")!.id;
+    const role = await api<{ id: string }>(page, "return await api.admin.roles.create({ name: '사용자 관리자(e2e)', scope: 'global', permissions: ['global.manage_users'] })");
+    await api(page, "await api.admin.users.setGlobalRoles(args[0], [args[1]])", doyoon, role.id);
+    try {
+      await logout(page);
+      await login(page, "doyoon.han@openpms.local");
+      await page.goto("/admin/users");
+      const row = page.getByRole("row").filter({ hasText: "haneul.lee@openpms.local" });
+      await row.getByRole("button", { name: /메뉴$/ }).click();
+      await expect(page.getByRole("menuitem").first()).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: "전역 역할" })).toHaveCount(0);
+      await page.keyboard.press("Escape");
+      // and the server says no as well
+      const refused = await api<number>(page, "try { await api.admin.users.setGlobalRoles(args[0], [args[1]]); return 200 } catch (e) { return e.status }", doyoon, role.id);
+      expect(refused).toBe(403);
+    } finally {
+      await logout(page);
+      await login(page, "seoyeon.kim@openpms.local");
+      await api(page, "await api.admin.users.setGlobalRoles(args[0], []); await api.admin.roles.remove(args[1])", doyoon, role.id);
+    }
+  });
   test("F11-N1 a member cannot open administration", async ({ page }) => {
     await page.evaluate(async () => (await import("/src/api/index.ts" as string)).api.auth.logout());
     await login(page, "junho.park@openpms.local");

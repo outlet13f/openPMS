@@ -266,4 +266,50 @@ class BoardsIT {
             send(admin, delete("/api/v1/boards/" + id), "").andExpect(status().isNoContent());
         }
     }
+
+    @Test
+    void aSubprojectCardTakesItsChildrenAlongAndNeedsTheRightsToMoveThere() throws Exception {
+        var admin = login("seoyeon.kim@openpms.local");
+        var infra = body(send(admin, get("/api/v1/projects/infra"), "")).get("id").asString();
+        // 임시 하위: public, so 이하늘 (manager of 사내 인프라 and 백업 체계 개선, not a member here) sees it but may not put work in it
+        send(admin, post("/api/v1/projects"), "{\"name\":\"임시 하위\",\"identifier\":\"infra-temp\",\"parentId\":\"" + infra + "\",\"isPublic\":true}").andExpect(status().isCreated());
+        send(admin, patch("/api/v1/projects/infra"), "{\"enabledModules\":[\"work_packages\",\"gantt\",\"boards\"]}").andExpect(status().isOk());
+        String id = null;
+        Long parent = null;
+        Long child = null;
+        try {
+            var board = body(send(admin, post("/api/v1/projects/infra/boards"), "{\"name\":\"하위 프로젝트\",\"kind\":\"subproject\",\"isPublic\":true}").andExpect(status().isCreated()));
+            id = board.get("id").asString();
+            var backup = column(board, "백업 체계 개선").get("id").asString();
+            var temp = column(board, "임시 하위").get("id").asString();
+            parent = body(send(admin, post("/api/v1/boards/" + id + "/cards/new"), "{\"columnId\":\"" + backup + "\",\"subject\":\"옮길 상위 작업\"}")
+                    .andExpect(status().isCreated())).get("workPackage").get("number").asLong();
+            var type = body(send(admin, get("/api/v1/work-packages/" + parent), "")).get("type").get("id").asString();
+            child = body(send(admin, post("/api/v1/projects/infra-backup/work-packages"), "{\"subject\":\"따라갈 하위 작업\",\"typeId\":\"" + type + "\",\"parentNumber\":" + parent + "}")
+                    .andExpect(status().isCreated())).get("number").asLong();
+
+            // 이하늘 may see 임시 하위 but not move work into it: refused, nothing moved
+            var haneul = login("haneul.lee@openpms.local");
+            var lock = body(send(haneul, get("/api/v1/work-packages/" + parent), "")).get("lockVersion").asInt();
+            var refused = send(haneul, post("/api/v1/boards/" + id + "/moves"), "{\"number\":" + parent + ",\"toColumnId\":\"" + temp + "\",\"beforeNumber\":null,\"lockVersion\":" + lock + "}")
+                    .andReturn().getResponse().getStatus();
+            assertThat(refused).isIn(403, 422);
+            assertThat(body(send(admin, get("/api/v1/work-packages/" + parent), "")).get("project").get("identifier").asString()).isEqualTo("infra-backup");
+
+            // the administrator moves it: the child goes along
+            lock = body(send(admin, get("/api/v1/work-packages/" + parent), "")).get("lockVersion").asInt();
+            send(admin, post("/api/v1/boards/" + id + "/moves"), "{\"number\":" + parent + ",\"toColumnId\":\"" + temp + "\",\"beforeNumber\":null,\"lockVersion\":" + lock + "}")
+                    .andExpect(status().isOk());
+            assertThat(body(send(admin, get("/api/v1/work-packages/" + parent), "")).get("project").get("identifier").asString()).isEqualTo("infra-temp");
+            var moved = body(send(admin, get("/api/v1/work-packages/" + child), ""));
+            assertThat(moved.get("project").get("identifier").asString()).isEqualTo("infra-temp");
+            assertThat(moved.get("parent").get("number").asLong()).isEqualTo(parent);
+        } finally {
+            if (child != null) send(admin, delete("/api/v1/work-packages/" + child), "").andExpect(status().is2xxSuccessful());
+            if (parent != null) send(admin, delete("/api/v1/work-packages/" + parent), "").andExpect(status().is2xxSuccessful());
+            if (id != null) send(admin, delete("/api/v1/boards/" + id), "").andExpect(status().isNoContent());
+            send(admin, delete("/api/v1/projects/infra-temp"), "{\"confirmIdentifier\":\"infra-temp\"}").andExpect(status().isNoContent());
+            send(admin, patch("/api/v1/projects/infra"), "{\"enabledModules\":[\"work_packages\",\"gantt\"]}").andExpect(status().isOk());
+        }
+    }
 }
