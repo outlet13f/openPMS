@@ -88,10 +88,13 @@ const darkVars = [];
   }
 })(t["color-dark"], "");
 const darkBody = ["  color-scheme: dark;", ...darkVars.map(([n, v]) => `  ${n}: ${v};`)].join("\n");
+// high contrast: light values with the color-high-contrast roles on top (chosen explicitly; the system dark mode does not override it)
+const hcBody = ["  color-scheme: light;", ...Object.entries(t["color-high-contrast"] ?? {}).filter(([k]) => !k.startsWith("_")).map(([k, v]) => `  --pms-color-${k}: ${v};`)].join("\n");
 const tokensCss =
   `${banner}:root {\n  color-scheme: light;\n${vars.map(([n, v]) => `  ${n}: ${v};`).join("\n")}\n}\n` +
   `:root[data-theme="dark"] {\n${darkBody}\n}\n` +
-  `@media (prefers-color-scheme: dark) {\n  :root:not([data-theme="light"]) {\n${darkBody.replace(/^/gm, "  ")}\n  }\n}\n`;
+  `@media (prefers-color-scheme: dark) {\n  :root:not([data-theme="light"]):not([data-theme="high_contrast"]) {\n${darkBody.replace(/^/gm, "  ")}\n  }\n}\n` +
+  `:root[data-theme="high_contrast"] {\n${hcBody}\n}\n`;
 const themeCss = `${banner}@theme inline {\n${theme.map(([n, v]) => `  ${n}: ${v};`).join("\n")}\n}\n`;
 const tokensTs = `${banner.replace("/*", "//").replace(" */", "")}export const tokens = ${JSON.stringify(
   { color: t.color, pairs: t.pairs, type: t.type, space: t.space, radius: t.radius, shadow: t.shadow, motion: t.motion, layout: t.layout, z: t.z },

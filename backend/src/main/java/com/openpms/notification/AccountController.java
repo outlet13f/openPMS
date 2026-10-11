@@ -50,7 +50,7 @@ public class AccountController {
     private static final List<String> WIDGETS = List.of("assigned", "created", "watched", "responsible", "dueSoon", "recent");
     private static final Pattern TIME = Pattern.compile("^([01]\\d|2[0-3]):[0-5]\\d$");
 
-    private static final List<String> THEMES = List.of("system", "light", "dark");
+    private static final List<String> THEMES = List.of("system", "light", "dark", "high_contrast");
 
     private final Current current;
     private final DSLContext db;

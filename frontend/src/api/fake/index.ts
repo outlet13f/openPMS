@@ -684,7 +684,7 @@ export const fakeApi: Api = {
           user.timeZone = input.timeZone;
         }
         if (input.theme !== undefined) {
-          if (!["system", "light", "dark"].includes(input.theme)) throw fieldError("theme", "테마를 고르세요.");
+          if (!["system", "light", "dark", "high_contrast"].includes(input.theme)) throw fieldError("theme", "테마를 고르세요.");
           user.theme = input.theme;
         }
         return toMe(user);

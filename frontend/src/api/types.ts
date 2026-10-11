@@ -79,7 +79,7 @@ export interface NotificationSettings {
   projects: ProjectNotificationSetting[];
 }
 
-export type Theme = "system" | "light" | "dark";
+export type Theme = "system" | "light" | "dark" | "high_contrast";
 
 export interface Me extends User {
   globalPermissions: string[];

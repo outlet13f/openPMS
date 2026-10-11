@@ -63,7 +63,11 @@
   color: color-mix(in oklab, var(--pms-label) 45%, white);
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .pms-label {
+  :root:not([data-theme="light"]):not([data-theme="high_contrast"]) .pms-label {
     color: color-mix(in oklab, var(--pms-label) 45%, white);
   }
+}
+/* high contrast: the label colour, darker */
+:root[data-theme="high_contrast"] .pms-label {
+  color: color-mix(in oklab, var(--pms-label) 70%, black);
 }

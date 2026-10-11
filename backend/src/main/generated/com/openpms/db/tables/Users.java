@@ -664,7 +664,7 @@ public class Users extends TableImpl<UsersRecord> {
             Internal.createCheck(this, DSL.name("users_locale_check"), "((locale = ANY (ARRAY['ko'::text, 'en'::text])))", true),
             Internal.createCheck(this, DSL.name("users_name_check"), "(((length(name) >= 1) AND (length(name) <= 100)))", true),
             Internal.createCheck(this, DSL.name("users_status_check"), "((status = ANY (ARRAY['invited'::text, 'active'::text, 'locked'::text, 'deleted'::text])))", true),
-            Internal.createCheck(this, DSL.name("users_theme_check"), "((theme = ANY (ARRAY['system'::text, 'light'::text, 'dark'::text])))", true)
+            Internal.createCheck(this, DSL.name("users_theme_check"), "((theme = ANY (ARRAY['system'::text, 'light'::text, 'dark'::text, 'high_contrast'::text])))", true)
         );
     }
 

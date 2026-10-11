@@ -69,9 +69,40 @@ test.describe("axe in the dark theme", () => {
     test(`a11y ${name}`, async ({ page }) => {
       await page.goto(url);
       // the system theme follows prefers-color-scheme: the page background must really be dark
-      const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-      const [r, g, b] = (bg.match(/\d+/g) ?? ["255", "255", "255"]).map(Number);
-      expect(r + g + b, `body background ${bg}`).toBeLessThan(200);
+      const bg = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--pms-color-bg").trim().toLowerCase());
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(bg.slice(i, i + 2), 16));
+      expect(r + g + b, `page background ${bg}`).toBeLessThan(200);
+      await page.waitForLoadState("networkidle");
+      await axe(page, name);
+    });
+  }
+});
+
+test.describe("axe in the high-contrast theme", () => {
+  // the system is dark here: high contrast is a light theme chosen in the account and must win over it
+  test.use({ colorScheme: "dark" });
+  test.beforeEach(async ({ page }) => {
+    await login(page, "seoyeon.kim@openpms.local");
+    await page.goto("/my/account");
+    await page.getByRole("radio", { name: /고대비/ }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "high_contrast");
+  });
+  test.afterEach(async ({ page }) => {
+    await page.goto("/my/account");
+    await page.getByRole("radio", { name: /시스템 설정/ }).click();
+  });
+  for (const [name, url] of [
+    ["S06 목록 (high contrast)", "/projects/web-platform/work-packages"],
+    ["S07 상세 패널 (high contrast)", "/projects/web-platform/work-packages/details/3/overview"],
+    ["S13 Gantt (high contrast)", "/projects/web-platform/gantt"],
+    ["S02 홈 (high contrast)", "/"],
+    ["S37 계정 설정 (high contrast)", "/my/account"],
+  ] as const) {
+    test(`a11y ${name}`, async ({ page }) => {
+      await page.goto(url);
+      const bg = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--pms-color-bg").trim().toLowerCase());
+      expect(bg, "a light page under a dark system setting").toBe("#ffffff");
+      expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--pms-color-text").trim().toLowerCase())).toBe("#000000");
       await page.waitForLoadState("networkidle");
       await axe(page, name);
     });

@@ -1,4 +1,4 @@
-// Theme (S37 화면): "system" follows the operating system (tokens.css media query), light/dark pin it.
+// Theme (S37 화면): "system" follows the operating system (tokens.css media query), light/dark/high_contrast pin it.
 // The choice is also kept in this browser so the first paint already has it (before /auth/me answers).
 import type { Theme } from "@/api";
 
@@ -19,7 +19,7 @@ export function applyTheme(theme: Theme) {
 export function applyStoredTheme() {
   try {
     const t = localStorage.getItem(KEY);
-    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+    if (t === "light" || t === "dark" || t === "high_contrast") document.documentElement.dataset.theme = t;
   } catch {
     /* ignore */
   }

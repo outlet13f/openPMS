@@ -4,7 +4,7 @@ import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { usePasswordRules } from "@/api/hooks";
 import { DEFAULT_AUTH_SETTINGS, describeRules } from "@/api/password-policy";
-import { KeyRound, LogOut, Mail, Monitor, Moon, Save, Sun } from "lucide-react";
+import { Contrast, KeyRound, LogOut, Mail, Monitor, Moon, Save, Sun } from "lucide-react";
 import { isApiError, type Theme } from "@/api";
 import { useAccountMutations, useMe } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
@@ -81,17 +81,17 @@ function Display() {
   const me = useMe().data!;
   const m = useAccountMutations();
   const fail = (e: unknown) => toast({ tone: "danger", title: isApiError(e) ? e.message : t("app.errorTitle") });
-  const icons = { system: <Monitor />, light: <Sun />, dark: <Moon /> };
+  const icons = { system: <Monitor />, light: <Sun />, dark: <Moon />, high_contrast: <Contrast /> };
   return (
     <Section title={t("account.display")}>
       <div className="flex flex-col gap-2">
         <h3 className="text-sm font-medium text-fg">{t("account.theme")}</h3>
         <RadioCards
           aria-label={t("account.theme")}
-          columns={3}
+          columns={2}
           value={me.theme}
           onValueChange={(v) => m.profile.mutate({ theme: v as Theme }, { onError: fail })}
-          options={(["system", "light", "dark"] as const).map((th) => ({ value: th, title: t(`account.themes.${th}`), description: t(`account.themeHints.${th}`), icon: icons[th] }))}
+          options={(["system", "light", "dark", "high_contrast"] as const).map((th) => ({ value: th, title: t(`account.themes.${th}`), description: t(`account.themeHints.${th}`), icon: icons[th] }))}
         />
       </div>
       <div className="flex max-w-form flex-col gap-3">
