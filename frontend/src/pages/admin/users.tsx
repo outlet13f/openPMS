@@ -1,16 +1,16 @@
 // S35 관리: 사용자, 그룹
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { BadgeCheck, Lock, LockOpen, Mail, MoreHorizontal, Pencil, Plus, Search, Shield, ShieldOff, Trash2, UserPlus, Users } from "lucide-react";
-import type { AdminGroup, AdminUser } from "@/api";
+import { BadgeCheck, ClipboardCopy, Copy, Eye, KeyRound, Lock, LockOpen, Mail, MoreHorizontal, Pencil, Plus, Search, Shield, ShieldOff, Trash2, UserPlus, Users } from "lucide-react";
+import { api, type AdminGroup, type AdminUser, type TemporaryPassword } from "@/api";
 import { useAdminGroups, useAdminRoles, useAdminUsers, useGroupMutations, useUserMutations } from "@/api/admin-hooks";
 import { useMe } from "@/api/hooks";
 import { Avatar, Principal } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badges";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/choice";
+import { Checkbox, RadioCards } from "@/components/ui/choice";
 import { Field, Input } from "@/components/ui/field";
-import { EmptyState } from "@/components/ui/feedback";
+import { EmptyState, useToast } from "@/components/ui/feedback";
 import { Dialog, Menu, type MenuEntry } from "@/components/ui/overlay";
 import { Skeleton } from "@/components/ui/spinner";
 import { cn } from "@/lib/cn";
@@ -22,36 +22,111 @@ import { AdminGuard } from "./index";
 const STATUS_TONE = { active: "success", invited: "accent", locked: "danger", deleted: "neutral" } as const;
 const FILTERS = ["all", "active", "invited", "locked"] as const;
 
-function InviteDialog({ onClose }: { onClose: () => void }) {
+type Shown = { user: AdminUser; password: TemporaryPassword };
+
+/** 사용자 추가: an invitation by mail (as before) or, without mail, a temporary password to pass on. */
+function AddUserDialog({ onClose, onMade }: { onClose: () => void; onMade: (shown: Shown) => void }) {
   const { t } = useTranslation();
   const me = useMe().data;
-  const { create } = useUserMutations();
+  const { create, createWithPassword } = useUserMutations();
   const runToast = useRunWithToast();
   const [v, setV] = useState({ name: "", email: "", isAdmin: false });
+  const [method, setMethod] = useState<"invite" | "temporaryPassword">("invite");
+  const error = method === "invite" ? create.error : createWithPassword.error;
+  const submit = async () => {
+    if (method === "invite") {
+      if (await runToast(create.mutateAsync(v), t("admin.users.invited", { email: v.email }))) onClose();
+      return;
+    }
+    const made = await runToast(createWithPassword.mutateAsync(v));
+    if (made) onMade({ user: made.user, password: made });
+  };
   return (
     <Dialog
       open
       onOpenChange={(o) => !o && onClose()}
       size="sm"
-      title={t("admin.users.invite")}
-      description={t("admin.users.inviteHint")}
+      title={t("admin.users.add")}
+      description={t(method === "invite" ? "admin.users.inviteHint" : "admin.users.temporaryHint")}
       footer={
         <>
           <Button onClick={onClose}>{t("app.cancel")}</Button>
-          <Button variant="primary" icon={<Mail />} loading={create.isPending} onClick={async () => (await runToast(create.mutateAsync(v), t("admin.users.invited", { email: v.email }))) && onClose()}>
-            {t("admin.users.sendInvite")}
+          <Button variant="primary" icon={method === "invite" ? <Mail /> : <KeyRound />} loading={create.isPending || createWithPassword.isPending} onClick={() => void submit()}>
+            {t(method === "invite" ? "admin.users.sendInvite" : "admin.users.createUser")}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-4">
-        <Field label={t("admin.users.name")} required error={fieldErrorOf(create.error, "name")}>
+        <RadioCards
+          aria-label={t("admin.users.method")}
+          value={method}
+          onValueChange={(m) => setMethod(m as typeof method)}
+          options={[
+            { value: "invite", title: t("admin.users.methodInvite"), icon: <Mail /> },
+            { value: "temporaryPassword", title: t("admin.users.methodTemporary"), icon: <KeyRound /> },
+          ]}
+        />
+        <Field label={t("admin.users.name")} required error={fieldErrorOf(error, "name")}>
           <Input data-autofocus value={v.name} maxLength={100} onChange={(e) => setV({ ...v, name: e.target.value })} />
         </Field>
-        <Field label={t("admin.users.email")} required error={fieldErrorOf(create.error, "email")}>
+        <Field label={t("admin.users.email")} required error={fieldErrorOf(error, "email")}>
           <Input type="email" value={v.email} onChange={(e) => setV({ ...v, email: e.target.value })} />
         </Field>
         {me?.isAdmin && <Checkbox label={t("admin.users.makeAdmin")} checked={v.isAdmin} onCheckedChange={(c) => setV({ ...v, isAdmin: c === true })} />}
+      </div>
+    </Dialog>
+  );
+}
+
+/** 임시 비밀번호: what the administrator passes on — the password alone, or a ready message with the address and the deadline. */
+function TemporaryPasswordDialog({ shown, onClose }: { shown: Shown; onClose: () => void }) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const [copied, setCopied] = useState("");
+  const { user, password: p } = shown;
+  const message = t("admin.users.temporaryMessage", { url: `${window.location.origin}/login`, email: user.email, password: p.temporaryPassword, until: formatDateTime(p.expiresAt) });
+  const copy = async (text: string, done: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(done);
+    } catch {
+      setCopied("");
+      toast({ tone: "danger", title: t("admin.users.copyFailed") });
+    }
+  };
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="sm"
+      title={t("admin.users.temporaryTitle", { name: user.name })}
+      description={t("admin.users.temporaryNote")}
+      footer={
+        <Button variant="primary" onClick={onClose}>
+          {t("admin.users.done")}
+        </Button>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <Field label={t("admin.users.email")}>
+          <Input readOnly value={user.email} />
+        </Field>
+        <Field label={t("admin.users.temporaryPassword")} hint={t("admin.users.temporaryUntil", { time: formatDateTime(p.expiresAt) })}>
+          <Input readOnly className="font-mono" value={p.temporaryPassword} />
+        </Field>
+        {p.issuedAt && <p className="text-xs text-fg-muted">{t("admin.users.temporaryIssued", { name: p.issuedBy?.name ?? "-", time: formatDateTime(p.issuedAt) })}</p>}
+        <div className="flex flex-wrap gap-2">
+          <Button data-autofocus icon={<Copy />} onClick={() => void copy(p.temporaryPassword, t("admin.users.copiedPassword"))}>
+            {t("admin.users.copyPassword")}
+          </Button>
+          <Button icon={<ClipboardCopy />} onClick={() => void copy(message, t("admin.users.copiedMessage"))}>
+            {t("admin.users.copyMessage")}
+          </Button>
+        </div>
+        <p role="status" aria-live="polite" className="text-sm text-fg-muted">
+          {copied}
+        </p>
       </div>
     </Dialog>
   );
@@ -120,14 +195,24 @@ export function AdminUsersPage() {
   const users = useAdminUsers({ q: query || undefined, status: filter === "all" ? undefined : filter });
   const m = useUserMutations();
   const runToast = useRunWithToast();
-  const [inviting, setInviting] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<AdminUser | null>(null);
   const [granting, setGranting] = useState<AdminUser | null>(null);
+  const [issuing, setIssuing] = useState<AdminUser | null>(null);
+  const [shown, setShown] = useState<Shown | null>(null);
+  const live = (until: string | null) => !!until && Date.parse(until) > Date.now();
+  const look = async (u: AdminUser) => {
+    const p = await runToast(api.admin.users.temporaryPassword(u.id));
+    if (p) setShown({ user: u, password: p });
+  };
 
   const actions = (u: AdminUser): MenuEntry[] => {
     const self = u.id === me?.id;
     const items: MenuEntry[] = [];
     if (u.status === "invited") items.push({ label: t("admin.users.resend"), icon: <Mail />, onSelect: () => void runToast(m.resend.mutateAsync(u.id), t("admin.users.resent")) });
+    const handlesPassword = (u.status === "active" || u.status === "invited") && !self && (!u.isAdmin || !!me?.isAdmin);
+    if (handlesPassword) items.push({ label: t("admin.users.issueTemporary"), icon: <KeyRound />, onSelect: () => setIssuing(u) });
+    if (handlesPassword && live(u.temporaryPasswordUntil)) items.push({ label: t("admin.users.showTemporary"), icon: <Eye />, onSelect: () => void look(u) });
     if (u.status === "active" && !self) items.push({ label: t("admin.users.lock"), icon: <Lock />, onSelect: () => void runToast(m.update.mutateAsync({ id: u.id, patch: { status: "locked" } }), t("admin.users.locked", { name: u.name })) });
     if (u.status === "locked" || u.lockedUntil) items.push({ label: t("admin.users.unlock"), icon: <LockOpen />, onSelect: () => void runToast(m.update.mutateAsync({ id: u.id, patch: { status: "active" } }), t("admin.users.unlocked", { name: u.name })) });
     if (me?.isAdmin && u.status !== "deleted") items.push({ label: t("admin.users.globalRoles"), icon: <BadgeCheck />, onSelect: () => setGranting(u) });
@@ -147,8 +232,8 @@ export function AdminUsersPage() {
         title={t("admin.sections.users")}
         breadcrumbs={[{ label: t("nav.admin"), href: "/admin" }, { label: t("admin.sections.users") }]}
         actions={
-          <Button variant="primary" icon={<UserPlus />} onClick={() => setInviting(true)}>
-            {t("admin.users.invite")}
+          <Button variant="primary" icon={<UserPlus />} onClick={() => setAdding(true)}>
+            {t("admin.users.add")}
           </Button>
         }
       />
@@ -214,7 +299,15 @@ export function AdminUsersPage() {
                           <span className="text-xs text-fg-muted">{t("admin.users.lockedUntil", { time: formatDateTime(u.lockedUntil) })}</span>
                         </span>
                       ) : (
-                        <Badge tone={STATUS_TONE[u.status]}>{t(`admin.users.statuses.${u.status}`)}</Badge>
+                        <span className="inline-flex flex-col items-start gap-0.5">
+                          <Badge tone={STATUS_TONE[u.status]}>{t(`admin.users.statuses.${u.status}`)}</Badge>
+                          {u.temporaryPasswordUntil &&
+                            (live(u.temporaryPasswordUntil) ? (
+                              <span className="text-xs text-fg-muted">{t("admin.users.temporaryBadge", { time: formatDateTime(u.temporaryPasswordUntil) })}</span>
+                            ) : (
+                              <Badge tone="warning">{t("admin.users.temporaryExpired")}</Badge>
+                            ))}
+                        </span>
                       )}
                     </td>
                     <td className="px-3">
@@ -240,8 +333,24 @@ export function AdminUsersPage() {
           </AdminTable>
         )}
       </AdminGuard>
-      {inviting && <InviteDialog onClose={() => setInviting(false)} />}
+      {adding && <AddUserDialog onClose={() => setAdding(false)} onMade={(s) => (setAdding(false), setShown(s))} />}
+      {shown && <TemporaryPasswordDialog shown={shown} onClose={() => setShown(null)} />}
       {granting && <GlobalRolesDialog user={granting} onClose={() => setGranting(null)} />}
+      <ConfirmDialog
+        open={!!issuing}
+        onOpenChange={(o) => !o && setIssuing(null)}
+        title={t("admin.users.issueTitle")}
+        body={issuing && t("admin.users.issueBody", { name: issuing.name })}
+        confirm={t("admin.users.issueConfirm")}
+        pending={m.issueTemporary.isPending}
+        onConfirm={async () => {
+          const target = issuing;
+          setIssuing(null);
+          if (!target) return;
+          const p = await runToast(m.issueTemporary.mutateAsync(target.id));
+          if (p) setShown({ user: target, password: p });
+        }}
+      />
       <ConfirmDialog
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}
