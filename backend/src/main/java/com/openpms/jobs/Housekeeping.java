@@ -18,15 +18,17 @@ import org.springframework.stereotype.Component;
 public class Housekeeping {
     private final DSLContext db;
     private final FileStorage storage;
+    private final com.openpms.auth.TemporaryPasswords temporaryPasswords;
 
-    public Housekeeping(DSLContext db, FileStorage storage) {
+    public Housekeeping(DSLContext db, FileStorage storage, com.openpms.auth.TemporaryPasswords temporaryPasswords) {
         this.db = db;
         this.storage = storage;
+        this.temporaryPasswords = temporaryPasswords;
     }
 
     /**
      * Invitation and reset tokens a week past expiry or use; API tokens 30 days after they were revoked or ran out; webhook
-     * deliveries done (succeeded or failed) more than 30 days ago; Idempotency-Key answers after a day. @return rows deleted
+     * deliveries done (succeeded or failed) more than 30 days ago; Idempotency-Key answers after a day; run-out temporary passwords. @return rows deleted
      */
     public int tokens(Instant now) {
         var cutoff = OffsetDateTime.ofInstant(now.minus(Duration.ofDays(7)), ZoneOffset.UTC);
@@ -39,6 +41,8 @@ public class Housekeeping {
                 .where(com.openpms.db.Tables.IDEMPOTENCY_KEYS.CREATED_AT.lt(OffsetDateTime.ofInstant(now.minus(com.openpms.common.IdempotencyFilter.KEEP), ZoneOffset.UTC))).execute();
         n += db.deleteFrom(com.openpms.db.Tables.WEBHOOK_DELIVERIES)
                 .where(com.openpms.db.Tables.WEBHOOK_DELIVERIES.STATUS.ne("pending"), com.openpms.db.Tables.WEBHOOK_DELIVERIES.CREATED_AT.lt(month)).execute();
+        // 임시 비밀번호 that ran out: the row and the password itself (TemporaryPasswords.expire)
+        n += temporaryPasswords.expireAll(OffsetDateTime.ofInstant(now, ZoneOffset.UTC));
         return n;
     }
 

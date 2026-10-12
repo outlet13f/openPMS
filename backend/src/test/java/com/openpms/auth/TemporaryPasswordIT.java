@@ -21,8 +21,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.openpms.common.IdempotencyFilter;
+import com.openpms.jobs.Housekeeping;
 import java.net.URI;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 import org.hamcrest.Matchers;
@@ -62,6 +64,8 @@ class TemporaryPasswordIT {
     Tokens tokens;
     @Autowired
     IdempotencyFilter idempotency;
+    @Autowired
+    Housekeeping housekeeping;
 
     MockMvc mvc;
 
@@ -249,5 +253,149 @@ class TemporaryPasswordIT {
         } finally {
             db.deleteFrom(API_TOKENS).where(API_TOKENS.NAME.eq("인코딩 시험")).execute();
         }
+    }
+
+    /** Sign in with the temporary password: no session, a change token in the answer. */
+    String changeToken(String email, String password) throws Exception {
+        var s = new MockHttpSession();
+        var body = signIn(s, email, password).andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.title").value("새 비밀번호를 정해야 합니다."))
+                .andExpect(jsonPath("$.current.code").value("password_change_required")).andReturn().getResponse().getContentAsString();
+        mvc.perform(get("/api/v1/auth/me").session(s)).andExpect(status().isUnauthorized());
+        return json.readTree(body).get("current").get("changeToken").asString();
+    }
+
+    ResultActions change(MockHttpSession s, String token, String password) throws Exception {
+        return send(s, post("/api/v1/auth/password-change"), "{\"token\":\"" + token + "\",\"newPassword\":\"" + password + "\"}");
+    }
+
+    @Test
+    void theFirstSignInAsksForAPasswordOfOnesOwn() throws Exception {
+        var admin = login(ADMIN, DEV);
+        var email = email("first");
+        var made = make(admin, email);
+        var token = changeToken(email, made.password());
+        // the same as the temporary one, or too weak: refused, and the token still works
+        change(new MockHttpSession(), token, made.password()).andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.errors[0].field").value("newPassword"))
+                .andExpect(jsonPath("$.errors[0].message").value("임시 비밀번호와 다른 비밀번호를 정하세요."));
+        change(new MockHttpSession(), token, "short").andExpect(status().isUnprocessableContent()).andExpect(jsonPath("$.errors[0].field").value("newPassword"));
+        fakeSession(made.id());
+        var s = new MockHttpSession();
+        change(s, token, OWN).andExpect(status().isOk()).andExpect(jsonPath("$.email").value(email));
+        mvc.perform(get("/api/v1/auth/me").session(s)).andExpect(status().isOk());
+        assertThat(sessions(made.id())).isZero(); // signed in elsewhere: out
+        assertThat(db.fetchCount(TEMPORARY_PASSWORDS, TEMPORARY_PASSWORDS.USER_ID.eq(made.id()))).isZero();
+        change(new MockHttpSession(), token, "another-pass-2026!").andExpect(status().isGone()).andExpect(jsonPath("$.title").value("시간이 지났습니다."));
+        signIn(new MockHttpSession(), email, made.password()).andExpect(status().isUnauthorized());
+        signIn(new MockHttpSession(), email, OWN).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/admin/users/" + made.id() + "/temporary-password").session(admin)).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void aChangeTokenStopsWorkingWhenTheAccountIsLockedOrTheTenMinutesPass() throws Exception {
+        var admin = login(ADMIN, DEV);
+        var email = email("lockedafter");
+        var made = make(admin, email);
+        var token = changeToken(email, made.password());
+        send(admin, patch("/api/v1/admin/users/" + made.id()), "{\"status\":\"locked\"}").andExpect(status().isOk());
+        change(new MockHttpSession(), token, OWN).andExpect(status().isGone());
+        send(admin, patch("/api/v1/admin/users/" + made.id()), "{\"status\":\"active\"}").andExpect(status().isOk());
+        var late = changeToken(email, made.password());
+        db.update(USER_TOKENS).set(USER_TOKENS.EXPIRES_AT, OffsetDateTime.now().minusMinutes(1))
+                .where(USER_TOKENS.USER_ID.eq(made.id()), USER_TOKENS.PURPOSE.eq("password_change"), USER_TOKENS.USED_AT.isNull()).execute();
+        change(new MockHttpSession(), late, OWN).andExpect(status().isGone());
+    }
+
+    @Test
+    void aChangeTokenDoesNotOutliveTheTemporaryPasswordItCameFrom() throws Exception {
+        var admin = login(ADMIN, DEV);
+        // the person set a password another way meanwhile (here a reset link): the temporary one is gone, and so is the token
+        var email = email("outlived");
+        var made = make(admin, email);
+        var token = changeToken(email, made.password());
+        var reset = tokens.issue(made.id(), "password_reset", Duration.ofHours(1), null);
+        send(new MockHttpSession(), post("/api/v1/auth/password-reset/confirm"), "{\"token\":\"" + reset + "\",\"newPassword\":\"" + OWN + "\"}")
+                .andExpect(status().isNoContent());
+        change(new MockHttpSession(), token, "another-pass-2026!").andExpect(status().isGone());
+        signIn(new MockHttpSession(), email, OWN).andExpect(status().isOk());
+        // the temporary password ran out within the ten minutes
+        var lateEmail = email("outlivedlate");
+        var late = make(admin, lateEmail);
+        var lateToken = changeToken(lateEmail, late.password());
+        db.update(TEMPORARY_PASSWORDS).set(TEMPORARY_PASSWORDS.EXPIRES_AT, OffsetDateTime.now().minusMinutes(1))
+                .where(TEMPORARY_PASSWORDS.USER_ID.eq(late.id())).execute();
+        change(new MockHttpSession(), lateToken, OWN).andExpect(status().isGone());
+    }
+
+    @Test
+    void aTemporaryPasswordRunsOutAtSignInAndInTheNightlyCleanup() throws Exception {
+        var admin = login(ADMIN, DEV);
+        // at sign-in
+        var email = email("runout");
+        var made = make(admin, email);
+        db.update(TEMPORARY_PASSWORDS).set(TEMPORARY_PASSWORDS.EXPIRES_AT, OffsetDateTime.now().minusMinutes(1))
+                .where(TEMPORARY_PASSWORDS.USER_ID.eq(made.id())).execute();
+        signIn(new MockHttpSession(), email, made.password()).andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.current.code").value("temporary_password_expired"));
+        assertThat(db.select(USERS.PASSWORD_HASH).from(USERS).where(USERS.ID.eq(made.id())).fetchOne(USERS.PASSWORD_HASH)).isNull();
+        signIn(new MockHttpSession(), email, made.password()).andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.current").doesNotExist());
+        mvc.perform(get("/api/v1/admin/users/" + made.id() + "/temporary-password").session(admin)).andExpect(status().isNotFound());
+        // issued again, it works again
+        var again = issue(admin, made.id());
+        changeToken(email, again);
+
+        // in the nightly cleanup (token-cleanup)
+        var other = make(admin, email("nightly"));
+        db.update(TEMPORARY_PASSWORDS).set(TEMPORARY_PASSWORDS.EXPIRES_AT, OffsetDateTime.now().minusMinutes(1))
+                .where(TEMPORARY_PASSWORDS.USER_ID.eq(other.id())).execute();
+        mvc.perform(get("/api/v1/admin/users").session(admin).param("q", "nightly")).andExpect(jsonPath("$[0].temporaryPasswordUntil").isNotEmpty());
+        housekeeping.tokens(Instant.now());
+        assertThat(db.fetchCount(TEMPORARY_PASSWORDS, TEMPORARY_PASSWORDS.USER_ID.eq(other.id()))).isZero();
+        assertThat(db.select(USERS.PASSWORD_HASH).from(USERS).where(USERS.ID.eq(other.id())).fetchOne(USERS.PASSWORD_HASH)).isNull();
+        // a live one stays
+        assertThat(db.fetchCount(TEMPORARY_PASSWORDS, TEMPORARY_PASSWORDS.USER_ID.eq(made.id()))).isEqualTo(1);
+    }
+
+    /** A row as if one were issued meanwhile (the API would also change the password or end an invitation). */
+    void putRow(UUID userId) {
+        db.insertInto(TEMPORARY_PASSWORDS).set(TEMPORARY_PASSWORDS.USER_ID, userId).set(TEMPORARY_PASSWORDS.PASSWORD, "unused")
+                .set(TEMPORARY_PASSWORDS.EXPIRES_AT, OffsetDateTime.now().plusHours(1)).execute();
+    }
+
+    int rows(UUID userId) {
+        return db.fetchCount(TEMPORARY_PASSWORDS, TEMPORARY_PASSWORDS.USER_ID.eq(userId));
+    }
+
+    @Test
+    void everyOtherWayOfSettingAPasswordClearsTheTemporaryOne() throws Exception {
+        var admin = login(ADMIN, DEV);
+        // the reset link (비밀번호를 잊으셨나요?)
+        var a = make(admin, email("reset"));
+        var reset = tokens.issue(a.id(), "password_reset", Duration.ofHours(1), null);
+        send(new MockHttpSession(), post("/api/v1/auth/password-reset/confirm"), "{\"token\":\"" + reset + "\",\"newPassword\":\"" + OWN + "\"}")
+                .andExpect(status().isNoContent());
+        assertThat(rows(a.id())).isZero();
+
+        // my own change (계정 설정): a session from the change form, then a row put back as if one were issued meanwhile
+        var bEmail = email("own");
+        var b = make(admin, bEmail);
+        var mine = new MockHttpSession();
+        change(mine, changeToken(bEmail, b.password()), "first-own-2026!").andExpect(status().isOk());
+        putRow(b.id());
+        send(mine, put("/api/v1/me/password"), "{\"currentPassword\":\"first-own-2026!\",\"newPassword\":\"second-own-2026!\"}")
+                .andExpect(status().isNoContent());
+        assertThat(rows(b.id())).isZero();
+
+        // an invitation accepted while a row exists (put in directly: issuing through the API would end the invitation)
+        var dEmail = email("accept");
+        send(admin, post("/api/v1/admin/users"), "{\"name\":\"초대\",\"email\":\"" + dEmail + "\",\"isAdmin\":false}").andExpect(status().isCreated());
+        var d = db.select(USERS.ID).from(USERS).where(USERS.EMAIL.eq(dEmail)).fetchOne(USERS.ID);
+        putRow(d);
+        var link = tokens.issue(d, "invitation", Duration.ofHours(1), null);
+        send(new MockHttpSession(), post("/api/v1/auth/invitations/" + link + "/accept"), "{\"name\":\"초대\",\"password\":\"" + OWN + "\"}")
+                .andExpect(status().isOk());
+        assertThat(rows(d)).isZero();
     }
 }

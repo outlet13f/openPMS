@@ -56,7 +56,7 @@ public class SecurityConfig {
                 .headers(h -> h.contentSecurityPolicy(c -> c.policyDirectives(
                         "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'")))
                 .authorizeHttpRequests(a -> a
-                        .requestMatchers("/api/v1/auth/login", "/api/v1/auth/password-reset", "/api/v1/auth/password-reset/confirm", "/api/v1/auth/password-policy",
+                        .requestMatchers("/api/v1/auth/login", "/api/v1/auth/password-reset", "/api/v1/auth/password-reset/confirm", "/api/v1/auth/password-change", "/api/v1/auth/password-policy",
                                 "/api/v1/auth/invitations/**", "/api/v1/auth/sso-providers", "/api/v1/auth/oidc/**", "/api/v1/openapi.json").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll())

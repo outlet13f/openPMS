@@ -60,10 +60,11 @@ public class AccountController {
     private final RateLimiter limiter;
     private final Sessions sessions;
     private final com.openpms.auth.PasswordPolicy passwordPolicy;
+    private final com.openpms.auth.TemporaryPasswords temporaryPasswords;
 
     public AccountController(Current current, DSLContext db, NotificationSettings settings, AuthController auth,
                              PasswordEncoder encoder, RateLimiter limiter,
-                             Sessions sessions, com.openpms.auth.PasswordPolicy passwordPolicy) {
+                             Sessions sessions, com.openpms.auth.PasswordPolicy passwordPolicy, com.openpms.auth.TemporaryPasswords temporaryPasswords) {
         this.current = current;
         this.db = db;
         this.settings = settings;
@@ -72,6 +73,7 @@ public class AccountController {
         this.limiter = limiter;
         this.sessions = sessions;
         this.passwordPolicy = passwordPolicy;
+        this.temporaryPasswords = temporaryPasswords;
     }
 
     /* ---------- profile, password, sessions (S37) ---------- */
@@ -117,6 +119,7 @@ public class AccountController {
         if (next.equals(currentPassword)) throw ApiException.field("newPassword", "지금 비밀번호와 다른 비밀번호를 정하세요.");
         u.setPasswordHash(encoder.encode(next));
         u.store();
+        temporaryPasswords.clear(ctx.userId());
         var session = req.getSession(false);
         if (session != null) sessions.endOthers(ctx.userId(), session.getId());
         return ResponseEntity.noContent().build();
