@@ -218,6 +218,8 @@ export function resetFakeDb() {
     /* ignore */
   }
   Object.assign(db, buildSeed(SCHEMA));
+  // the seed has no such key, so Object.assign would leave the old rows (seed users keep their ids)
+  delete db.temporaryPasswords;
 }
 
 export function newId(prefix: string) {
