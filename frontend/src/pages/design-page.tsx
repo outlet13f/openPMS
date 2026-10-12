@@ -152,7 +152,7 @@ export function DesignPage() {
               </div>
             </div>
             <p className="mt-2 max-w-3xl text-sm text-fg-muted">
-              replica/design/tokens.json에서 만든 토큰과 기본 컴포넌트입니다. 색 값은 /replica-brand 전까지 중립 플레이스홀더입니다.
+              replica/design/tokens.json에서 만든 토큰과 기본 컴포넌트입니다. 강조색은 자주, 헤더는 먹색이고 정한 까닭은 replica/brand.md에 있습니다.
             </p>
           </div>
 
