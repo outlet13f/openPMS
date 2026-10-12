@@ -98,6 +98,8 @@ test("F19-T3 a user manager who is not an administrator cannot handle an adminis
   const seoyeon = users.find((u) => u.email === "seoyeon.kim@openpms.local")!.id;
   const role = await api<{ id: string }>(page, "return await api.admin.roles.create({ name: '사용자 관리자(F19)', scope: 'global', permissions: ['global.manage_users'] })");
   await api(page, "await api.admin.users.setGlobalRoles(args[0], [args[1]])", doyoon, role.id);
+  // a second administrator whose temporary password is live: the only row where 보기 could show if the administrator rule were missing
+  const admin2 = await api<string>(page, "return (await api.admin.users.createWithTemporaryPassword({ name: '관리자 둘(F19)', email: 'admin2.e2e@openpms.local', isAdmin: true })).user.id");
   await logout(page);
   await login(page, "doyoon.han@openpms.local");
   await page.goto("/admin/users");
@@ -105,9 +107,16 @@ test("F19-T3 a user manager who is not an administrator cannot handle an adminis
   await expect(page.getByRole("menuitem").first()).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "임시 비밀번호 발급" })).toHaveCount(0);
   await page.keyboard.press("Escape");
+  await page.getByRole("row").filter({ hasText: "admin2.e2e@openpms.local" }).getByRole("button", { name: /메뉴$/ }).click();
+  await expect(page.getByRole("menuitem").first()).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "임시 비밀번호 발급" })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "임시 비밀번호 보기" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await page.getByRole("row").filter({ hasText: "haneul.lee@openpms.local" }).getByRole("button", { name: /메뉴$/ }).click();
   await expect(page.getByRole("menuitem", { name: "임시 비밀번호 발급" })).toBeVisible();
   await page.keyboard.press("Escape");
   const refused = await api<number>(page, "try { await api.admin.users.issueTemporaryPassword(args[0]); return 200 } catch (e) { return e.status }", seoyeon);
   expect(refused).toBe(403);
+  const lookedUp = await api<number>(page, "try { await api.admin.users.temporaryPassword(args[0]); return 200 } catch (e) { return e.status }", admin2);
+  expect(lookedUp).toBe(403);
 });
