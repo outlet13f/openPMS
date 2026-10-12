@@ -29,6 +29,7 @@ import com.openpms.db.tables.Relations;
 import com.openpms.db.tables.Roles;
 import com.openpms.db.tables.Settings;
 import com.openpms.db.tables.Statuses;
+import com.openpms.db.tables.TemporaryPasswords;
 import com.openpms.db.tables.TimeActivities;
 import com.openpms.db.tables.TimeEntries;
 import com.openpms.db.tables.UserGroupMembers;
@@ -114,6 +115,8 @@ public class Indexes {
     public static final Index SETTINGS_UPDATED_BY_IDX = Internal.createIndex(DSL.name("settings_updated_by_idx"), Settings.SETTINGS, new OrderField[] { Settings.SETTINGS.UPDATED_BY }, false);
     public static final Index STATUSES_CLOSED_IDX = Internal.createIndex(DSL.name("statuses_closed_idx"), Statuses.STATUSES, new OrderField[] { Statuses.STATUSES.IS_CLOSED }, false);
     public static final Index STATUSES_ONE_DEFAULT = Internal.createIndex(DSL.name("statuses_one_default"), Statuses.STATUSES, new OrderField[] { Statuses.STATUSES.IS_DEFAULT }, true);
+    public static final Index TEMPORARY_PASSWORDS_EXPIRES_IDX = Internal.createIndex(DSL.name("temporary_passwords_expires_idx"), TemporaryPasswords.TEMPORARY_PASSWORDS, new OrderField[] { TemporaryPasswords.TEMPORARY_PASSWORDS.EXPIRES_AT }, false);
+    public static final Index TEMPORARY_PASSWORDS_ISSUED_BY_IDX = Internal.createIndex(DSL.name("temporary_passwords_issued_by_idx"), TemporaryPasswords.TEMPORARY_PASSWORDS, new OrderField[] { TemporaryPasswords.TEMPORARY_PASSWORDS.ISSUED_BY }, false);
     public static final Index TIME_ACTIVITIES_ONE_DEFAULT = Internal.createIndex(DSL.name("time_activities_one_default"), TimeActivities.TIME_ACTIVITIES, new OrderField[] { TimeActivities.TIME_ACTIVITIES.IS_DEFAULT }, true);
     public static final Index TIME_ENTRIES_ACTIVITY_IDX = Internal.createIndex(DSL.name("time_entries_activity_idx"), TimeEntries.TIME_ENTRIES, new OrderField[] { TimeEntries.TIME_ENTRIES.ACTIVITY_ID }, false);
     public static final Index TIME_ENTRIES_PROJECT_DAY_IDX = Internal.createIndex(DSL.name("time_entries_project_day_idx"), TimeEntries.TIME_ENTRIES, new OrderField[] { TimeEntries.TIME_ENTRIES.PROJECT_ID, TimeEntries.TIME_ENTRIES.SPENT_ON }, false);

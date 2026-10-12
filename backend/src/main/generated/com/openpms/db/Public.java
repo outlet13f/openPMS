@@ -33,6 +33,7 @@ import com.openpms.db.tables.Relations;
 import com.openpms.db.tables.Roles;
 import com.openpms.db.tables.Settings;
 import com.openpms.db.tables.Statuses;
+import com.openpms.db.tables.TemporaryPasswords;
 import com.openpms.db.tables.TimeActivities;
 import com.openpms.db.tables.TimeEntries;
 import com.openpms.db.tables.Types;
@@ -220,6 +221,11 @@ public class Public extends SchemaImpl {
     public final Statuses STATUSES = Statuses.STATUSES;
 
     /**
+     * The table <code>public.temporary_passwords</code>.
+     */
+    public final TemporaryPasswords TEMPORARY_PASSWORDS = TemporaryPasswords.TEMPORARY_PASSWORDS;
+
+    /**
      * The table <code>public.time_activities</code>.
      */
     public final TimeActivities TIME_ACTIVITIES = TimeActivities.TIME_ACTIVITIES;
@@ -356,6 +362,7 @@ public class Public extends SchemaImpl {
             Roles.ROLES,
             Settings.SETTINGS,
             Statuses.STATUSES,
+            TemporaryPasswords.TEMPORARY_PASSWORDS,
             TimeActivities.TIME_ACTIVITIES,
             TimeEntries.TIME_ENTRIES,
             Types.TYPES,

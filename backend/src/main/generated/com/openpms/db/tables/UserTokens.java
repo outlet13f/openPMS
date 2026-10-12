@@ -223,7 +223,7 @@ public class UserTokens extends TableImpl<UserTokensRecord> {
     @Override
     public List<Check<UserTokensRecord>> getChecks() {
         return Arrays.asList(
-            Internal.createCheck(this, DSL.name("user_tokens_purpose_check"), "((purpose = ANY (ARRAY['invitation'::text, 'password_reset'::text])))", true)
+            Internal.createCheck(this, DSL.name("user_tokens_purpose_check"), "((purpose = ANY (ARRAY['invitation'::text, 'password_reset'::text, 'password_change'::text])))", true)
         );
     }
 

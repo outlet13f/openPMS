@@ -26,6 +26,7 @@ import com.openpms.db.tables.QueryFavorites.QueryFavoritesPath;
 import com.openpms.db.tables.Relations.RelationsPath;
 import com.openpms.db.tables.Roles.RolesPath;
 import com.openpms.db.tables.Settings.SettingsPath;
+import com.openpms.db.tables.TemporaryPasswords.TemporaryPasswordsPath;
 import com.openpms.db.tables.TimeEntries.TimeEntriesPath;
 import com.openpms.db.tables.UserGroupMembers.UserGroupMembersPath;
 import com.openpms.db.tables.UserGroups.UserGroupsPath;
@@ -477,6 +478,34 @@ public class Users extends TableImpl<UsersRecord> {
             _settings = new SettingsPath(this, null, Keys.SETTINGS__SETTINGS_UPDATED_BY_FKEY.getInverseKey());
 
         return _settings;
+    }
+
+    private transient TemporaryPasswordsPath _temporaryPasswordsIssuedByFkey;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.temporary_passwords</code> table, via the
+     * <code>temporary_passwords_issued_by_fkey</code> key
+     */
+    public TemporaryPasswordsPath temporaryPasswordsIssuedByFkey() {
+        if (_temporaryPasswordsIssuedByFkey == null)
+            _temporaryPasswordsIssuedByFkey = new TemporaryPasswordsPath(this, null, Keys.TEMPORARY_PASSWORDS__TEMPORARY_PASSWORDS_ISSUED_BY_FKEY.getInverseKey());
+
+        return _temporaryPasswordsIssuedByFkey;
+    }
+
+    private transient TemporaryPasswordsPath _temporaryPasswordsUserIdFkey;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.temporary_passwords</code> table, via the
+     * <code>temporary_passwords_user_id_fkey</code> key
+     */
+    public TemporaryPasswordsPath temporaryPasswordsUserIdFkey() {
+        if (_temporaryPasswordsUserIdFkey == null)
+            _temporaryPasswordsUserIdFkey = new TemporaryPasswordsPath(this, null, Keys.TEMPORARY_PASSWORDS__TEMPORARY_PASSWORDS_USER_ID_FKEY.getInverseKey());
+
+        return _temporaryPasswordsUserIdFkey;
     }
 
     private transient TimeEntriesPath _timeEntries;
