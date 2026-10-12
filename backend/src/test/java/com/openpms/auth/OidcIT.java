@@ -155,6 +155,8 @@ class OidcIT {
     DSLContext db;
     @Autowired
     OidcProviders providers;
+    @Autowired
+    TemporaryPasswords temporaryPasswords;
 
     MockMvc mvc;
 
@@ -338,5 +340,16 @@ class OidcIT {
         for (var foreign : List.of("//evil.example/x", "https://evil.example", "/\\evil.example", "evil"))
             assertThat(signIn(new MockHttpSession(), Map.of("sub", "u-501", "email", "paused@sso.example"), false, foreign)).as(foreign).isEqualTo("/");
         assertThat(signIn(new MockHttpSession(), Map.of("sub", "u-501", "email", "paused@sso.example"), false, "/projects/web-platform")).isEqualTo("/projects/web-platform");
+    }
+
+    @Test
+    void aTemporaryPasswordDoesNotStandInTheWayOfCompanySso() throws Exception {
+        provider(false);
+        var id = db.insertInto(USERS).set(USERS.EMAIL, "temporary@sso.example").set(USERS.NAME, "임시 SSO").set(USERS.STATUS, "active")
+                .returning(USERS.ID).fetchOne().getId();
+        temporaryPasswords.issue(id, null);
+        var s = new MockHttpSession();
+        assertThat(signIn(s, Map.of("sub", "u-temp", "email", "temporary@sso.example", "name", "임시 SSO"))).isEqualTo("/projects");
+        mvc.perform(get("/api/v1/auth/me").session(s)).andExpect(status().isOk()).andExpect(jsonPath("$.email").value("temporary@sso.example"));
     }
 }
