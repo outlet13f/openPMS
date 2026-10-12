@@ -40,7 +40,7 @@
 | `issued_at` | timestamptz not null default now() | |
 
 - 다시 발급하면 그 행을 덮어쓴다(upsert).
-- 비밀번호가 정해지는 모든 경로에서 그 사람의 행을 지운다: 첫 로그인 변경(4.2), 재설정 링크(`/auth/password-reset/confirm`), 초대 수락(`/auth/invitations/{token}/accept`), 본인 변경(`PUT /account/password`).
+- 비밀번호가 정해지는 모든 경로에서 그 사람의 행을 지운다: 첫 로그인 변경(4.2), 재설정 링크(`/auth/password-reset/confirm`), 초대 수락(`/auth/invitations/{token}/accept`), 본인 변경(`PUT /me/password`).
 - 로그인 확인은 지금처럼 `users.password_hash`(해시)로만 한다. 행이 있으면 "지금 비밀번호는 임시"라는 뜻이다.
 - 기한이 지난 행은 정리 작업 `token-cleanup`(`Housekeeping.tokens`, 매일 03:30, `OPENPMS_JOBS_ENABLED=true`인 인스턴스)이 지운다. 만료된 임시 비밀번호로 로그인을 시도할 때도 그 행을 바로 지운다.
 - 행이 지워져도 `password_hash`는 남는다. 만료 뒤 그 비밀번호로 로그인하지 못하게 하는 것은 4.1의 판단이 맡는다: 만료로 지워진 사람은 `password_hash`를 비운다(아래 2.3).
@@ -51,7 +51,7 @@ check 제약 `purpose in ('invitation', 'password_reset')`에 `'password_change'
 
 ### 2.3 만료 처리의 정확한 규칙
 
-- 로그인할 때 행이 있고 `expires_at`이 지났으면: 행을 지우고, `users.password_hash`를 null로 만들고, 401 "임시 비밀번호가 만료되었습니다. 관리자에게 다시 발급을 요청하세요."
+- 로그인할 때 행이 있고 `expires_at`이 지났으면: 행을 지우고, `users.password_hash`를 null로 만들고, 401 "임시 비밀번호가 만료되었습니다. 관리자에게 다시 발급을 요청하세요."(문제 상세의 `current`에 `{ "code": "temporary_password_expired" }`)
 - 정리 작업도 같은 일을 한다(행 삭제 + `password_hash` null). 이렇게 해야 행이 지워진 뒤 옛 임시 비밀번호가 보통 비밀번호처럼 통하지 않는다.
 - `password_hash`가 null인 활성 계정은 지금도 있는 상태(SSO 전용 계정)와 같다. 비밀번호 로그인은 실패하고, 재설정 메일이나 다시 발급으로 되찾는다.
 
@@ -94,7 +94,7 @@ check 제약 `purpose in ('invitation', 'password_reset')`에 `'password_change'
 
 ### 3.4 `GET /admin/users` (기존, 확장)
 
-- 각 사용자에 `temporaryPasswordUntil`(유효한 행의 `expires_at`, 없으면 null)을 더한다. 평문은 넣지 않는다.
+- 각 사용자에 `temporaryPasswordUntil`(그 사람 행의 `expires_at`, 없으면 null)을 더한다. 기한이 지난 행도 정리 작업이 지우기 전까지는 보내서, 화면이 **임시 비밀번호 만료**를 보이고 관리자가 다시 발급하게 한다. 평문은 넣지 않는다.
 
 ### 3.5 공통 보안 규칙
 
@@ -102,6 +102,7 @@ check 제약 `purpose in ('invitation', 'password_reset')`에 `'password_change'
 - `IdempotencyFilter`는 `POST /admin/users`(초대 포함 경로 전체)와 `POST /admin/users/{id}/temporary-password`를 제외한다(`shouldNotFilter`). 저장하면 평문이 `idempotency_keys`에 24시간 남는다. 화면은 지금도 사용자 만들기에 키를 붙이지 않으므로 잃는 것은 없다.
 - 발급(3.1·3.2)과 조회(3.3)는 서버 로그에 INFO 한 줄: 누가, 누구의 임시 비밀번호를, 발급/조회. 비밀번호는 남기지 않는다.
 - 웹훅·활동 기록·메일에는 임시 비밀번호가 나가지 않는다.
+- API 토큰(Bearer)으로는 3.1의 `temporaryPassword`, 3.2, 3.3을 쓸 수 없다(403 "API 토큰으로는 로그인·비밀번호·토큰·연동 설정을 다룰 수 없습니다."). 토큰이 사람의 비밀번호를 얻는 길이 되지 않게 한다.
 
 ### 3.6 임시 비밀번호 만들기
 
@@ -121,7 +122,7 @@ check 제약 `purpose in ('invitation', 'password_reset')`에 `'password_change'
    - 세션을 만들지 않는다.
    - 실패 횟수를 0으로 한다(비밀번호는 맞았으므로).
    - 이전 `password_change` 토큰을 무효로 하고 새 토큰을 발급한다(유효 10분, 일회용).
-   - 응답 403, 문제 상세에 `code: "password_change_required"`, `changeToken: "…"`, 제목 "새 비밀번호를 정해야 합니다."
+   - 응답 403, 제목 "새 비밀번호를 정해야 합니다.", 문제 상세의 `current`에 `{ "code": "password_change_required", "changeToken": "…" }`. `current`는 기존 문제 상세 필드이고 화면의 `ApiError.current`가 이미 읽는다.
 
 ### 4.2 `POST /auth/password-change` (새)
 
@@ -180,7 +181,7 @@ check 제약 `purpose in ('invitation', 'password_reset')`에 `'password_change'
 
 - 가짜 데이터 계층(`frontend/src/api/fake`): 3·4절과 같은 규칙(권한, 거절, 만료, 세션 종료, 보기). 사용자 시드 모양이 바뀌면 `db.ts`의 `SCHEMA`를 올린다.
 - 문구는 `frontend/src/i18n/ko.ts`.
-- 앱 도움말 `frontend/src/features/help/topics.ts`가 새 매뉴얼 절(7절)을 가리키게 한다.
+- 앱 도움말 `frontend/src/features/help/topics.ts`는 `/admin/users`를 이미 운영자 매뉴얼 9.2로 잇는다. 새 절 9.2.7은 그 안에 있으므로 바꿀 것이 없다. 로그인 화면은 로그아웃 상태라 도움말이 없다.
 
 ## 6. 테스트
 
@@ -202,7 +203,7 @@ check 제약 `purpose in ('invitation', 'password_reset')`에 `'password_change'
 - F19-T1: 관리자가 임시 비밀번호로 만들기 → 대화상자에서 비밀번호 읽기 → 로그아웃 → 임시 비밀번호로 로그인 → 새 비밀번호 정하기 → 홈.
 - F19-T2: 초대됨 사용자에게 행 메뉴로 다시 발급 → **임시 비밀번호 보기**가 같은 값 → 로그인과 변경 → 보기 메뉴가 사라짐.
 - F19-T3: 사용자 관리자에게는 관리자 행에 발급·보기 메뉴가 없다.
-- `a11y.spec.ts`: 사용자 추가 대화상자, 결과 대화상자, 새 비밀번호 정하기 폼.
+- 접근성: F19 흐름 테스트 안에서 `axe()`로 사용자 추가 대화상자, 결과 대화상자, 새 비밀번호 정하기 폼을 검사한다(`a11y.spec.ts`는 흐름 테스트가 검사하지 않는 화면만 맡는다).
 - **사용자 초대** 버튼을 누르는 기존 e2e는 **사용자 추가**로 고친다.
 - 가짜 계층(5173)은 손으로 한 번 확인한다.
 
