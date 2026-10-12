@@ -31,7 +31,7 @@ git clone <이 저장소 주소> openPMS && cd openPMS
 
 # 백엔드: DB와 메일을 띄우고(처음이면 backend/.env.local에 개발 DB 비밀번호를 새로 만듦), 앱을 빌드해 실행
 bash backend/scripts/dev.sh up
-bash backend/scripts/dev.sh run          # http://127.0.0.1:8090 — 첫 실행에 마이그레이션(V1–V18)과 개발 데이터(V1000–V1003)가 들어감
+bash backend/scripts/dev.sh run          # http://127.0.0.1:8090 — 첫 실행에 마이그레이션(V1–V19)과 개발 데이터(V1000–V1003)가 들어감
 
 # 복원 지점 만들기: JUnit과 e2e가 매번 이 상태로 되돌린 DB에서 돕니다(앱을 멈춘 채로 만들어야 함)
 podman stop openpms-app
@@ -54,6 +54,8 @@ podman run -d --name openpms-idp --network openpms-dev -p 127.0.0.1:18081:18080 
   -v "$PWD/e2e:/idp:ro" docker.io/library/node:24-alpine node /idp/fake-idp.mjs
 ```
 
+SSO e2e(`f00-sso`)는 OIDC 콜백이 `OPENPMS_BASE_URL`(개발 환경은 `http://localhost:5173`)을 따라가므로, 5174와 8090에 더해 **5173 개발 서버(`npm run dev`)도 떠 있어야** 합니다. 없으면 SSO 케이스가 로그인 뒤 돌아올 곳을 찾지 못합니다.
+
 ### 3. 자주 쓰는 명령
 
 ```bash
@@ -67,15 +69,16 @@ bash backend/scripts/dev.sh logs | down
 
 cd frontend
 npx tsc -b --noEmit                       # 타입 검사
-npx playwright test                       # e2e 전체 (5174 + 8090 + openpms-idp 필요, 파일마다 DB를 되돌림)
+npx playwright test                       # e2e 전체 (5174 + 8090 + openpms-idp 필요, SSO 케이스는 5173도, 파일마다 DB를 되돌림)
 npx playwright test e2e/f18-co-assignees.spec.ts
 npm run build                             # 운영용 화면 → backend/src/main/resources/static (dev.sh run이 jar에 넣음)
 ```
 
 마이그레이션을 새로 만들었으면 복원 지점을 다시 만듭니다. 순서: 앱 정지 → `dev.sh reset-db` → `dev.sh run` → `dev.sh gradle jooqCodegen` → 앱 정지 → `dev.sh snapshot-db`. 개발 DB를 그대로 스냅샷하면 e2e가 남긴 데이터까지 들어갑니다.
 
-### 4. 지금 상태 (2026-10-11)
+### 4. 지금 상태 (2026-10-12)
 
-- 원본 기능 패리티 100 (기능 142개, 필수 64/64), JUnit 104건, e2e 133건 통과 + 1건 의도적 건너뜀(느린 망 측정은 빌드된 화면에서만)
+- 원본 기능 패리티 100 (기능 142개, 필수 64/64), 스키마 V1–V19, JUnit 116건, e2e 136건 통과 + 1건 의도적 건너뜀(느린 망 측정은 빌드된 화면에서만)
 - 개선 계획 `replica/fixes.md` 1–6번 완료, 7번(반복 작업) 보류
+- 사내 개선 '임시 비밀번호'(관리자가 메일 없이 사용자를 만들거나 다시 발급하고 첫 로그인에서 새 비밀번호를 정하게 함, REQ-AUTH-005) 완료. 평문이 사용자가 바꾸거나 기한이 지난 뒤 다음 로그인 시도나 매일 03:30 정리 작업이 지울 때까지 DB에 남으므로 운영에서 `org.jooq` 로그를 DEBUG로 올리지 않습니다(`docs/deliverables/10-운영자매뉴얼.md` 9.2.7)
 - 남은 일과 손으로 확인할 것: `replica/test-plan.md`의 "손으로 확인할 것"·"확인할 것", `replica/parity.md`
