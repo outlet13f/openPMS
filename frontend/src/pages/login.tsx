@@ -4,7 +4,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { KeyRound, LogIn } from "lucide-react";
-import { api, API_MODE, isApiError } from "@/api";
+import { api, API_MODE, isApiError, type Me } from "@/api";
 import { fakeAccounts, fakeOutbox, resetFakeDb } from "@/api/fake";
 import { qk, useMe, usePasswordRules, useSsoProviders } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { Field, Input } from "@/components/ui/field";
 import { Banner } from "@/components/ui/feedback";
 import { Badge } from "@/components/ui/badges";
 import { FullPageSpinner, useDocumentTitle } from "@/app/page";
+import { PasswordChangeForm } from "./new-password";
 
 export function LoginPage() {
   const { t } = useTranslation();
@@ -30,9 +31,17 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [busy, setBusy] = useState(false);
+  // set when the sign-in answered password_change_required; kept in memory only, never in the address or storage
+  const [changeToken, setChangeToken] = useState<string | null>(null);
 
   if (me.isPending) return <FullPageSpinner />;
   if (me.data) return <Navigate to={next && next.startsWith("/") ? next : "/"} replace />;
+
+  const signedIn = (user: Me) => {
+    qc.setQueryData(qk.me, user);
+    // only same-origin paths are accepted as a return target
+    navigate(next && next.startsWith("/") && !next.startsWith("//") ? next : "/", { replace: true });
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -48,16 +57,25 @@ export function LoginPage() {
     setBusy(true);
     try {
       const user = await api.auth.login(email, password);
-      qc.setQueryData(qk.me, user);
-      // only same-origin paths are accepted as a return target
-      navigate(next && next.startsWith("/") && !next.startsWith("//") ? next : "/", { replace: true });
+      signedIn(user);
     } catch (err) {
-      setError(isApiError(err) && err.status === 423 ? t("auth.locked") : t("auth.failed"));
+      const reason = isApiError(err) ? (err.current as { code?: string; changeToken?: string } | undefined) : undefined;
+      if (reason?.code === "password_change_required" && reason.changeToken) {
+        setPassword("");
+        setChangeToken(reason.changeToken);
+      } else if (reason?.code === "temporary_password_expired") setError(t("auth.temporary.expired"));
+      else setError(isApiError(err) && err.status === 423 ? t("auth.locked") : t("auth.failed"));
     } finally {
       setBusy(false);
     }
   };
 
+  if (changeToken)
+    return (
+      <AuthShell>
+        <PasswordChangeForm token={changeToken} onSignedIn={signedIn} onExpired={() => (setChangeToken(null), setError(t("auth.temporary.tokenExpired")))} />
+      </AuthShell>
+    );
   return (
     <AuthShell
       after={

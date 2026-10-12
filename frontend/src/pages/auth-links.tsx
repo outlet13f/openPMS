@@ -5,27 +5,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { KeyRound, Mail, UserCheck } from "lucide-react";
 import { api, API_MODE, isApiError } from "@/api";
-import { qk, useMe, usePasswordRules } from "@/api/hooks";
-import { DEFAULT_AUTH_SETTINGS, describeRules, passwordProblem } from "@/api/password-policy";
+import { qk, useMe } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { Banner, useToast } from "@/components/ui/feedback";
 import { FullPageSpinner, useDocumentTitle } from "@/app/page";
 import { AuthShell, DevOutbox } from "./login";
-
-
-type Errors = Partial<Record<"email" | "name" | "password" | "confirm", string>>;
-
-/** Server field errors (newPassword is the reset's name for it) onto this form's fields. */
-function fieldErrorsOf(err: unknown): Errors {
-  if (!isApiError(err)) return {};
-  const out: Errors = {};
-  for (const f of err.fieldErrors) {
-    const k = f.field === "newPassword" ? "password" : f.field;
-    if (k === "email" || k === "name" || k === "password") out[k] = f.message;
-  }
-  return out;
-}
+import { focusFirstError, fieldErrorsOf, NewPasswordFields, usePasswordCheck, type Errors } from "./new-password";
 
 function BackToLogin() {
   const { t } = useTranslation();
@@ -50,38 +36,6 @@ function Expired({ title, body, action }: { title: string; body: string; action?
       <BackToLogin />
     </div>
   );
-}
-
-/** New password twice; checked here first so a typo does not cost a round trip. */
-function NewPasswordFields({ password, confirm, onPassword, onConfirm, errors }: { password: string; confirm: string; onPassword: (v: string) => void; onConfirm: (v: string) => void; errors: Errors }) {
-  const { t } = useTranslation();
-  const rules = usePasswordRules();
-  return (
-    <>
-      <Field label={t("authLinks.newPassword")} required hint={describeRules(rules.data ?? DEFAULT_AUTH_SETTINGS)} error={errors.password}>
-        <Input type="password" autoComplete="new-password" maxLength={128} value={password} onChange={(e) => onPassword(e.target.value)} />
-      </Field>
-      <Field label={t("authLinks.confirm")} required error={errors.confirm}>
-        <Input type="password" autoComplete="new-password" maxLength={128} value={confirm} onChange={(e) => onConfirm(e.target.value)} />
-      </Field>
-    </>
-  );
-}
-
-function usePasswordCheck() {
-  const { t } = useTranslation();
-  const rules = usePasswordRules().data ?? DEFAULT_AUTH_SETTINGS;
-  return (password: string, confirm: string): Errors => {
-    const problem = passwordProblem(rules, password);
-    if (problem) return { password: problem };
-    if (password !== confirm) return { confirm: t("authLinks.mismatch") };
-    return {};
-  };
-}
-
-/** Puts focus on the first field with an error (by its label), so keyboard and screen reader users land on it. */
-function focusFirstError(form: HTMLFormElement | null) {
-  requestAnimationFrame(() => form?.querySelector<HTMLInputElement>("[aria-invalid='true']")?.focus());
 }
 
 /* ---------- /password-reset ---------- */
