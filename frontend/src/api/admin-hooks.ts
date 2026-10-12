@@ -140,6 +140,8 @@ export const useAdminUsers = (params: { q?: string; status?: "invited" | "active
 export function useUserMutations() {
   return {
     create: useMut((input: UserInput) => api.admin.users.create(input)),
+    createWithPassword: useMut((input: UserInput) => api.admin.users.createWithTemporaryPassword(input)),
+    issueTemporary: useMut((id: Id) => api.admin.users.issueTemporaryPassword(id)),
     update: useMut(({ id, patch }: { id: Id; patch: Parameters<typeof api.admin.users.update>[1] }) => api.admin.users.update(id, patch)),
     remove: useMut((id: Id) => api.admin.users.remove(id)),
     resend: useMut((id: Id) => api.admin.users.resendInvitation(id)),

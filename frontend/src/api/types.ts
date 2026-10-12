@@ -1199,6 +1199,15 @@ export interface AdminUser extends User {
   lockedUntil: IsoDateTime | null;
   /** S31 global roles this person holds (create projects, manage users, …) */
   globalRoles: { id: Id; name: string }[];
+  /** 임시 비밀번호: until when it runs (past = ran out, shown until the nightly cleanup); the password only via temporaryPassword(id) */
+  temporaryPasswordUntil: IsoDateTime | null;
+}
+/** 임시 비밀번호 as an administrator sees it: made, issued again, or looked up (issuedBy/issuedAt only when looked up). */
+export interface TemporaryPassword {
+  temporaryPassword: string;
+  expiresAt: IsoDateTime;
+  issuedBy?: { id: Id; name: string } | null;
+  issuedAt?: IsoDateTime;
 }
 export interface UserInput {
   name: string;

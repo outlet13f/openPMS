@@ -104,6 +104,7 @@ export const httpApi: Api = {
     confirmPasswordReset: (token, newPassword) => post("/auth/password-reset/confirm", { token, newPassword }),
     invitation: (token) => get(`/auth/invitations/${encodeURIComponent(token)}`),
     acceptInvitation: (token, input) => post(`/auth/invitations/${encodeURIComponent(token)}/accept`, input),
+    changeTemporaryPassword: (token, newPassword) => post("/auth/password-change", { token, newPassword }),
     ssoProviders: () => get("/auth/sso-providers"),
     ssoStartUrl: (slug, next) => `${BASE}/auth/oidc/start/${encodeURIComponent(slug)}${next ? `?next=${encodeURIComponent(next)}` : ""}`,
   },
@@ -307,6 +308,9 @@ export const httpApi: Api = {
     users: {
       list: (params) => get("/admin/users", { ...params }),
       create: (input) => post("/admin/users", input),
+      createWithTemporaryPassword: (input) => post("/admin/users", { ...input, method: "temporaryPassword" }),
+      issueTemporaryPassword: (id) => post(`/admin/users/${id}/temporary-password`),
+      temporaryPassword: (id) => get(`/admin/users/${id}/temporary-password`),
       update: (id, p) => patch(`/admin/users/${id}`, p),
       remove: (id) => del(`/admin/users/${id}`),
       resendInvitation: (id) => post(`/admin/users/${id}/resend-invitation`),

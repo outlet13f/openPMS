@@ -1,6 +1,7 @@
 import type {
   BackupFile,
   SystemInfo,
+  TemporaryPassword,
   TimeActivity,
   TimeEntry,
   TimeEntryInput,
@@ -105,6 +106,9 @@ export interface Api {
     invitation(token: string): Promise<Invitation>;
     /** POST /auth/invitations/{token}/accept — activates the account and signs it in. */
     acceptInvitation(token: string, input: { name: string; password: string }): Promise<Me>;
+    /** POST /auth/password-change — after a sign-in with a temporary password (403, current: { code: "password_change_required", changeToken }):
+     *  a password of one's own, then signed in; 410 when the ten minutes passed or the account was locked meanwhile. */
+    changeTemporaryPassword(token: string, newPassword: string): Promise<Me>;
     /** GET /auth/sso-providers (public) — the enabled company OpenID providers, one login button each */
     ssoProviders(): Promise<SsoProvider[]>;
     /** where a login button goes: GET /auth/oidc/start/{slug}?next= (a full page navigation, not a fetch) */
@@ -480,6 +484,12 @@ export interface Api {
       list(params?: { q?: string; status?: AdminUser["status"] }): Promise<AdminUser[]>;
       /** POST /admin/users — creates an invited user and sends the invitation */
       create(input: UserInput): Promise<AdminUser>;
+      /** POST /admin/users { method: "temporaryPassword" } — an active account with a temporary password, no mail */
+      createWithTemporaryPassword(input: UserInput): Promise<{ user: AdminUser } & TemporaryPassword>;
+      /** POST /admin/users/{id}/temporary-password — a new one replaces the password; the person is signed out everywhere */
+      issueTemporaryPassword(id: Id): Promise<TemporaryPassword>;
+      /** GET /admin/users/{id}/temporary-password — the one in force (404 when none or it ran out) */
+      temporaryPassword(id: Id): Promise<TemporaryPassword>;
       /** PATCH /admin/users/{id} (lock/unlock, admin flag, name) */
       update(id: Id, patch: { name?: string; status?: "active" | "locked"; isAdmin?: boolean }): Promise<AdminUser>;
       /** DELETE /admin/users/{id} — anonymises the account */

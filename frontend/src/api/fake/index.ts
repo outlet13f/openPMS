@@ -48,6 +48,7 @@ import { DEFAULT_TYPE_FORM } from "../type-form";
 import { DEFAULT_AUTH_SETTINGS, passwordProblem } from "../password-policy";
 import { DEFAULT_DISPLAY, OVERVIEW_WIDGETS } from "../types";
 import { issueToken, revokeAll, sendMail, tokenGone, validToken } from "./tokens";
+import { clearTemporaryPassword, expireTemporaryPassword, temporaryPasswordOf } from "./temporary-passwords";
 import { adminApi, categoriesApi, projectExtras, versionsApi } from "./admin";
 import { followMove, timeApi } from "./time";
 import { beyondMain, journalTeam, readTeam, sameTeam, swap, teamOf, withMain, type TeamEntry } from "./assignees";
@@ -861,6 +862,7 @@ export const fakeApi: Api = {
         checkNewPassword(newPassword, "newPassword");
         if (newPassword === currentPassword) throw fieldError("newPassword", "지금 비밀번호와 다른 비밀번호를 정하세요.");
         user.password = newPassword;
+        clearTemporaryPassword(user.id);
       }),
     sendPasswordSetup: () =>
       run(() => {
@@ -895,7 +897,17 @@ export const fakeApi: Api = {
       run(() => {
         const u = db.users.find((x) => x.email.toLowerCase() === email.trim().toLowerCase());
         if (u?.status === "locked") throw new ApiError(423, "잠긴 계정입니다.", "관리자에게 계정 잠금 해제를 요청하세요.");
-        if (!u || u.password !== password || u.status !== "active") throw new ApiError(401, "이메일 또는 비밀번호가 올바르지 않습니다.");
+        if (!u || !u.password || u.password !== password || u.status !== "active") throw new ApiError(401, "이메일 또는 비밀번호가 올바르지 않습니다.");
+        const temporary = temporaryPasswordOf(u.id);
+        if (temporary) {
+          if (temporary.expiresAt <= nowIso()) {
+            expireTemporaryPassword(u.id);
+            throw new ApiError(401, "임시 비밀번호가 만료되었습니다.", "관리자에게 다시 발급을 요청하세요.", { current: { code: "temporary_password_expired" } });
+          }
+          revokeAll(u.id, "password_change");
+          const changeToken = issueToken(u.id, "password_change", 10, null);
+          throw new ApiError(403, "새 비밀번호를 정해야 합니다.", "임시 비밀번호로는 바로 쓸 수 없습니다. 새 비밀번호를 정하세요.", { current: { code: "password_change_required", changeToken } });
+        }
         db.sessionUserId = u.id;
         u.lastLoginAt = nowIso();
         return toMe(u);
@@ -929,6 +941,7 @@ export const fakeApi: Api = {
         checkNewPassword(newPassword, "newPassword");
         const u = db.users.find((x) => x.id === t.userId)!;
         u.password = newPassword;
+        clearTemporaryPassword(u.id);
         revokeAll(u.id, "password_reset");
         if (db.sessionUserId === u.id) db.sessionUserId = null; // a reset signs the account out everywhere
       }),
@@ -948,7 +961,30 @@ export const fakeApi: Api = {
         const u = db.users.find((x) => x.id === t.userId);
         if (u?.status !== "invited") throw tokenGone();
         Object.assign(u, { name, password: input.password, status: "active", lastLoginAt: nowIso() });
+        clearTemporaryPassword(u.id);
         revokeAll(u.id, "invitation");
+        db.sessionUserId = u.id;
+        return toMe(u);
+      }),
+    changeTemporaryPassword: (token, newPassword) =>
+      run(() => {
+        const late = () => new ApiError(410, "시간이 지났습니다.", "임시 비밀번호로 다시 로그인하세요.");
+        let t: ReturnType<typeof validToken>;
+        try {
+          t = validToken(token, "password_change");
+        } catch {
+          throw late();
+        }
+        const u = db.users.find((x) => x.id === t.userId);
+        if (u?.status !== "active") throw late();
+        const temporary = temporaryPasswordOf(u.id);
+        if (!temporary || temporary.expiresAt <= nowIso()) throw late();
+        checkNewPassword(newPassword, "newPassword");
+        if (newPassword === u.password) throw fieldError("newPassword", "임시 비밀번호와 다른 비밀번호를 정하세요.");
+        u.password = newPassword;
+        u.lastLoginAt = nowIso();
+        clearTemporaryPassword(u.id);
+        revokeAll(u.id, "password_change");
         db.sessionUserId = u.id;
         return toMe(u);
       }),

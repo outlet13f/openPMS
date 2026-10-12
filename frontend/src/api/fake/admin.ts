@@ -1,7 +1,7 @@
 // Administration (S27–S36) and project settings (S24–S26) for the fake data layer.
 import type { Api } from "../api";
 import { adminTimeActivities } from "./time";
-import type { AdminCustomField, AdminOidcProvider, OidcProviderInput, AuthSettings, CustomField, CustomFieldInput, CustomValue, ProjectCustomFields, TypeForm, AdminGroup, AdminPriority, AdminRole, AdminStatus, AdminType, AdminUser, Category, Version } from "../types";
+import type { AdminCustomField, AdminOidcProvider, OidcProviderInput, AuthSettings, CustomField, CustomFieldInput, CustomValue, ProjectCustomFields, TypeForm, AdminGroup, AdminPriority, AdminRole, AdminStatus, AdminType, AdminUser, Category, TemporaryPassword, UserInput, Version } from "../types";
 import { ApiError } from "../errors";
 import { DATE_FORMATS } from "../types";
 import { nowIso } from "@/lib/dates";
@@ -15,6 +15,7 @@ import { deriveProgress, progressSettings } from "./progress";
 import { BUILT_IN_ATTRIBUTES } from "../type-form";
 import { DEFAULT_AUTH_SETTINGS, PASSWORD_CLASSES } from "../password-policy";
 import { issueToken, revokeAll, sendMail } from "./tokens";
+import { clearTemporaryPassword, newTemporaryPassword, temporaryPasswordOf } from "./temporary-passwords";
 
 /* ---------- guards ---------- */
 
@@ -25,6 +26,35 @@ function requireUserManager(user: DbUser) {
   if (!user.isAdmin && !globalPermissions(user).includes("global.manage_users")) throw new ApiError(403, "사용자를 관리할 권한이 없습니다.");
 }
 const notFound = (what: string) => new ApiError(404, `${what}을(를) 찾을 수 없습니다.`);
+
+/** Whose temporary password may be handled (backend admin/TemporaryPasswordController.target). */
+function temporaryTarget(id: string) {
+  const me = sessionUser();
+  requireUserManager(me);
+  const u = db.users.find((x) => x.id === id && x.status !== "deleted");
+  if (!u) throw notFound("사용자");
+  if (u.isAdmin && !me.isAdmin) throw new ApiError(403, "관리자 계정은 관리자만 다룰 수 있습니다.");
+  if (u.id === me.id) throw new ApiError(422, "내 비밀번호는 계정 설정에서 바꾸세요.");
+  if (u.status === "locked") throw new ApiError(422, "잠긴 계정입니다. 먼저 잠금을 푸세요.");
+  return u;
+}
+
+/** A new account (users.create and createWithTemporaryPassword share the checks). */
+function addUser(input: UserInput, status: DbUser["status"]) {
+  const me = sessionUser();
+  requireUserManager(me);
+  checkName(input.name);
+  const email = input.email.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw fieldError("email", "이메일 형식이 아닙니다.");
+  if (db.users.some((u) => u.email.toLowerCase() === email)) throw fieldError("email", "이미 등록된 이메일입니다.");
+  if (input.isAdmin && !me.isAdmin) throw new ApiError(403, "관리자만 관리자를 지정할 수 있습니다.");
+  const u: DbUser = {
+    id: newId("u"), email, name: input.name.trim(), password: "", status, isAdmin: input.isAdmin, locale: "ko", timeZone: "Asia/Seoul",
+    prefs: { commentsNewestFirst: false, warnOnUnsaved: true, keyboardShortcuts: true, immediateOnMention: true, digestEnabled: true, digestTimes: ["08:00"], remindersPausedUntil: null, myPageWidgets: ["assigned", "created"] }, createdAt: nowIso(), lastLoginAt: null,
+  };
+  db.users.push(u);
+  return u;
+}
 
 function checkName(name: string | undefined, field = "name", max = 100) {
   if (name === undefined) return;
@@ -66,6 +96,7 @@ const toUser = (u: DbUser): AdminUser =>
   clone({
     id: u.id, name: u.status === "deleted" ? "삭제된 사용자" : u.name, email: u.email, status: u.status, isAdmin: u.isAdmin, locale: u.locale, timeZone: u.timeZone,
     lastLoginAt: u.lastLoginAt, createdAt: u.createdAt, lockedUntil: null,
+    temporaryPasswordUntil: u.status === "deleted" ? null : (temporaryPasswordOf(u.id)?.expiresAt ?? null),
     globalRoles: db.roles.filter((r) => r.scope === "global" && u.globalRoleIds?.includes(r.id)).map((r) => ({ id: r.id, name: r.name })).sort((a, b) => a.name.localeCompare(b.name, "ko")),
     projectCount: db.projects.filter((p) => memberRoleIds(u.id, p.id).length > 0).length,
   });
@@ -843,18 +874,32 @@ export const adminApi: Api["admin"] = {
       }),
     create: (input) =>
       run(() => {
-        requireUserManager(sessionUser());
-        checkName(input.name);
-        const email = input.email.trim().toLowerCase();
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw fieldError("email", "이메일 형식이 아닙니다.");
-        if (db.users.some((u) => u.email.toLowerCase() === email)) throw fieldError("email", "이미 등록된 이메일입니다.");
-        const u: DbUser = {
-          id: newId("u"), email, name: input.name.trim(), password: "", status: "invited", isAdmin: input.isAdmin, locale: "ko", timeZone: "Asia/Seoul",
-          prefs: { commentsNewestFirst: false, warnOnUnsaved: true, keyboardShortcuts: true, immediateOnMention: true, digestEnabled: true, digestTimes: ["08:00"], remindersPausedUntil: null, myPageWidgets: ["assigned", "created"] }, createdAt: nowIso(), lastLoginAt: null,
-        };
-        db.users.push(u);
+        const u = addUser(input, "invited");
         invite(u, sessionUser().id);
         return toUser(u);
+      }),
+    createWithTemporaryPassword: (input) =>
+      run(() => {
+        const u = addUser(input, "active");
+        const issued = newTemporaryPassword(u.id, sessionUser().id);
+        return { user: toUser(u), ...issued };
+      }),
+    issueTemporaryPassword: (id) =>
+      run(() => {
+        const u = temporaryTarget(id);
+        if (u.status === "invited") {
+          u.status = "active";
+          revokeAll(u.id, "invitation");
+        }
+        return newTemporaryPassword(u.id, sessionUser().id);
+      }),
+    temporaryPassword: (id) =>
+      run((): TemporaryPassword => {
+        temporaryTarget(id);
+        const t = temporaryPasswordOf(id);
+        if (!t || t.expiresAt <= nowIso()) throw new ApiError(404, "유효한 임시 비밀번호가 없습니다.");
+        const by = t.issuedBy ? db.users.find((x) => x.id === t.issuedBy) : undefined;
+        return { temporaryPassword: t.password, expiresAt: t.expiresAt, issuedBy: by ? { id: by.id, name: by.name } : null, issuedAt: t.issuedAt };
       }),
     update: (id, patch) =>
       run(() => {
@@ -887,6 +932,7 @@ export const adminApi: Api["admin"] = {
         if (u.isAdmin && db.users.filter((x) => x.isAdmin && x.status === "active").length <= 1) throw new ApiError(422, "마지막 관리자입니다.");
         // anonymise (architecture.md §2): keep journals, drop personal data and access
         Object.assign(u, { status: "deleted", name: "삭제된 사용자", email: `deleted+${u.id}@invalid`, password: "", isAdmin: false, globalRoleIds: [] });
+        clearTemporaryPassword(u.id);
         db.members = db.members.filter((m) => m.userId !== id);
         db.watchers = db.watchers.filter((w) => w.userId !== id);
         db.shares = db.shares.filter((x) => x.userId !== id);

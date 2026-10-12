@@ -122,7 +122,9 @@ export interface DbNotification { id: Id; recipientId: Id; wpId: Id; journalId: 
 export interface DbAttachment { id: Id; wpId: Id; fileName: string; contentType: string; byteSize: number; authorId: Id; createdAt: IsoDateTime; dataUrl: string }
 
 /** One-time link (S01). */
-export interface DbToken { token: string; userId: Id; purpose: "invitation" | "password_reset"; expiresAt: IsoDateTime; usedAt: IsoDateTime | null; createdBy: Id | null }
+export interface DbToken { token: string; userId: Id; purpose: "invitation" | "password_reset" | "password_change"; expiresAt: IsoDateTime; usedAt: IsoDateTime | null; createdBy: Id | null }
+/** 임시 비밀번호 (backend temporary_passwords): kept until changed or run out, like the server */
+export interface DbTemporaryPassword { userId: Id; password: string; expiresAt: IsoDateTime; issuedBy: Id | null; issuedAt: IsoDateTime }
 /** Demo only: mail the real backend would send (shown on the login page in fake mode). */
 export interface DbMail { id: Id; to: string; subject: string; link: string; sentAt: IsoDateTime }
 
@@ -155,6 +157,7 @@ export interface Db {
   customFields: CustomField[];
   projectCustomFields: { projectId: Id; customFieldId: Id }[];
   apiTokens?: DbApiToken[];
+  temporaryPasswords?: DbTemporaryPassword[];
   timeActivities?: TimeActivity[];
   timeEntries?: DbTimeEntry[];
   webhooks?: (Omit<Webhook, "secret"> & { secret: string })[];
