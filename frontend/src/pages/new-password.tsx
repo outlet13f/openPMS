@@ -1,5 +1,5 @@
 // New password fields shared by the reset page, the invitation page and the first sign-in with a temporary password (S01).
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { KeyRound } from "lucide-react";
 import { api, isApiError, type Me } from "@/api";
@@ -63,6 +63,11 @@ export function PasswordChangeForm({ token, onSignedIn, onExpired }: { token: st
   const [errors, setErrors] = useState<Errors>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // the sign-in form was replaced: tell screen reader users where they are, as the layout does on a page change
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    headingRef.current?.focus({ preventScroll: true });
+  }, []);
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -85,7 +90,9 @@ export function PasswordChangeForm({ token, onSignedIn, onExpired }: { token: st
 
   return (
     <>
-      <h1 className="text-xl text-fg">{t("authLinks.newPasswordTitle")}</h1>
+      <h1 ref={headingRef} tabIndex={-1} className="text-xl text-fg outline-none">
+        {t("authLinks.newPasswordTitle")}
+      </h1>
       <p className="mt-1 text-sm text-fg-muted">{t("auth.temporary.subtitle")}</p>
       {failure && (
         <div className="mt-4">
