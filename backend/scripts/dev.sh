@@ -80,8 +80,10 @@ case "${1:-}" in
        # run a copy of the jar, so the next build can replace it (and use the Gradle cache) while the app is up
        jdk "-d --name openpms-app -p 127.0.0.1:8090:8090 -v openpms-files:/data/files" sh -c 'cp build/libs/openpms-0.1.0.jar /tmp/app.jar && exec java -jar /tmp/app.jar --spring.profiles.active=dev' >/dev/null
        for _ in $(seq 1 90); do
-         podman logs openpms-app 2>&1 | grep -q "Started OpenPmsApplication" && { echo "app: http://127.0.0.1:8090"; exit 0; }
-         podman logs openpms-app 2>&1 | grep -q "APPLICATION FAILED" && break
+         # read the log first: "podman logs | grep -q" fails under pipefail when grep quits early (SIGPIPE, remote podman on macOS)
+         log="$(podman logs openpms-app 2>&1)"
+         grep -q "Started OpenPmsApplication" <<<"$log" && { echo "app: http://127.0.0.1:8090"; exit 0; }
+         grep -q "APPLICATION FAILED" <<<"$log" && break
          sleep 2
        done
        podman logs openpms-app 2>&1 | tail -40; exit 1 ;;
