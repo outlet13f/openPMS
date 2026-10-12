@@ -18,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 임시 비밀번호 (docs/superpowers/specs/2026-10-12-temporary-password-design.md): an administrator gives someone a password
@@ -67,6 +68,7 @@ public class TemporaryPasswords {
     }
 
     /** A new temporary password replaces the person's password (the caller has checked who may). Signs them out everywhere. */
+    @Transactional
     public Issued issue(UUID userId, UUID issuedBy) {
         var password = generate(policy.current().minLength());
         policy.check("password", password);
@@ -119,6 +121,8 @@ public class TemporaryPasswords {
      * Ran out: the row and the password itself go, or the old temporary password would work as an ordinary one.
      * Only a row that has really run out (a fresh one issued meanwhile stays). @return whether one went
      */
+    // one transaction: the login and token-cleanup call this outside any other
+    @Transactional
     public boolean expire(UUID userId, OffsetDateTime now) {
         int n = db.deleteFrom(TEMPORARY_PASSWORDS).where(TEMPORARY_PASSWORDS.USER_ID.eq(userId), TEMPORARY_PASSWORDS.EXPIRES_AT.le(now)).execute();
         if (n > 0) db.update(USERS).setNull(USERS.PASSWORD_HASH).where(USERS.ID.eq(userId)).execute();
@@ -126,6 +130,7 @@ public class TemporaryPasswords {
     }
 
     /** token-cleanup: every run-out one. @return how many went */
+    @Transactional
     public int expireAll(OffsetDateTime now) {
         var ids = db.select(TEMPORARY_PASSWORDS.USER_ID).from(TEMPORARY_PASSWORDS).where(TEMPORARY_PASSWORDS.EXPIRES_AT.le(now))
                 .fetch(TEMPORARY_PASSWORDS.USER_ID);
