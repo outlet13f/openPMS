@@ -55,7 +55,7 @@ public class ApiTokenFilter extends OncePerRequestFilter {
             SecurityConfig.problem(res, json, 401, "API 토큰이 올바르지 않거나 만료되었습니다.");
             return;
         }
-        if (CLOSED.stream().anyMatch(path::startsWith) && !path.equals("/api/v1/auth/me")) {
+        if ((CLOSED.stream().anyMatch(path::startsWith) || path.endsWith("/temporary-password")) && !path.equals("/api/v1/auth/me")) {
             SecurityConfig.problem(res, json, 403, "API 토큰으로는 로그인·비밀번호·토큰·연동 설정을 다룰 수 없습니다.");
             return;
         }

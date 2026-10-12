@@ -20,10 +20,12 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.HexFormat;
+import java.util.regex.Pattern;
 import org.jooq.DSLContext;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.ContentCachingResponseWrapper;
+import org.springframework.web.util.UrlPathHelper;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -48,11 +50,15 @@ public class IdempotencyFilter extends OncePerRequestFilter {
         this.json = json;
     }
 
+    /** Answers that carry a temporary password are never kept (they would sit in idempotency_keys for a day). */
+    private static final Pattern NOT_KEPT = Pattern.compile("^/api/v1/admin/users(/[^/]+/temporary-password)?$");
+    private static final UrlPathHelper PATHS = new UrlPathHelper();
+
     @Override
     protected boolean shouldNotFilter(HttpServletRequest req) {
         var type = req.getContentType();
         return !"POST".equals(req.getMethod()) || !req.getRequestURI().startsWith("/api/") || req.getHeader(HEADER) == null
-                || (type != null && type.toLowerCase().startsWith("multipart/"));
+                || (type != null && type.toLowerCase().startsWith("multipart/")) || NOT_KEPT.matcher(PATHS.getPathWithinApplication(req)).matches(); // decoded: %74 is a t as well
     }
 
     @Override

@@ -38,6 +38,7 @@ import com.openpms.core.Refs;
 import com.openpms.core.Snapshot;
 import com.openpms.core.Text;
 import com.openpms.wp.ScheduleStore;
+import jakarta.servlet.http.HttpServletRequest;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -52,6 +53,7 @@ import java.util.regex.Pattern;
 import org.jooq.DSLContext;
 import org.jooq.Field;
 import org.jooq.Table;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
@@ -86,9 +88,14 @@ public class AdminController {
 
     public record Permission(String key, String scope, String group) {}
 
-    /** lockedUntil: a temporary lock after too many failed sign-ins, while it lasts (status stays active). */
+    /** lockedUntil: a temporary lock after too many failed sign-ins, while it lasts (status stays active).
+     *  temporaryPasswordUntil: until when the temporary password runs (past ones too until token-cleanup; never the password). */
     public record AdminUser(UUID id, String name, String email, String status, boolean isAdmin, String locale, String timeZone,
-                            OffsetDateTime lastLoginAt, long projectCount, OffsetDateTime createdAt, OffsetDateTime lockedUntil, List<Dto.IdName> globalRoles) {}
+                            OffsetDateTime lastLoginAt, long projectCount, OffsetDateTime createdAt, OffsetDateTime lockedUntil, List<Dto.IdName> globalRoles,
+                            OffsetDateTime temporaryPasswordUntil) {}
+
+    /** 임시 비밀번호로 만들기: the password is in this answer (and later in GET …/temporary-password), nowhere else. */
+    public record CreatedWithPassword(AdminUser user, String temporaryPassword, OffsetDateTime expiresAt) {}
 
     public record AdminGroup(UUID id, String name, List<Dto.UserRef> members) {}
 
@@ -125,9 +132,12 @@ public class AdminController {
     private final com.openpms.auth.PasswordPolicy passwordPolicy;
 
     private final com.openpms.wp.Assignees assignees;
+    private final com.openpms.auth.TemporaryPasswords temporaryPasswords;
 
     public AdminController(Current current, DSLContext db, ScheduleStore schedules, SettingsRepo settings, Tokens tokens, Mailer mailer, Sessions sessions,
-                           JsonMapper json, com.openpms.auth.PasswordPolicy passwordPolicy, com.openpms.wp.Assignees assignees) {
+                           JsonMapper json, com.openpms.auth.PasswordPolicy passwordPolicy, com.openpms.wp.Assignees assignees,
+                           com.openpms.auth.TemporaryPasswords temporaryPasswords) {
+        this.temporaryPasswords = temporaryPasswords;
         this.assignees = assignees;
         this.passwordPolicy = passwordPolicy;
         this.json = json;
@@ -572,17 +582,17 @@ public class AdminController {
         return db.select(USERS.ID, USERS.LOCKED_UNTIL).from(USERS).where(USERS.LOCKED_UNTIL.gt(OffsetDateTime.now())).fetchMap(USERS.ID, USERS.LOCKED_UNTIL);
     }
 
-    private AdminUser toUser(Ctx ctx, Snapshot.UserRow u, Map<UUID, OffsetDateTime> lockouts) {
+    private AdminUser toUser(Ctx ctx, Snapshot.UserRow u, Map<UUID, OffsetDateTime> lockouts, Map<UUID, OffsetDateTime> temporary) {
         var s = ctx.s();
         long projects = s.projects().values().stream().filter(p -> s.isMember(u.id(), p.id())).count();
         var globalRoles = s.globalRoleIds(u.id()).stream().map(id -> s.roles().stream().filter(r -> r.id().equals(id)).findFirst().orElse(null))
                 .filter(java.util.Objects::nonNull).sorted(Comparator.comparing(Snapshot.RoleRow::name, Text.KOREAN)).map(r -> new Dto.IdName(r.id(), r.name())).toList();
         return new AdminUser(u.id(), u.displayName(), u.email(), u.status(), u.isAdmin(), u.locale(), u.timeZone(), u.lastLoginAt(), projects, u.createdAt(),
-                "active".equals(u.status()) ? lockouts.get(u.id()) : null, globalRoles);
+                "active".equals(u.status()) ? lockouts.get(u.id()) : null, globalRoles, "deleted".equals(u.status()) ? null : temporary.get(u.id()));
     }
 
     private AdminUser toUser(Ctx ctx, Snapshot.UserRow u) {
-        return toUser(ctx, u, lockouts());
+        return toUser(ctx, u, lockouts(), temporaryPasswords.untilByUser());
     }
 
     /** The 잠김 filter also finds people locked out for a while by failed sign-ins. */
@@ -591,12 +601,13 @@ public class AdminController {
         var ctx = userManager();
         var needle = q == null ? "" : q.trim().toLowerCase();
         var lockouts = lockouts();
+        var temporary = temporaryPasswords.untilByUser();
         return ctx.s().users().values().stream()
                 .filter(u -> !"deleted".equals(u.status()) || "deleted".equals(status))
                 .filter(u -> status == null || status.isBlank() || status.equals(u.status())
                         || "locked".equals(status) && "active".equals(u.status()) && lockouts.containsKey(u.id()))
                 .filter(u -> needle.isEmpty() || u.name().toLowerCase().contains(needle) || u.email().toLowerCase().contains(needle))
-                .sorted(Comparator.comparing(Snapshot.UserRow::name, Text.KOREAN)).map(u -> toUser(ctx, u, lockouts)).toList();
+                .sorted(Comparator.comparing(Snapshot.UserRow::name, Text.KOREAN)).map(u -> toUser(ctx, u, lockouts, temporary)).toList();
     }
 
     private void sendInvitation(Ctx ctx, UUID userId, String email, String name) {
@@ -609,20 +620,32 @@ public class AdminController {
 
     @PostMapping("/users")
     @Transactional
-    public ResponseEntity<AdminUser> createUser(@RequestBody Map<String, Object> in) {
+    public ResponseEntity<?> createUser(@RequestBody Map<String, Object> in, HttpServletRequest req) {
         var ctx = userManager();
+        var method = In.str(in, "method") == null ? "invite" : In.str(in, "method");
+        if (!"invite".equals(method) && !"temporaryPassword".equals(method)) throw ApiException.field("method", "알 수 없는 등록 방법입니다.");
+        boolean temporary = "temporaryPassword".equals(method);
+        // an API token must not become a way to get a person's password (ApiTokenFilter closes the other temporary-password routes)
+        if (temporary && com.openpms.auth.ApiTokenFilter.isBearer(req))
+            throw ApiException.forbidden("API 토큰으로는 로그인·비밀번호·토큰·연동 설정을 다룰 수 없습니다.");
         var n = name(in, true);
         var email = In.str(in, "email") == null ? "" : In.str(in, "email").trim().toLowerCase();
         if (!EMAIL.matcher(email).matches()) throw ApiException.field("email", "이메일 형식이 아닙니다.");
         if (db.fetchExists(USERS, USERS.EMAIL.eq(email))) throw ApiException.field("email", "이미 등록된 이메일입니다.");
         boolean isAdmin = Boolean.TRUE.equals(In.bool(in, "isAdmin"));
         if (isAdmin && !ctx.isAdmin()) throw ApiException.forbidden("관리자만 관리자를 지정할 수 있습니다.");
-        var u = db.insertInto(USERS).set(USERS.EMAIL, email).set(USERS.NAME, n).set(USERS.STATUS, "invited").set(USERS.IS_ADMIN, isAdmin)
+        var u = db.insertInto(USERS).set(USERS.EMAIL, email).set(USERS.NAME, n).set(USERS.STATUS, temporary ? "active" : "invited").set(USERS.IS_ADMIN, isAdmin)
                 .returning(USERS.ID).fetchOne();
         db.insertInto(USER_PREFERENCES).set(USER_PREFERENCES.USER_ID, u.getId()).execute();
-        sendInvitation(ctx, u.getId(), email, n);
+        if (!temporary) {
+            sendInvitation(ctx, u.getId(), email, n);
+            ctx.refresh();
+            return ResponseEntity.status(HttpStatus.CREATED).body(toUser(ctx, ctx.s().user(u.getId()).orElseThrow()));
+        }
+        var issued = temporaryPasswords.issue(u.getId(), ctx.userId());
         ctx.refresh();
-        return ResponseEntity.status(HttpStatus.CREATED).body(toUser(ctx, ctx.s().user(u.getId()).orElseThrow()));
+        return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore())
+                .body(new CreatedWithPassword(toUser(ctx, ctx.s().user(u.getId()).orElseThrow()), issued.temporaryPassword(), issued.expiresAt()));
     }
 
     private long activeAdmins() {
@@ -707,6 +730,7 @@ public class AdminController {
         for (var wpId : theirs) assignees.write(wpId, assignees.of(wpId).stream().filter(e -> !e.userId().equals(id)).toList());
         db.update(WORK_PACKAGES).setNull(WORK_PACKAGES.ASSIGNEE_ID).where(WORK_PACKAGES.ASSIGNEE_ID.eq(id)).execute();
         db.update(WORK_PACKAGES).setNull(WORK_PACKAGES.RESPONSIBLE_ID).where(WORK_PACKAGES.RESPONSIBLE_ID.eq(id)).execute();
+        temporaryPasswords.clear(id); // no plain password stays behind an anonymised account
         sessions.endAll(id);
         return ResponseEntity.noContent().build();
     }
