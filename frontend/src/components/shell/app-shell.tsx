@@ -7,7 +7,7 @@ import { cn } from "@/lib/cn";
 import { Avatar } from "@/components/ui/avatar";
 import { Menu, Tooltip, type MenuEntry } from "@/components/ui/overlay";
 
-/* ---------- Header: dark band, 56px. Placeholder colours until /replica-brand ---------- */
+/* ---------- Header: dark band (먹색 header-bg), 56px. Colours from replica/brand.md ---------- */
 
 const headerBtn =
   "inline-flex h-8 items-center justify-center gap-1 rounded-md px-2 text-header-fg hover:bg-header-hover focus-visible:outline-header-fg [&_svg]:size-4";
@@ -59,7 +59,7 @@ export function AppHeader({
         </span>
       )}
       <Link to="/" className="mr-2 inline-flex h-8 items-center gap-2 rounded-md px-1 font-bold tracking-tight hover:bg-header-hover focus-visible:outline-header-fg">
-        {/* Wordmark placeholder: the real logo comes from /replica-brand */}
+        {/* Interim mark: the real logo is briefed in replica/brand.md (logo brief) */}
         <span aria-hidden="true" className="inline-flex size-6 items-center justify-center rounded-sm bg-header-fg text-xs font-black text-header-bg">
           P
         </span>

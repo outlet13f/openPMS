@@ -43,6 +43,7 @@
   - 5 화면별 도움말(`/help`, `/help/admin`)
   - 6 공동 담당자(`work_package_assignees`, 첫 사람 = 주 담당자 = `assignee_id`)
   - — 모두 완료. **7 반복 작업은 사용자 결정으로 보류.**
+- 브랜드(`/replica-brand`, 2026-10-12, `replica/brand.md`): 이름은 openPMS 그대로(사용자 결정, 사내 전용. 밖에 내놓으면 다시 정함). 강조색 자주 #8b2f8f, 헤더 먹색 #1e1c22. 원본의 파랑·초록 계열을 다시 쓰지 않고, 앱 쪽은 `sweep.py frontend`·`sweep.py backend`(`--config replica/brand.json`)가 깨끗해야 합니다(내부 문서의 출처 표기는 일부러 남김).
 - 사내 개선(`fixes.md` 밖): 임시 비밀번호(REQ-AUTH-005, `temporary_passwords`·V19) — 관리자가 메일 없이 사용자를 만들거나 다시 발급하고, 첫 로그인에서 새 비밀번호를 정하게 함. 평문이 바뀔 때까지 DB에 남으므로 `org.jooq` 로그를 DEBUG로 올리지 않음. SSO e2e는 5173 개발 서버도 필요.
 - 테스트: JUnit 116, e2e 136 통과 + 1 건너뜀(PERF-5 느린 망은 개발 서버에서 의도적으로 건너뜀).
 - 남은 일:

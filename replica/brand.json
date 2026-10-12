@@ -1,0 +1,7 @@
+{
+  "_about": "openPMS 브랜드 설정. sweep.py·listing.py·replica-deploy가 avoid·domains·colors를 읽는다. 결정과 근거는 replica/brand.md.",
+  "name": "openPMS",
+  "avoid": ["OpenProject"],
+  "domains": ["openproject.org", "openproject.com", "openproject.de"],
+  "colors": ["#1a67a3", "#264273", "#1f883d"]
+}

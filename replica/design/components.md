@@ -3,11 +3,11 @@
 - 입력: `replica/recon.md`의 컴포넌트 목록과 화면 S01–S37, 측정값(`tokens.json`의 `_measured`)
 - 토큰: `replica/design/tokens.json` → `frontend/scripts/build-tokens.mjs` → `frontend/src/styles/{tokens,theme}.css`
 - 확인 페이지: `frontend`에서 `npm run dev` 후 `http://localhost:5173/design`. 캡처는 `replica/design/screens/`에 있습니다.
-- 대비 검사: `python3 replica/design/contrast.py replica/design/tokens.json`. 현재 52쌍 중 AA 실패 0이고 결과는 `contrast-report.txt`에 있습니다.
+- 대비 검사: `python3 replica/design/contrast.py replica/design/tokens.json`. 현재 62쌍 중 AA 실패 0이고 결과는 `contrast-report.txt`에 있습니다.
 
 ## 원칙
 
-1. **역할만 가져오고 값은 우리 것을 씁니다.** 원본의 시그니처는 파란 헤더(#1a67a3), 초록 주요 버튼(#1f883d), 산호색 탭 밑줄입니다. openPMS는 이 셋을 모두 `accent` 하나로 통합하고 값은 중립 플레이스홀더로 둡니다. 실제 색은 `/replica-brand`에서 정합니다.
+1. **역할만 가져오고 값은 우리 것을 씁니다.** 원본의 시그니처는 파란 헤더(#1a67a3), 초록 주요 버튼(#1f883d), 산호색 탭 밑줄입니다. openPMS는 이 셋을 모두 `accent` 하나로 통합했고, `/replica-brand`(2026-10-12)에서 값을 자주(#8b2f8f)로, 헤더를 먹색(#1e1c22)으로 정했습니다. 원본의 파랑·초록과 다른 계열입니다. 정한 까닭과 로고·말투는 `replica/brand.md`에 있습니다.
 2. **아이콘은 Lucide(ISC)만 씁니다.** 원본의 아이콘·로고·일러스트는 쓰지 않습니다. 빈 상태 그림도 Lucide 아이콘으로 대신하고, 일러스트가 필요하면 새로 만듭니다.
 3. **글꼴은 Pretendard Variable(SIL OFL)입니다.** 앱 안에 번들하므로 사내망에서 CDN 없이 동작합니다. 고정폭 글꼴은 시스템 기본 + D2Coding입니다.
 4. **문구는 모두 새로 씁니다.** 원본 번역을 쓰지 않습니다. 용어집은 아래에 있습니다.
