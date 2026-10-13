@@ -1,6 +1,6 @@
 # 버그 목록
 
-`/replica-test` 2026-10-10. 그 뒤 기능을 만들며 e2e가 찾은 것, 2026-10-11 산출물 점검에서 나온 것(BUG-007–011), 같은 날 성능 예산 부하 측정에서 나온 것(BUG-012–014, `replica/perf.md`)도 이어 적습니다. 재현한 것만 적습니다. 의심만 가는 것은 `replica/test-plan.md`의 "확인할 것"에 있습니다.
+`/replica-test` 2026-10-10. 그 뒤 기능을 만들며 e2e가 찾은 것, 2026-10-11 산출물 점검에서 나온 것(BUG-007–011), 같은 날 성능 예산 부하 측정에서 나온 것(BUG-012–014, `replica/perf.md`), 2026-10-13 API 토큰 필터 점검에서 나온 것(BUG-015)도 이어 적습니다. 재현한 것만 적습니다. 의심만 가는 것은 `replica/test-plan.md`의 "확인할 것"에 있습니다.
 빌드: 2e89d53 · 브라우저: Chrome(Playwright), 1424px · 실제 API(Spring Boot) + 시드 데이터
 
 | ID | 심각도 | 제목 | 상태 |
@@ -19,8 +19,9 @@
 | BUG-012 | S1 | CPU 2개 서버에서 동시에 여러 명이 쓰면 모든 요청이 30초 멈추고 일부는 오류 | 고침 (a81a4f6) |
 | BUG-013 | S3 | 카드 1,000장 보드가 1.6초 걸리고 브라우저 메모리를 250 MB 씀 | 고침 (a81a4f6) |
 | BUG-014 | S3 | 화면 파일(JS 1.4 MB)을 압축도 캐시도 없이 페이지를 열 때마다 다시 받음 | 고침 (a81a4f6) |
+| BUG-015 | S2 | API 토큰이 글자 하나를 퍼센트 인코딩한 주소로 토큰·비밀번호·연동 설정 경로에 닿음 | 고침 (69c2760) |
 
-S1은 BUG-012 하나입니다(2026-10-11 성능 예산 부하 측정, 같은 날 고침). S2는 BUG-008 하나입니다(2026-10-11 산출물 점검).
+S1은 BUG-012 하나입니다(2026-10-11 성능 예산 부하 측정, 같은 날 고침). S2는 BUG-008(2026-10-11 산출물 점검)과 BUG-015(2026-10-13, 임시 비밀번호 작업 중 찾은 우회가 기존 닫힌 경로에도 있었음) 둘입니다.
 
 ### BUG-001: 저장을 두 번 누르면 작업이 두 개 생김
 
@@ -255,3 +256,21 @@ S1은 BUG-012 하나입니다(2026-10-11 성능 예산 부하 측정, 같은 날
 원인: `server.compression`을 켜지 않았고, 정적 파일에 캐시 설정이 없어 Spring Security의 기본 no-store가 붙음
 상태: fixed in a81a4f6
 고침: `server.compression`(JSON·HTML·CSS·JS·SVG·CSV, 2 KB 이상). `/assets/**`는 `max-age=31536000, public, immutable`, 나머지(`index.html`과 화면 주소)는 `no-cache`. 고친 뒤 JS 390 KB 한 번, 다시 열면 17 KB, 보드 응답 약 92–135 KB. 10 Mbps·왕복 40 ms에서 목록 처음 1.0초·다시 0.6초
+
+### BUG-015: API 토큰이 글자 하나를 퍼센트 인코딩한 주소로 토큰·비밀번호·연동 설정 경로에 닿음
+
+- 심각도: S2 (토큰을 가진 사람이 토큰으로 새 토큰을 만들어 폐기를 피하거나, 관리자의 토큰이면 웹훅을 걸어 작업 데이터를 바깥 주소로 보낼 수 있음. 비밀번호 변경은 현재 비밀번호가 있어야 함)
+- 흐름 / 케이스: F15 / F15-A2 (`ApiTokensIT`)
+- 화면: 없음 (API)
+- 빌드: e091c2e, 실제 API(MockMvc)
+
+단계
+1. 관리자가 쓰기 API 토큰을 만듦
+2. `GET /api/v1/me/%61pi-tokens`에 `Authorization: Bearer <토큰>` (`%61`은 `a`)
+
+기대: 403 "API 토큰으로는 로그인·비밀번호·토큰·연동 설정을 다룰 수 없습니다."
+실제: 200 (내 토큰 목록). 같은 방식으로 `POST /api/v1/me/%61pi-tokens`(새 토큰), `GET /api/v1/admin/%77ebhooks`, `PUT /api/v1/me/p%61ssword`에도 닿음
+증거: `ApiTokensIT.aPercentEncodedLetterOpensNoClosedPath`가 고치기 전 코드에서 `Status expected:<403> but was:<200>`로 실패
+원인: `ApiTokenFilter`가 닫힌 경로를 디코딩 전 요청 주소(`getRequestURI`)로 비교함. Spring Security의 방화벽은 `%2F`·`%25`·`%3B` 같은 일부 인코딩만 거부하고 글자를 인코딩한 `%61`은 통과시키며, Spring MVC는 디코딩한 경로로 라우팅함. 임시 비밀번호 작업(bc3a14e)에서 같은 우회를 그 경로에 대해 찾아 그 컨트롤러에서 따로 막았고, 기존 닫힌 경로는 이번에 고침
+상태: fixed in 69c2760
+고침: `ApiTokenFilter`가 Spring과 같은 디코딩된 경로(`UrlPathHelper.getPathWithinApplication`)로 판단. 회귀 테스트: `ApiTokensIT.aPercentEncodedLetterOpensNoClosedPath`(인코딩한 경로 네 가지가 403, 토큰으로 만든 토큰 없음). JUnit 117/117. 실제 서버(Tomcat)를 거치는 e2e F15는 다음 전체 실행 때 확인(경로 디코딩은 MockMvc와 같음). 디코딩 전 주소를 쓰는 나머지 두 곳(SSO 공급자 이름 확인, 중복 방지 저장)은 더 엄격하게 막히는 쪽이라 그대로 둠
