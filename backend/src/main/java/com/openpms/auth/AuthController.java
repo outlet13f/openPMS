@@ -52,6 +52,8 @@ public class AuthController {
 
     private final DSLContext db;
     private final PasswordEncoder encoder;
+    /** A hash of a random password nobody knows: a sign-in without an account checks against it, so it takes as long. */
+    private final String noAccountHash;
     private final SecurityContextRepository contextRepo;
     private final RateLimiter limiter;
     private final Tokens tokens;
@@ -71,6 +73,7 @@ public class AuthController {
         this.loginsPerMinute = loginsPerMinute;
         this.db = db;
         this.encoder = encoder;
+        this.noAccountHash = encoder.encode(java.util.UUID.randomUUID().toString());
         this.contextRepo = contextRepo;
         this.limiter = limiter;
         this.tokens = tokens;
@@ -104,8 +107,9 @@ public class AuthController {
         if (u != null && ("locked".equals(u.getStatus()) || (u.getLockedUntil() != null && u.getLockedUntil().isAfter(now)))) {
             throw new ApiException(423, "잠긴 계정입니다.", "locked".equals(u.getStatus()) ? "관리자에게 계정 잠금 해제를 요청하세요." : "잠시 뒤 다시 시도하세요.");
         }
-        boolean ok = u != null && "active".equals(u.getStatus()) && u.getPasswordHash() != null && in.password() != null
-                && encoder.matches(in.password(), u.getPasswordHash());
+        boolean checkable = u != null && "active".equals(u.getStatus()) && u.getPasswordHash() != null;
+        // no account (or no password): hash the attempt anyway, so the answer time does not tell which addresses exist
+        boolean ok = in.password() != null && encoder.matches(in.password(), checkable ? u.getPasswordHash() : noAccountHash) && checkable;
         if (!ok) {
             if (u != null) {
                 int failures = u.getFailedLoginCount() + 1;
