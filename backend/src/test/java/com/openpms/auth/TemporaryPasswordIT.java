@@ -27,7 +27,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.UUID;
-import org.hamcrest.Matchers;
 import org.jooq.DSLContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -66,6 +65,8 @@ class TemporaryPasswordIT {
     IdempotencyFilter idempotency;
     @Autowired
     Housekeeping housekeeping;
+    @Autowired
+    TemporaryPasswords temporaryPasswords;
 
     MockMvc mvc;
 
@@ -103,7 +104,7 @@ class TemporaryPasswordIT {
 
     String issue(MockHttpSession admin, UUID id) throws Exception {
         var body = send(admin, post("/api/v1/admin/users/" + id + "/temporary-password"), "{}").andExpect(status().isOk())
-                .andExpect(header().string("Cache-Control", Matchers.containsString("no-store"))).andReturn().getResponse().getContentAsString();
+                .andExpect(header().string("Cache-Control", "no-store")).andReturn().getResponse().getContentAsString();
         return json.readTree(body).get("temporaryPassword").asString();
     }
 
@@ -124,7 +125,7 @@ class TemporaryPasswordIT {
         var key = UUID.randomUUID().toString();
         var body = mvc.perform(post("/api/v1/admin/users").session(admin).with(csrf()).header("Idempotency-Key", key).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"임시 확인\",\"email\":\"" + email + "\",\"isAdmin\":false,\"method\":\"temporaryPassword\"}"))
-                .andExpect(status().isCreated()).andExpect(header().string("Cache-Control", Matchers.containsString("no-store")))
+                .andExpect(status().isCreated()).andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.user.status").value("active")).andExpect(jsonPath("$.user.temporaryPasswordUntil").isNotEmpty())
                 .andReturn().getResponse().getContentAsString();
         var node = json.readTree(body);
@@ -168,7 +169,7 @@ class TemporaryPasswordIT {
                 .andExpect(status().isGone());
 
         mvc.perform(get("/api/v1/admin/users/" + id + "/temporary-password").session(admin)).andExpect(status().isOk())
-                .andExpect(header().string("Cache-Control", Matchers.containsString("no-store")))
+                .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.temporaryPassword").value(second)).andExpect(jsonPath("$.issuedBy.name").value("김서연"));
         // the list says until when, never the password
         mvc.perform(get("/api/v1/admin/users").session(admin).param("q", email)).andExpect(status().isOk())
@@ -248,7 +249,7 @@ class TemporaryPasswordIT {
                     .andExpect(jsonPath("$.title").value("API 토큰으로는 로그인·비밀번호·토큰·연동 설정을 다룰 수 없습니다."));
             var key = UUID.randomUUID().toString();
             mvc.perform(post(encoded).session(admin).with(csrf()).header("Idempotency-Key", key).contentType(MediaType.APPLICATION_JSON).content("{}"))
-                    .andExpect(status().isOk()).andExpect(header().string("Cache-Control", Matchers.containsString("no-store")));
+                    .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"));
             assertThat(db.fetchCount(IDEMPOTENCY_KEYS, IDEMPOTENCY_KEYS.KEY.eq(key))).isZero();
         } finally {
             db.deleteFrom(API_TOKENS).where(API_TOKENS.NAME.eq("인코딩 시험")).execute();
@@ -366,6 +367,18 @@ class TemporaryPasswordIT {
 
     int rows(UUID userId) {
         return db.fetchCount(TEMPORARY_PASSWORDS, TEMPORARY_PASSWORDS.USER_ID.eq(userId));
+    }
+
+    /** The sign-in checks the hash (~0.1 s) before it issues a change token: a reissue landing in between must not leave the old password a way in. */
+    @Test
+    void aChangeTokenIsOnlyIssuedForThePasswordThatWasChecked() throws Exception {
+        var admin = login(ADMIN, DEV);
+        var made = make(admin, email("stale"));
+        var checked = db.select(USERS.PASSWORD_HASH).from(USERS).where(USERS.ID.eq(made.id())).fetchOne(USERS.PASSWORD_HASH);
+        issue(admin, made.id()); // an administrator issues a new one while that sign-in was still hashing
+        assertThat(temporaryPasswords.changeToken(made.id(), checked)).isNull();
+        var current = db.select(USERS.PASSWORD_HASH).from(USERS).where(USERS.ID.eq(made.id())).fetchOne(USERS.PASSWORD_HASH);
+        assertThat(temporaryPasswords.changeToken(made.id(), current)).isNotBlank();
     }
 
     @Test

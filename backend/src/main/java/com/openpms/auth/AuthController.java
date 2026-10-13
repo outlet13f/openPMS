@@ -38,15 +38,36 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
-    public record LoginInput(String email, String password) {}
+    // requests that carry a password or a one-time token print without it (Spring MVC logs what it reads at DEBUG)
+    public record LoginInput(String email, String password) {
+        @Override
+        public String toString() {
+            return "LoginInput[email=" + email + ", password=***]";
+        }
+    }
 
     public record ResetRequest(String email) {}
 
-    public record ResetConfirm(String token, String newPassword) {}
+    public record ResetConfirm(String token, String newPassword) {
+        @Override
+        public String toString() {
+            return "ResetConfirm[token=***, newPassword=***]";
+        }
+    }
 
-    public record AcceptInput(String name, String password) {}
+    public record AcceptInput(String name, String password) {
+        @Override
+        public String toString() {
+            return "AcceptInput[name=" + name + ", password=***]";
+        }
+    }
 
-    public record PasswordChange(String token, String newPassword) {}
+    public record PasswordChange(String token, String newPassword) {
+        @Override
+        public String toString() {
+            return "PasswordChange[token=***, newPassword=***]";
+        }
+    }
 
     public record Invitation(String email, String name, String invitedBy) {}
 
@@ -130,7 +151,9 @@ public class AuthController {
                 temporaryPasswords.expire(u.getId(), now);
                 throw new ApiException(401, "임시 비밀번호가 만료되었습니다.", "관리자에게 다시 발급을 요청하세요.", null, Map.of("code", "temporary_password_expired"));
             }
-            var changeToken = tokens.issue(u.getId(), "password_change", Duration.ofMinutes(10), null);
+            var changeToken = temporaryPasswords.changeToken(u.getId(), u.getPasswordHash());
+            // reissued (or changed) while this sign-in was hashing: the password it checked no longer counts
+            if (changeToken == null) throw new ApiException(401, "이메일 또는 비밀번호가 올바르지 않습니다.");
             throw new ApiException(403, "새 비밀번호를 정해야 합니다.", "임시 비밀번호로는 바로 쓸 수 없습니다. 새 비밀번호를 정하세요.", null,
                     Map.of("code", "password_change_required", "changeToken", changeToken));
         }

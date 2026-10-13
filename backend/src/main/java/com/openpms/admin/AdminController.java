@@ -95,7 +95,12 @@ public class AdminController {
                             OffsetDateTime temporaryPasswordUntil) {}
 
     /** 임시 비밀번호로 만들기: the password is in this answer (and later in GET …/temporary-password), nowhere else. */
-    public record CreatedWithPassword(AdminUser user, String temporaryPassword, OffsetDateTime expiresAt) {}
+    public record CreatedWithPassword(AdminUser user, String temporaryPassword, OffsetDateTime expiresAt) {
+        @Override
+        public String toString() { // never the password itself (Spring MVC logs what it writes at DEBUG)
+            return "CreatedWithPassword[user=" + (user == null ? null : user.id()) + ", expiresAt=" + expiresAt + "]";
+        }
+    }
 
     public record AdminGroup(UUID id, String name, List<Dto.UserRef> members) {}
 

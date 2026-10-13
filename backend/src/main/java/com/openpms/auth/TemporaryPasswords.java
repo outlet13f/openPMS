@@ -6,6 +6,7 @@ import static com.openpms.db.Tables.USERS;
 import com.openpms.api.Dto;
 import com.openpms.common.SettingsRepo;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -35,9 +36,19 @@ public class TemporaryPasswords {
     static final String SPECIAL = "!@#$%*-_+=?";
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    public record Issued(String temporaryPassword, OffsetDateTime expiresAt) {}
+    public record Issued(String temporaryPassword, OffsetDateTime expiresAt) {
+        @Override
+        public String toString() { // never the password itself (Spring MVC logs what it writes at DEBUG)
+            return "Issued[expiresAt=" + expiresAt + "]";
+        }
+    }
 
-    public record Shown(String temporaryPassword, OffsetDateTime expiresAt, Dto.IdName issuedBy, OffsetDateTime issuedAt) {}
+    public record Shown(String temporaryPassword, OffsetDateTime expiresAt, Dto.IdName issuedBy, OffsetDateTime issuedAt) {
+        @Override
+        public String toString() {
+            return "Shown[expiresAt=" + expiresAt + ", issuedBy=" + issuedBy + ", issuedAt=" + issuedAt + "]";
+        }
+    }
 
     private final DSLContext db;
     private final PasswordEncoder encoder;
@@ -100,6 +111,20 @@ public class TemporaryPasswords {
         return Optional.of(new Shown(r.getPassword(), r.getExpiresAt(), by, r.getIssuedAt()));
     }
 
+    /**
+     * The sign-in checked {@code checkedHash} (about 0.1 s, outside any transaction): a change token only if that is still the
+     * account's password and the temporary one still runs. The users row is locked first, as issue() does, so a reissue either
+     * finished before (the hash differs: none) or waits until this token exists (and then revokes it). @return the token, or null
+     */
+    @Transactional
+    public String changeToken(UUID userId, String checkedHash) {
+        var hash = db.select(USERS.PASSWORD_HASH).from(USERS).where(USERS.ID.eq(userId)).forNoKeyUpdate().fetchOne(USERS.PASSWORD_HASH);
+        if (hash == null || !hash.equals(checkedHash)) return null;
+        var until = expiresAt(userId);
+        if (until == null || !until.isAfter(OffsetDateTime.now())) return null;
+        return tokens.issue(userId, "password_change", Duration.ofMinutes(10), null);
+    }
+
     /** When the temporary password runs out, or null when the password is not temporary. */
     public OffsetDateTime expiresAt(UUID userId) {
         return db.select(TEMPORARY_PASSWORDS.EXPIRES_AT).from(TEMPORARY_PASSWORDS).where(TEMPORARY_PASSWORDS.USER_ID.eq(userId))
@@ -124,6 +149,8 @@ public class TemporaryPasswords {
     // one transaction: the login and token-cleanup call this outside any other
     @Transactional
     public boolean expire(UUID userId, OffsetDateTime now) {
+        // the users row first, as issue() and the password change take it: the opposite order could deadlock with a reissue
+        db.select(USERS.ID).from(USERS).where(USERS.ID.eq(userId)).forNoKeyUpdate().fetch();
         int n = db.deleteFrom(TEMPORARY_PASSWORDS).where(TEMPORARY_PASSWORDS.USER_ID.eq(userId), TEMPORARY_PASSWORDS.EXPIRES_AT.le(now)).execute();
         if (n > 0) db.update(USERS).setNull(USERS.PASSWORD_HASH).where(USERS.ID.eq(userId)).execute();
         return n > 0;
