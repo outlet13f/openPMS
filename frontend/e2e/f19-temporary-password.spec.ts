@@ -91,7 +91,7 @@ test("F19-T2 someone who never took up the invitation gets one; the administrato
   await expect(page.getByRole("menuitem", { name: "임시 비밀번호 보기" })).toHaveCount(0);
 });
 
-test("F19-T3 a user manager who is not an administrator cannot handle an administrator's password", async ({ page }) => {
+test("F19-T3 a user manager who is not an administrator cannot handle an administrator's password or account", async ({ page }) => {
   await login(page, "seoyeon.kim@openpms.local");
   const users = await api<{ id: string; email: string }[]>(page, "return await api.admin.users.list()");
   const doyoon = users.find((u) => u.email === "doyoon.han@openpms.local")!.id;
@@ -103,18 +103,18 @@ test("F19-T3 a user manager who is not an administrator cannot handle an adminis
   await logout(page);
   await login(page, "doyoon.han@openpms.local");
   await page.goto("/admin/users");
-  await page.getByRole("row").filter({ hasText: "seoyeon.kim@openpms.local" }).getByRole("button", { name: /메뉴$/ }).click();
-  await expect(page.getByRole("menuitem").first()).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "임시 비밀번호 발급" })).toHaveCount(0);
-  await page.keyboard.press("Escape");
-  await page.getByRole("row").filter({ hasText: "admin2.e2e@openpms.local" }).getByRole("button", { name: /메뉴$/ }).click();
-  await expect(page.getByRole("menuitem").first()).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "임시 비밀번호 발급" })).toHaveCount(0);
-  await expect(page.getByRole("menuitem", { name: "임시 비밀번호 보기" })).toHaveCount(0);
-  await page.keyboard.press("Escape");
+  // an ordinary account: the user manager has the menu, with 발급
   await page.getByRole("row").filter({ hasText: "haneul.lee@openpms.local" }).getByRole("button", { name: /메뉴$/ }).click();
   await expect(page.getByRole("menuitem", { name: "임시 비밀번호 발급" })).toBeVisible();
   await page.keyboard.press("Escape");
+  // administrators' rows (one with a live temporary password): nothing to do there at all — no 발급·보기, no 잠그기·삭제 (BUG-016)
+  for (const email of ["seoyeon.kim@openpms.local", "admin2.e2e@openpms.local"]) {
+    const row = page.getByRole("row").filter({ hasText: email });
+    await expect(row).toBeVisible();
+    await expect(row.getByRole("button", { name: /메뉴$/ })).toHaveCount(0);
+  }
+  const lockRefused = await api<number>(page, "try { await api.admin.users.update(args[0], { status: 'locked' }); return 200 } catch (e) { return e.status }", admin2);
+  expect(lockRefused).toBe(403);
   const refused = await api<number>(page, "try { await api.admin.users.issueTemporaryPassword(args[0]); return 200 } catch (e) { return e.status }", seoyeon);
   expect(refused).toBe(403);
   const lookedUp = await api<number>(page, "try { await api.admin.users.temporaryPassword(args[0]); return 200 } catch (e) { return e.status }", admin2);

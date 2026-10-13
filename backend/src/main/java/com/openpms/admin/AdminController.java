@@ -164,6 +164,11 @@ public class AdminController {
         return ctx;
     }
 
+    /** A user manager handles ordinary accounts; an administrator's account only another administrator (as with temporary passwords). */
+    private static void requireAdminFor(Ctx ctx, com.openpms.db.tables.records.UsersRecord target) {
+        if (target.getIsAdmin() && !ctx.isAdmin()) throw ApiException.forbidden("관리자 계정은 관리자만 다룰 수 있습니다.");
+    }
+
     private static String name(Map<String, Object> in, boolean required) {
         if (!In.has(in, "name") && !required) return null;
         var n = In.str(in, "name") == null ? "" : In.str(in, "name").trim();
@@ -658,6 +663,7 @@ public class AdminController {
         var ctx = userManager();
         var u = db.selectFrom(USERS).where(USERS.ID.eq(id), USERS.STATUS.ne("deleted")).fetchOne();
         if (u == null) throw notFound("사용자");
+        requireAdminFor(ctx, u);
         var n = name(in, false);
         if (n != null) u.setName(n);
         if (In.has(in, "isAdmin")) {
@@ -713,6 +719,7 @@ public class AdminController {
         var ctx = userManager();
         var u = db.selectFrom(USERS).where(USERS.ID.eq(id), USERS.STATUS.ne("deleted")).fetchOne();
         if (u == null) throw notFound("사용자");
+        requireAdminFor(ctx, u);
         if (u.getId().equals(ctx.userId())) throw ApiException.unprocessable("내 계정은 삭제할 수 없습니다.", null);
         if (u.getIsAdmin() && activeAdmins() <= 1) throw ApiException.unprocessable("마지막 관리자입니다.", null);
         db.update(USERS).set(USERS.STATUS, "deleted").set(USERS.NAME, "삭제된 사용자").set(USERS.EMAIL, "deleted+" + id + "@invalid")

@@ -907,6 +907,7 @@ export const adminApi: Api["admin"] = {
         requireUserManager(me);
         const u = db.users.find((x) => x.id === id && x.status !== "deleted");
         if (!u) throw notFound("사용자");
+        if (u.isAdmin && !me.isAdmin) throw new ApiError(403, "관리자 계정은 관리자만 다룰 수 있습니다.");
         checkName(patch.name);
         if (patch.isAdmin !== undefined) {
           requireAdmin(me);
@@ -928,6 +929,7 @@ export const adminApi: Api["admin"] = {
         requireUserManager(me);
         const u = db.users.find((x) => x.id === id && x.status !== "deleted");
         if (!u) throw notFound("사용자");
+        if (u.isAdmin && !me.isAdmin) throw new ApiError(403, "관리자 계정은 관리자만 다룰 수 있습니다.");
         if (u.id === me.id) throw new ApiError(422, "내 계정은 삭제할 수 없습니다.");
         if (u.isAdmin && db.users.filter((x) => x.isAdmin && x.status === "active").length <= 1) throw new ApiError(422, "마지막 관리자입니다.");
         // anonymise (architecture.md §2): keep journals, drop personal data and access

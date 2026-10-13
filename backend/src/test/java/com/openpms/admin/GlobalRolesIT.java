@@ -8,6 +8,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -100,5 +101,33 @@ class GlobalRolesIT {
                 .andExpect(jsonPath("$.globalRoles.length()").value(0));
         send(member, delete("/api/v1/projects/by-global-role"), "{\"confirmIdentifier\":\"by-global-role\"}").andExpect(status().isForbidden());
         send(member, post("/api/v1/projects"), "{\"name\":\"다시\",\"identifier\":\"by-global-role-2\"}").andExpect(status().isForbidden());
+    }
+
+    @Test
+    void aUserManagerWhoIsNotAnAdministratorCannotLockRenameOrDeleteAnAdministrator() throws Exception {
+        var admin = login("seoyeon.kim@openpms.local");
+        var haneul = user("haneul.lee@openpms.local");
+        // a second active administrator, so the "last administrator" rule does not hide the missing check
+        var email = "second-admin-" + UUID.randomUUID().toString().substring(0, 8) + "@openpms.local";
+        send(admin, post("/api/v1/admin/users"), "{\"name\":\"둘째 관리자\",\"email\":\"" + email + "\",\"isAdmin\":true,\"method\":\"temporaryPassword\"}")
+                .andExpect(status().isCreated());
+        var secondAdmin = user(email);
+        var managerRole = send(admin, post("/api/v1/admin/roles"), "{\"name\":\"사용자 관리자(시험)\",\"scope\":\"global\",\"permissions\":[\"global.manage_users\"]}")
+                .andExpect(status().is2xxSuccessful()).andReturn().getResponse().getContentAsString().replaceAll(".*\"id\":\"([^\"]+)\".*", "$1");
+        send(admin, put("/api/v1/admin/users/" + user("doyoon.han@openpms.local") + "/global-roles"), "{\"roleIds\":[\"" + managerRole + "\"]}").andExpect(status().isOk());
+        var manager = login("doyoon.han@openpms.local");
+        var refused = "관리자 계정은 관리자만 다룰 수 있습니다.";
+        try {
+            send(manager, patch("/api/v1/admin/users/" + secondAdmin), "{\"status\":\"locked\"}").andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.title").value(refused));
+            send(manager, patch("/api/v1/admin/users/" + secondAdmin), "{\"name\":\"바뀐 이름\"}").andExpect(status().isForbidden());
+            send(manager, delete("/api/v1/admin/users/" + secondAdmin), "{}").andExpect(status().isForbidden()).andExpect(jsonPath("$.title").value(refused));
+            // an ordinary account stays theirs to manage
+            send(manager, patch("/api/v1/admin/users/" + haneul), "{\"status\":\"locked\"}").andExpect(status().isOk());
+            send(manager, patch("/api/v1/admin/users/" + haneul), "{\"status\":\"active\"}").andExpect(status().isOk());
+        } finally {
+            // the second administrator was only for this test
+            db.deleteFrom(USERS).where(USERS.ID.eq(secondAdmin)).execute();
+        }
     }
 }

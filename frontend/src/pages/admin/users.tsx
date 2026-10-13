@@ -210,11 +210,13 @@ export function AdminUsersPage() {
     const self = u.id === me?.id;
     const items: MenuEntry[] = [];
     if (u.status === "invited") items.push({ label: t("admin.users.resend"), icon: <Mail />, onSelect: () => void runToast(m.resend.mutateAsync(u.id), t("admin.users.resent")) });
-    const handlesPassword = (u.status === "active" || u.status === "invited") && !self && (!u.isAdmin || !!me?.isAdmin);
+    // an administrator's account is handled only by administrators (the server refuses user managers with 403)
+    const mine = !u.isAdmin || !!me?.isAdmin;
+    const handlesPassword = (u.status === "active" || u.status === "invited") && !self && mine;
     if (handlesPassword) items.push({ label: t("admin.users.issueTemporary"), icon: <KeyRound />, onSelect: () => setIssuing(u) });
     if (handlesPassword && live(u.temporaryPasswordUntil)) items.push({ label: t("admin.users.showTemporary"), icon: <Eye />, onSelect: () => void look(u) });
-    if (u.status === "active" && !self) items.push({ label: t("admin.users.lock"), icon: <Lock />, onSelect: () => void runToast(m.update.mutateAsync({ id: u.id, patch: { status: "locked" } }), t("admin.users.locked", { name: u.name })) });
-    if (u.status === "locked" || u.lockedUntil) items.push({ label: t("admin.users.unlock"), icon: <LockOpen />, onSelect: () => void runToast(m.update.mutateAsync({ id: u.id, patch: { status: "active" } }), t("admin.users.unlocked", { name: u.name })) });
+    if (u.status === "active" && !self && mine) items.push({ label: t("admin.users.lock"), icon: <Lock />, onSelect: () => void runToast(m.update.mutateAsync({ id: u.id, patch: { status: "locked" } }), t("admin.users.locked", { name: u.name })) });
+    if ((u.status === "locked" || u.lockedUntil) && mine) items.push({ label: t("admin.users.unlock"), icon: <LockOpen />, onSelect: () => void runToast(m.update.mutateAsync({ id: u.id, patch: { status: "active" } }), t("admin.users.unlocked", { name: u.name })) });
     if (me?.isAdmin && u.status !== "deleted") items.push({ label: t("admin.users.globalRoles"), icon: <BadgeCheck />, onSelect: () => setGranting(u) });
     if (me?.isAdmin && !self)
       items.push(
@@ -222,7 +224,7 @@ export function AdminUsersPage() {
           ? { label: t("admin.users.revokeAdmin"), icon: <ShieldOff />, onSelect: () => void runToast(m.update.mutateAsync({ id: u.id, patch: { isAdmin: false } }), t("app.saved")) }
           : { label: t("admin.users.grantAdmin"), icon: <Shield />, onSelect: () => void runToast(m.update.mutateAsync({ id: u.id, patch: { isAdmin: true } }), t("app.saved")) },
       );
-    if (!self) items.push({ kind: "separator" }, { label: t("app.delete"), icon: <Trash2 />, danger: true, onSelect: () => setRemoving(u) });
+    if (!self && mine) items.push({ kind: "separator" }, { label: t("app.delete"), icon: <Trash2 />, danger: true, onSelect: () => setRemoving(u) });
     return items;
   };
 
