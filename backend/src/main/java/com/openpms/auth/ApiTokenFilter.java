@@ -10,6 +10,7 @@ import java.util.Set;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.util.UrlPathHelper;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -23,6 +24,7 @@ public class ApiTokenFilter extends OncePerRequestFilter {
     /** Sign-in, passwords, tokens, and the integration settings themselves (token switch, webhooks) stay with a signed-in person. */
     private static final List<String> CLOSED = List.of("/api/v1/auth/", "/api/v1/me/password", "/api/v1/me/api-tokens", "/api/v1/admin/api-tokens",
             "/api/v1/admin/settings/api", "/api/v1/admin/webhooks", "/api/v1/admin/webhook-deliveries");
+    private static final UrlPathHelper PATHS = new UrlPathHelper();
 
     private final ApiTokens tokens;
     private final RateLimiter limiter;
@@ -41,7 +43,8 @@ public class ApiTokenFilter extends OncePerRequestFilter {
 
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain) throws ServletException, IOException {
-        var path = req.getRequestURI().substring(req.getContextPath().length());
+        // decoded, as Spring routes it: on the raw URI "/me/%61pi-tokens" would not look closed, yet reach /me/api-tokens
+        var path = PATHS.getPathWithinApplication(req);
         if (!isBearer(req) || !path.startsWith("/api/")) {
             chain.doFilter(req, res);
             return;

@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.net.URI;
 import org.jooq.DSLContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -116,6 +117,24 @@ class ApiTokensIT {
 
         // the description is public
         mvc.perform(get("/api/v1/openapi.json")).andExpect(status().isOk()).andExpect(jsonPath("$.openapi").value("3.1.0"));
+    }
+
+    /** Spring decodes %61 to "a" before it routes, so a letter spelled in percent-encoding must not open a closed path. */
+    @Test
+    void aPercentEncodedLetterOpensNoClosedPath() throws Exception {
+        var admin = login("seoyeon.kim@openpms.local");
+        var write = issue(admin, "write");
+        var refused = "API 토큰으로는 로그인·비밀번호·토큰·연동 설정을 다룰 수 없습니다.";
+        mvc.perform(get(new URI("/api/v1/me/%61pi-tokens")).header("Authorization", "Bearer " + write))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.title").value(refused));
+        mvc.perform(post(new URI("/api/v1/me/%61pi-tokens")).header("Authorization", "Bearer " + write).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"토큰이 만든 토큰\",\"scope\":\"write\",\"expiresInDays\":30}")).andExpect(status().isForbidden());
+        mvc.perform(get(new URI("/api/v1/admin/%77ebhooks")).header("Authorization", "Bearer " + write))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.title").value(refused));
+        mvc.perform(put(new URI("/api/v1/me/p%61ssword")).header("Authorization", "Bearer " + write).contentType(MediaType.APPLICATION_JSON)
+                // a wrong current password: even if the route were reached, nothing would change (422 instead of 403)
+                .content("{\"currentPassword\":\"not-the-password\",\"newPassword\":\"changed-by-token-2026!\"}")).andExpect(status().isForbidden());
+        assertThat(db.fetchCount(API_TOKENS, API_TOKENS.NAME.eq("토큰이 만든 토큰"))).isZero();
     }
 
     @Test
