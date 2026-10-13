@@ -12,6 +12,8 @@ backend/src/main/resources/static/
 
 # Screenshots of the original app are reference material only: never committed, never shipped.
 replica/screens/
+# Layout diffs against those screenshots (/replica-diff) contain the original's pixels too.
+replica/diffs/
 *.tsbuildinfo
 
 # local secrets (dev database password etc.); frontend/.env.production only holds the API mode
