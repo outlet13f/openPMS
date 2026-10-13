@@ -61,7 +61,14 @@ export async function api<T>(page: Page, fn: string, ...args: unknown[]): Promis
 
 /** WCAG 2.1 A/AA rules on what is on screen now. */
 export async function axe(page: Page, screen: string) {
+  // a pointer resting on a control starts its hover transition, and a closing menu fades out: scanned halfway, the
+  // in-between colours fail contrast (seen on S06: a column header at 3.74:1 mid-hover). Scan the settled screen.
+  await page.mouse.move(0, 0);
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running"));
   const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  // ids such as #radix-_r_s_ say little: print what the element is and why (colours and ratio for contrast)
+  for (const v of r.violations)
+    for (const n of v.nodes.slice(0, 3)) console.log(`axe ${screen} ${v.id}: ${n.html.slice(0, 160)} — ${n.failureSummary?.replace(/\s+/g, " ").slice(0, 240)}`);
   expect(
     r.violations.map((v) => `${v.id} (${v.impact}): ${v.nodes.map((n) => n.target.join(" ")).slice(0, 3).join(" | ")}`),
     `axe on ${screen}`,

@@ -16,6 +16,8 @@ test.describe("F03 그룹화와 합계", () => {
       await item.focus();
       await page.keyboard.press(i === path.length - 1 ? "Enter" : "ArrowRight");
     }
+    // the menu fades out: an axe scan during that half-transparent moment flags its items for contrast
+    await expect(page.getByRole("menu")).toHaveCount(0);
   }
 
   test("F03-G1 group by status: one header per status with its count, groups fold, the list is flat", async ({ page }) => {
