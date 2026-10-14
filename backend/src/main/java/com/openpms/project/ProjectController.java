@@ -165,6 +165,11 @@ public class ProjectController {
         return make(ctx, in, source);
     }
 
+    /** A service desk shows every requester's tickets to its members: a public project would show them to everyone (ITSM 1단계). */
+    private static void serviceDeskStaysPrivate(boolean isPublic, java.util.Collection<String> modules, String field) {
+        if (isPublic && modules.contains("service_desk")) throw ApiException.field(field, "서비스 데스크를 쓰는 프로젝트는 공개할 수 없습니다.");
+    }
+
     private ResponseEntity<Dto.Project> make(Ctx ctx, Map<String, Object> in, ProjectRow template) {
         if (!ctx.isAdmin() && !ctx.globalPermissions().contains("global.create_projects")) throw ApiException.forbidden("프로젝트를 만들 권한이 없습니다.");
         var parts = new HashSet<>(In.strings(in, "copy") == null ? List.<String>of() : In.strings(in, "copy"));
@@ -181,6 +186,7 @@ public class ProjectController {
             if (parent == null || !ctx.can(parent, "project.edit")) throw ApiException.field("parent", "상위 프로젝트를 찾을 수 없습니다.");
         }
         var html = Html.sanitize(In.str(in, "descriptionHtml"));
+        serviceDeskStaysPrivate(Boolean.TRUE.equals(In.bool(in, "isPublic")), template == null ? List.<String>of() : template.enabledModules(), "isPublic");
         var p = db.newRecord(PROJECTS);
         p.setIdentifier(identifier);
         p.setName(name);
@@ -208,6 +214,10 @@ public class ProjectController {
         var p = ctx.findProject(id);
         ctx.require(p, In.has(patch, "enabledModules") ? "project.manage_modules" : "project.edit");
         if (In.has(patch, "enabledModules") && patch.keySet().stream().anyMatch(k -> !k.equals("enabledModules"))) ctx.require(p, "project.edit");
+        var nextPublic = In.has(patch, "isPublic") ? Boolean.TRUE.equals(In.bool(patch, "isPublic")) : p.isPublic();
+        var nextModules = In.has(patch, "enabledModules") && In.strings(patch, "enabledModules") != null ? In.strings(patch, "enabledModules") : p.enabledModules();
+        if (In.has(patch, "isPublic") || In.has(patch, "enabledModules"))
+            serviceDeskStaysPrivate(nextPublic, nextModules, In.has(patch, "isPublic") ? "isPublic" : "enabledModules");
         var u = db.update(PROJECTS).set(PROJECTS.UPDATED_AT, OffsetDateTime.now());
         if (In.has(patch, "name")) {
             var name = In.str(patch, "name") == null ? "" : In.str(patch, "name").trim();
