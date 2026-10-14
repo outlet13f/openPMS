@@ -1,8 +1,8 @@
 // Turns fake database rows into the API's DTO shapes (src/api/types.ts).
-import type { CustomValue, Journal, JournalDetail, Project, ProjectRef, StatusRef, TypeRef, UserRef, WorkPackage, WorkPackageRef, WpField } from "../types";
+import type { CustomValue, Journal, JournalDetail, Project, ProjectRef, ServiceTicket, StatusRef, TypeRef, UserRef, WorkPackage, WorkPackageRef, WpField } from "../types";
 import { DEFAULT_OVERVIEW_WIDGETS } from "../types";
 import { formatDate, todayIso } from "@/lib/dates";
-import { db, type DbJournal, type DbProject, type DbUser, type DbWp } from "./db";
+import { db, type DbJournal, type DbProject, type DbServiceTicket, type DbUser, type DbWp } from "./db";
 import { allowedStatusIds, can, projectPermissions, shareRoleOf } from "./permissions";
 import { cfIdOf, cfText, customValuesOf } from "./custom-fields";
 import { progressLocked, totalsOf } from "./progress";
@@ -60,6 +60,43 @@ export function toProject(p: DbProject, user: DbUser): Project {
     updatedAt: p.updatedAt,
     latestActivityAt: p.latestActivityAt,
   });
+}
+
+/**
+ * A work package's service_tickets row. Deadlines that have passed are marked breached here, as the server's SlaJobs
+ * does every minute (open, not paused, with a policy, in a live desk); the fake sends no SLA alerts.
+ */
+export function ticketOf(w: DbWp, now = Date.now()): DbServiceTicket | null {
+  const t = db.serviceTickets.find((x) => x.workPackageId === w.id);
+  if (!t) return null;
+  const p = db.projects.find((x) => x.id === w.projectId);
+  const live = !!p && !p.archivedAt && p.enabledModules.includes("service_desk");
+  if (live && !t.resolvedAt && !t.pausedSince && t.slaPolicyId && db.slaPolicies.some((x) => x.id === t.slaPolicyId)) {
+    if (!t.responseBreached && !t.firstRespondedAt && t.firstResponseDueAt && Date.parse(t.firstResponseDueAt) <= now) t.responseBreached = t.responseWarned = true;
+    if (!t.resolveBreached && t.resolveDueAt && Date.parse(t.resolveDueAt) <= now) t.resolveBreached = t.resolveWarned = true;
+  }
+  return t;
+}
+
+export function toServiceTicket(t: DbServiceTicket): ServiceTicket {
+  const g = t.assignmentGroupId ? db.groups.find((x) => x.id === t.assignmentGroupId) : null;
+  return {
+    requester: userRef(t.requesterId)!,
+    channel: t.channel,
+    impact: t.impact,
+    urgency: t.urgency,
+    assignmentGroup: g ? { id: g.id, name: g.name } : null,
+    sla: {
+      firstResponseDueAt: t.firstResponseDueAt,
+      firstRespondedAt: t.firstRespondedAt,
+      resolveDueAt: t.resolveDueAt,
+      resolvedAt: t.resolvedAt,
+      paused: t.pausedSince !== null,
+      pausedSeconds: t.pausedTotalSeconds,
+      responseBreached: t.responseBreached,
+      resolveBreached: t.resolveBreached,
+    },
+  };
 }
 
 export const children = (w: DbWp) => db.workPackages.filter((x) => x.parentId === w.id);
@@ -128,6 +165,7 @@ export function toWp(w: DbWp, user: DbUser): WorkPackage {
     lockVersion: w.lockVersion,
     createdAt: w.createdAt,
     updatedAt: w.updatedAt,
+    serviceTicket: ((t) => (t ? toServiceTicket(t) : null))(ticketOf(w)),
     _meta: {
       allowedActions: {
         edit: canEdit,
@@ -173,6 +211,10 @@ const FIELD_LABEL: Record<string, string> = {
   remainingHours: "남은 작업",
   doneRatio: "완료 %",
   attachment: "첨부 파일",
+  requesterId: "요청자",
+  impact: "영향도",
+  urgency: "긴급도",
+  assignmentGroupId: "처리 그룹",
 };
 
 export function display(field: string, v: unknown): string | null {
@@ -188,7 +230,13 @@ export function display(field: string, v: unknown): string | null {
       return db.priorities.find((s) => s.id === v)?.name ?? null;
     case "assigneeId":
     case "responsibleId":
+    case "requesterId":
       return userRef(v as string)?.name ?? null;
+    case "impact":
+    case "urgency":
+      return Number(v) === 1 ? "높음" : Number(v) === 3 ? "낮음" : "보통";
+    case "assignmentGroupId":
+      return db.groups.find((g) => g.id === v)?.name ?? "삭제된 그룹";
     case "assignees":
       return Array.isArray(v) && v.length
         ? (v as { userId: string; workHours: string | null }[]).map((e) => `${userRef(e.userId)?.name ?? ""}${e.workHours !== null ? ` ${Number(e.workHours)}시간` : ""}`).join(", ")

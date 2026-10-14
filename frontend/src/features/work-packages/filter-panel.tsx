@@ -95,6 +95,11 @@ function useDefs(options?: FilterOptions): Record<FilterField, Def> {
     },
     isMilestone: { label: col("isMilestone"), ops: bool, values: yesNo },
     blocked: { label: col("blocked"), ops: bool, values: yesNo },
+    // 서비스 데스크 티켓 (only tickets match is / yes)
+    requester: { label: col("requester"), ops: [is, isNot], values: people },
+    assignmentGroup: { label: col("assignmentGroup"), ops: [is, isNot], values: (o) => o.groups.map((g) => ({ value: g.id, label: g.name })) },
+    channel: { label: col("channel"), ops: [is], values: () => (["portal", "agent", "api"] as const).map((c) => ({ value: c, label: f(`channels.${c}`) })) },
+    slaBreached: { label: col("slaBreached"), ops: bool, values: yesNo },
     // custom fields on in this scope that the administrator made filterable
     ...Object.fromEntries(
       (options?.customFields ?? [])

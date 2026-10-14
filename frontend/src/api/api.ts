@@ -82,6 +82,16 @@ import type {
   WorkPackageInput,
   WorkPackagePatch,
   WorkPackageRef,
+  IdName,
+  PortalDesk,
+  PortalFile,
+  PortalSubmit,
+  PortalSummary,
+  PortalTicket,
+  ServiceCalendar,
+  ServiceDeskSettings,
+  ServiceDeskSummary,
+  ServiceTicketPatch,
 } from "./types";
 
 /**
@@ -358,6 +368,48 @@ export interface Api {
     report(params: TimeFilter & { groupBy: TimeGroupBy }): Promise<TimeReport>;
     /** GET /time-entries/export — the entries as an Excel file */
     exportFile(params: TimeFilter): Promise<{ blob: Blob; fileName: string }>;
+  };
+
+  /** 서비스 데스크 (ITSM 1단계): calendars for everyone signed in, changed by administrators; the rest per project (service.*) */
+  serviceDesk: {
+    /** GET /service-calendars */
+    calendars(): Promise<ServiceCalendar[]>;
+    /** POST /service-calendars (관리자) — 422 hours "같은 요일의 근무 시간이 겹칩니다." */
+    createCalendar(input: Omit<ServiceCalendar, "id">): Promise<ServiceCalendar>;
+    /** PATCH /service-calendars/{id} (관리자) */
+    updateCalendar(id: Id, patch: Partial<Omit<ServiceCalendar, "id">>): Promise<ServiceCalendar>;
+    /** DELETE /service-calendars/{id} (관리자) — 409 while an SLA policy uses it */
+    deleteCalendar(id: Id): Promise<void>;
+    /** GET /projects/{p}/service-desk/settings (service.view) */
+    settings(project: string): Promise<ServiceDeskSettings>;
+    /** PUT /projects/{p}/service-desk/settings (service.manage) — replaces both lists; policies kept by (type, priority) */
+    saveSettings(project: string, settings: ServiceDeskSettings): Promise<ServiceDeskSettings>;
+    /** GET /projects/{p}/service-desk/groups (service.view) — every user group, names only */
+    groups(project: string): Promise<IdName[]>;
+    /** PATCH /work-packages/{n}/service-ticket (service.handle) — journaled; applyMatrix also sets the priority */
+    updateTicket(number: number, patch: ServiceTicketPatch): Promise<WorkPackage>;
+    /** GET /projects/{p}/service-desk/summary (service.view) */
+    summary(project: string): Promise<ServiceDeskSummary>;
+  };
+
+  /** 포털: any signed-in person, their own tickets only (someone else's is the same 404 "요청을 찾을 수 없습니다.") */
+  portal: {
+    /** GET /portal/desks — unarchived projects with the service_desk module */
+    desks(): Promise<PortalDesk[]>;
+    /** POST /portal/desks/{identifier}/tickets — only type, subject, description, impact, urgency and portal fields go on */
+    submit(identifier: string, input: PortalSubmit): Promise<PortalTicket>;
+    /** GET /portal/tickets?state= — newest update first, at most 200 */
+    tickets(state: "open" | "closed" | "all"): Promise<PortalSummary[]>;
+    /** GET /portal/tickets/{n} — opening it clears "새 소식" */
+    ticket(number: number): Promise<PortalTicket>;
+    /** POST /portal/tickets/{n}/comments — on 답변 대기 it also moves the ticket back to 처리 중 */
+    comment(number: number, bodyHtml: string): Promise<PortalTicket>;
+    /** POST /portal/tickets/{n}/status — the 요청자 role's workflow; a 409 carries no current */
+    setStatus(number: number, statusId: Id, lockVersion: number): Promise<PortalTicket>;
+    /** POST /portal/tickets/{n}/attachments (multipart) */
+    attach(number: number, file: File): Promise<PortalFile>;
+    /** GET /portal/tickets/{n}/attachments/{id}/content */
+    fileUrl(number: number, id: Id): string;
   };
 
   search: {

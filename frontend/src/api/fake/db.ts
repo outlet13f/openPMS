@@ -3,6 +3,7 @@
 // State survives reloads through localStorage (per browser, per user) and can be reset from the login page.
 
 import type { DbTimeEntry } from "./time-seed";
+import type { DbMatrixCell, DbServiceCalendar, DbServiceTicket, DbSlaPolicy } from "./service-desk-seed";
 import type {
   TimeActivity,
   OverviewWidget,
@@ -26,7 +27,8 @@ export interface DbUser {
   /** S31 global roles */
   globalRoleIds?: Id[];
 }
-export interface DbRole { id: Id; name: string; scope: "project" | "global"; builtin: "non_member" | null; permissions: string[] }
+/** builtin requester: 요청자 (ITSM), only its workflow is used, on the portal */
+export interface DbRole { id: Id; name: string; scope: "project" | "global"; builtin: "non_member" | "requester" | null; permissions: string[] }
 export interface DbProject {
   id: Id;
   identifier: string;
@@ -49,9 +51,11 @@ export interface DbProject {
 /** A project member is a user or a group (exactly one of userId / groupId, like members_one_principal). */
 export interface DbMember { id: Id; projectId: Id; userId: Id | null; groupId: Id | null; roleIds: Id[]; createdAt: IsoDateTime }
 export interface DbType { id: Id; name: string; color: string; position: number; isMilestone: boolean; isDefault: boolean; isInRoadmap: boolean; form?: TypeForm | null; descriptionTemplateHtml?: string }
-export interface DbStatus { id: Id; name: string; color: string; position: number; isDefault: boolean; isClosed: boolean; isReadonly: boolean; defaultDoneRatio: number; excludedFromTotals: boolean }
+/** slaPause: the resolve clock of a service ticket stops while it is here (답변 대기); absent = false */
+export interface DbStatus { id: Id; name: string; color: string; position: number; isDefault: boolean; isClosed: boolean; isReadonly: boolean; defaultDoneRatio: number; excludedFromTotals: boolean; slaPause?: boolean }
 export interface DbPriority { id: Id; name: string; color: string; position: number; isDefault: boolean; isActive: boolean }
-export interface DbWorkflow { typeId: Id; roleId: Id; from: Id; to: Id }
+/** appliesTo (absent = always): author / assignee rows only apply to the item's author / assignees (요청자 rows are "author") */
+export interface DbWorkflow { typeId: Id; roleId: Id; from: Id; to: Id; appliesTo?: "always" | "author" | "assignee" }
 export interface DbVersion { id: Id; projectId: Id; name: string; description: string; status: "open" | "locked" | "closed"; startDate: IsoDate | null; endDate: IsoDate | null }
 export interface DbCategory { id: Id; projectId: Id; name: string; defaultAssigneeId: Id | null }
 export interface DbGroup { id: Id; name: string; memberIds: Id[] }
@@ -130,6 +134,11 @@ export interface DbMail { id: Id; to: string; subject: string; link: string; sen
 
 export interface DbApiToken { id: Id; userId: Id; name: string; scope: "read" | "write"; createdAt: IsoDateTime; lastUsedAt: IsoDateTime | null; expiresAt: IsoDateTime | null }
 
+/** portalVisible (absent = false): shown on the portal's form and ticket page */
+export type DbCustomField = CustomField & { portalVisible?: boolean };
+
+export type { DbMatrixCell, DbServiceCalendar, DbServiceTicket, DbSlaPolicy };
+
 export interface Db {
   schema: number;
   seq: { wp: number; id: number };
@@ -154,7 +163,7 @@ export interface Db {
   tokens: DbToken[];
   outbox: DbMail[];
   shares: { id: Id; wpId: Id; userId: Id; role: ShareRole; createdBy: Id | null; createdAt: IsoDateTime }[];
-  customFields: CustomField[];
+  customFields: DbCustomField[];
   projectCustomFields: { projectId: Id; customFieldId: Id }[];
   apiTokens?: DbApiToken[];
   temporaryPasswords?: DbTemporaryPassword[];
@@ -162,6 +171,11 @@ export interface Db {
   timeEntries?: DbTimeEntry[];
   webhooks?: (Omit<Webhook, "secret"> & { secret: string })[];
   apiTokensEnabled?: boolean;
+  /** 서비스 데스크 (ITSM 1단계) */
+  serviceCalendars: DbServiceCalendar[];
+  slaPolicies: DbSlaPolicy[];
+  priorityMatrix: DbMatrixCell[];
+  serviceTickets: DbServiceTicket[];
   queries: DbQuery[];
   queryFavorites: { userId: Id; queryId: Id }[];
   boards: DbBoard[];
@@ -186,7 +200,7 @@ export interface Db {
 }
 
 const KEY = "openpms.fakedb";
-const SCHEMA = 14;
+const SCHEMA = 15;
 
 function load(): Db {
   try {

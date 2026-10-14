@@ -103,14 +103,15 @@ export interface Role {
   id: Id;
   name: string;
   scope: "project" | "global";
-  builtin: "non_member" | null;
+  /** requester: 요청자 (ITSM), checked on the portal only and never given to members */
+  builtin: "non_member" | "requester" | null;
   permissions: string[];
 }
 
 /* ---------- projects ---------- */
 
 export type ProjectStatus = "on_track" | "at_risk" | "off_track";
-export type ModuleKey = "work_packages" | "gantt" | "boards" | "calendar" | "team_planner" | "time_tracking";
+export type ModuleKey = "work_packages" | "gantt" | "boards" | "calendar" | "team_planner" | "time_tracking" | "service_desk";
 
 export interface ProjectRef {
   id: Id;
@@ -169,7 +170,7 @@ export interface AdminApiToken extends ApiToken {
 }
 
 /** 웹훅 (관리 · API와 웹훅) */
-export const WEBHOOK_EVENTS = ["work_package.created", "work_package.updated", "work_package.deleted", "work_package.commented"] as const;
+export const WEBHOOK_EVENTS = ["work_package.created", "work_package.updated", "work_package.deleted", "work_package.commented", "service_ticket.sla_breached"] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 /** 관리 · 시스템 정보 */
 export interface BackupFile {
@@ -430,6 +431,8 @@ export interface WorkPackage {
   lockVersion: number;
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
+  /** 서비스 데스크 티켓 (ITSM): set for 장애·서비스 요청 in a project with the service_desk module */
+  serviceTicket: ServiceTicket | null;
   _meta: {
     allowedActions: {
       edit: boolean;
@@ -486,9 +489,14 @@ export interface WorkPackageInput {
   dueDate?: IsoDate | null;
   /** Only the fields to set; null clears one. */
   customValues?: Record<Id, CustomValue>;
+  /** 서비스 데스크 티켓 only: who asked (default: me), 1 높음 · 2 보통 · 3 낮음 (default 2), the group that handles it */
+  requesterId?: Id;
+  impact?: Level;
+  urgency?: Level;
+  assignmentGroupId?: Id | null;
 }
 
-export interface WorkPackagePatch extends Partial<Omit<WorkPackageInput, "typeId">> {
+export interface WorkPackagePatch extends Partial<Omit<WorkPackageInput, "typeId" | "requesterId" | "impact" | "urgency" | "assignmentGroupId">> {
   lockVersion: number;
   typeId?: Id;
   duration?: number | null;
@@ -665,6 +673,14 @@ export type FilterField =
   | "blocked"
   /** The work package's whole date range; used by the calendar and team planner for the visible window. */
   | "dates"
+  /** 서비스 데스크: the ticket's requester (eq/neq, user id or "me") */
+  | "requester"
+  /** 서비스 데스크: the ticket's assignment group (eq/neq) */
+  | "assignmentGroup"
+  /** 서비스 데스크: portal | agent | api (eq) */
+  | "channel"
+  /** 서비스 데스크: "true" = a response or resolve deadline was missed (eq) */
+  | "slaBreached"
   /** a custom field, by id */
   | `cf:${string}`;
 
@@ -692,6 +708,11 @@ export type ColumnKey =
   | "project"
   | "work"
   | "remainingWork"
+  /** 서비스 데스크 티켓: requester, assignment group, resolve deadline, SLA state (위반 / 멈춤 / 정상) */
+  | "requester"
+  | "assignmentGroup"
+  | "slaDue"
+  | "slaState"
   | `cf:${string}`;
 
 /** Columns a list can be grouped by (and list, user and yes/no custom fields). */
@@ -927,7 +948,10 @@ export type NotificationReason =
   | "dates_changed"
   | "date_alert_start"
   | "date_alert_due"
-  | "date_alert_overdue";
+  | "date_alert_overdue"
+  /** 서비스 데스크: an SLA deadline is close (20 % left) / has passed */
+  | "sla_warning"
+  | "sla_breached";
 
 export interface NotificationItem {
   id: Id;
@@ -1273,4 +1297,148 @@ export interface VersionInput {
   status?: Version["status"];
   startDate?: IsoDate | null;
   endDate?: IsoDate | null;
+}
+
+/* ---------- 서비스 데스크 (ITSM 1단계) ---------- */
+
+export interface IdName {
+  id: Id;
+  name: string;
+}
+
+/** Deadlines of a ticket; times are null when no SLA policy matches its type and priority. */
+export interface Sla {
+  firstResponseDueAt: IsoDateTime | null;
+  firstRespondedAt: IsoDateTime | null;
+  resolveDueAt: IsoDateTime | null;
+  resolvedAt: IsoDateTime | null;
+  /** in a status that stops the resolve clock (답변 대기) */
+  paused: boolean;
+  pausedSeconds: number;
+  responseBreached: boolean;
+  resolveBreached: boolean;
+}
+
+/** 1 높음 · 2 보통 · 3 낮음 (ITIL) */
+export type Level = 1 | 2 | 3;
+
+export interface ServiceTicket {
+  requester: UserRef;
+  channel: "portal" | "agent" | "api";
+  impact: Level;
+  urgency: Level;
+  assignmentGroup: IdName | null;
+  sla: Sla;
+}
+
+/** 서비스 달력: every minute (24x7) or weekly windows outside the non-working days (ISO day 1 = Monday) */
+export interface ServiceCalendar {
+  id: Id;
+  name: string;
+  mode: "24x7" | "business";
+  timeZone: string;
+  hours: { day: number; start: string; end: string }[];
+}
+export interface SlaPolicy {
+  id?: Id;
+  typeId: Id;
+  priorityId: Id;
+  calendarId: Id;
+  firstResponseMinutes: number;
+  resolveMinutes: number;
+}
+export interface MatrixCell {
+  impact: Level;
+  urgency: Level;
+  priorityId: Id;
+}
+export interface ServiceDeskSettings {
+  policies: SlaPolicy[];
+  matrix: MatrixCell[];
+}
+/** Only the fields to change; applyMatrix also sets the priority from the matrix */
+export interface ServiceTicketPatch {
+  requesterId?: Id;
+  impact?: Level;
+  urgency?: Level;
+  assignmentGroupId?: Id | null;
+  applyMatrix?: boolean;
+}
+/** 개요 카드: open tickets by group (null = no group), deadlines of today missed, average first response of the last 30 days */
+export interface ServiceDeskSummary {
+  openByGroup: { group: IdName | null; count: number }[];
+  breachedToday: number;
+  avgFirstResponseMinutes: number | null;
+}
+
+/* the requester's portal: their own tickets only */
+
+export interface PortalField {
+  id: Id;
+  name: string;
+  format: string;
+  required: boolean;
+  multi: boolean;
+  options: string[];
+  /** the ticket types the field applies to */
+  typeIds: Id[];
+}
+export interface PortalDesk {
+  identifier: string;
+  name: string;
+  descriptionText: string;
+  types: IdName[];
+  fields: PortalField[];
+}
+export interface PortalSummary {
+  number: number;
+  subject: string;
+  desk: string;
+  type: string;
+  status: StatusRef;
+  createdAt: IsoDateTime;
+  updatedAt: IsoDateTime;
+  /** a public comment or status change by someone else since I last opened it */
+  hasNews: boolean;
+}
+export interface PortalEntry {
+  id: Id;
+  author: string;
+  fromMe: boolean;
+  notesHtml: string;
+  statusFrom: string | null;
+  statusTo: string | null;
+  at: IsoDateTime;
+}
+export interface PortalFile {
+  id: Id;
+  fileName: string;
+  byteSize: number;
+  createdAt: IsoDateTime;
+}
+export interface PortalTicket {
+  number: number;
+  subject: string;
+  descriptionHtml: string;
+  desk: string;
+  type: IdName;
+  status: StatusRef;
+  closed: boolean;
+  createdAt: IsoDateTime;
+  updatedAt: IsoDateTime;
+  lockVersion: number;
+  /** where the requester may move it (the 요청자 role's workflow) */
+  allowedStatuses: IdName[];
+  fields: { name: string; value: string }[];
+  /** public comments and status changes, oldest first (empty right after submitting) */
+  activity: PortalEntry[];
+  files: PortalFile[];
+}
+export interface PortalSubmit {
+  typeId: Id;
+  subject: string;
+  descriptionHtml: string;
+  impact: Level;
+  urgency: Level;
+  customValues: Record<string, unknown>;
 }

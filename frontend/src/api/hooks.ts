@@ -2,7 +2,7 @@
 // rules live in one place.
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { TimeFilter, TimeGroupBy, TimeWeekCell, ApiTokenInput, QueryFilter, BoardKind, Id, NotificationFilter, NotificationSetting, Preferences, ProfileInput, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch } from "./types";
+import type { TimeFilter, TimeGroupBy, TimeWeekCell, ApiTokenInput, QueryFilter, BoardKind, Id, NotificationFilter, NotificationSetting, Preferences, ProfileInput, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch, ServiceDeskSettings, ServiceTicketPatch, PortalSubmit } from "./types";
 
 export const qk = {
   me: ["me"] as const,
@@ -337,5 +337,61 @@ export function useApiTokenMutations() {
   return {
     create: useMutation({ mutationFn: (input: ApiTokenInput) => api.account.createApiToken(input), onSuccess: refresh }),
     revoke: useMutation({ mutationFn: (id: Id) => api.account.revokeApiToken(id), onSuccess: refresh }),
+  };
+}
+
+/* ---------- 서비스 데스크 (ITSM 1단계) ---------- */
+
+export const useServiceCalendars = () => useQuery({ queryKey: ["service-calendars"], queryFn: () => api.serviceDesk.calendars(), staleTime: 300_000 });
+export const useServiceDeskSettings = (project: string) =>
+  useQuery({ queryKey: ["serviceDesk", project, "settings"], queryFn: () => api.serviceDesk.settings(project) });
+export const useServiceDeskGroups = (project: string) =>
+  useQuery({ queryKey: ["serviceDesk", project, "groups"], queryFn: () => api.serviceDesk.groups(project), staleTime: 300_000 });
+export const useServiceDeskSummary = (project: string) =>
+  useQuery({ queryKey: ["serviceDesk", project, "summary"], queryFn: () => api.serviceDesk.summary(project) });
+
+/** Saving the SLA policies and matrix refreshes everything of that desk. */
+export function useServiceDeskMutations(project: string) {
+  const qc = useQueryClient();
+  return {
+    saveSettings: useMutation({
+      mutationFn: (s: ServiceDeskSettings) => api.serviceDesk.saveSettings(project, s),
+      onSuccess: () => qc.invalidateQueries({ queryKey: ["serviceDesk", project] }),
+    }),
+  };
+}
+
+/** Requester, impact, urgency, group (and the matrix priority) of one ticket: a work package write. */
+export function useServiceTicketUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ number, patch }: { number: number; patch: ServiceTicketPatch }) => api.serviceDesk.updateTicket(number, patch),
+    onSuccess: (wp: WorkPackage) => {
+      qc.setQueryData(qk.wp(wp.number), wp);
+      invalidateWorkPackages(qc, wp.number);
+      qc.invalidateQueries({ queryKey: ["serviceDesk"] });
+    },
+  });
+}
+
+/* the requester's portal */
+
+export const usePortalDesks = () => useQuery({ queryKey: ["portal", "desks"], queryFn: () => api.portal.desks() });
+export const usePortalTickets = (state: "open" | "closed" | "all") =>
+  useQuery({ queryKey: ["portal", "tickets", state], queryFn: () => api.portal.tickets(state), placeholderData: keepPreviousData });
+/** Opening a ticket clears its "새 소식", so the lists refresh after it loads. */
+export const usePortalTicket = (number: number) => useQuery({ queryKey: ["portal", "ticket", number], queryFn: () => api.portal.ticket(number) });
+
+export function usePortalMutations() {
+  const qc = useQueryClient();
+  const done = () => qc.invalidateQueries({ queryKey: ["portal"] });
+  return {
+    submit: useMutation({ mutationFn: (v: { identifier: string; input: PortalSubmit }) => api.portal.submit(v.identifier, v.input), onSuccess: done }),
+    comment: useMutation({ mutationFn: (v: { number: number; bodyHtml: string }) => api.portal.comment(v.number, v.bodyHtml), onSuccess: done }),
+    setStatus: useMutation({
+      mutationFn: (v: { number: number; statusId: Id; lockVersion: number }) => api.portal.setStatus(v.number, v.statusId, v.lockVersion),
+      onSuccess: done,
+    }),
+    attach: useMutation({ mutationFn: (v: { number: number; file: File }) => api.portal.attach(v.number, v.file), onSuccess: done }),
   };
 }

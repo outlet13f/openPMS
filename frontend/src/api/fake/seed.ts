@@ -3,6 +3,7 @@
 
 import type { Db, DbJournal, DbWp } from "./db";
 import { seedTime } from "./time-seed";
+import { seedServiceDesk } from "./service-desk-seed";
 import type { CustomField, MyPageWidget, QuerySpec } from "../types";
 
 const P_MANAGER = [
@@ -14,12 +15,13 @@ const P_MANAGER = [
   "wp.edit_comments", "wp.view_internal_comments", "wp.add_internal_comments", "wp.manage_relations",
   "wp.manage_subtasks", "wp.assign_versions", "wp.view_watchers", "wp.add_watchers", "wp.delete_watchers", "wp.export",
   "query.save", "query.manage_public", "board.view", "board.manage", "time.log", "time.view", "time.manage",
+  "service.view", "service.handle", "service.manage",
 ];
 const P_MEMBER = [
   "project.view", "project.view_members",
   "wp.view", "wp.create", "wp.edit", "wp.move", "wp.attach", "wp.comment", "wp.edit_own_comments",
   "wp.manage_relations", "wp.manage_subtasks", "wp.assign_versions", "wp.view_watchers", "wp.add_watchers", "wp.export",
-  "query.save", "board.view", "board.manage", "time.log", "time.view",
+  "query.save", "board.view", "board.manage", "time.log", "time.view", "service.view", "service.handle",
 ];
 const P_VIEWER = ["project.view", "project.view_members", "wp.view", "wp.comment", "wp.edit_own_comments", "wp.view_watchers", "wp.export", "query.save", "board.view"];
 const P_NON_MEMBER = ["project.view", "wp.view", "board.view"];
@@ -241,6 +243,9 @@ export function buildSeed(schema: number): Db {
     { id: "n-3", recipientId: "u-seoyeon", wpId: "wp-8", journalId: reviewed.id, actorId: "u-alex", reason: "watched" as const, readAt: iso("2026-10-08T15:00:00+09:00"), createdAt: reviewed.createdAt },
   ];
 
+  // 서비스 데스크 (V20 + V1004): its own types, statuses, 요청자 role, project and six tickets numbered after the rows above
+  const sd = seedServiceDesk(Date.now(), rows.length + 1);
+
   const milestoneSpec: QuerySpec = { v: 1, filters: [{ field: "isMilestone", op: "eq", values: ["true"] }], columns: ["number", "subject", "status", "dueDate", "assignee"], sort: [{ field: "dueDate", dir: "asc" }], groupBy: null, hierarchy: false, sums: false, includeSubprojects: true };
   const myBugsSpec: QuerySpec = { v: 1, filters: [{ field: "type", op: "eq", values: ["t-bug"] }, { field: "status", op: "open" }], columns: DEFAULT_COLUMNS, sort: [{ field: "priority", dir: "desc" }], groupBy: null, hierarchy: false, sums: false, includeSubprojects: true };
   // calendars and team planners are saved queries too (queries.view); the visible window is added at query time
@@ -253,16 +258,16 @@ export function buildSeed(schema: number): Db {
   return {
     schema,
     ...seedTime(),
-    seq: { wp: 21, id: 1000 },
+    seq: { wp: rows.length + sd.workPackages.length, id: 1000 },
     sessionUserId: null,
     users,
-    roles,
-    projects,
-    members,
-    types,
-    statuses,
+    roles: [...roles, ...sd.roles],
+    projects: [...projects, sd.project],
+    members: [...members, ...sd.members],
+    types: [...types, ...sd.types],
+    statuses: [...statuses, ...sd.statuses],
     priorities,
-    workflows: wf,
+    workflows: [...wf, ...sd.workflows],
     versions,
     categories: [
       { id: "c-fe", projectId: "p-web", name: "프론트엔드", defaultAssigneeId: "u-haneul" },
@@ -272,10 +277,15 @@ export function buildSeed(schema: number): Db {
     groups: [
       { id: "g-web", name: "웹 플랫폼 팀", memberIds: ["u-junho", "u-haneul", "u-alex"] },
       { id: "g-infra", name: "인프라 담당", memberIds: ["u-haneul"] },
+      ...sd.groups,
     ],
-    workPackages,
+    workPackages: [...workPackages, ...sd.workPackages],
     relations,
-    journals,
+    journals: [...journals, ...sd.journals],
+    serviceCalendars: sd.serviceCalendars,
+    slaPolicies: sd.slaPolicies,
+    priorityMatrix: sd.priorityMatrix,
+    serviceTickets: sd.serviceTickets,
     watchers: [
       { wpId: "wp-8", userId: "u-seoyeon" },
       { wpId: "wp-3", userId: "u-junho" },

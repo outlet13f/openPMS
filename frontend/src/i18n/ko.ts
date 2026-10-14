@@ -292,6 +292,7 @@ const ko = {
       number: "번호", subject: "제목", type: "유형", status: "상태", priority: "우선순위", assignee: "담당자",
       responsible: "책임자", author: "작성자", version: "버전", startDate: "시작일", dueDate: "완료일", duration: "기간",
       doneRatio: "완료 %", updatedAt: "최근 수정", project: "프로젝트", work: "작업량", remainingWork: "남은 작업",
+      requester: "요청자", assignmentGroup: "처리 그룹", slaDue: "해결 기한", slaState: "SLA",
     },
     grouping: {
       menu: "그룹화",
@@ -502,7 +503,7 @@ const ko = {
     url: "받는 주소",
     urlHint: "http:// 또는 https:// 주소. 리다이렉트는 따라가지 않습니다.",
     events: "보낼 이벤트",
-    eventNames: { work_package_created: "작업 생성", work_package_updated: "작업 변경", work_package_deleted: "작업 삭제", work_package_commented: "코멘트" },
+    eventNames: { work_package_created: "작업 생성", work_package_updated: "작업 변경", work_package_deleted: "작업 삭제", work_package_commented: "코멘트", service_ticket_sla_breached: "SLA 위반" },
     projects: "프로젝트",
     projectsHint: "고르지 않으면 모든 프로젝트의 이벤트를 보냅니다.",
     allProjects: "모든 프로젝트",
@@ -636,6 +637,7 @@ const ko = {
     reasons: {
       mentioned: "언급", assigned: "담당", responsible: "책임", watched: "주시", shared: "공유", created: "새 작업", commented: "코멘트",
       status_changed: "상태", priority_changed: "우선순위", dates_changed: "날짜", date_alert_start: "시작일 알림", date_alert_due: "완료일 알림", date_alert_overdue: "기한 지남",
+      sla_warning: "SLA 임박", sla_breached: "SLA 위반",
     },
     selectPrompt: "왼쪽에서 알림을 고르면 작업 내용이 여기에 열립니다.",
     byReason: "이유로 거르기",
@@ -954,7 +956,7 @@ const ko = {
     },
   },
   permissions: {
-    groups: { project: "프로젝트", wp: "작업", query: "보기", board: "보드", time: "시간 기록", global: "전역" },
+    groups: { project: "프로젝트", wp: "작업", query: "보기", board: "보드", time: "시간 기록", service: "서비스 데스크", global: "전역" },
     keys: {
       project_view: "프로젝트 보기",
       project_edit: "프로젝트 정보·상태 수정",
@@ -992,6 +994,9 @@ const ko = {
       time_log: "내 시간 기록",
       time_view: "시간 기록 보기",
       time_manage: "시간 기록 관리(다른 사람 것 포함)",
+      service_view: "서비스 데스크 티켓·설정 보기",
+      service_handle: "티켓 처리(요청자·영향도·긴급도·처리 그룹)",
+      service_manage: "SLA 정책·우선순위 행렬 관리",
       global_create_projects: "프로젝트 만들기",
       global_manage_users: "사용자·그룹 관리",
     },
@@ -1020,7 +1025,7 @@ const ko = {
     archiveConfirm: "'{{name}}' 프로젝트를 보관할까요?",
     archived: "프로젝트를 보관했습니다",
     modulesHint: "끈 모듈은 메뉴에서 사라지고, 주소로 들어오면 꺼진 기능이라고 안내합니다. 데이터는 지워지지 않습니다.",
-    modules: { work_packages: "작업", gantt: "Gantt", boards: "보드", calendar: "캘린더", team_planner: "팀 플래너", time_tracking: "시간 기록" },
+    modules: { work_packages: "작업", gantt: "Gantt", boards: "보드", calendar: "캘린더", team_planner: "팀 플래너", time_tracking: "시간 기록", service_desk: "서비스 데스크" },
     moduleHints: {
       work_packages: "프로젝트의 기본 기능이라 끌 수 없습니다.",
       gantt: "일정과 선후행 관계를 타임라인으로 봅니다.",
@@ -1028,6 +1033,7 @@ const ko = {
       calendar: "월·주 달력으로 일정을 봅니다.",
       team_planner: "사람별 주간 배정을 봅니다.",
       time_tracking: "작업에 쓴 시간을 기록하고 공수 보고서로 모아 봅니다.",
+      service_desk: "장애 신고·서비스 요청을 받고 SLA를 관리합니다. 비공개 프로젝트에서만 켤 수 있습니다.",
     },
     types: {
       title: "사용할 유형",
@@ -1769,7 +1775,12 @@ const ko = {
       scheduleManually: "일정 방식",
       isMilestone: "마일스톤",
       blocked: "다른 작업에 막힘",
+      requester: "요청자",
+      assignmentGroup: "처리 그룹",
+      channel: "접수 경로",
+      slaBreached: "SLA 위반",
     },
+    channels: { portal: "포털", agent: "처리자 등록", api: "API" },
   },
   help: {
     title: "도움말",
