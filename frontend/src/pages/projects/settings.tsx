@@ -21,15 +21,20 @@ import { htmlToText, textToHtml } from "@/lib/text";
 import { ErrorState, PageBody, PageHeader, useDocumentTitle } from "@/app/page";
 import { can, useCurrentProject } from "@/app/project";
 import { AdminTable, ConfirmDialog, fieldErrorOf, tbodyRow, th, theadRow, useRunWithToast } from "@/features/admin/common";
+import { ServiceDeskSection } from "@/features/service-desk/settings-section";
 
-const SECTIONS = ["general", "modules", "work-packages", "versions"] as const;
+/** 서비스 데스크 settings: the module on and service.view. */
+const serviceOn = (p: Project) => p.enabledModules.includes("service_desk") && can(p, "service.view");
+
+const SECTIONS = ["general", "modules", "work-packages", "versions", "service-desk"] as const;
 type Section = (typeof SECTIONS)[number];
 
 function SettingsNav({ base }: { base: string }) {
   const { t } = useTranslation();
+  const project = useCurrentProject();
   return (
     <nav aria-label={t("settings.nav")} className="mb-6 flex gap-1 overflow-x-auto border-b border-border">
-      {SECTIONS.map((s) => (
+      {SECTIONS.filter((s) => s !== "service-desk" || serviceOn(project)).map((s) => (
         <NavLink
           key={s}
           to={`${base}/${s}`}
@@ -238,7 +243,7 @@ function GeneralSection() {
 
 /* ---------- 모듈 ---------- */
 
-const MODULES: ModuleKey[] = ["work_packages", "gantt", "boards", "calendar", "team_planner", "time_tracking"];
+const MODULES: ModuleKey[] = ["work_packages", "gantt", "boards", "calendar", "team_planner", "time_tracking", "service_desk"];
 
 function ModulesSection() {
   const { t } = useTranslation();
@@ -642,8 +647,8 @@ export function ProjectSettingsPage() {
   const project = useCurrentProject();
   useDocumentTitle(`${t("nav.settings")} · ${project.name}`);
   const base = `/projects/${project.identifier}/settings`;
-  if (!SECTIONS.includes(section as Section)) return <Navigate to={`${base}/general`} replace />;
-  if (!can(project, "project.edit") && !can(project, "project.manage_versions") && !can(project, "project.manage_types") && !can(project, "project.manage_custom_fields"))
+  if (!SECTIONS.includes(section as Section) || (section === "service-desk" && !serviceOn(project))) return <Navigate to={`${base}/general`} replace />;
+  if (!can(project, "project.edit") && !can(project, "project.manage_versions") && !can(project, "project.manage_types") && !can(project, "project.manage_custom_fields") && !serviceOn(project))
     return (
       <PageBody>
         <PageHeader title={t("nav.settings")} />
@@ -658,6 +663,7 @@ export function ProjectSettingsPage() {
       {section === "modules" && <ModulesSection key={project.updatedAt} />}
       {section === "work-packages" && <WorkPackagesSection />}
       {section === "versions" && <VersionsSection />}
+      {section === "service-desk" && <ServiceDeskSection />}
     </PageBody>
   );
 }

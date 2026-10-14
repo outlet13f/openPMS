@@ -123,7 +123,9 @@ function ProjectSidebar({ identifier, onNavigate, onCollapse }: { identifier: st
     mod("team_planner") && { label: t("nav.teamPlanner"), to: `${base}/team-planner`, icon: <CalendarRange /> },
     mod("time_tracking") && can(p, "time.view") && { label: t("nav.timeReport"), to: `${base}/time`, icon: <Clock /> },
     can(p, "project.view_members") && { label: t("nav.members"), to: `${base}/members`, icon: <Users /> },
-    can(p, "project.edit") && { label: t("nav.settings"), to: `${base}/settings/general`, icon: <Settings /> },
+    can(p, "project.edit") ? { label: t("nav.settings"), to: `${base}/settings/general`, icon: <Settings /> }
+    // agents without project.edit still reach the service desk settings (read-only below service.manage)
+    : mod("service_desk") && can(p, "service.view") && { label: t("nav.settings"), to: `${base}/settings/service-desk`, icon: <Settings /> },
   ].filter(Boolean) as SidebarSection["items"];
   return <Sidebar label={t("nav.projectMenu")} header={<ProjectSwitcher project={p} />} sections={[{ items }]} onNavigate={onNavigate} onCollapse={onCollapse} />;
 }
@@ -133,7 +135,7 @@ function AdminSidebar({ me, onNavigate, onCollapse }: { me: Me; onNavigate?: () 
   const groups: { title: string; keys: string[] }[] = [
     { title: t("admin.groupTitles.workPackages"), keys: ["types", "statuses", "workflows", "priorities", "customFields", "progress"] },
     { title: t("admin.groupTitles.people"), keys: ["users", "groups", "roles", "authentication"] },
-    { title: t("admin.groupTitles.calendar"), keys: ["calendar"] },
+    { title: t("admin.groupTitles.calendar"), keys: ["calendar", "serviceCalendars"] },
     { title: t("admin.groupTitles.integrations"), keys: ["integrations"] },
     { title: t("admin.groupTitles.system"), keys: ["system"] },
   ];

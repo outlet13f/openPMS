@@ -27,6 +27,8 @@ import { BaselineRemovedSection } from "@/features/work-packages/baseline-remove
 import { formatDateTime, todayIso } from "@/lib/dates";
 
 const ALL_COLUMNS: ColumnKey[] = ["number", "subject", "type", "status", "priority", "assignee", "responsible", "author", "version", "startDate", "dueDate", "duration", "work", "remainingWork", "doneRatio", "updatedAt", "project"];
+/** 서비스 데스크 columns: only in a project with the module on (they are empty everywhere else). */
+const SERVICE_COLUMNS: ColumnKey[] = ["requester", "assignmentGroup", "slaDue", "slaState"];
 
 function SaveViewDialog({ open, onOpenChange, spec, project, onSaved }: { open: boolean; onOpenChange: (o: boolean) => void; spec: QuerySpec; project: Project | null; onSaved: (id: string) => void }) {
   const { t } = useTranslation();
@@ -116,7 +118,8 @@ export function WorkPackagesPage() {
   const options = useFilterOptions(project?.id).data;
   const columnLabel = useColumnLabel(options);
   // built-in columns, then the custom fields on in this scope
-  const allColumns: ColumnKey[] = [...ALL_COLUMNS, ...(options?.customFields ?? []).map((f) => cfColumn(f.id))];
+  const serviceOn = !!project && project.enabledModules.includes("service_desk") && can(project, "service.view");
+  const allColumns: ColumnKey[] = [...ALL_COLUMNS, ...(serviceOn ? SERVICE_COLUMNS : []), ...(options?.customFields ?? []).map((f) => cfColumn(f.id))];
   const groupColumns: ColumnKey[] = [...GROUPABLE_COLUMNS, ...(options?.customFields ?? []).filter((f) => ["list", "user", "bool"].includes(f.format)).map((f) => cfColumn(f.id))];
   const form = useWpForm(project && can(project, "wp.create") ? project.id : undefined);
   const mutations = useSavedQueryMutations(project?.id);

@@ -10,6 +10,10 @@ import { Input } from "@/components/ui/field";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { useLatestSent } from "@/lib/use-latest-sent";
+import { can, useOptionalProject } from "@/app/project";
+
+/** 서비스 데스크 filters: only in a project with the module on (no ticket matches anywhere else). */
+const SERVICE_FILTERS: FilterField[] = ["requester", "assignmentGroup", "channel", "slaBreached"];
 
 /** What the value part of a filter row looks like for an operator. */
 type ValueKind = "multi" | "text" | "number" | "days" | "date" | "range" | "bool" | "wp";
@@ -179,7 +183,10 @@ function ValueInput({ def, op, filter, options, onValues }: { def: Def; op: OpDe
 
 export function FilterPanel({ spec, onSpec, options }: { spec: QuerySpec; onSpec: (s: QuerySpec) => void; options?: FilterOptions }) {
   const { t } = useTranslation();
-  const defs = useDefs(options);
+  const project = useOptionalProject();
+  const serviceOn = !!project && project.enabledModules.includes("service_desk") && can(project, "service.view");
+  const allDefs = useDefs(options);
+  const defs = serviceOn ? allDefs : (Object.fromEntries(Object.entries(allDefs).filter(([k]) => !SERVICE_FILTERS.includes(k as FilterField))) as typeof allDefs);
   // The spec as last sent, ahead of its round trip through the URL: two quick edits (removing two filters,
   // say) must build on each other, not on the same stale props.
   const { latest, send } = useLatestSent(spec, (s) => JSON.stringify(s));
