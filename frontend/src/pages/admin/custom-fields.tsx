@@ -22,13 +22,13 @@ const FORMATS: CustomFieldFormat[] = ["string", "text", "integer", "float", "lis
 
 const EMPTY: CustomFieldInput = {
   name: "", format: "string", isRequired: false, isForAll: true, isFilterable: true, isMultiValue: false, defaultValue: null,
-  minLength: null, maxLength: null, regexp: null, options: [], typeIds: [],
+  minLength: null, maxLength: null, regexp: null, options: [], typeIds: [], portalVisible: false,
 };
 
 const toInput = (f: AdminCustomField): CustomFieldInput => ({
   name: f.name, format: f.format, isRequired: f.isRequired, isForAll: f.isForAll, isFilterable: f.isFilterable, isMultiValue: f.isMultiValue,
   defaultValue: f.defaultValue, minLength: f.minLength, maxLength: f.maxLength, regexp: f.regexp, options: f.options.map((o) => ({ id: o.id, value: o.value })),
-  typeIds: f.typeIds,
+  typeIds: f.typeIds, portalVisible: f.portalVisible,
 });
 
 const intOrNull = (v: string) => (v.trim() === "" ? null : Number(v));
@@ -107,6 +107,7 @@ function FieldDialog({ editing, onClose }: { editing: AdminCustomField | null; o
           <Checkbox label={t("customFields.form.isForAll")} description={t("customFields.form.isForAllHint")} checked={v.isForAll} onCheckedChange={(c) => set("isForAll", c === true)} />
           <Checkbox label={t("customFields.form.isRequired")} description={t("customFields.form.isRequiredHint")} checked={v.isRequired} onCheckedChange={(c) => set("isRequired", c === true)} />
           <Checkbox label={t("customFields.form.isFilterable")} checked={v.isFilterable} onCheckedChange={(c) => set("isFilterable", c === true)} />
+          <Checkbox label={t("customFields.form.portalVisible")} description={t("customFields.form.portalVisibleHint")} checked={!!v.portalVisible} onCheckedChange={(c) => set("portalVisible", c === true)} />
           {refs && <Checkbox label={t("customFields.form.isMultiValue")} checked={v.isMultiValue} onCheckedChange={(c) => setV((x) => ({ ...x, isMultiValue: c === true, defaultValue: null }))} />}
         </div>
 

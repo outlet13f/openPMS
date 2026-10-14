@@ -1053,6 +1053,8 @@ export interface CustomField {
 export interface AdminCustomField extends CustomField {
   /** projects that turned it on (not counting isForAll) */
   projectCount: number;
+  /** 포털에 공개: shown on the service desk portal's form and ticket page */
+  portalVisible: boolean;
 }
 
 /** Options without an id are new; existing ones keep theirs; missing ones are removed (and cleared from items). */
@@ -1069,6 +1071,8 @@ export interface CustomFieldInput {
   regexp: string | null;
   options: { id?: Id; value: string }[];
   typeIds: Id[];
+  /** default false */
+  portalVisible?: boolean;
 }
 
 export interface ProjectCustomFields {
@@ -1180,6 +1184,8 @@ export interface TypeForm {
 
 export interface AdminStatus extends Status {
   excludedFromTotals: boolean;
+  /** SLA 멈춤: the resolve clock of service desk tickets stops while they are in this status */
+  slaPause: boolean;
   workPackageCount: number;
 }
 export interface StatusInput {
@@ -1190,6 +1196,8 @@ export interface StatusInput {
   isReadonly: boolean;
   defaultDoneRatio: number;
   excludedFromTotals: boolean;
+  /** default false */
+  slaPause?: boolean;
 }
 
 export interface AdminPriority extends Priority {

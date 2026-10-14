@@ -131,7 +131,7 @@ public final class Dto {
 
     public record AdminCustomField(UUID id, String name, String format, boolean isRequired, boolean isForAll, boolean isFilterable, boolean isMultiValue,
                                    Object defaultValue, Integer minLength, Integer maxLength, String regexp, int position, List<CustomFieldOption> options,
-                                   List<UUID> typeIds, int projectCount) {}
+                                   List<UUID> typeIds, int projectCount, boolean portalVisible) {}
 
     public record ProjectCustomFields(List<CustomField> fields, List<UUID> enabledIds) {}
 

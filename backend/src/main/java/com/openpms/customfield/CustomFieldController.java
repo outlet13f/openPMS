@@ -70,11 +70,17 @@ public class CustomFieldController {
     private List<Dto.AdminCustomField> list(Snapshot s) {
         var projects = db.select(PROJECT_CUSTOM_FIELDS.CUSTOM_FIELD_ID, count()).from(PROJECT_CUSTOM_FIELDS).groupBy(PROJECT_CUSTOM_FIELDS.CUSTOM_FIELD_ID)
                 .fetchMap(PROJECT_CUSTOM_FIELDS.CUSTOM_FIELD_ID, count());
+        var portal = portalVisible();
         return s.customFields().stream().map(f -> {
             var d = customFields.dto(f);
             return new Dto.AdminCustomField(d.id(), d.name(), d.format(), d.isRequired(), d.isForAll(), d.isFilterable(), d.isMultiValue(), d.defaultValue(),
-                    d.minLength(), d.maxLength(), d.regexp(), d.position(), d.options(), d.typeIds(), projects.getOrDefault(f.id(), 0));
+                    d.minLength(), d.maxLength(), d.regexp(), d.position(), d.options(), d.typeIds(), projects.getOrDefault(f.id(), 0), portal.contains(f.id()));
         }).toList();
+    }
+
+    /** 포털에 공개 (service desk portal) is not in the snapshot: only the portal and this screen read it. */
+    private java.util.Set<UUID> portalVisible() {
+        return new HashSet<>(db.select(CUSTOM_FIELDS.ID).from(CUSTOM_FIELDS).where(CUSTOM_FIELDS.PORTAL_VISIBLE).fetch(CUSTOM_FIELDS.ID));
     }
 
     private Dto.AdminCustomField one(Ctx ctx, UUID id) {
@@ -92,7 +98,8 @@ public class CustomFieldController {
     private record Option(UUID id, String value) {}
 
     private record Definition(String name, String format, boolean isRequired, boolean isForAll, boolean isFilterable, boolean isMultiValue,
-                              Object defaultValue, Integer minLength, Integer maxLength, String regexp, List<Option> options, List<UUID> typeIds) {}
+                              Object defaultValue, Integer minLength, Integer maxLength, String regexp, List<Option> options, List<UUID> typeIds,
+                              boolean portalVisible) {}
 
     private static boolean bool(Map<String, Object> in, String key, boolean fallback) {
         return In.has(in, key) ? Boolean.TRUE.equals(In.bool(in, key)) : fallback;
@@ -176,7 +183,8 @@ public class CustomFieldController {
         } catch (ApiException e) {
             throw ApiException.field("defaultValue", "기본값이 이 필드의 형식·조건에 맞지 않습니다.");
         }
-        return new Definition(name, format, draft.isRequired(), draft.isForAll(), draft.isFilterable(), multi, checked, min, max, regexp, options, typeIds);
+        boolean portal = bool(in, "portalVisible", existing != null && portalVisible().contains(existing.id()));
+        return new Definition(name, format, draft.isRequired(), draft.isForAll(), draft.isFilterable(), multi, checked, min, max, regexp, options, typeIds, portal);
     }
 
     private void store(UUID id, Definition d) {
@@ -185,6 +193,7 @@ public class CustomFieldController {
                 .set(CUSTOM_FIELDS.IS_FILTERABLE, d.isFilterable()).set(CUSTOM_FIELDS.IS_MULTI_VALUE, d.isMultiValue())
                 .set(CUSTOM_FIELDS.DEFAULT_VALUE, d.defaultValue() == null ? null : JSONB.valueOf(json.writeValueAsString(d.defaultValue())))
                 .set(CUSTOM_FIELDS.MIN_LENGTH, d.minLength()).set(CUSTOM_FIELDS.MAX_LENGTH, d.maxLength()).set(CUSTOM_FIELDS.REGEXP, d.regexp())
+                .set(CUSTOM_FIELDS.PORTAL_VISIBLE, d.portalVisible())
                 .where(CUSTOM_FIELDS.ID.eq(id)).execute();
         var keep = d.options().stream().map(Option::id).toList();
         db.deleteFrom(CUSTOM_FIELD_OPTIONS).where(CUSTOM_FIELD_OPTIONS.CUSTOM_FIELD_ID.eq(id), keep.isEmpty() ? DSL.trueCondition() : CUSTOM_FIELD_OPTIONS.ID.notIn(keep)).execute();

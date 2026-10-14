@@ -16,7 +16,7 @@ import { AdminGuard } from "./index";
 
 /* ---------- statuses ---------- */
 
-const EMPTY_STATUS: StatusInput = { name: "", color: "#0b7575", isDefault: false, isClosed: false, isReadonly: false, defaultDoneRatio: 0, excludedFromTotals: false };
+const EMPTY_STATUS: StatusInput = { name: "", color: "#0b7575", isDefault: false, isClosed: false, isReadonly: false, defaultDoneRatio: 0, excludedFromTotals: false, slaPause: false };
 
 function StatusDialog({ editing, onClose }: { editing: AdminStatus | null; onClose: () => void }) {
   const { t } = useTranslation();
@@ -56,6 +56,7 @@ function StatusDialog({ editing, onClose }: { editing: AdminStatus | null; onClo
           <Checkbox label={t("admin.statuses.isClosed")} description={t("admin.statuses.isClosedHint")} checked={v.isClosed} onCheckedChange={(c) => setV({ ...v, isClosed: c === true })} />
           <Checkbox label={t("admin.statuses.isReadonly")} description={t("admin.statuses.isReadonlyHint")} checked={v.isReadonly} onCheckedChange={(c) => setV({ ...v, isReadonly: c === true })} />
           <Checkbox label={t("admin.statuses.excluded")} description={t("admin.statuses.excludedHint")} checked={v.excludedFromTotals} onCheckedChange={(c) => setV({ ...v, excludedFromTotals: c === true })} />
+          <Checkbox label={t("admin.statuses.slaPause")} description={t("admin.statuses.slaPauseHint")} checked={!!v.slaPause} onCheckedChange={(c) => setV({ ...v, slaPause: c === true })} />
         </div>
         <p className="text-xs text-fg-muted">
           {t("admin.preview")}: <StatusPill name={v.name || t("admin.name")} color={/^#[0-9a-fA-F]{6}$/.test(v.color) ? v.color : "#000000"} />

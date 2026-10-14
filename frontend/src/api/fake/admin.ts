@@ -5,7 +5,7 @@ import type { AdminCustomField, AdminOidcProvider, OidcProviderInput, AuthSettin
 import { ApiError } from "../errors";
 import { DATE_FORMATS } from "../types";
 import { nowIso } from "@/lib/dates";
-import { db, newId, type DbUser } from "./db";
+import { db, newId, type DbCustomField, type DbUser } from "./db";
 import { findProject, globalPermissions, memberRoleIds, requirePerm, sessionUser } from "./permissions";
 import { clone, toProject, userRef } from "./dto";
 import { rescheduleAll } from "./scheduling";
@@ -88,7 +88,7 @@ function applyCalendarChange(actor: DbUser) {
 
 const toType = (t: (typeof db.types)[number]): AdminType =>
   clone({ ...t, form: t.form ?? null, descriptionTemplateHtml: t.descriptionTemplateHtml ?? "", workPackageCount: db.workPackages.filter((w) => w.typeId === t.id).length, projectCount: db.projects.filter((p) => p.typeIds.includes(t.id)).length });
-const toStatus = (s: (typeof db.statuses)[number]): AdminStatus => clone({ ...s, workPackageCount: db.workPackages.filter((w) => w.statusId === s.id).length });
+const toStatus = (s: (typeof db.statuses)[number]): AdminStatus => clone({ ...s, slaPause: !!s.slaPause, workPackageCount: db.workPackages.filter((w) => w.statusId === s.id).length });
 const toPriority = (p: (typeof db.priorities)[number]): AdminPriority => clone({ ...p, workPackageCount: db.workPackages.filter((w) => w.priorityId === p.id).length });
 const toRole = (r: (typeof db.roles)[number]): AdminRole =>
   clone({ ...r, memberCount: r.scope === "project" ? db.members.filter((m) => m.roleIds.includes(r.id)).length : 0 });
@@ -165,7 +165,9 @@ function checkForm(form: TypeForm): TypeForm {
 /* ---------- custom fields (S34, S25) ---------- */
 
 const FORMATS: CustomField["format"][] = ["string", "text", "integer", "float", "list", "date", "bool", "user", "link"];
-const toAdminField = (f: CustomField): AdminCustomField => ({ ...toField(f), projectCount: db.projectCustomFields.filter((x) => x.customFieldId === f.id).length });
+const toAdminField = (f: DbCustomField): AdminCustomField => ({
+  ...toField(f), projectCount: db.projectCustomFields.filter((x) => x.customFieldId === f.id).length, portalVisible: !!f.portalVisible,
+});
 
 /**
  * Checks a definition (create, or an update merged onto the stored one) and returns the field to store.
@@ -253,7 +255,7 @@ export const customFieldsAdmin: Api["admin"]["customFields"] = {
   create: (input) =>
     run(() => {
       requireAdmin(sessionUser());
-      const f = buildField(input);
+      const f: DbCustomField = { ...buildField(input), portalVisible: !!input.portalVisible };
       db.customFields.push(f);
       return toAdminField(f);
     }),
@@ -264,6 +266,7 @@ export const customFieldsAdmin: Api["admin"]["customFields"] = {
       if (!f) throw notFound("사용자 정의 필드");
       const next = buildField({ ...f, ...patch }, f);
       Object.assign(f, next);
+      if (patch.portalVisible !== undefined) f.portalVisible = !!patch.portalVisible;
       migrateValues(f);
       return toAdminField(f);
     }),
