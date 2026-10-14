@@ -16,7 +16,7 @@ public class JobCatalog {
     private final Map<String, Job> jobs = new TreeMap<>();
 
     public JobCatalog(DateAlerts alerts, MailJobs mail, Housekeeping housekeeping, com.openpms.webhook.Webhooks webhooks,
-                      com.openpms.itsm.SlaJobs slaJobs) {
+                      com.openpms.itsm.SlaJobs slaJobs, com.openpms.itsm.PortalMail portalMail) {
         jobs.put("webhook-delivery", webhooks::deliver);
         jobs.put("date-alerts", alerts::run);
         jobs.put("mail-mention", mail::mentions);
@@ -24,6 +24,7 @@ public class JobCatalog {
         jobs.put("token-cleanup", housekeeping::tokens);
         jobs.put("file-sweep", housekeeping::files);
         jobs.put("sla-check", slaJobs::run);
+        jobs.put("portal-mail", portalMail::run);
     }
 
     public Map<String, Job> all() {
