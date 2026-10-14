@@ -168,4 +168,22 @@ class PortalFlowIT {
         f.send(requester, get("/api/v1/portal/tickets/" + n), "").andExpect(status().isOk());
         f.send(requester, get("/api/v1/portal/tickets"), "").andExpect(jsonPath("$[?(@.number == " + n + ")].hasNews").value(Matchers.contains(false)));
     }
+
+    @Test void aRequiredUserFieldMarkedForThePortalDoesNotBlock() throws Exception {
+        var name = "확인자 " + java.util.UUID.randomUUID().toString().substring(0, 6);
+        var field = f.body(f.send(admin, post("/api/v1/admin/custom-fields"), "{\"name\":\"" + name + "\",\"format\":\"user\",\"isRequired\":true,\"isForAll\":false,"
+                + "\"portalVisible\":true,\"typeIds\":[\"" + ItsmIds.TYPE_INCIDENT + "\"]}").andExpect(status().isCreated())
+                .andExpect(jsonPath("$.portalVisible").value(false)) // never marked: user fields are not on the portal
+                .andReturn()).get("id").asString();
+        try {
+            // a row marked before this rule (or by hand) must not block either
+            db.update(CUSTOM_FIELDS).set(CUSTOM_FIELDS.PORTAL_VISIBLE, true).where(CUSTOM_FIELDS.ID.eq(java.util.UUID.fromString(field))).execute();
+            f.send(admin, put("/api/v1/projects/" + desk + "/custom-fields"), "{\"customFieldIds\":[\"" + field + "\"]}").andExpect(status().isOk());
+            var res = f.send(requester, post("/api/v1/portal/desks/" + desk + "/tickets"), "{\"typeId\":\"" + ItsmIds.TYPE_INCIDENT + "\",\"subject\":\"확인자 없음\"}")
+                    .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+            assertThat(res).doesNotContain(name);
+        } finally {
+            f.send(admin, delete("/api/v1/admin/custom-fields/" + field), "");
+        }
+    }
 }

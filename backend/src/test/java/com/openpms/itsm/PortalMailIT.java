@@ -224,4 +224,39 @@ class PortalMailIT {
             tx.update(JOURNALS).set(JOURNALS.CREATED_AT, at).set(JOURNALS.UPDATED_AT, at).where(JOURNALS.ID.eq(journalId)).execute();
         });
     }
+
+    @Test void aDeskThatIsOffOrArchivedMailsNobody() throws Exception {
+        var n = f.body(f.send(requester, post("/api/v1/portal/desks/" + desk + "/tickets"), "{\"typeId\":\"" + ItsmIds.TYPE_INCIDENT
+                + "\",\"subject\":\"키보드 고장\"}").andExpect(status().isCreated()).andReturn()).get("number").asLong();
+        f.send(admin, patch("/api/v1/projects/" + desk), "{\"enabledModules\":[\"work_packages\"]}").andExpect(status().isOk());
+        mail.run(Instant.now());
+        assertThat(mails(n)).isEmpty();
+        f.send(admin, patch("/api/v1/projects/" + desk), "{\"enabledModules\":[\"work_packages\",\"service_desk\"]}").andExpect(status().isOk());
+        mail.run(Instant.now());
+        assertThat(mails(n)).hasSize(1); // the receipt waited for the desk to come back
+        Mockito.clearInvocations(mailer);
+        f.send(agent, post("/api/v1/work-packages/" + n + "/comments"), "{\"bodyHtml\":\"<p>교체해 드리겠습니다</p>\"}").andExpect(status().is2xxSuccessful());
+        var id = f.body(f.send(admin, get("/api/v1/projects/" + desk), "").andReturn()).get("id").asString();
+        f.send(admin, post("/api/v1/projects/" + id + "/archive"), "").andExpect(status().is2xxSuccessful());
+        mail.run(Instant.now().plusSeconds(120));
+        assertThat(mails(n)).isEmpty();
+    }
+
+    @Test void aNewRequesterStartsFreshWithAReceipt() throws Exception {
+        var n = f.body(f.send(requester, post("/api/v1/portal/desks/" + desk + "/tickets"), "{\"typeId\":\"" + ItsmIds.TYPE_INCIDENT
+                + "\",\"subject\":\"사원증 재발급\"}").andExpect(status().isCreated()).andReturn()).get("number").asLong();
+        f.send(requester, get("/api/v1/portal/tickets/" + n), "").andExpect(status().isOk()); // seen
+        mail.run(Instant.now());
+        assertThat(mails(n)).hasSize(1);
+        f.send(agent, patch("/api/v1/work-packages/" + n + "/service-ticket"), "{\"requesterId\":\"" + ItsmFixture.DOYOON + "\"}").andExpect(status().isOk());
+        var t = db.select(SERVICE_TICKETS.REQUESTER_SEEN_AT, SERVICE_TICKETS.REQUESTER_MAILED_AT, SERVICE_TICKETS.REQUESTER_MAILED_STATUS_ID)
+                .from(SERVICE_TICKETS).join(WORK_PACKAGES).on(WORK_PACKAGES.ID.eq(SERVICE_TICKETS.WORK_PACKAGE_ID)).where(WORK_PACKAGES.NUMBER.eq(n)).fetchOne();
+        assertThat(t.value1()).isNull();
+        assertThat(t.value2()).isNull();
+        assertThat(t.value3()).isNull();
+        mail.run(Instant.now());
+        var subject = ArgumentCaptor.forClass(String.class);
+        Mockito.verify(mailer, Mockito.atLeast(0)).send(eq(ItsmFixture.OTHER_REQUESTER), subject.capture(), anyString());
+        assertThat(subject.getAllValues()).anySatisfy(s -> assertThat(s).contains("#" + n + " ").contains("접수"));
+    }
 }

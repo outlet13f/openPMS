@@ -186,4 +186,15 @@ class SlaServiceIT {
         assertThat(db.fetchCount(NOTIFICATIONS, NOTIFICATIONS.WORK_PACKAGE_ID.eq(id), NOTIFICATIONS.REASON.in("sla_warning", "sla_breached"))).isZero();
     }
 
+    @Test void aViewerSeesTheWorkPackageButNotTheTicket() throws Exception {
+        var n = incident("");
+        f.send(admin, post("/api/v1/projects/" + desk + "/members"),
+                "{\"principalIds\":[\"" + ItsmFixture.DOYOON + "\"],\"roleIds\":[\"f957f36a-72ca-5379-b8b9-c0e7dabe2d1e\"]}").andExpect(status().is2xxSuccessful());
+        var viewer = f.login(ItsmFixture.OTHER_REQUESTER); // 참관자 in this desk: wp.view without service.view
+        f.send(viewer, get("/api/v1/work-packages/" + n), "").andExpect(status().isOk()).andExpect(jsonPath("$.serviceTicket").doesNotExist());
+        var list = f.send(viewer, post("/api/v1/work-packages/query"), "{\"projectId\":\"" + desk + "\",\"spec\":{}}").andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(list).contains("메일이 안 됩니다").doesNotContain("\"serviceTicket\":{").doesNotContain(ItsmFixture.MINJI.toString());
+        f.send(agent, get("/api/v1/work-packages/" + n), "").andExpect(jsonPath("$.serviceTicket.requester.id").value(ItsmFixture.MINJI.toString()));
+    }
 }

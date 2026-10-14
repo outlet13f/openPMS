@@ -1020,6 +1020,8 @@ export interface SearchResults {
 /* ---------- custom fields (S34 관리, S25 프로젝트 설정) ---------- */
 
 export type CustomFieldFormat = "string" | "text" | "integer" | "float" | "list" | "date" | "bool" | "user" | "link";
+/** Formats never on the portal (backend PortalService.NOT_ON_PORTAL): people and versions are internal values. The database also knows "version". */
+export const NOT_ON_PORTAL: readonly string[] = ["user", "version"];
 
 /** As stored: list → option id(s), user → user id(s), date → ISO date, integer/float → number, bool, text. */
 export type CustomValue = string | number | boolean | string[] | null;

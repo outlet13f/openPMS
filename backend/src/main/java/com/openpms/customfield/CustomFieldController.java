@@ -183,7 +183,8 @@ public class CustomFieldController {
         } catch (ApiException e) {
             throw ApiException.field("defaultValue", "기본값이 이 필드의 형식·조건에 맞지 않습니다.");
         }
-        boolean portal = bool(in, "portalVisible", existing != null && portalVisible().contains(existing.id()));
+        // user and version fields never go on the portal (PortalService.NOT_ON_PORTAL), so they are never marked for it
+        boolean portal = !"user".equals(format) && !"version".equals(format) && bool(in, "portalVisible", existing != null && portalVisible().contains(existing.id()));
         return new Definition(name, format, draft.isRequired(), draft.isForAll(), draft.isFilterable(), multi, checked, min, max, regexp, options, typeIds, portal);
     }
 

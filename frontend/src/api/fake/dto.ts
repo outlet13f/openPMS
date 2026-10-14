@@ -165,7 +165,8 @@ export function toWp(w: DbWp, user: DbUser): WorkPackage {
     lockVersion: w.lockVersion,
     createdAt: w.createdAt,
     updatedAt: w.updatedAt,
-    serviceTicket: ((t) => (t ? toServiceTicket(t) : null))(ticketOf(w)),
+    // only for people who may see tickets (Assembler: service.view), so lists and exports do not show requesters to 참관자
+    serviceTicket: can(user, project, "service.view") ? ((t) => (t ? toServiceTicket(t) : null))(ticketOf(w)) : null,
     _meta: {
       allowedActions: {
         edit: canEdit,

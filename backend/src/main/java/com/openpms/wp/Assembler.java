@@ -178,7 +178,7 @@ public class Assembler {
                     watching.contains(w.getId()), watcherCount.getOrDefault(w.getId(), 0),
                     relationCount.getOrDefault(w.getId(), 0) + kids + (parent != null ? 1 : 0), attachmentCount.getOrDefault(w.getId(), 0),
                     customFields.values(s, w), totals.get(w.getId()), w.getLockVersion(), w.getCreatedAt(), w.getUpdatedAt(),
-                    com.openpms.itsm.ServiceTickets.dto(s, tickets.get(w.getId())), meta));
+                    ctx.can(project, "service.view") ? com.openpms.itsm.ServiceTickets.dto(s, tickets.get(w.getId())) : null, meta));
         }
         return out;
     }

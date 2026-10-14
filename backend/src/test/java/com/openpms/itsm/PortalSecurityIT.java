@@ -3,10 +3,12 @@ package com.openpms.itsm;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -113,5 +115,27 @@ class PortalSecurityIT {
                 .file(file).session(agent).with(csrf()))
                 .andExpect(status().isCreated()).andReturn()).get("id").asString();
         f.send(requester, get("/api/v1/portal/tickets/" + mine + "/attachments/" + foreignFile + "/content"), "").andExpect(status().isNotFound());
+    }
+
+    @Test void portalJsonCarriesNoAddressesAndNoHiddenFields() throws Exception {
+        var name = "내부 원가 " + java.util.UUID.randomUUID().toString().substring(0, 6);
+        var field = f.body(f.send(admin, post("/api/v1/admin/custom-fields"), "{\"name\":\"" + name + "\",\"format\":\"string\",\"isForAll\":false,"
+                + "\"typeIds\":[\"" + ItsmIds.TYPE_INCIDENT + "\"]}").andExpect(status().isCreated()).andReturn()).get("id").asString();
+        try {
+            f.send(admin, put("/api/v1/projects/" + desk + "/custom-fields"), "{\"customFieldIds\":[\"" + field + "\"]}").andExpect(status().isOk());
+            var lock = f.body(f.send(agent, get("/api/v1/work-packages/" + mine), "").andReturn()).get("lockVersion").asInt();
+            f.send(agent, patch("/api/v1/work-packages/" + mine), "{\"lockVersion\":" + lock + ",\"assigneeId\":\"" + ItsmFixture.JUNHO
+                    + "\",\"customValues\":{\"" + field + "\":\"원가표-비밀값\"}}").andExpect(status().isOk());
+            f.send(agent, post("/api/v1/work-packages/" + mine + "/comments"), "{\"bodyHtml\":\"<p>확인 중입니다</p>\"}").andExpect(status().is2xxSuccessful());
+            var detail = f.send(requester, get("/api/v1/portal/tickets/" + mine), "").andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            var list = f.send(requester, get("/api/v1/portal/tickets"), "").andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            var desks = f.send(requester, get("/api/v1/portal/desks"), "").andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            assertThat(detail).contains("확인 중입니다");
+            for (var body : java.util.List.of(detail, list, desks)) {
+                assertThat(body).doesNotContain("@openpms.local").doesNotContain(name).doesNotContain("원가표-비밀값");
+            }
+        } finally {
+            f.send(admin, delete("/api/v1/admin/custom-fields/" + field), "");
+        }
     }
 }

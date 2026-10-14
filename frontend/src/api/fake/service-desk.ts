@@ -3,6 +3,7 @@
 // requester's portal (PortalService, PortalController). SLA time comes from sla-clock.ts (Asia/Seoul only).
 import type { Api } from "../api";
 import type { CustomValue, Id, IdName, Level, PortalField, PortalFile, PortalSummary, PortalTicket, ServiceCalendar, ServiceDeskSettings, WorkPackage, WorkPackageInput, WorkPackagePatch } from "../types";
+import { NOT_ON_PORTAL } from "../types";
 import { ApiError } from "../errors";
 import { nowIso } from "@/lib/dates";
 import { db, newId, type DbJournal, type DbProject, type DbServiceCalendar, type DbServiceTicket, type DbSlaPolicy, type DbUser, type DbWp } from "./db";
@@ -201,8 +202,8 @@ export function cannotMoveTickets(moving: DbWp[]) {
     throw new ApiError(422, "서비스 데스크 티켓은 다른 프로젝트로 옮길 수 없습니다.", "필요하면 새 작업을 만들고 관계로 이으세요.");
 }
 
-/** Custom fields the requester cannot see: their required check is waived on the portal. */
-export const hiddenFieldIds = () => new Set(db.customFields.filter((f) => !f.portalVisible).map((f) => f.id));
+/** Custom fields the requester cannot see (not marked for the portal, or user / version fields, never on the portal form): their required check is waived on the portal. */
+export const hiddenFieldIds = () => new Set(db.customFields.filter((f) => !f.portalVisible || NOT_ON_PORTAL.includes(f.format)).map((f) => f.id));
 
 /* ---------- calendars, policies, matrix (ServiceDeskConfig) ---------- */
 
@@ -388,6 +389,8 @@ export const serviceDeskApi: Api["serviceDesk"] = {
       if (impact !== t.impact) changes.impact = [t.impact, impact];
       if (urgency !== t.urgency) changes.urgency = [t.urgency, urgency];
       if (groupId !== t.assignmentGroupId) changes.assignmentGroupId = [t.assignmentGroupId, groupId];
+      // a new requester starts fresh: a receipt mail and everything new on the portal (like the server)
+      if (requesterId !== t.requesterId) Object.assign(t, { requesterSeenAt: null, requesterMailedAt: null, requesterMailedStatusId: null });
       Object.assign(t, { requesterId, impact, urgency, assignmentGroupId: groupId });
       if (Object.keys(changes).length) {
         t.updatedAt = nowIso();
@@ -446,7 +449,7 @@ function deskByIdentifier(identifier: string): DbProject {
 /** Portal-visible fields on in this desk for at least one ticket type; user and version fields never go on the portal. */
 function portalFields(p: DbProject): PortalField[] {
   return db.customFields
-    .filter((f) => f.portalVisible && f.format !== "user" && (f.format as string) !== "version" && enabledIn(f, p.id) && f.typeIds.some((t) => TICKET_TYPES.includes(t)))
+    .filter((f) => f.portalVisible && !NOT_ON_PORTAL.includes(f.format) && enabledIn(f, p.id) && f.typeIds.some((t) => TICKET_TYPES.includes(t)))
     .sort((a, b) => a.position - b.position)
     .map((f) => ({
       id: f.id, name: f.name, format: f.format, required: f.isRequired, multi: f.isMultiValue,

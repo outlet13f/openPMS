@@ -220,9 +220,11 @@ public class WorkPackageService {
             parentId = parent.getId();
         }
 
-        // portal: a required field the requester cannot see must not block (or reveal itself in) the submission
+        // portal: a required field the requester cannot see must not block (or reveal itself in) the submission. User and
+        // version fields are never on the portal form (PortalService.NOT_ON_PORTAL), whatever their portal flag says.
         var hidden = acting == Acting.PORTAL
-                ? new java.util.HashSet<>(db.select(CUSTOM_FIELDS.ID).from(CUSTOM_FIELDS).where(CUSTOM_FIELDS.PORTAL_VISIBLE.isFalse()).fetch(CUSTOM_FIELDS.ID))
+                ? new java.util.HashSet<>(db.select(CUSTOM_FIELDS.ID).from(CUSTOM_FIELDS)
+                        .where(CUSTOM_FIELDS.PORTAL_VISIBLE.isFalse().or(CUSTOM_FIELDS.FORMAT.in("user", "version"))).fetch(CUSTOM_FIELDS.ID))
                 : java.util.Set.<UUID>of();
         var custom = customFields.initial(s, p.id(), typeId, customInput(in), hidden);
 

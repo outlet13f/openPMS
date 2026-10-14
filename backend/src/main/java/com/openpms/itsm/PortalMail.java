@@ -68,11 +68,15 @@ public class PortalMail {
             OffsetDateTime last = r.value3();
             UUID currentStatus = r.value9();
             UUID mailedStatus = r.value10();
+            // an archived desk or one whose service desk is off: the portal link would say "not found" (PortalService.find).
+            // Nothing is marked, so the news goes out if the desk comes back.
+            var deskRow = s.project(r.value6()).filter(x -> x.enabledModules().contains(ItsmIds.MODULE) && x.archivedAt() == null).orElse(null);
+            if (deskRow == null) continue;
             String subject, body;
             UUID told = null; // the status this mail announces; stays null (marker unchanged) when it has no status line
             if (last == null) {
                 var link = portalLink(r.value4());
-                var desk = s.project(r.value6()).map(Snapshot.ProjectRow::name).orElse("서비스 데스크");
+                var desk = deskRow.name();
                 subject = "[openPMS] #" + r.value4() + " 요청이 접수되었습니다: " + r.value5();
                 body = desk + "에 요청이 접수되었습니다.\n\n" + r.value5() + "\n\n진행 상황: " + link + "\n";
             } else {

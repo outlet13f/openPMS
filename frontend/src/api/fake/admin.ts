@@ -3,7 +3,7 @@ import type { Api } from "../api";
 import { adminTimeActivities } from "./time";
 import type { AdminCustomField, AdminOidcProvider, OidcProviderInput, AuthSettings, CustomField, CustomFieldInput, CustomValue, ProjectCustomFields, TypeForm, AdminGroup, AdminPriority, AdminRole, AdminStatus, AdminType, AdminUser, Category, TemporaryPassword, UserInput, Version } from "../types";
 import { ApiError } from "../errors";
-import { DATE_FORMATS } from "../types";
+import { DATE_FORMATS, NOT_ON_PORTAL } from "../types";
 import { nowIso } from "@/lib/dates";
 import { db, newId, type DbCustomField, type DbUser } from "./db";
 import { findProject, globalPermissions, memberRoleIds, requirePerm, sessionUser } from "./permissions";
@@ -250,12 +250,16 @@ function forgetInQueries(id: string) {
   }
 }
 
+/** User and version fields never go on the portal (like the server's CustomFieldController), so they are never marked for it. */
+const portalCapable = (f: DbCustomField) => !NOT_ON_PORTAL.includes(f.format);
+
 export const customFieldsAdmin: Api["admin"]["customFields"] = {
   list: () => run(() => (requireAdmin(sessionUser()), db.customFields.slice().sort((a, b) => a.position - b.position).map(toAdminField))),
   create: (input) =>
     run(() => {
       requireAdmin(sessionUser());
       const f: DbCustomField = { ...buildField(input), portalVisible: !!input.portalVisible };
+      if (!portalCapable(f)) f.portalVisible = false;
       db.customFields.push(f);
       return toAdminField(f);
     }),
@@ -267,6 +271,7 @@ export const customFieldsAdmin: Api["admin"]["customFields"] = {
       const next = buildField({ ...f, ...patch }, f);
       Object.assign(f, next);
       if (patch.portalVisible !== undefined) f.portalVisible = !!patch.portalVisible;
+      if (!portalCapable(f)) f.portalVisible = false;
       migrateValues(f);
       return toAdminField(f);
     }),

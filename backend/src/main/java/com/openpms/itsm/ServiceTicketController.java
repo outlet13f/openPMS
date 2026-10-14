@@ -59,7 +59,13 @@ public class ServiceTicketController {
         var changes = new LinkedHashMap<String, List<Object>>();
         if (In.has(in, "requesterId")) {
             var next = serviceDesk.draft(ctx, f.project(), Map.of("requesterId", String.valueOf(in.get("requesterId"))), "agent").requesterId();
-            if (!next.equals(t.getRequesterId())) changes.put("requesterId", Journals.listOf(t.getRequesterId().toString(), next.toString()));
+            if (!next.equals(t.getRequesterId())) {
+                changes.put("requesterId", Journals.listOf(t.getRequesterId().toString(), next.toString()));
+                // a new requester starts fresh: portal-mail sends them a receipt and the portal shows everything as news
+                t.setRequesterSeenAt(null);
+                t.setRequesterMailedAt(null);
+                t.setRequesterMailedStatusId(null);
+            }
             t.setRequesterId(next);
         }
         for (var key : List.of("impact", "urgency")) {
