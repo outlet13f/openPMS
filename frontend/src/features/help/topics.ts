@@ -11,6 +11,8 @@ const P = "^/projects/[^/]+";
 const TOPICS: [RegExp, ManualId, string][] = [
   // work packages: one item, a new one, the list
   [new RegExp(`${P}/work-packages/new`), "user", "5.1"],
+  // a service desk ticket's 서비스 tab: SLA, requester, group (before the general detail rules)
+  [new RegExp(`${P}/work-packages/(details/)?\\d+/service`), "user", "17.3"],
   [new RegExp(`(${P})?/(work-packages|gantt|boards/[^/]+|calendar/[^/]+|team-planner/[^/]+|notifications)/details/\\d+`), "user", "5.2"],
   [new RegExp(`${P}/work-packages/\\d+`), "user", "5.2"],
   [new RegExp(`(${P})?/work-packages/?$`), "user", "6"],
@@ -23,6 +25,7 @@ const TOPICS: [RegExp, ManualId, string][] = [
   [new RegExp(`${P}/settings/modules`), "user", "11.4"],
   [new RegExp(`${P}/settings/work-packages`), "user", "11.6"],
   [new RegExp(`${P}/settings/versions`), "user", "11.7"],
+  [new RegExp(`${P}/settings/service-desk`), "user", "17.6"],
   [new RegExp(`${P}/settings`), "user", "11.3"],
   [/^\/projects\/new/, "user", "11.1"],
   [new RegExp(`${P}/?$`), "user", "4.3"],
@@ -34,6 +37,7 @@ const TOPICS: [RegExp, ManualId, string][] = [
   [/^\/my\/timesheet/, "user", "15.1"],
   [/^\/search/, "user", "9"],
   [/^\/help\/api/, "user", "14.4"],
+  [/^\/portal/, "user", "16"],
   [/^\/?$/, "user", "3.1"],
   // administration: the operator manual's chapter 9
   [/^\/admin\/users/, "admin", "9.2"],
@@ -46,6 +50,7 @@ const TOPICS: [RegExp, ManualId, string][] = [
   [/^\/admin\/custom-fields/, "admin", "9.9"],
   [/^\/admin\/progress/, "admin", "9.10"],
   [/^\/admin\/calendar/, "admin", "9.11"],
+  [/^\/admin\/service-calendars/, "admin", "9.19"],
   [/^\/admin\/authentication/, "admin", "9.12"],
   [/^\/admin\/integrations/, "admin", "9.15"],
   [/^\/admin\/system/, "admin", "9.17"],
