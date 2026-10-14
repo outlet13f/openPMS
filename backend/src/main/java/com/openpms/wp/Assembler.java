@@ -33,8 +33,10 @@ public class Assembler {
     private final DSLContext db;
     private final CustomFields customFields;
     private final Assignees assignees;
+    private final com.openpms.itsm.ServiceTickets serviceTickets;
 
-    public Assembler(DSLContext db, CustomFields customFields, Assignees assignees) {
+    public Assembler(DSLContext db, CustomFields customFields, Assignees assignees, com.openpms.itsm.ServiceTickets serviceTickets) {
+        this.serviceTickets = serviceTickets;
         this.db = db;
         this.customFields = customFields;
         this.assignees = assignees;
@@ -132,6 +134,7 @@ public class Assembler {
 
         var totals = totals(s, rows.stream().filter(w -> childCount.getOrDefault(w.getId(), 0) > 0).map(WorkPackagesRecord::getId).toList());
         var teams = assignees.of(ids);
+        var tickets = serviceTickets.of(ids);
         var out = new ArrayList<Dto.WorkPackage>(rows.size());
         for (var w : rows) {
             var project = s.project(w.getProjectId()).orElseThrow();
@@ -169,7 +172,8 @@ public class Assembler {
                     w.getScheduleManually(), num(w.getWorkHours()), num(w.getRemainingHours()), w.getDoneRatio() == null ? null : w.getDoneRatio().intValue(),
                     watching.contains(w.getId()), watcherCount.getOrDefault(w.getId(), 0),
                     relationCount.getOrDefault(w.getId(), 0) + kids + (parent != null ? 1 : 0), attachmentCount.getOrDefault(w.getId(), 0),
-                    customFields.values(s, w), totals.get(w.getId()), w.getLockVersion(), w.getCreatedAt(), w.getUpdatedAt(), meta));
+                    customFields.values(s, w), totals.get(w.getId()), w.getLockVersion(), w.getCreatedAt(), w.getUpdatedAt(),
+                    com.openpms.itsm.ServiceTickets.dto(s, tickets.get(w.getId())), meta));
         }
         return out;
     }

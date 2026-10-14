@@ -48,9 +48,11 @@ public class WorkPackageService {
     private final CustomFields customFields;
     private final com.openpms.webhook.Webhooks webhooks;
     private final Assignees assignees;
+    private final com.openpms.itsm.ServiceDesk serviceDesk;
 
     public WorkPackageService(DSLContext db, Assembler assembler, Journals journals, ScheduleStore schedules, CustomFields customFields,
-                              com.openpms.webhook.Webhooks webhooks, Assignees assignees) {
+                              com.openpms.webhook.Webhooks webhooks, Assignees assignees, com.openpms.itsm.ServiceDesk serviceDesk) {
+        this.serviceDesk = serviceDesk;
         this.webhooks = webhooks;
         this.customFields = customFields;
         this.db = db;
@@ -168,6 +170,8 @@ public class WorkPackageService {
         if (subject.length() > 255) throw ApiException.field("subject", "제목은 255자 이하로 입력하세요.");
         var typeId = In.uuid(in, "typeId", "type");
         if (typeId == null || !p.typeIds().contains(typeId)) throw ApiException.field("type", "이 프로젝트에서 쓰지 않는 유형입니다.");
+        // ITSM 1단계: a ticket in a service desk starts as 접수 with the matrix priority and gets its service_tickets row
+        var ticket = serviceDesk.applies(p, typeId) ? serviceDesk.draft(ctx, p, in, "agent") : null;
         // 공동 담당자: "assignees" (everyone, in order, with hours) or the older single "assigneeId"
         var team = In.has(in, "assignees") ? Assignees.read(in.get("assignees"), s, p.id()) : null;
         var assigneeId = team != null ? (team.isEmpty() ? null : team.get(0).userId()) : In.uuid(in, "assigneeId", "assignee");
@@ -186,6 +190,8 @@ public class WorkPackageService {
             ctx.require(p, "wp.assign_versions");
             if (s.version(versionId).filter(v -> v.projectId().equals(p.id())).isEmpty()) throw ApiException.field("version", "이 프로젝트의 버전이 아닙니다.");
         }
+        if (ticket != null && statusId == null) statusId = com.openpms.itsm.ItsmIds.STATUS_RECEIVED;
+        if (ticket != null && priorityId == null) priorityId = serviceDesk.priorityFor(p, ticket);
         // a category's default assignee fills an empty assignee (S25)
         if (assigneeId == null && category != null && category.defaultAssigneeId() != null && s.isMember(category.defaultAssigneeId(), p.id())) {
             assigneeId = category.defaultAssigneeId();
@@ -242,6 +248,7 @@ public class WorkPackageService {
         if (team != null && !team.isEmpty()) assignees.write(w.getId(), team);
         else if (assigneeId != null) assignees.write(w.getId(), List.of(new Assignees.Entry(assigneeId, null)));
 
+        if (ticket != null) serviceDesk.created(ctx, w, ticket);
         var j = journals.write(ctx, w, new LinkedHashMap<>(Map.of(Journals.CREATED, Journals.listOf(null, true))), "", null, false);
         journals.fanOut(ctx, w, j, List.of());
         webhooks.enqueue(ctx, w, "work_package.created", null);
@@ -420,6 +427,7 @@ public class WorkPackageService {
         if (n == 0) throw ApiException.conflict("다른 사람이 먼저 수정했습니다.", "최신 내용을 불러온 뒤 다시 저장하세요.", assembler.one(ctx, reload(wp.getId())));
         if (nextTeam != null) assignees.write(wp.getId(), nextTeam);
         var saved = reload(wp.getId());
+        serviceDesk.updated(ctx, before, saved);
         var j = journals.write(ctx, saved, changes, "", null, false);
         journals.fanOut(ctx, saved, j, List.of());
         webhooks.enqueue(ctx, saved, "work_package.updated", Map.of("changes", com.openpms.webhook.Webhooks.changes(journals.toDto(ctx, j, ctx.s().project(saved.getProjectId()).orElseThrow(), changes))));
@@ -537,6 +545,7 @@ public class WorkPackageService {
         if (Html.text(html).isEmpty()) throw ApiException.field("comment", "코멘트를 입력하세요.");
         var j = journals.write(ctx, f.wp(), new LinkedHashMap<>(), html, null, internal);
         journals.fanOut(ctx, f.wp(), j, Html.mentions(html));
+        serviceDesk.commented(ctx, f.wp(), internal);
         // internal comments stay inside openPMS
         if (!internal) webhooks.enqueue(ctx, f.wp(), "work_package.commented", Map.of("comment", Map.of("text", Html.text(html), "journalId", j.getId())));
         return journals.toDto(ctx, j, f.project());

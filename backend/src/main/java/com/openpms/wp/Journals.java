@@ -186,10 +186,11 @@ public class Journals {
             Map.entry("categoryId", "카테고리"), Map.entry("parentId", "상위 작업"), Map.entry("startDate", "시작일"), Map.entry("dueDate", "완료일"),
             Map.entry("duration", "기간"), Map.entry("scheduleManually", "일정 방식"), Map.entry("ignoreNonWorkingDays", "근무일만 계산"),
             Map.entry("workHours", "작업량"), Map.entry("remainingHours", "남은 작업"), Map.entry("doneRatio", "완료 %"),
-            Map.entry("attachment", "첨부 파일"));
+            Map.entry("attachment", "첨부 파일"),
+            Map.entry("requesterId", "요청자"), Map.entry("impact", "영향도"), Map.entry("urgency", "긴급도"), Map.entry("assignmentGroupId", "처리 그룹"));
 
     private static final List<String> ORDER = List.of("projectId", "subject", "descriptionHtml", "typeId", "statusId", "priorityId", "assigneeId", "assignees", "responsibleId",
-            "versionId", "categoryId", "parentId", "startDate", "dueDate", "duration", "scheduleManually", "ignoreNonWorkingDays", "workHours",
+            "requesterId", "impact", "urgency", "assignmentGroupId", "versionId", "categoryId", "parentId", "startDate", "dueDate", "duration", "scheduleManually", "ignoreNonWorkingDays", "workHours",
             "remainingHours", "doneRatio", "attachment");
 
     /** "attachment:<id>" → "attachment" (files are keyed one by one). */
@@ -225,6 +226,13 @@ public class Journals {
                 var name = Refs.user(s, uuid(m.get("userId"))).name();
                 return m.get("workHours") == null ? name : name + " " + trimNumber(m.get("workHours")) + "시간";
             }).toList()) : null;
+            case "requesterId" -> Refs.user(s, uuid(v)).name();
+            case "impact", "urgency" -> switch (trimNumber(v)) {
+                case "1" -> "높음";
+                case "3" -> "낮음";
+                default -> "보통";
+            };
+            case "assignmentGroupId" -> java.util.Optional.ofNullable(s.groups().get(uuid(v))).map(Snapshot.GroupRow::name).orElse("삭제된 그룹");
             case "versionId" -> s.version(uuid(v)).map(Snapshot.VersionRow::name).orElse(null);
             case "categoryId" -> s.category(uuid(v)).map(Snapshot.CategoryRow::name).orElse(null);
             case "parentId" -> {
