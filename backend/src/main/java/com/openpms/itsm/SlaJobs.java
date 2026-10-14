@@ -23,28 +23,32 @@ import java.util.UUID;
 import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.TableField;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** Every minute: SLA deadlines that are close (20 % left) or past, announced once to the ticket's people (ITSM 1단계 §5). */
 @Component
 public class SlaJobs {
+    private static final Logger log = LoggerFactory.getLogger(SlaJobs.class);
     private final DSLContext db;
     private final ServiceDeskConfig config;
     private final Assignees assignees;
     private final Webhooks webhooks;
     private final Current current;
+    private final TransactionTemplate tx;
 
-    public SlaJobs(DSLContext db, ServiceDeskConfig config, Assignees assignees, Webhooks webhooks, Current current) {
+    public SlaJobs(DSLContext db, ServiceDeskConfig config, Assignees assignees, Webhooks webhooks, Current current, TransactionTemplate tx) {
         this.db = db;
         this.config = config;
         this.assignees = assignees;
         this.webhooks = webhooks;
         this.current = current;
+        this.tx = tx;
     }
 
     /** @return the number of notifications sent */
-    @Transactional
     public int run(Instant now) {
         var s = current.snapshot();
         int sent = 0;
@@ -56,31 +60,44 @@ public class SlaJobs {
             var w = r.into(WORK_PACKAGES);
             var p = s.project(w.getProjectId()).orElse(null);
             if (p == null || p.archivedAt() != null || !p.enabledModules().contains(ItsmIds.MODULE)) continue;
-            var policy = config.policyFor(w.getProjectId(), w.getTypeId(), w.getPriorityId()).orElse(null);
-            if (policy == null) continue;
-            var holidays = s.calendar().holidays();
-            if (t.getFirstRespondedAt() == null && t.getFirstResponseDueAt() != null) {
-                // the update re-checks what the job read: a deadline an agent just moved, or a first response just given, is left alone
-                Condition still = SERVICE_TICKETS.FIRST_RESPONSE_DUE_AT.eq(t.getFirstResponseDueAt()).and(SERVICE_TICKETS.FIRST_RESPONDED_AT.isNull());
-                sent += check(s, p, w, t, now, "response", t.getFirstResponseDueAt(), policy.firstResponse(), policy, holidays,
-                        SERVICE_TICKETS.RESPONSE_BREACHED, SERVICE_TICKETS.RESPONSE_WARNED, still);
-            }
-            if (t.getResolveDueAt() != null) {
-                Condition still = SERVICE_TICKETS.RESOLVE_DUE_AT.eq(t.getResolveDueAt()).and(SERVICE_TICKETS.RESOLVED_AT.isNull()).and(SERVICE_TICKETS.PAUSED_SINCE.isNull());
-                sent += check(s, p, w, t, now, "resolve", t.getResolveDueAt(), policy.resolve(), policy, holidays,
-                        SERVICE_TICKETS.RESOLVE_BREACHED, SERVICE_TICKETS.RESOLVE_WARNED, still);
+            try {
+                // one transaction per ticket: a bad ticket must not block everyone else's alerts
+                Integer n = tx.execute(status -> check(s, p, w, t, now));
+                sent += n == null ? 0 : n;
+            } catch (RuntimeException e) {
+                log.error("SLA check failed for work package #{}", w.getNumber(), e);
             }
         }
         return sent;
     }
 
-    private int check(Snapshot s, Snapshot.ProjectRow p, WorkPackagesRecord w, ServiceTicketsRecord t, Instant now, String kind, OffsetDateTime due,
+    /** Both clocks of one ticket as the job read it; every update re-checks that the row is still what was read. */
+    int check(Snapshot s, Snapshot.ProjectRow p, WorkPackagesRecord w, ServiceTicketsRecord seen, Instant now) {
+        var policy = seen.getSlaPolicyId() == null ? null : config.policy(seen.getSlaPolicyId()).orElse(null);
+        if (policy == null) return 0;
+        var holidays = s.calendar().holidays();
+        Condition open = SERVICE_TICKETS.WORK_PACKAGE_ID.eq(seen.getWorkPackageId()).and(SERVICE_TICKETS.RESOLVED_AT.isNull()).and(SERVICE_TICKETS.PAUSED_SINCE.isNull());
+        int sent = 0;
+        if (seen.getFirstRespondedAt() == null && seen.getFirstResponseDueAt() != null) {
+            Condition still = open.and(SERVICE_TICKETS.FIRST_RESPONSE_DUE_AT.eq(seen.getFirstResponseDueAt())).and(SERVICE_TICKETS.FIRST_RESPONDED_AT.isNull());
+            sent += clock(s, p, w, seen, now, "response", seen.getFirstResponseDueAt(), policy.firstResponse(), policy, holidays,
+                    SERVICE_TICKETS.RESPONSE_BREACHED, SERVICE_TICKETS.RESPONSE_WARNED, still);
+        }
+        if (seen.getResolveDueAt() != null) {
+            Condition still = open.and(SERVICE_TICKETS.RESOLVE_DUE_AT.eq(seen.getResolveDueAt()));
+            sent += clock(s, p, w, seen, now, "resolve", seen.getResolveDueAt(), policy.resolve(), policy, holidays,
+                    SERVICE_TICKETS.RESOLVE_BREACHED, SERVICE_TICKETS.RESOLVE_WARNED, still);
+        }
+        return sent;
+    }
+
+    private int clock(Snapshot s, Snapshot.ProjectRow p, WorkPackagesRecord w, ServiceTicketsRecord t, Instant now, String kind, OffsetDateTime due,
                       Duration target, ServiceDeskConfig.Policy policy, Set<LocalDate> holidays,
                       TableField<ServiceTicketsRecord, Boolean> breached, TableField<ServiceTicketsRecord, Boolean> warned, Condition still) {
+        if (Boolean.TRUE.equals(t.get(breached))) return 0;
         if (!due.toInstant().isAfter(now)) {
             // set once: a second run, or another instance, finds it already set
-            int marked = db.update(SERVICE_TICKETS).set(breached, true).set(warned, true)
-                    .where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(t.getWorkPackageId()), breached.isFalse(), still).execute();
+            int marked = db.update(SERVICE_TICKETS).set(breached, true).set(warned, true).where(still, breached.isFalse()).execute();
             if (marked == 0) return 0;
             webhooks.enqueueSystem(s, w, "service_ticket.sla_breached", Map.of("sla", Map.of("kind", kind, "dueAt", due.toString())));
             return announce(s, p, w, t, "sla_breached", now);
@@ -88,8 +105,7 @@ public class SlaJobs {
         if (warnedAlready(t, warned)) return 0;
         var left = SlaClock.workingTime(now, due.toInstant(), policy.calendar(), holidays);
         if (left.multipliedBy(5).compareTo(target) > 0) return 0; // more than 20 % left
-        int marked = db.update(SERVICE_TICKETS).set(warned, true)
-                .where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(t.getWorkPackageId()), warned.isFalse(), still).execute();
+        int marked = db.update(SERVICE_TICKETS).set(warned, true).where(still, warned.isFalse()).execute();
         return marked == 0 ? 0 : announce(s, p, w, t, "sla_warning", now);
     }
 

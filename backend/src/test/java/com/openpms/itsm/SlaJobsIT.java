@@ -8,6 +8,7 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.openpms.core.Current;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -27,6 +28,7 @@ class SlaJobsIT {
     @Autowired WebApplicationContext context;
     @Autowired DSLContext db;
     @Autowired SlaJobs jobs;
+    @Autowired Current current;
     ItsmFixture f;
     MockHttpSession admin, agent;
     String desk;
@@ -82,6 +84,54 @@ class SlaJobsIT {
         var created = db.select(SERVICE_TICKETS.CREATED_AT).from(SERVICE_TICKETS).where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wp)).fetchOne(SERVICE_TICKETS.CREATED_AT);
         jobs.run(created.plusMinutes(20).toInstant());
         assertThat(db.select(SERVICE_TICKETS.RESPONSE_BREACHED).from(SERVICE_TICKETS).where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wp)).fetchOne(SERVICE_TICKETS.RESPONSE_BREACHED)).isFalse();
+    }
+
+    int deliveries(UUID wp) {
+        return db.fetchCount(com.openpms.db.Tables.WEBHOOK_DELIVERIES, org.jooq.impl.DSL.condition("payload -> 'workPackage' ->> 'id' = ?", wp.toString()));
+    }
+
+    /** The job read the ticket, then the row changed; the check works from the stale record. */
+    int staleCheck(UUID wp, Instant now, Runnable change) {
+        var w = db.selectFrom(WORK_PACKAGES).where(WORK_PACKAGES.ID.eq(wp)).fetchOne();
+        var seen = db.selectFrom(SERVICE_TICKETS).where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wp)).fetchOne();
+        change.run();
+        var s = current.snapshot();
+        return jobs.check(s, s.project(w.getProjectId()).orElseThrow(), w, seen, now);
+    }
+
+    @Test void aResolveDeadlineMovedAfterTheReadIsNotBreached() throws Exception {
+        var wp = urgentIncidentAssignedToJunho();
+        var created = db.select(SERVICE_TICKETS.CREATED_AT).from(SERVICE_TICKETS).where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wp)).fetchOne(SERVICE_TICKETS.CREATED_AT);
+        // first response is already given, so only the resolve clock is in play
+        db.update(SERVICE_TICKETS).set(SERVICE_TICKETS.FIRST_RESPONDED_AT, OffsetDateTime.now()).where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wp)).execute();
+        int sent = staleCheck(wp, created.plusMinutes(121).toInstant(), () ->
+                db.update(SERVICE_TICKETS).set(SERVICE_TICKETS.RESOLVE_DUE_AT, created.plusDays(10)).where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wp)).execute());
+        assertThat(sent).isZero();
+        assertThat(db.fetchValue(SERVICE_TICKETS.RESOLVE_BREACHED, SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wp))).isFalse();
+        assertThat(notifications(wp, "sla_breached")).isZero();
+        assertThat(deliveries(wp)).isZero();
+    }
+
+    @Test void aTicketPausedAfterTheReadKeepsItsResponseClock() throws Exception {
+        var wp = urgentIncidentAssignedToJunho();
+        var created = db.select(SERVICE_TICKETS.CREATED_AT).from(SERVICE_TICKETS).where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wp)).fetchOne(SERVICE_TICKETS.CREATED_AT);
+        int sent = staleCheck(wp, created.plusMinutes(16).toInstant(), () ->
+                db.update(SERVICE_TICKETS).set(SERVICE_TICKETS.PAUSED_SINCE, OffsetDateTime.now()).where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wp)).execute());
+        assertThat(sent).isZero();
+        assertThat(db.fetchValue(SERVICE_TICKETS.RESPONSE_BREACHED, SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wp))).isFalse();
+        assertThat(notifications(wp, "sla_breached")).isZero();
+        assertThat(deliveries(wp)).isZero();
+    }
+
+    @Test void aTicketResolvedAfterTheReadKeepsItsResponseClock() throws Exception {
+        var wp = urgentIncidentAssignedToJunho();
+        var created = db.select(SERVICE_TICKETS.CREATED_AT).from(SERVICE_TICKETS).where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wp)).fetchOne(SERVICE_TICKETS.CREATED_AT);
+        int sent = staleCheck(wp, created.plusMinutes(16).toInstant(), () ->
+                db.update(SERVICE_TICKETS).set(SERVICE_TICKETS.RESOLVED_AT, OffsetDateTime.now()).where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wp)).execute());
+        assertThat(sent).isZero();
+        assertThat(db.fetchValue(SERVICE_TICKETS.RESPONSE_BREACHED, SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wp))).isFalse();
+        assertThat(notifications(wp, "sla_breached")).isZero();
+        assertThat(deliveries(wp)).isZero();
     }
 
     @Test void aDeadlineMovedLaterIsNotBreached() throws Exception {

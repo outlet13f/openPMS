@@ -169,9 +169,17 @@ public class ServiceDeskConfig {
     }
 
     public Optional<Policy> policyFor(UUID projectId, UUID typeId, UUID priorityId) {
-        var r = db.selectFrom(SLA_POLICIES).where(SLA_POLICIES.PROJECT_ID.eq(projectId), SLA_POLICIES.TYPE_ID.eq(typeId), SLA_POLICIES.PRIORITY_ID.eq(priorityId)).fetchOne();
-        if (r == null) return Optional.empty();
-        return Optional.of(new Policy(r.getId(), Duration.ofMinutes(r.getFirstResponseMinutes()), Duration.ofMinutes(r.getResolveMinutes()), calendarOf(r.getCalendarId())));
+        return Optional.ofNullable(db.selectFrom(SLA_POLICIES).where(SLA_POLICIES.PROJECT_ID.eq(projectId), SLA_POLICIES.TYPE_ID.eq(typeId), SLA_POLICIES.PRIORITY_ID.eq(priorityId)).fetchOne())
+                .map(this::toPolicy);
+    }
+
+    /** A policy by its id (a ticket keeps the policy it was given). */
+    public Optional<Policy> policy(UUID policyId) {
+        return Optional.ofNullable(db.selectFrom(SLA_POLICIES).where(SLA_POLICIES.ID.eq(policyId)).fetchOne()).map(this::toPolicy);
+    }
+
+    private Policy toPolicy(com.openpms.db.tables.records.SlaPoliciesRecord r) {
+        return new Policy(r.getId(), Duration.ofMinutes(r.getFirstResponseMinutes()), Duration.ofMinutes(r.getResolveMinutes()), calendarOf(r.getCalendarId()));
     }
 
     public Optional<UUID> matrixPriority(UUID projectId, int impact, int urgency) {
