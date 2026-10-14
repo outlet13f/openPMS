@@ -169,6 +169,41 @@ class PortalMailIT {
         assertThat(mails(n)).isEmpty();
     }
 
+    @Test void aStatusTheRequesterChangedThemselvesIsNotToldBackAndTheNextResolveIsAnnounced() throws Exception {
+        var n = f.body(f.send(requester, post("/api/v1/portal/desks/" + desk + "/tickets"), "{\"typeId\":\"" + ItsmIds.TYPE_INCIDENT
+                + "\",\"subject\":\"VPN 접속 불가\"}").andExpect(status().isCreated()).andReturn()).get("number").asLong();
+        mail.run(Instant.now());
+        Mockito.clearInvocations(mailer);
+        var wpId = db.select(WORK_PACKAGES.ID).from(WORK_PACKAGES).where(WORK_PACKAGES.NUMBER.eq(n)).fetchOne().value1();
+        setStatus(admin, n, ItsmIds.STATUS_RESOLVED);
+        mail.run(Instant.now().plusSeconds(120));
+        assertThat(mails(n)).hasSize(1);
+        assertThat(mails(n).get(0)[1]).contains("→ 해결");
+        Mockito.clearInvocations(mailer);
+        // the clock in this test is the real one: put the marker back where a real run would have left it
+        db.update(SERVICE_TICKETS).set(SERVICE_TICKETS.REQUESTER_MAILED_AT, OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(1))
+                .where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wpId)).execute();
+
+        var lock = f.body(f.send(requester, get("/api/v1/portal/tickets/" + n), "").andReturn()).get("lockVersion").asInt();
+        f.send(requester, post("/api/v1/portal/tickets/" + n + "/status"), "{\"statusId\":\"" + ItsmIds.STATUS_HANDLING + "\",\"lockVersion\":" + lock + "}")
+                .andExpect(status().isOk());
+        mail.run(Instant.now().plusSeconds(120));
+        assertThat(mails(n)).isEmpty();
+        db.update(SERVICE_TICKETS).set(SERVICE_TICKETS.REQUESTER_MAILED_AT, OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(1))
+                .where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wpId)).execute();
+
+        setStatus(admin, n, ItsmIds.STATUS_RESOLVED);
+        mail.run(Instant.now().plusSeconds(120));
+        assertThat(mails(n)).hasSize(1);
+        assertThat(mails(n).get(0)[0]).contains("해결되었습니다");
+        assertThat(mails(n).get(0)[1]).contains("처리 중 → 해결");
+    }
+
+    private void setStatus(MockHttpSession as, long n, UUID statusId) throws Exception {
+        var lock = f.body(f.send(as, get("/api/v1/work-packages/" + n), "").andReturn()).get("lockVersion").asInt();
+        f.send(as, patch("/api/v1/work-packages/" + n), "{\"lockVersion\":" + lock + ",\"statusId\":\"" + statusId + "\"}").andExpect(status().isOk());
+    }
+
     /** The mails sent to the requester about this ticket, as {subject, body}; the shared DB may hold other tickets that are due. */
     private List<String[]> mails(long n) {
         var subject = ArgumentCaptor.forClass(String.class);

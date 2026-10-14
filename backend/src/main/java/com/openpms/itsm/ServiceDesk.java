@@ -101,6 +101,8 @@ public class ServiceDesk {
             if (to.isClosed() && !from.isClosed()) t.setResolvedAt(at(now));
             if (!to.isClosed() && from.isClosed()) t.setResolvedAt(null);
             firstResponse(ctx, t, now);
+            // the requester made this change themselves, so portal-mail must not announce it back (or mistake it for "already told")
+            if (ctx.userId().equals(t.getRequesterId())) t.setRequesterMailedStatusId(to.id());
         }
         if (statusChanged || !Objects.equals(before.getPriorityId(), after.getPriorityId()) || !Objects.equals(before.getTypeId(), after.getTypeId())) {
             recompute(ctx, t, after, now);
