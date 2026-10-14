@@ -1,14 +1,22 @@
 package com.openpms.itsm;
 
+import static com.openpms.db.Tables.SERVICE_TICKETS;
 import static com.openpms.db.Tables.USER_GROUPS;
+import static com.openpms.db.Tables.WORK_PACKAGES;
 
 import com.openpms.api.Dto;
 import com.openpms.common.ApiException;
 import com.openpms.core.Current;
+import com.openpms.core.Snapshot;
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.jooq.DSLContext;
+import org.jooq.impl.DSL;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -89,6 +97,49 @@ public class ServiceDeskConfigController {
         var project = ctx.findProject(p);
         if (!ctx.can(project, "service.view")) throw ApiException.notFound("프로젝트를 찾을 수 없습니다.");
         return db.select(USER_GROUPS.ID, USER_GROUPS.NAME).from(USER_GROUPS).orderBy(USER_GROUPS.NAME).fetch(r -> new Dto.IdName(r.value1(), r.value2()));
+    }
+
+    public record GroupCount(Dto.IdName group, int count) {}
+
+    public record Summary(List<GroupCount> openByGroup, int breachedToday, Integer avgFirstResponseMinutes) {}
+
+    /**
+     * The overview card: open tickets per assignment group, breaches whose own deadline fell today (response breach with
+     * the first-response deadline today, or resolve breach with the resolve deadline today; "today" in the user's zone)
+     * and the average wall-clock minutes to the first response over the last 30 days.
+     */
+    @GetMapping("/projects/{p}/service-desk/summary")
+    public Summary summary(@PathVariable String p) {
+        var ctx = current.ctx();
+        var project = ctx.findProject(p);
+        if (!ctx.can(project, "service.view")) throw ApiException.notFound("프로젝트를 찾을 수 없습니다.");
+        var s = ctx.s();
+        var closed = s.statuses().stream().filter(Snapshot.StatusRow::isClosed).map(Snapshot.StatusRow::id).toList();
+        var groups = db.select(SERVICE_TICKETS.ASSIGNMENT_GROUP_ID, DSL.count()).from(SERVICE_TICKETS)
+                .join(WORK_PACKAGES).on(WORK_PACKAGES.ID.eq(SERVICE_TICKETS.WORK_PACKAGE_ID))
+                .where(WORK_PACKAGES.PROJECT_ID.eq(project.id()), WORK_PACKAGES.STATUS_ID.notIn(closed))
+                .groupBy(SERVICE_TICKETS.ASSIGNMENT_GROUP_ID).orderBy(DSL.count().desc())
+                .fetch(r -> new GroupCount(r.value1() == null ? null : Optional.ofNullable(s.groups().get(r.value1()))
+                        .map(g -> new Dto.IdName(g.id(), g.name())).orElse(null), r.value2()));
+        ZoneId zone;
+        try {
+            zone = ZoneId.of(ctx.user().timeZone());
+        } catch (Exception e) {
+            zone = ZoneId.of("Asia/Seoul");
+        }
+        var today = ctx.today();
+        var start = today.atStartOfDay(zone).toOffsetDateTime();
+        var end = today.plusDays(1).atStartOfDay(zone).toOffsetDateTime();
+        int breached = db.fetchCount(db.selectOne().from(SERVICE_TICKETS).join(WORK_PACKAGES).on(WORK_PACKAGES.ID.eq(SERVICE_TICKETS.WORK_PACKAGE_ID))
+                .where(WORK_PACKAGES.PROJECT_ID.eq(project.id()),
+                        SERVICE_TICKETS.RESPONSE_BREACHED.isTrue().and(SERVICE_TICKETS.FIRST_RESPONSE_DUE_AT.ge(start)).and(SERVICE_TICKETS.FIRST_RESPONSE_DUE_AT.lt(end))
+                                .or(SERVICE_TICKETS.RESOLVE_BREACHED.isTrue().and(SERVICE_TICKETS.RESOLVE_DUE_AT.ge(start)).and(SERVICE_TICKETS.RESOLVE_DUE_AT.lt(end)))));
+        var avg = db.select(DSL.avg(DSL.field("extract(epoch from ({0} - {1})) / 60", Double.class, SERVICE_TICKETS.FIRST_RESPONDED_AT, SERVICE_TICKETS.CREATED_AT)))
+                .from(SERVICE_TICKETS).join(WORK_PACKAGES).on(WORK_PACKAGES.ID.eq(SERVICE_TICKETS.WORK_PACKAGE_ID))
+                .where(WORK_PACKAGES.PROJECT_ID.eq(project.id()), SERVICE_TICKETS.FIRST_RESPONDED_AT.isNotNull(),
+                        SERVICE_TICKETS.CREATED_AT.ge(OffsetDateTime.now().minusDays(30)))
+                .fetchOne(0, BigDecimal.class);
+        return new Summary(groups, breached, avg == null ? null : avg.intValue());
     }
 
     private void admin() {

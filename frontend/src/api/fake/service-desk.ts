@@ -395,9 +395,10 @@ export const serviceDeskApi: Api["serviceDesk"] = {
           const g = id ? db.groups.find((x) => x.id === id) : undefined;
           return { group: g ? { id: g.id, name: g.name } : null, count };
         });
+      // each breach flag goes with its own deadline, and that deadline fell today (the person's zone)
       const today = startOfToday(user.timeZone);
-      const since = (v: string | null) => v !== null && Date.parse(v) >= today;
-      const breachedToday = rows.filter((r) => (r.t.resolveBreached || r.t.responseBreached) && (since(r.t.resolveDueAt) || since(r.t.firstResponseDueAt))).length;
+      const isToday = (v: string | null) => v !== null && Date.parse(v) >= today && Date.parse(v) < today + 86_400_000;
+      const breachedToday = rows.filter((r) => (r.t.responseBreached && isToday(r.t.firstResponseDueAt)) || (r.t.resolveBreached && isToday(r.t.resolveDueAt))).length;
       const answered = rows.filter((r) => r.t.firstRespondedAt && Date.parse(r.t.createdAt) >= now - 30 * 86_400_000);
       const avg = answered.length ? answered.reduce((s, r) => s + (Date.parse(r.t.firstRespondedAt!) - Date.parse(r.t.createdAt)) / MIN, 0) / answered.length : null;
       return { openByGroup, breachedToday, avgFirstResponseMinutes: avg === null ? null : Math.trunc(avg) };

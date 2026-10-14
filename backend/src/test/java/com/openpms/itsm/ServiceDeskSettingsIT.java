@@ -23,6 +23,7 @@ import org.springframework.web.context.WebApplicationContext;
 class ServiceDeskSettingsIT {
     @Autowired WebApplicationContext context;
     @Autowired ServiceDeskConfig config;
+    @Autowired org.jooq.DSLContext db;
     ItsmFixture f;
 
     @BeforeEach void setUp() {
@@ -92,6 +93,33 @@ class ServiceDeskSettingsIT {
                 .andExpect(status().isUnprocessableContent()).andExpect(jsonPath("$.errors[0].field").value("hours"));
         f.send(admin, delete("/api/v1/service-calendars/" + made.get("id").asString()), "").andExpect(status().isNoContent());
         f.send(admin, delete("/api/v1/service-calendars/" + ItsmFixture.CAL_BUSINESS), "").andExpect(status().isConflict());
+    }
+
+    @Test void summaryCountsOpenTicketsByGroup() throws Exception {
+        var admin = f.login(ItsmFixture.ADMIN);
+        var desk = f.newDesk(admin);
+        var agent = f.login(ItsmFixture.AGENT);
+        var number = f.body(f.send(agent, post("/api/v1/projects/" + desk + "/work-packages"), "{\"subject\":\"a\",\"typeId\":\"" + ItsmIds.TYPE_INCIDENT
+                + "\",\"requesterId\":\"" + ItsmFixture.MINJI + "\"}").andExpect(status().isCreated()).andReturn()).get("number").asLong();
+        f.send(agent, get("/api/v1/projects/" + desk + "/service-desk/summary"), "")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.openByGroup[0].group").doesNotExist())
+                .andExpect(jsonPath("$.openByGroup[0].count").value(1))
+                .andExpect(jsonPath("$.breachedToday").value(0));
+        var T = com.openpms.db.Tables.SERVICE_TICKETS;
+        var W = com.openpms.db.Tables.WORK_PACKAGES;
+        var ticket = T.WORK_PACKAGE_ID.eq(db.select(W.ID).from(W).where(W.NUMBER.eq(number)));
+        var now = java.time.OffsetDateTime.now();
+        // a resolve breach whose own deadline was yesterday does not count, even with the response deadline today
+        db.update(T).set(T.RESOLVE_BREACHED, true).set(T.RESPONSE_BREACHED, false).set(T.RESOLVE_DUE_AT, now.minusDays(1))
+                .set(T.FIRST_RESPONSE_DUE_AT, now).where(ticket).execute();
+        f.send(agent, get("/api/v1/projects/" + desk + "/service-desk/summary"), "").andExpect(jsonPath("$.breachedToday").value(0));
+        // a response breach due today does
+        db.update(T).set(T.RESPONSE_BREACHED, true).where(ticket).execute();
+        f.send(agent, get("/api/v1/projects/" + desk + "/service-desk/summary"), "").andExpect(jsonPath("$.breachedToday").value(1));
+        // and so does a resolve breach due today
+        db.update(T).set(T.RESPONSE_BREACHED, false).set(T.RESOLVE_DUE_AT, now).where(ticket).execute();
+        f.send(agent, get("/api/v1/projects/" + desk + "/service-desk/summary"), "").andExpect(jsonPath("$.breachedToday").value(1));
     }
 
     @Test void aServiceDeskProjectCannotBePublic() throws Exception {
