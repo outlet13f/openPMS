@@ -69,6 +69,7 @@ public class PortalMail {
             UUID currentStatus = r.value9();
             UUID mailedStatus = r.value10();
             String subject, body;
+            UUID told = null; // the status this mail announces; stays null (marker unchanged) when it has no status line
             if (last == null) {
                 var link = portalLink(r.value4());
                 var desk = s.project(r.value6()).map(Snapshot.ProjectRow::name).orElse("서비스 데스크");
@@ -92,17 +93,18 @@ public class PortalMail {
                 if (statusAuthor != null && currentRow != null && !currentRow.id().equals(mailedStatus)) {
                     var was = mailedStatus == null ? null : s.status(mailedStatus).map(Snapshot.StatusRow::name).orElse(null);
                     text.insert(0, statusAuthor + " - 상태: " + (was == null ? "접수" : was) + " → " + currentRow.name() + "\n\n");
+                    told = currentRow.id();
                     resolved = ItsmIds.STATUS_RESOLVED.equals(currentRow.id()) || ItsmIds.STATUS_CLOSED.equals(currentRow.id());
                 }
                 if (text.isEmpty()) {
-                    mark(wpId, last, now, currentStatus);
+                    mark(wpId, last, now, null);
                     continue;
                 }
                 var link = portalLink(r.value4());
                 subject = "[openPMS] #" + r.value4() + (resolved ? " 요청이 해결되었습니다: " : " 새 소식: ") + r.value5();
                 body = text + "진행 상황: " + link + "\n";
             }
-            if (!mark(wpId, last, now, currentStatus)) continue; // another instance took it
+            if (!mark(wpId, last, now, last == null ? currentStatus : told)) continue; // another instance took it
             if ("active".equals(r.value8()) && mailer.send(r.value7(), subject, body)) sent++;
         }
         return sent;
@@ -112,11 +114,11 @@ public class PortalMail {
         return mailer.link("/portal/tickets/" + number);
     }
 
-    /** Moves requester_mailed_at (and the status the requester now knows) on, but only if nobody else did since we read it. A minute behind now, so entries still settling go into the next batch. */
+    /** Moves requester_mailed_at (and, when a status line went out or on the receipt, the status the requester now knows) on, but only if nobody else did since we read it. A minute behind now, so entries still settling go into the next batch. */
     private boolean mark(UUID wpId, OffsetDateTime last, Instant now, UUID status) {
         var cond = last == null ? SERVICE_TICKETS.REQUESTER_MAILED_AT.isNull() : SERVICE_TICKETS.REQUESTER_MAILED_AT.eq(last);
         return db.update(SERVICE_TICKETS).set(SERVICE_TICKETS.REQUESTER_MAILED_AT, now.minus(SETTLE).atOffset(ZoneOffset.UTC))
-                .set(SERVICE_TICKETS.REQUESTER_MAILED_STATUS_ID, status)
+                .set(SERVICE_TICKETS.REQUESTER_MAILED_STATUS_ID, DSL.coalesce(DSL.val(status, SERVICE_TICKETS.REQUESTER_MAILED_STATUS_ID), SERVICE_TICKETS.REQUESTER_MAILED_STATUS_ID))
                 .where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wpId), cond).execute() == 1;
     }
 }
