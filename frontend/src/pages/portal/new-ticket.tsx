@@ -67,7 +67,7 @@ export function RadioGroupField<T extends string | number>({
   );
 }
 
-/** One portal field's input by its format; list values travel as the option text the portal offers. */
+/** One portal field's input by its format; a list shows the option values and sends the option ids. */
 function PortalFieldInput({ field, value, onChange, ...aria }: { field: PortalField; value: CustomValue; onChange: (v: CustomValue) => void; id?: string; "aria-invalid"?: boolean; "aria-describedby"?: string }) {
   const { t } = useTranslation();
   const text = (v: string) => onChange(v === "" ? null : v);
@@ -97,7 +97,7 @@ function PortalFieldInput({ field, value, onChange, ...aria }: { field: PortalFi
         />
       );
     case "list": {
-      const opts = field.options.map((o) => ({ value: o, label: o }));
+      const opts = field.options.map((o) => ({ value: o.id, label: o.value }));
       if (field.multi) {
         const list = Array.isArray(value) ? value.map(String) : [];
         return <MultiSelect aria-label={field.name} value={list} placeholder={t("app.select")} onValueChange={(v) => onChange(v.length ? v : null)} options={opts} />;

@@ -421,12 +421,15 @@ function deskByIdentifier(identifier: string): DbProject {
   return p;
 }
 
-/** Portal-visible fields on in this desk for at least one ticket type. */
+/** Portal-visible fields on in this desk for at least one ticket type; user and version fields never go on the portal. */
 function portalFields(p: DbProject): PortalField[] {
   return db.customFields
-    .filter((f) => f.portalVisible && enabledIn(f, p.id) && f.typeIds.some((t) => TICKET_TYPES.includes(t)))
+    .filter((f) => f.portalVisible && f.format !== "user" && (f.format as string) !== "version" && enabledIn(f, p.id) && f.typeIds.some((t) => TICKET_TYPES.includes(t)))
     .sort((a, b) => a.position - b.position)
-    .map((f) => ({ id: f.id, name: f.name, format: f.format, required: f.isRequired, multi: f.isMultiValue, options: f.options.map((o) => o.value), typeIds: f.typeIds.filter((t) => TICKET_TYPES.includes(t)) }));
+    .map((f) => ({
+      id: f.id, name: f.name, format: f.format, required: f.isRequired, multi: f.isMultiValue,
+      options: f.options.map((o) => ({ id: o.id, value: o.value })), typeIds: f.typeIds.filter((t) => TICKET_TYPES.includes(t)),
+    }));
 }
 
 /** My ticket by number; anyone else's, or one in an archived desk or a desk without the module, is the same 404. */
@@ -519,7 +522,8 @@ export const portalApi: Api["portal"] = {
   tickets: (state) =>
     run(() => {
       const user = sessionUser();
-      const closed = new Set(db.statuses.filter((s) => s.isClosed).map((s) => s.id));
+      // 해결 waits for the requester's confirmation, so it stays among the open ones
+      const closed = new Set(db.statuses.filter((s) => s.isClosed && s.id !== ITSM.resolved).map((s) => s.id));
       return db.serviceTickets
         .filter((t) => t.requesterId === user.id)
         .map((t) => ({ t, wp: db.workPackages.find((x) => x.id === t.workPackageId)! }))

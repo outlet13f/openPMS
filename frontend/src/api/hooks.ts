@@ -380,7 +380,8 @@ export const usePortalDesks = () => useQuery({ queryKey: ["portal", "desks"], qu
 export const usePortalTickets = (state: "open" | "closed" | "all") =>
   useQuery({ queryKey: ["portal", "tickets", state], queryFn: () => api.portal.tickets(state), placeholderData: keepPreviousData });
 /** Opening a ticket clears its "새 소식", so the lists refresh after it loads. */
-export const usePortalTicket = (number: number) => useQuery({ queryKey: ["portal", "ticket", number], queryFn: () => api.portal.ticket(number) });
+export const usePortalTicket = (number: number) =>
+  useQuery({ queryKey: ["portal", "ticket", number], queryFn: () => api.portal.ticket(number), enabled: Number.isInteger(number) && number > 0 });
 
 export function usePortalMutations() {
   const qc = useQueryClient();

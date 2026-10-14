@@ -36,7 +36,13 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class PortalService {
-    public record PortalField(UUID id, String name, String format, boolean required, boolean multi, List<String> options, List<UUID> typeIds) {}
+    /** A list option: the id travels in customValues, the value is what the requester reads. */
+    public record PortalOption(UUID id, String value) {}
+
+    public record PortalField(UUID id, String name, String format, boolean required, boolean multi, List<PortalOption> options, List<UUID> typeIds) {}
+
+    /** user and version values point at people and plans the requester cannot see, so those fields stay off the portal. */
+    private static final Set<String> NOT_ON_PORTAL = Set.of("user", "version");
 
     public record PortalDesk(String identifier, String name, String descriptionText, List<Dto.IdName> types, List<PortalField> fields) {}
 
@@ -88,8 +94,10 @@ public class PortalService {
         var enabled = new HashSet<>(db.select(PROJECT_CUSTOM_FIELDS.CUSTOM_FIELD_ID).from(PROJECT_CUSTOM_FIELDS).where(PROJECT_CUSTOM_FIELDS.PROJECT_ID.eq(p.id()))
                 .fetch(PROJECT_CUSTOM_FIELDS.CUSTOM_FIELD_ID));
         return s.customFields().stream()
-                .filter(cf -> visible.contains(cf.id()) && (cf.isForAll() || enabled.contains(cf.id())) && cf.typeIds().stream().anyMatch(ItsmIds.TICKET_TYPES::contains))
-                .map(cf -> new PortalField(cf.id(), cf.name(), cf.format(), cf.isRequired(), cf.isMultiValue(), cf.options().stream().map(Snapshot.OptionRow::value).toList(),
+                .filter(cf -> visible.contains(cf.id()) && !NOT_ON_PORTAL.contains(cf.format()) && (cf.isForAll() || enabled.contains(cf.id()))
+                        && cf.typeIds().stream().anyMatch(ItsmIds.TICKET_TYPES::contains))
+                .map(cf -> new PortalField(cf.id(), cf.name(), cf.format(), cf.isRequired(), cf.isMultiValue(),
+                        cf.options().stream().map(o -> new PortalOption(o.id(), o.value())).toList(),
                         cf.typeIds().stream().filter(ItsmIds.TICKET_TYPES::contains).toList()))
                 .toList();
     }
@@ -143,8 +151,9 @@ public class PortalService {
         var s = ctx.s();
         var closed = s.statuses().stream().filter(Snapshot.StatusRow::isClosed).map(Snapshot.StatusRow::id).toList();
         var where = SERVICE_TICKETS.REQUESTER_ID.eq(ctx.userId());
-        if ("open".equals(state)) where = where.and(WORK_PACKAGES.STATUS_ID.notIn(closed));
-        if ("closed".equals(state)) where = where.and(WORK_PACKAGES.STATUS_ID.in(closed));
+        // 해결 waits for the requester's confirmation, so it stays among the open ones
+        if ("open".equals(state)) where = where.and(WORK_PACKAGES.STATUS_ID.notIn(closed).or(WORK_PACKAGES.STATUS_ID.eq(ItsmIds.STATUS_RESOLVED)));
+        if ("closed".equals(state)) where = where.and(WORK_PACKAGES.STATUS_ID.in(closed).and(WORK_PACKAGES.STATUS_ID.ne(ItsmIds.STATUS_RESOLVED)));
         var hasNews = DSL.field(news(ctx.userId())).as("has_news");
         return db.select(WORK_PACKAGES.NUMBER, WORK_PACKAGES.SUBJECT, WORK_PACKAGES.PROJECT_ID, WORK_PACKAGES.TYPE_ID, WORK_PACKAGES.STATUS_ID,
                         WORK_PACKAGES.CREATED_AT, WORK_PACKAGES.UPDATED_AT, hasNews)

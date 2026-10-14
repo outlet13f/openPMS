@@ -1379,7 +1379,8 @@ export interface PortalField {
   format: string;
   required: boolean;
   multi: boolean;
-  options: string[];
+  /** list options: the id goes in customValues, the value is what the requester reads */
+  options: { id: Id; value: string }[];
   /** the ticket types the field applies to */
   typeIds: Id[];
 }

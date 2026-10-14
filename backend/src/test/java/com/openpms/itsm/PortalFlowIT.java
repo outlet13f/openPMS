@@ -10,8 +10,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static com.openpms.db.Tables.CUSTOM_FIELDS;
 
 import org.hamcrest.Matchers;
+import org.jooq.DSLContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +27,7 @@ import org.springframework.web.context.WebApplicationContext;
 @ActiveProfiles("dev")
 class PortalFlowIT {
     @Autowired WebApplicationContext context;
+    @Autowired DSLContext db;
     ItsmFixture f;
     MockHttpSession admin, agent, requester;
     String desk;
@@ -116,6 +119,43 @@ class PortalFlowIT {
         } finally {
             f.send(admin, delete("/api/v1/admin/custom-fields/" + field), "");
         }
+    }
+
+    @Test void aListFieldOnThePortalTakesTheOptionIdAndShowsItsValue() throws Exception {
+        var name = "장비 종류 " + java.util.UUID.randomUUID().toString().substring(0, 6);
+        var field = f.body(f.send(admin, post("/api/v1/admin/custom-fields"), "{\"name\":\"" + name + "\",\"format\":\"list\",\"isForAll\":false,"
+                + "\"options\":[{\"value\":\"노트북\"},{\"value\":\"데스크톱\"}],\"typeIds\":[\"" + ItsmIds.TYPE_INCIDENT + "\"]}")
+                .andExpect(status().isCreated()).andReturn()).get("id").asString();
+        try {
+            db.update(CUSTOM_FIELDS).set(CUSTOM_FIELDS.PORTAL_VISIBLE, true).where(CUSTOM_FIELDS.ID.eq(java.util.UUID.fromString(field))).execute();
+            f.send(admin, put("/api/v1/projects/" + desk + "/custom-fields"), "{\"customFieldIds\":[\"" + field + "\"]}").andExpect(status().isOk());
+            var desks = f.body(f.send(requester, get("/api/v1/portal/desks"), "").andExpect(status().isOk()).andReturn());
+            String option = null;
+            for (var d : desks) {
+                if (!d.get("identifier").asString().equals(desk)) continue;
+                for (var cf : d.get("fields")) {
+                    if (!cf.get("id").asString().equals(field)) continue;
+                    for (var o : cf.get("options")) if (o.get("value").asString().equals("데스크톱")) option = o.get("id").asString();
+                }
+            }
+            assertThat(option).as("the portal offers the option with its id").isNotNull();
+            var n = f.body(f.send(requester, post("/api/v1/portal/desks/" + desk + "/tickets"), "{\"typeId\":\"" + ItsmIds.TYPE_INCIDENT
+                    + "\",\"subject\":\"모니터가 안 나옵니다\",\"customValues\":{\"" + field + "\":\"" + option + "\"}}")
+                    .andExpect(status().isCreated()).andReturn()).get("number").asLong();
+            f.send(requester, get("/api/v1/portal/tickets/" + n), "")
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.fields[?(@.name == '" + name + "')].value").value(Matchers.contains("데스크톱")));
+        } finally {
+            f.send(admin, delete("/api/v1/admin/custom-fields/" + field), "");
+        }
+    }
+
+    @Test void aResolvedTicketStaysOpenUntilTheRequesterConfirms() throws Exception {
+        var n = submit();
+        var lock = f.body(f.send(admin, get("/api/v1/work-packages/" + n), "").andReturn()).get("lockVersion").asInt();
+        f.send(admin, patch("/api/v1/work-packages/" + n), "{\"lockVersion\":" + lock + ",\"statusId\":\"" + ItsmIds.STATUS_RESOLVED + "\"}").andExpect(status().isOk());
+        f.send(requester, get("/api/v1/portal/tickets?state=open"), "").andExpect(jsonPath("$[*].number", Matchers.hasItem((int) n)));
+        f.send(requester, get("/api/v1/portal/tickets?state=closed"), "").andExpect(jsonPath("$[*].number", Matchers.not(Matchers.hasItem((int) n))));
     }
 
     @Test void aStatusChangeWithoutACommentIsNewsToo() throws Exception {
