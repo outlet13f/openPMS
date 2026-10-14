@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>설계: ITSM 6단계 — 지식 베이스 | openPMS</title>
+<style>
+  :root {
+    --accent: #8b2f8f;
+    --accent-soft: #f5ecf6;
+    --ink: #1e1c22;
+    --text: #2b2930;
+    --muted: #625e69;
+    --line: #e2dfe6;
+    --bg: #faf9fb;
+    --warn: #9a5b00;
+    --warn-soft: #fff4e0;
+    --bad: #a3242a;
+    --bad-soft: #fdecec;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.65;
+    font-size: 15px;
+  }
+  header.top {
+    background: var(--ink);
+    color: #fff;
+    padding: 28px 32px 24px;
+  }
+  header.top .brand { font-size: 13px; letter-spacing: .04em; opacity: .75; }
+  header.top h1 { margin: 6px 0 10px; font-size: 26px; line-height: 1.3; }
+  header.top .meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px; }
+  .chip {
+    display: inline-block; padding: 2px 10px; border-radius: 999px;
+    background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
+  }
+  .layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); max-width: 1180px; margin: 0 auto; }
+  nav.toc {
+    position: sticky; top: 0; align-self: start; max-height: 100vh; overflow: auto;
+    padding: 24px 16px 24px 24px; font-size: 14px;
+  }
+  nav.toc strong { display: block; margin-bottom: 8px; color: var(--muted); font-size: 12px; letter-spacing: .05em; }
+  nav.toc a { display: block; padding: 4px 8px; border-radius: 6px; color: var(--text); text-decoration: none; }
+  nav.toc a:hover, nav.toc a:focus-visible { background: var(--accent-soft); color: var(--accent); outline: none; }
+  main { padding: 24px 32px 64px; min-width: 0; }
+  section { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 22px 26px; margin-bottom: 20px; }
+  h2 { margin: 0 0 14px; font-size: 20px; color: var(--ink); display: flex; align-items: baseline; gap: 10px; }
+  h2 .no { color: var(--accent); font-weight: 700; }
+  h3 { margin: 22px 0 8px; font-size: 16px; color: var(--ink); }
+  p { margin: 8px 0; }
+  ul { margin: 8px 0; padding-left: 22px; }
+  li { margin: 3px 0; }
+  code { font-family: "D2Coding", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; background: #f1eff3; padding: 1px 5px; border-radius: 4px; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f2f6; color: var(--ink); font-weight: 600; }
+  tr.current td { background: var(--accent-soft); }
+  .callout { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; }
+  .callout.warn { border-color: var(--warn); background: var(--warn-soft); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .card h4 { margin: 0 0 6px; font-size: 14px; color: var(--accent); font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .card ul { font-size: 13.5px; padding-left: 18px; }
+  .roadmap { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin: 14px 0 6px; }
+  .step { border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-size: 13px; background: #fff; }
+  .step b { display: block; font-size: 12px; color: var(--muted); }
+  .step span { font-weight: 600; color: var(--ink); }
+  .step.now { border-color: var(--accent); background: var(--accent-soft); }
+  .step.now b { color: var(--accent); }
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 12px 0; }
+  .state { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: #fff; font-size: 13.5px; font-weight: 600; }
+  .state.pause { background: var(--warn-soft); border-color: #e7c48a; color: var(--warn); }
+  .state.closed { background: #efedf1; color: var(--muted); }
+  .arrow { color: var(--muted); }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .tag.bad { background: var(--bad-soft); color: var(--bad); }
+  .tag.warn { background: var(--warn-soft); color: var(--warn); }
+  svg text { font-family: inherit; }
+  footer { color: var(--muted); font-size: 13px; text-align: center; padding: 20px; }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.toc { position: static; max-height: none; padding-bottom: 0; }
+    .roadmap { grid-template-columns: repeat(2, 1fr); }
+    main { padding: 16px; }
+  }
+  @media print {
+    nav.toc { display: none; }
+    .layout { display: block; }
+    section { break-inside: avoid; }
+  }
+/* extras */
+  .phasebar { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 0; }
+  .phasebar a { font-size: 12.5px; padding: 3px 10px; border-radius: 999px; color: #fff; text-decoration: none;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); }
+  .phasebar a[aria-current] { background: var(--accent); border-color: var(--accent); font-weight: 600; }
+  .phasebar a:hover, .phasebar a:focus-visible { background: rgba(255,255,255,.2); outline: none; }
+  .overview h3 { margin-top: 4px; }
+  a.step { text-decoration: none; color: inherit; display: block; }
+  a.step:hover, a.step:focus-visible { border-color: var(--accent); outline: none; }
+  .state.reject { background: var(--bad-soft); border-color: #eab3b5; color: var(--bad); }
+  .pager { display: flex; justify-content: space-between; gap: 12px; }
+  .pager a { color: var(--accent); text-decoration: none; font-weight: 600; }
+
+  svg.rm { display: block; max-width: 870px; margin: 8px auto 0; }
+  svg.rm a:hover rect, svg.rm a:focus rect { stroke: #8b2f8f; stroke-width: 2; }
+  .rm-legend { text-align: center; color: var(--muted); font-size: 12.5px; margin: 4px 0 12px; }
+  table.handoff td:first-child { font-weight: 700; color: var(--accent); }
+  .card p { margin: 0; font-size: 13.5px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">openPMS · ITSM 설계서</div>
+  <h1>설계: ITSM 6단계 — 지식 베이스</h1>
+  <div class="meta"><span class="chip">날짜: 2026-10-14</span><span class="chip">상태: 설계 합의(구현 계획 전)</span><span class="chip">선행: 1단계(포털), 3단계(알려진 오류). 4단계 CMDB가 있으면 업무 서비스로 문서를 분류한다</span><span class="chip">다음 단계로 넘겨주는 것: 포털 자가 해결 → 1(접수 감소), 답변에 문서 넣기 → 1·3</span><span class="chip">관련 요구사항: REQ-ITSM-5xx(이 단계에서 번호를 정한다)</span><span class="chip">원문 2026-10-14-itsm-phase6-knowledge-design.md</span></div>
+  <nav class="phasebar" aria-label="ITSM 단계"><a href="2026-10-14-itsm-index.html">전체</a><a href="2026-10-14-itsm-design.html">1 장애·서비스 요청</a><a href="2026-10-14-itsm-phase2-catalog-design.html">2 서비스 카탈로그</a><a href="2026-10-14-itsm-phase3-problem-design.html">3 문제 관리</a><a href="2026-10-14-itsm-phase4-cmdb-design.html">4 CMDB</a><a href="2026-10-14-itsm-phase5-change-design.html">5 변경 관리</a><a href="2026-10-14-itsm-phase6-knowledge-design.html" aria-current="page">6 지식 베이스</a></nav>
+</header>
+<div class="layout">
+<nav class="toc" aria-label="목차">
+  <strong>목차</strong>
+  <a href="#s1">1. 목적</a><a href="#s2">2. 데이터 (마이그레이션 V25 knowledge_base.sql, 개발 데이터 V1009)</a><a href="#s3">3. 동작 (com.openpms.itsm.Knowledge)</a><a href="#s4">4. 화면</a><a href="#s5">5. 보안</a><a href="#s6">6. 테스트</a><a href="#s7">7. 문서</a><a href="#s8">8. 위험과 대응</a>
+</nav>
+<main>
+<section id="s1"><h2><span class="no">1</span>목적</h2><div class="overview"><h3>로드맵에서의 위치</h3><svg class="rm" viewBox="0 0 870 370" width="100%" role="img" aria-labelledby="rm-t rm-d"><title id="rm-t">ITSM 단계 연결도</title><desc id="rm-d">1단계가 기반이고 2·3·4단계는 1단계 위에 만든다. 5단계 변경은 2단계 승인 엔진과 4단계 CI를, 6단계 지식 베이스는 3단계 알려진 오류와 4단계 업무 서비스를 쓴다. 5단계는 CI 변경을 4단계 CMDB에 반영한다.</desc><defs><marker id="rm-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#625e69"/></marker></defs><g font-family="inherit"><path d="M226,180 C278.0,180 278.0,55 326,55" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)" opacity=".25"/><path d="M226,180 C278.0,180 278.0,180 326,180" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)" opacity=".25"/><path d="M226,180 C278.0,180 278.0,305 326,305" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)" opacity=".25"/><path d="M540,55 C592.0,55 592.0,104 640,104" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)" opacity=".25"/><text x="592.0" y="73.5" text-anchor="middle" font-size="11.5" fill="#625e69" paint-order="stroke" stroke="#fff" stroke-width="4" opacity=".25">승인 엔진</text><path d="M540,161 C592.0,161 592.0,118 640,118" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)" opacity=".25"/><text x="592.0" y="133.5" text-anchor="middle" font-size="11.5" fill="#625e69" paint-order="stroke" stroke="#fff" stroke-width="4" opacity=".25">CI · 충돌 확인</text><path d="M644,138 C592.0,138 592.0,181 544,181" fill="none" stroke="#625e69" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#rm-arr)" opacity=".25"/><text x="592.0" y="173.5" text-anchor="middle" font-size="11.5" fill="#625e69" paint-order="stroke" stroke="#fff" stroke-width="4" opacity=".25">CMDB 반영</text><path d="M540,201 C592.0,201 592.0,234 640,234" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)"/><text x="592.0" y="211.5" text-anchor="middle" font-size="11.5" fill="#625e69" paint-order="stroke" stroke="#fff" stroke-width="4">업무 서비스</text><path d="M540,305 C592.0,305 592.0,256 640,256" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)"/><text x="592.0" y="274.5" text-anchor="middle" font-size="11.5" fill="#625e69" paint-order="stroke" stroke="#fff" stroke-width="4">알려진 오류</text><text x="121" y="139" text-anchor="middle" font-size="11.5" fill="#625e69" paint-order="stroke" stroke="#fff" stroke-width="4" opacity=".25">티켓 · SLA · 포털 → 2~6단계</text><a href="2026-10-14-itsm-design.html"><g opacity=".35"><rect x="16" y="147" width="210" height="66" rx="9" fill="#ffffff" stroke="#c9c4ce" stroke-width="1.2"/><circle cx="38" cy="171" r="13" fill="#1e1c22"/><text x="38" y="175.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">1</text><text x="58" y="176" font-size="14" font-weight="700" fill="#1e1c22">장애·서비스 요청</text><text x="30" y="200" font-size="12" fill="#625e69">SLA, 포털, 처리 그룹</text><text x="216" y="163" text-anchor="end" font-size="10.5" fill="#8a8590">구현 1번째</text></g></a><a href="2026-10-14-itsm-phase2-catalog-design.html"><g opacity=".35"><rect x="330" y="22" width="210" height="66" rx="9" fill="#ffffff" stroke="#c9c4ce" stroke-width="1.2"/><circle cx="352" cy="46" r="13" fill="#1e1c22"/><text x="352" y="50.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">2</text><text x="372" y="51" font-size="14" font-weight="700" fill="#1e1c22">서비스 카탈로그</text><text x="344" y="75" font-size="12" fill="#625e69">요청 양식, 승인</text><text x="530" y="38" text-anchor="end" font-size="10.5" fill="#8a8590">구현 2번째</text></g></a><a href="2026-10-14-itsm-phase3-problem-design.html"><g><rect x="330" y="272" width="210" height="66" rx="9" fill="#ffffff" stroke="#c9c4ce" stroke-width="1.2"/><circle cx="352" cy="296" r="13" fill="#1e1c22"/><text x="352" y="300.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">3</text><text x="372" y="301" font-size="14" font-weight="700" fill="#1e1c22">문제 관리</text><text x="344" y="325" font-size="12" fill="#625e69">근본 원인, 알려진 오류</text><text x="530" y="288" text-anchor="end" font-size="10.5" fill="#8a8590">구현 3번째</text></g></a><a href="2026-10-14-itsm-phase4-cmdb-design.html"><g><rect x="330" y="147" width="210" height="66" rx="9" fill="#ffffff" stroke="#c9c4ce" stroke-width="1.2"/><circle cx="352" cy="171" r="13" fill="#1e1c22"/><text x="352" y="175.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">4</text><text x="372" y="176" font-size="14" font-weight="700" fill="#1e1c22">CMDB</text><text x="344" y="200" font-size="12" fill="#625e69">구성 항목, 영향 분석</text><text x="530" y="163" text-anchor="end" font-size="10.5" fill="#8a8590">구현 4번째</text></g></a><a href="2026-10-14-itsm-phase5-change-design.html"><g opacity=".35"><rect x="644" y="84" width="210" height="66" rx="9" fill="#ffffff" stroke="#c9c4ce" stroke-width="1.2"/><circle cx="666" cy="108" r="13" fill="#1e1c22"/><text x="666" y="112.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">5</text><text x="686" y="113" font-size="14" font-weight="700" fill="#1e1c22">변경 관리</text><text x="658" y="137" font-size="12" fill="#625e69">CAB 승인, 실행 계획서</text><text x="844" y="100" text-anchor="end" font-size="10.5" fill="#8a8590">구현 5번째</text></g></a><g><rect x="644" y="210" width="210" height="66" rx="9" fill="#f5ecf6" stroke="#8b2f8f" stroke-width="2.2"/><circle cx="666" cy="234" r="13" fill="#8b2f8f"/><text x="666" y="238.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">6</text><text x="686" y="239" font-size="14" font-weight="700" fill="#1e1c22">지식 베이스</text><text x="658" y="263" font-size="12" fill="#625e69">포털 검색, 문서 추천</text><text x="844" y="226" text-anchor="end" font-size="10.5" fill="#8b2f8f">이 문서</text></g></g></svg><p class="rm-legend">실선: 앞 단계의 결과를 쓴다 · 점선: 뒤 단계가 앞 단계 데이터를 갱신한다 · 숫자: 구현 순서 · 상자를 누르면 그 설계서로 간다</p><div class="grid2"><div class="card"><h4>받는 것</h4><p>1: 포털, 3: 알려진 오류, 4: 업무 서비스(선택)</p></div><div class="card"><h4>넘겨주는 것</h4><p>포털 자가 해결 → 1(접수 감소), 답변에 문서 넣기 → 1·3</p></div></div><h3>문서 상태 흐름</h3><div class="flow"><span class="state ">초안</span><span class="arrow" aria-hidden="true">→</span><span class="state pause">검토</span><span class="arrow" aria-hidden="true">→</span><span class="state ">게시</span><span class="arrow" aria-hidden="true">→</span><span class="state closed">보관</span></div><div class="flow"><span class="state pause">검토</span><span class="arrow" aria-hidden="true">→</span><span class="state reject">초안으로 돌려보내기 (사유)</span></div></div>
+<p>자주 묻는 해결 방법과 알려진 오류의 임시 해결책을 <strong>문서</strong>로 남긴다. 직원은 접수하기 전에 포털에서 찾아 스스로 해결하고, 처리자는 답변할 때 문서를 골라 보낸다.</p>
+<h3>합의한 것</h3>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>결정</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>저장</td>
+<td>문서는 작업이 아니므로 작업 패키지가 아닌 별도 테이블로 둔다(판 이력 포함)</td>
+</tr>
+<tr>
+<td>공개 절차</td>
+<td>초안 → 검토 → 게시. 처리자가 쓰고 검토자가 승인해야 게시된다. 자기 문서는 자기가 승인할 수 없다</td>
+</tr>
+<tr>
+<td>공개 범위</td>
+<td>문서마다 <code>portal</code>(전 직원) 또는 <code>internal</code>(처리자만)</td>
+</tr>
+<tr>
+<td>포털</td>
+<td>검색, 접수 양식에서 제목을 입력하면 비슷한 문서 추천</td>
+</tr>
+</tbody>
+</table>
+<h3>범위 밖</h3>
+<ul>
+<li>문서 댓글·별점 토론(간단한 "도움이 됐어요" 수만 센다)</li>
+<li>여러 언어 판</li>
+<li>외부 공개(로그인 없이 보기)</li>
+<li>전문 검색 엔진(Elasticsearch 등). PostgreSQL trgm과 <code>tsvector</code>(simple)로 한다</li>
+</ul>
+</section>
+<section id="s2"><h2><span class="no">2</span>데이터 (마이그레이션 V25 <code>knowledge_base.sql</code>, 개발 데이터 V1009)</h2>
+<ul>
+<li><code>kb_categories</code>: <code>id</code>, <code>project_id</code>, <code>name</code>, <code>position</code>. unique <code>(project_id, name)</code></li>
+<li><code>kb_articles</code><ul>
+<li><code>id</code>, <code>number</code>(전역 순번, 화면에 <code>KB-12</code>), <code>project_id</code>(서비스 데스크), <code>category_id</code>, <code>service_ci_id</code>(4단계 업무 서비스 CI, 선택)</li>
+<li><code>title</code>, <code>body_html</code>(서버 sanitize), <code>body_text</code>, <code>audience</code>(<code>portal</code> | <code>internal</code>)</li>
+<li><code>status</code>(<code>draft</code> | <code>in_review</code> | <code>published</code> | <code>archived</code>)</li>
+<li><code>author_id</code>, <code>reviewer_id</code>, <code>published_at</code>, <code>published_revision</code></li>
+<li><code>source_problem_id</code>(3단계 문제에서 만들었을 때), <code>helpful_count</code>, <code>view_count</code>, <code>lock_version</code></li>
+<li>인덱스: <code>title</code>·<code>body_text</code>에 <code>gin_trgm_ops</code>, <code>(project_id, status, audience)</code></li>
+</ul>
+</li>
+<li><code>kb_article_revisions</code>: <code>article_id</code>, <code>revision</code>, <code>title</code>, <code>body_html</code>, <code>body_text</code>, <code>edited_by</code>, <code>created_at</code>. PK <code>(article_id, revision)</code>. 게시본은 <code>published_revision</code>이 가리키는 판이다. 게시된 문서를 고치면 새 판이 초안이 되고, 검토를 마칠 때까지 포털은 이전 게시본을 본다</li>
+<li><code>kb_article_links</code>: <code>article_id</code>, <code>work_package_id</code>, <code>kind</code>(<code>used_in_reply</code> | <code>resolved_by</code>), <code>created_by</code>, <code>created_at</code>. PK <code>(article_id, work_package_id, kind)</code></li>
+<li><code>kb_article_feedback</code>: <code>article_id</code>, <code>user_id</code>, <code>helpful boolean</code>, <code>created_at</code>. PK <code>(article_id, user_id)</code>(한 사람 한 표)</li>
+<li><code>attachments</code>에 <code>kb_article_id uuid references kb_articles (id) on delete cascade</code>를 더하고, <code>work_package_id</code>와 <code>kb_article_id</code>가 동시에 채워지지 않게 check를 둔다. 기존 고아 첨부 정리 작업은 두 열이 모두 null일 때만 지운다</li>
+<li>권한: <code>view_kb_internal</code>, <code>write_kb_articles</code>, <code>review_kb_articles</code></li>
+</ul>
+</section>
+<section id="s3"><h2><span class="no">3</span>동작 (<code>com.openpms.itsm.Knowledge</code>)</h2>
+<h3>쓰기와 검토</h3>
+<ul>
+<li>처리자(<code>write_kb_articles</code>)가 초안을 쓴다. 장애 상세의 "문서로 만들기"는 제목·해결 코멘트로, 문제 상세(알려진 오류)의 "문서로 만들기"는 제목·임시 해결책으로 초안을 채우고 <code>source_problem_id</code>를 남긴다</li>
+<li>"검토 요청"하면 <code>in_review</code>가 되고 <code>review_kb_articles</code> 권한자에게 알린다</li>
+<li>검토자는 게시하거나 사유와 함께 돌려보낸다(<code>draft</code>). 작성자와 같은 사람은 게시할 수 없다(서버가 거부). 마지막 판을 고친 사람도 같은 규칙을 따른다</li>
+<li>게시하면 <code>published_revision</code>을 지금 판으로 바꾸고 <code>published_at</code>을 기록한다</li>
+<li>보관(<code>archived</code>)하면 포털과 추천에서 빠진다. 링크된 티켓의 기록은 남는다</li>
+</ul>
+<h3>검색과 추천</h3>
+<ul>
+<li>포털 검색: 로그인한 직원에게 <code>published</code>이면서 <code>portal</code>인 문서만. 제목 trgm 유사도와 본문 <code>tsvector</code>(simple) 일치를 합쳐 순서를 매긴다. 결과는 20건씩</li>
+<li>포털 접수 양식: 제목을 입력하면(입력을 멈추고 400 ms 뒤) 비슷한 문서 상위 3개를 보여 준다. "이 문서로 해결됐어요"를 누르면 접수하지 않고 끝나며 해결 수를 센다(도움 피드백으로 기록)</li>
+<li>처리자 답변: 티켓 제목으로 문서를 추천하고(내부 문서 포함), 고르면 문서 링크와 요약을 답변 초안에 넣는다. 요청자에게 보낼 때 내부 문서이면 경고하고 링크를 넣지 않는다</li>
+<li>답변에 문서를 넣으면 <code>used_in_reply</code>, 그 티켓이 해결되면 <code>resolved_by</code> 링크가 남는다</li>
+</ul>
+</section>
+<section id="s4"><h2><span class="no">4</span>화면</h2>
+<ul>
+<li>포털 <code>/portal/kb</code>(검색, 분류, 문서 보기, "도움이 됐어요"), 포털 접수 양식의 추천</li>
+<li>처리자 <code>/projects/:id/kb</code>: 문서 목록(상태·범위·분류·서비스 필터), 편집기(기존 서식 편집기 재사용), 판 비교(이전 판과 나란히), 검토 대기함</li>
+<li>작업 패키지 상세: "관련 문서" 패널(추천, 링크된 문서)</li>
+<li>대시보드 위젯: 많이 본 문서, 포털에서 스스로 해결된 수(이번 달), 검토 대기 수</li>
+<li>가짜 데이터 계층에 같은 규칙, <code>SCHEMA</code> 올림</li>
+</ul>
+</section>
+<section id="s5"><h2><span class="no">5</span>보안</h2>
+<ul>
+<li>포털 API는 <code>published</code> + <code>portal</code>만 낸다. 초안, 내부 문서, 다른 판, 작성자·검토자 정보는 내지 않는다. 숨은 문서 번호로 접근하면 404</li>
+<li>게시본만 포털에 보이므로, 고치는 중인 초안이 새지 않는다(<code>published_revision</code> 기준으로 조회)</li>
+<li>본문 HTML은 기존 sanitize, 첨부 다운로드는 문서가 포털 공개 게시본일 때만 포털에서 허용</li>
+<li>피드백은 한 사람 한 표, 조회 수는 같은 사람이 하루에 한 번만 센다(캐시 없이 DB 조건부 insert)</li>
+</ul>
+</section>
+<section id="s6"><h2><span class="no">6</span>테스트</h2>
+<ul>
+<li>JUnit<ul>
+<li><code>KnowledgeWorkflowIT</code>: 초안·검토·게시·돌려보내기, 본인 게시 거부, 게시 뒤 수정 시 포털은 이전 게시본</li>
+<li><code>KnowledgeSearchIT</code>: 범위·상태 필터, 순서, 한국어 제목 검색</li>
+<li><code>PortalKbSecurityIT</code>: 내부·초안·보관 문서 404, 첨부 접근</li>
+<li><code>AttachmentOwnerCheckIT</code>: 첨부 두 주인 금지, 고아 정리가 문서 첨부를 지우지 않음</li>
+<li><code>PerfBudgetIT</code>: 포털 검색, 접수 양식 추천</li>
+</ul>
+</li>
+<li>e2e: 처리자가 장애에서 문서 초안 → 검토자 게시 → 직원이 포털 접수 양식에서 추천을 보고 "해결됐어요" → 대시보드 수 증가. 내부 문서가 포털에 안 보이는지</li>
+</ul>
+</section>
+<section id="s7"><h2><span class="no">7</span>문서</h2>
+<p>01·02, 04(KB API), 05(V25, 첨부 변경), 06, 07(새 절: 지식 베이스 찾기·쓰기·검토), 10(새 절: KB 권한·분류), 08·09. 도움말 연결.</p>
+</section>
+<section id="s8"><h2><span class="no">8</span>위험과 대응</h2>
+<table>
+<thead>
+<tr>
+<th>위험</th>
+<th>대응</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>첨부 테이블 변경이 기존 고아 정리에 영향</td>
+<td>정리 조건을 두 열 모두 null로 바꾸고 IT로 고정</td>
+</tr>
+<tr>
+<td>한국어 검색 품질(형태소 없음)</td>
+<td>trgm 유사도 중심, simple <code>tsvector</code>는 보조. 모자라면 다음 판에서 다시 본다</td>
+</tr>
+<tr>
+<td>추천 호출이 잦아 부하</td>
+<td>입력 지연 400 ms, 최소 2글자, 결과 3건, <code>PerfBudgetIT</code></td>
+</tr>
+</tbody>
+</table></section>
+<section class="pager"><a href="2026-10-14-itsm-phase5-change-design.html">← 5단계 변경 관리</a></section>
+</main>
+</div>
+<footer>openPMS 개발팀 · 사내 전용</footer>
+</body>
+</html>

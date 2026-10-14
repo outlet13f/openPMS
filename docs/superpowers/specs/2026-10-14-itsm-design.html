@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>설계: ITSM — 로드맵과 1단계 장애·서비스 요청 | openPMS</title>
+<style>
+  :root {
+    --accent: #8b2f8f;
+    --accent-soft: #f5ecf6;
+    --ink: #1e1c22;
+    --text: #2b2930;
+    --muted: #625e69;
+    --line: #e2dfe6;
+    --bg: #faf9fb;
+    --warn: #9a5b00;
+    --warn-soft: #fff4e0;
+    --bad: #a3242a;
+    --bad-soft: #fdecec;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.65;
+    font-size: 15px;
+  }
+  header.top {
+    background: var(--ink);
+    color: #fff;
+    padding: 28px 32px 24px;
+  }
+  header.top .brand { font-size: 13px; letter-spacing: .04em; opacity: .75; }
+  header.top h1 { margin: 6px 0 10px; font-size: 26px; line-height: 1.3; }
+  header.top .meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px; }
+  .chip {
+    display: inline-block; padding: 2px 10px; border-radius: 999px;
+    background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
+  }
+  .layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); max-width: 1180px; margin: 0 auto; }
+  nav.toc {
+    position: sticky; top: 0; align-self: start; max-height: 100vh; overflow: auto;
+    padding: 24px 16px 24px 24px; font-size: 14px;
+  }
+  nav.toc strong { display: block; margin-bottom: 8px; color: var(--muted); font-size: 12px; letter-spacing: .05em; }
+  nav.toc a { display: block; padding: 4px 8px; border-radius: 6px; color: var(--text); text-decoration: none; }
+  nav.toc a:hover, nav.toc a:focus-visible { background: var(--accent-soft); color: var(--accent); outline: none; }
+  main { padding: 24px 32px 64px; min-width: 0; }
+  section { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 22px 26px; margin-bottom: 20px; }
+  h2 { margin: 0 0 14px; font-size: 20px; color: var(--ink); display: flex; align-items: baseline; gap: 10px; }
+  h2 .no { color: var(--accent); font-weight: 700; }
+  h3 { margin: 22px 0 8px; font-size: 16px; color: var(--ink); }
+  p { margin: 8px 0; }
+  ul { margin: 8px 0; padding-left: 22px; }
+  li { margin: 3px 0; }
+  code { font-family: "D2Coding", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; background: #f1eff3; padding: 1px 5px; border-radius: 4px; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f2f6; color: var(--ink); font-weight: 600; }
+  tr.current td { background: var(--accent-soft); }
+  .callout { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; }
+  .callout.warn { border-color: var(--warn); background: var(--warn-soft); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .card h4 { margin: 0 0 6px; font-size: 14px; color: var(--accent); font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .card ul { font-size: 13.5px; padding-left: 18px; }
+  .roadmap { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin: 14px 0 6px; }
+  .step { border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-size: 13px; background: #fff; }
+  .step b { display: block; font-size: 12px; color: var(--muted); }
+  .step span { font-weight: 600; color: var(--ink); }
+  .step.now { border-color: var(--accent); background: var(--accent-soft); }
+  .step.now b { color: var(--accent); }
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 12px 0; }
+  .state { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: #fff; font-size: 13.5px; font-weight: 600; }
+  .state.pause { background: var(--warn-soft); border-color: #e7c48a; color: var(--warn); }
+  .state.closed { background: #efedf1; color: var(--muted); }
+  .arrow { color: var(--muted); }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .tag.bad { background: var(--bad-soft); color: var(--bad); }
+  .tag.warn { background: var(--warn-soft); color: var(--warn); }
+  svg text { font-family: inherit; }
+  footer { color: var(--muted); font-size: 13px; text-align: center; padding: 20px; }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.toc { position: static; max-height: none; padding-bottom: 0; }
+    .roadmap { grid-template-columns: repeat(2, 1fr); }
+    main { padding: 16px; }
+  }
+  @media print {
+    nav.toc { display: none; }
+    .layout { display: block; }
+    section { break-inside: avoid; }
+  }
+/* extras */
+  .phasebar { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 0; }
+  .phasebar a { font-size: 12.5px; padding: 3px 10px; border-radius: 999px; color: #fff; text-decoration: none;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); }
+  .phasebar a[aria-current] { background: var(--accent); border-color: var(--accent); font-weight: 600; }
+  .phasebar a:hover, .phasebar a:focus-visible { background: rgba(255,255,255,.2); outline: none; }
+  .overview h3 { margin-top: 4px; }
+  a.step { text-decoration: none; color: inherit; display: block; }
+  a.step:hover, a.step:focus-visible { border-color: var(--accent); outline: none; }
+  .state.reject { background: var(--bad-soft); border-color: #eab3b5; color: var(--bad); }
+  .pager { display: flex; justify-content: space-between; gap: 12px; }
+  .pager a { color: var(--accent); text-decoration: none; font-weight: 600; }
+
+  svg.rm { display: block; max-width: 870px; margin: 8px auto 0; }
+  svg.rm a:hover rect, svg.rm a:focus rect { stroke: #8b2f8f; stroke-width: 2; }
+  .rm-legend { text-align: center; color: var(--muted); font-size: 12.5px; margin: 4px 0 12px; }
+  table.handoff td:first-child { font-weight: 700; color: var(--accent); }
+  .card p { margin: 0; font-size: 13.5px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">openPMS · 설계서</div>
+  <h1>ITSM (ITIL 프로세스) — 로드맵과 1단계 장애·서비스 요청</h1>
+  <div class="meta">
+    <span class="chip">날짜 2026-10-14</span>
+    <span class="chip">상태: 설계 합의(구현 계획 전)</span>
+    <span class="chip">요구사항 REQ-ITSM-001 ~</span>
+    <span class="chip">원문 2026-10-14-itsm-design.md</span>
+  </div>
+  <!-- phasebar:start --><nav class="phasebar" aria-label="ITSM 단계"><a href="2026-10-14-itsm-index.html">전체</a><a href="2026-10-14-itsm-design.html" aria-current="page">1 장애·서비스 요청</a><a href="2026-10-14-itsm-phase2-catalog-design.html">2 서비스 카탈로그</a><a href="2026-10-14-itsm-phase3-problem-design.html">3 문제 관리</a><a href="2026-10-14-itsm-phase4-cmdb-design.html">4 CMDB</a><a href="2026-10-14-itsm-phase5-change-design.html">5 변경 관리</a><a href="2026-10-14-itsm-phase6-knowledge-design.html">6 지식 베이스</a></nav><!-- phasebar:end -->
+</header>
+
+<div class="layout">
+<nav class="toc" aria-label="목차">
+  <strong>목차</strong>
+  <a href="#s1">1. 목적과 합의</a>
+  <a href="#s2">2. 로드맵</a>
+  <a href="#s3">3. 데이터 (V20)</a>
+  <a href="#s4">4. 권한과 포털</a>
+  <a href="#s5">5. SLA 동작</a>
+  <a href="#s6">6. 처리자 화면</a>
+  <a href="#s7">7. 테스트</a>
+  <a href="#s8">8. 문서</a>
+  <a href="#s9">9. 위험과 대응</a>
+</nav>
+
+<main>
+
+<section id="s1">
+  <h2><span class="no">1</span>목적과 합의</h2>
+  <p>openPMS에 ITIL 전체 프로세스(장애·서비스 요청·문제·변경·CMDB·지식 베이스)를 갖춘 ITSM을 넣는다. 한 설계서로 다루기에는 크므로 6단계로 나누고, 이 문서는 <b>전체 로드맵</b>과 <b>1단계(기반 + 장애·서비스 요청)의 상세 설계</b>를 담는다. 2단계부터는 단계마다 설계서 → 구현 계획 → 구현을 따로 돈다.</p>
+  <h3>합의한 것</h3>
+  <table>
+    <thead><tr><th style="width:120px">항목</th><th>결정</th></tr></thead>
+    <tbody>
+      <tr><td>목표</td><td>ITIL 전체 프로세스. 6단계로 나누어 순서대로 만든다</td></tr>
+      <tr><td>요청자</td><td>사내 전 직원(openPMS 계정, SSO 포함). 서비스 데스크 프로젝트의 멤버가 아니어도 포털에서 접수한다</td></tr>
+      <tr><td>저장 방식</td><td>티켓 = 작업 패키지 + ITSM 확장 테이블(1:1). 별도 티켓 엔진은 만들지 않는다</td></tr>
+      <tr><td>SLA 시계</td><td>SLA 정책마다 달력을 고른다(24×7 또는 근무 시간). 휴무일은 기존 <code>non_working_days</code>. 멈춤 상태에서는 시계가 멈춘다</td></tr>
+      <tr><td>처리 그룹</td><td>기존 <code>user_groups</code>를 처리 그룹(큐)으로 쓴다</td></tr>
+      <tr><td>우선순위</td><td>영향도 × 긴급도 행렬로 접수 때 자동으로 정하고, 처리자가 바꿀 수 있다</td></tr>
+    </tbody>
+  </table>
+  <h3>범위 밖 (1단계)</h3>
+  <ul>
+    <li>메일 접수(IMAP)와 계정 없는 외부 요청자</li>
+    <li>서비스 카탈로그·승인(2단계), 문제(3), CMDB(4), 변경(5), 지식 베이스(6)</li>
+    <li>만족도 조사, 근무 교대표, 자동 배정 규칙(라운드 로빈 등)</li>
+    <li>처리 그룹별로 다른 달력</li>
+  </ul>
+</section>
+
+<section id="s2">
+  <h2><span class="no">2</span>로드맵</h2>
+  <!-- roadmap:start --><svg class="rm" viewBox="0 0 870 370" width="100%" role="img" aria-labelledby="rm-t rm-d"><title id="rm-t">ITSM 단계 연결도</title><desc id="rm-d">1단계가 기반이고 2·3·4단계는 1단계 위에 만든다. 5단계 변경은 2단계 승인 엔진과 4단계 CI를, 6단계 지식 베이스는 3단계 알려진 오류와 4단계 업무 서비스를 쓴다. 5단계는 CI 변경을 4단계 CMDB에 반영한다.</desc><defs><marker id="rm-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#625e69"/></marker></defs><g font-family="inherit"><path d="M226,180 C278.0,180 278.0,55 326,55" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)"/><path d="M226,180 C278.0,180 278.0,180 326,180" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)"/><path d="M226,180 C278.0,180 278.0,305 326,305" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)"/><path d="M540,55 C592.0,55 592.0,104 640,104" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)" opacity=".25"/><text x="592.0" y="73.5" text-anchor="middle" font-size="11.5" fill="#625e69" paint-order="stroke" stroke="#fff" stroke-width="4" opacity=".25">승인 엔진</text><path d="M540,161 C592.0,161 592.0,118 640,118" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)" opacity=".25"/><text x="592.0" y="133.5" text-anchor="middle" font-size="11.5" fill="#625e69" paint-order="stroke" stroke="#fff" stroke-width="4" opacity=".25">CI · 충돌 확인</text><path d="M644,138 C592.0,138 592.0,181 544,181" fill="none" stroke="#625e69" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#rm-arr)" opacity=".25"/><text x="592.0" y="173.5" text-anchor="middle" font-size="11.5" fill="#625e69" paint-order="stroke" stroke="#fff" stroke-width="4" opacity=".25">CMDB 반영</text><path d="M540,201 C592.0,201 592.0,234 640,234" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)" opacity=".25"/><text x="592.0" y="211.5" text-anchor="middle" font-size="11.5" fill="#625e69" paint-order="stroke" stroke="#fff" stroke-width="4" opacity=".25">업무 서비스</text><path d="M540,305 C592.0,305 592.0,256 640,256" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)" opacity=".25"/><text x="592.0" y="274.5" text-anchor="middle" font-size="11.5" fill="#625e69" paint-order="stroke" stroke="#fff" stroke-width="4" opacity=".25">알려진 오류</text><text x="121" y="139" text-anchor="middle" font-size="11.5" fill="#625e69" paint-order="stroke" stroke="#fff" stroke-width="4">티켓 · SLA · 포털 → 2~6단계</text><g><rect x="16" y="147" width="210" height="66" rx="9" fill="#f5ecf6" stroke="#8b2f8f" stroke-width="2.2"/><circle cx="38" cy="171" r="13" fill="#8b2f8f"/><text x="38" y="175.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">1</text><text x="58" y="176" font-size="14" font-weight="700" fill="#1e1c22">장애·서비스 요청</text><text x="30" y="200" font-size="12" fill="#625e69">SLA, 포털, 처리 그룹</text><text x="216" y="163" text-anchor="end" font-size="10.5" fill="#8b2f8f">이 문서</text></g><a href="2026-10-14-itsm-phase2-catalog-design.html"><g><rect x="330" y="22" width="210" height="66" rx="9" fill="#ffffff" stroke="#c9c4ce" stroke-width="1.2"/><circle cx="352" cy="46" r="13" fill="#1e1c22"/><text x="352" y="50.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">2</text><text x="372" y="51" font-size="14" font-weight="700" fill="#1e1c22">서비스 카탈로그</text><text x="344" y="75" font-size="12" fill="#625e69">요청 양식, 승인</text><text x="530" y="38" text-anchor="end" font-size="10.5" fill="#8a8590">구현 2번째</text></g></a><a href="2026-10-14-itsm-phase3-problem-design.html"><g><rect x="330" y="272" width="210" height="66" rx="9" fill="#ffffff" stroke="#c9c4ce" stroke-width="1.2"/><circle cx="352" cy="296" r="13" fill="#1e1c22"/><text x="352" y="300.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">3</text><text x="372" y="301" font-size="14" font-weight="700" fill="#1e1c22">문제 관리</text><text x="344" y="325" font-size="12" fill="#625e69">근본 원인, 알려진 오류</text><text x="530" y="288" text-anchor="end" font-size="10.5" fill="#8a8590">구현 3번째</text></g></a><a href="2026-10-14-itsm-phase4-cmdb-design.html"><g><rect x="330" y="147" width="210" height="66" rx="9" fill="#ffffff" stroke="#c9c4ce" stroke-width="1.2"/><circle cx="352" cy="171" r="13" fill="#1e1c22"/><text x="352" y="175.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">4</text><text x="372" y="176" font-size="14" font-weight="700" fill="#1e1c22">CMDB</text><text x="344" y="200" font-size="12" fill="#625e69">구성 항목, 영향 분석</text><text x="530" y="163" text-anchor="end" font-size="10.5" fill="#8a8590">구현 4번째</text></g></a><a href="2026-10-14-itsm-phase5-change-design.html"><g opacity=".35"><rect x="644" y="84" width="210" height="66" rx="9" fill="#ffffff" stroke="#c9c4ce" stroke-width="1.2"/><circle cx="666" cy="108" r="13" fill="#1e1c22"/><text x="666" y="112.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">5</text><text x="686" y="113" font-size="14" font-weight="700" fill="#1e1c22">변경 관리</text><text x="658" y="137" font-size="12" fill="#625e69">CAB 승인, 실행 계획서</text><text x="844" y="100" text-anchor="end" font-size="10.5" fill="#8a8590">구현 5번째</text></g></a><a href="2026-10-14-itsm-phase6-knowledge-design.html"><g opacity=".35"><rect x="644" y="210" width="210" height="66" rx="9" fill="#ffffff" stroke="#c9c4ce" stroke-width="1.2"/><circle cx="666" cy="234" r="13" fill="#1e1c22"/><text x="666" y="238.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">6</text><text x="686" y="239" font-size="14" font-weight="700" fill="#1e1c22">지식 베이스</text><text x="658" y="263" font-size="12" fill="#625e69">포털 검색, 문서 추천</text><text x="844" y="226" text-anchor="end" font-size="10.5" fill="#8a8590">구현 6번째</text></g></a></g></svg><p class="rm-legend">실선: 앞 단계의 결과를 쓴다 · 점선: 뒤 단계가 앞 단계 데이터를 갱신한다 · 숫자: 구현 순서 · 상자를 누르면 그 설계서로 간다</p><h3>단계 사이에 오가는 것</h3><table class="handoff"><thead><tr><th style="width:44px">단계</th><th style="width:130px">이름</th><th>앞 단계에서 받는 것</th><th>뒤 단계로 넘겨주는 것</th></tr></thead><tbody><tr class="current"><td>1</td><td>장애·서비스 요청</td><td>기존 작업 패키지·워크플로·저널·알림·웹훅</td><td>서비스 데스크 프로젝트, <code>service_tickets</code>, SLA 시계, 포털, 처리 그룹 → 2~6단계 모두</td></tr><tr><td>2</td><td><a href="2026-10-14-itsm-phase2-catalog-design.html">서비스 카탈로그</a></td><td>1: 포털, SLA 멈춤 상태, 처리 그룹</td><td>승인 엔진 <code>ticket_approvals</code>, 포털 내 승인함 → 5(CAB 승인)</td></tr><tr><td>3</td><td><a href="2026-10-14-itsm-phase3-problem-design.html">문제 관리</a></td><td>1: 장애(<code>service_tickets</code>)</td><td>알려진 오류·임시 해결책 → 6(문서로 만들기). 장애·문제에서 변경 만들기 → 5</td></tr><tr><td>4</td><td><a href="2026-10-14-itsm-phase4-cmdb-design.html">CMDB</a></td><td>1: 티켓(CI 연결)</td><td>CI와 <code>work_package_cis</code> → 5(충돌 막기, CMDB 반영). 업무 서비스 CI → 6(문서 분류), 1(포털 서비스 고르기)</td></tr><tr><td>5</td><td><a href="2026-10-14-itsm-phase5-change-design.html">변경 관리</a></td><td>2: 승인 엔진, 4: CI, 1·3: 장애·문제</td><td>CI 변경 반영 → 4(CMDB 갱신). 실패한 변경의 장애 만들기 제안 → 1</td></tr><tr><td>6</td><td><a href="2026-10-14-itsm-phase6-knowledge-design.html">지식 베이스</a></td><td>1: 포털, 3: 알려진 오류, 4: 업무 서비스(선택)</td><td>포털 자가 해결 → 1(접수 감소), 답변에 문서 넣기 → 1·3</td></tr></tbody></table><!-- roadmap:end -->
+  <div class="callout">CI 기반 충돌 확인을 위해 CMDB(4)를 변경(5)보다 먼저 만든다(2026-10-14 결정). 모든 단계는 같은 틀을 따른다. 단, CMDB의 구성 항목과 지식 베이스 문서는 작업이 아니므로 별도 테이블로 둔다. 새 프로세스는 작업 패키지 <b>유형</b> + 1:1 <b>확장 테이블</b>로 만들고, 프로세스 사이의 연결은 기존 <code>relations</code>로 맺는다.</div>
+</section>
+
+<section id="s3">
+  <h2><span class="no">3</span>데이터 <small style="font-weight:400;color:var(--muted);font-size:14px">마이그레이션 V20 <code>service_desk.sql</code>, 개발 데이터 V1004</small></h2>
+
+  <svg viewBox="0 0 860 300" width="100%" role="img" aria-labelledby="erd-title erd-desc" style="max-width:860px;display:block;margin:6px auto 14px">
+    <title id="erd-title">1단계 데이터 관계도</title>
+    <desc id="erd-desc">service_tickets는 work_packages와 1:1이고 users(요청자), user_groups(처리 그룹), sla_policies를 참조한다. sla_policies는 service_calendars를 참조하고, priority_matrix는 영향도와 긴급도를 priorities로 잇는다.</desc>
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#625e69"/>
+      </marker>
+    </defs>
+    <g font-size="13">
+      <!-- existing -->
+      <g fill="#f1eff3" stroke="#c9c4ce">
+        <rect x="20" y="20" width="170" height="44" rx="6"/>
+        <rect x="20" y="128" width="170" height="44" rx="6"/>
+        <rect x="20" y="236" width="170" height="44" rx="6"/>
+        <rect x="670" y="236" width="170" height="44" rx="6"/>
+        <rect x="670" y="20" width="170" height="44" rx="6"/>
+      </g>
+      <g fill="#2b2930" text-anchor="middle">
+        <text x="105" y="47">work_packages</text>
+        <text x="105" y="155">users (요청자)</text>
+        <text x="105" y="263">user_groups (처리 그룹)</text>
+        <text x="755" y="263">non_working_days</text>
+        <text x="755" y="47">priorities</text>
+      </g>
+      <!-- new -->
+      <g fill="#f5ecf6" stroke="#8b2f8f" stroke-width="1.5">
+        <rect x="330" y="108" width="190" height="84" rx="8"/>
+        <rect x="560" y="128" width="170" height="44" rx="6"/>
+        <rect x="560" y="236" width="90" height="44" rx="6"/>
+        <rect x="380" y="20" width="200" height="44" rx="6"/>
+      </g>
+      <g fill="#8b2f8f" text-anchor="middle" font-weight="600">
+        <text x="425" y="140">service_tickets</text>
+        <text x="645" y="155">sla_policies</text>
+        <text x="605" y="256">service_</text>
+        <text x="605" y="272">calendars</text>
+        <text x="480" y="47">priority_matrix</text>
+      </g>
+      <g fill="#625e69" text-anchor="middle" font-size="11.5">
+        <text x="425" y="160">SLA 기한 · 멈춤 · 위반</text>
+        <text x="425" y="178">영향도 · 긴급도 · 접수 경로</text>
+      </g>
+      <g stroke="#625e69" fill="none" stroke-width="1.3">
+        <path d="M330,128 L190,48" marker-end="url(#arr)"/>
+        <path d="M330,150 L190,150" marker-end="url(#arr)"/>
+        <path d="M330,175 L190,255" marker-end="url(#arr)"/>
+        <path d="M520,150 L560,150" marker-end="url(#arr)"/>
+        <path d="M630,172 L610,236" marker-end="url(#arr)"/>
+        <path d="M650,258 L670,258" marker-end="url(#arr)" stroke-dasharray="4 3"/>
+        <path d="M580,42 L670,42" marker-end="url(#arr)"/>
+        <path d="M700,128 L740,64" marker-end="url(#arr)"/>
+      </g>
+      <g fill="#625e69" font-size="11">
+        <text x="240" y="80">1:1</text>
+        <text x="236" y="144">requester_id</text>
+        <text x="220" y="228">assignment_group_id</text>
+        <text x="652" y="296" font-size="10.5">휴무일(business일 때)</text>
+      </g>
+    </g>
+  </svg>
+
+  <ul>
+    <li><code>projects_known_modules</code> check 제약에 <code>service_desk</code>를 더한다.</li>
+    <li><code>statuses</code>에 <code>sla_pause boolean not null default false</code>를 더한다.</li>
+    <li><code>custom_fields</code>에 <code>portal_visible boolean not null default false</code>를 더한다(포털 접수 양식과 포털 상세에 보이는 필드).</li>
+  </ul>
+  <div class="grid2">
+    <div class="card">
+      <h4>service_calendars</h4>
+      <ul>
+        <li><code>id</code>, <code>name</code>(unique), <code>mode</code>(<code>24x7</code> | <code>business</code>), <code>time_zone</code>(기본 <code>Asia/Seoul</code>)</li>
+        <li><code>hours jsonb</code>: 요일별 <code>{"day":1,"start":"09:00","end":"18:00"}</code>. 24x7이면 쓰지 않음</li>
+        <li>휴무일은 <code>business</code>일 때만 <code>non_working_days</code>에서 뺀다</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>sla_policies</h4>
+      <ul>
+        <li><code>project_id</code>, <code>type_id</code>, <code>priority_id</code>, <code>calendar_id</code></li>
+        <li><code>first_response_minutes</code>(&gt; 0), <code>resolve_minutes</code>(&gt; 0, ≥ 첫 응답)</li>
+        <li>unique <code>(project_id, type_id, priority_id)</code>. 맞는 정책이 없으면 SLA 없이 접수(필드 null)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>priority_matrix</h4>
+      <ul>
+        <li><code>project_id</code>, <code>impact</code>(1–3), <code>urgency</code>(1–3), <code>priority_id</code></li>
+        <li>PK <code>(project_id, impact, urgency)</code></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>service_tickets (작업 패키지와 1:1)</h4>
+      <ul>
+        <li><code>work_package_id</code> PK, FK on delete cascade</li>
+        <li><code>requester_id</code>(not null), <code>channel</code>(<code>portal</code> | <code>agent</code> | <code>api</code>), <code>impact</code>, <code>urgency</code></li>
+        <li><code>assignment_group_id</code>, <code>sla_policy_id</code>(둘 다 on delete set null)</li>
+        <li><code>first_response_due_at</code>, <code>first_responded_at</code>, <code>resolve_due_at</code>, <code>resolved_at</code></li>
+        <li><code>paused_since</code>, <code>paused_total_seconds</code>(기본 0)</li>
+        <li><code>response_breached</code>, <code>resolve_breached</code>, <code>response_warned</code>, <code>resolve_warned</code></li>
+        <li>인덱스: <code>requester_id</code>, <code>assignment_group_id</code>, 미해결 티켓의 <code>resolve_due_at</code></li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>기본 데이터 (V20)</h3>
+  <p>유형 "장애"·"서비스 요청", 기본 달력 하나(평일 09–18시), 그리고 아래 상태와 워크플로.</p>
+  <div class="flow" aria-label="티켓 상태 흐름">
+    <span class="state">접수</span><span class="arrow">→</span>
+    <span class="state">처리 중</span><span class="arrow">⇄</span>
+    <span class="state pause">답변 대기 · SLA 멈춤</span><span class="arrow">→</span>
+    <span class="state closed">해결</span><span class="arrow">→</span>
+    <span class="state closed">종료</span>
+  </div>
+  <p>요청자는 워크플로의 <code>applies_to = 'author'</code> 조건으로 <b>답변 대기 → 처리 중</b>, <b>해결 → 처리 중(재오픈)</b>, <b>해결 → 종료</b>를 할 수 있다.</p>
+  <h3>개발 데이터 (V1004)</h3>
+  <p>서비스 데스크 프로젝트, 처리 그룹 둘, SLA 정책(P1은 24×7, 나머지는 근무 시간), 행렬, 상태가 여러 가지인 티켓. 새 모듈을 켜는 것은 기존 프로젝트 설정의 모듈 켜기를 그대로 쓴다.</p>
+</section>
+
+<section id="s4">
+  <h2><span class="no">4</span>권한과 요청자 포털</h2>
+  <h3>권한 (역할의 <code>permissions</code>에 추가)</h3>
+  <table>
+    <thead><tr><th style="width:220px">권한</th><th>할 수 있는 일</th></tr></thead>
+    <tbody>
+      <tr><td><code>view_service_tickets</code></td><td>서비스 데스크 프로젝트의 티켓과 SLA 정보 보기</td></tr>
+      <tr><td><code>handle_service_tickets</code></td><td>배정, 상태 변경, 영향도·긴급도·처리 그룹 변경, 내부 코멘트</td></tr>
+      <tr><td><code>manage_service_desk</code></td><td>SLA 정책, 달력, 우선순위 행렬 설정</td></tr>
+    </tbody>
+  </table>
+  <p>처리자는 서비스 데스크 프로젝트의 멤버로서 이 권한을 받는다. 처리자 쪽 화면과 API는 기존 작업 패키지 화면과 API를 넓혀서 쓴다.</p>
+
+  <h3>포털 (<code>/portal</code>, 로그인한 직원 누구나)</h3>
+  <ul>
+    <li>서비스 데스크 목록(이름·설명만), 접수(유형, 제목, 설명, 영향도, 긴급도, 첨부), 내 티켓 목록과 상세, 답변, 첨부, 해결 확인·재오픈·취소</li>
+    <li><code>PortalController</code>는 기존 작업 패키지 API를 거치지 않는 <b>별도 경로</b>다. 모든 조회와 변경은 <code>service_tickets.requester_id = 현재 사용자</code>로 좁힌다</li>
+    <li>남의 티켓은 403이 아니라 <b>404</b>를 돌려줘 존재 여부를 드러내지 않는다</li>
+    <li>응답은 포털 전용 모델로 보낸다. 내부 코멘트(<code>journals.is_internal</code>), 처리 그룹 구성원, 다른 사용자의 연락처, "포털 공개"로 표시하지 않은 사용자 정의 필드는 넣지 않는다</li>
+    <li>상태 전환은 워크플로의 <code>author</code> 조건으로 검사한다(포털이 따로 규칙을 갖지 않는다)</li>
+    <li>알림: 접수 확인, 처리자 답변, 해결을 기존 알림과 <code>MailJobs</code>로 보낸다</li>
+  </ul>
+  <div class="callout warn">
+    <b>보안 확인 항목</b> (BUG-015~017의 교훈)
+    <ul>
+      <li>포털 ID 추측(IDOR): 목록, 상세, 댓글, 첨부 다운로드, 상태 전환 모두</li>
+      <li>첨부 다운로드 경로에서 소유를 확인</li>
+      <li>포털 댓글의 HTML sanitize(기존 sanitize 재사용)</li>
+      <li>기존 작업 패키지 API로 들어와도 멤버가 아니면 서비스 데스크 티켓이 보이지 않는지</li>
+      <li>응답 크기와 SQL 수 예산(<code>PerfBudgetIT</code>)</li>
+    </ul>
+  </div>
+</section>
+
+<section id="s5">
+  <h2><span class="no">5</span>SLA 동작</h2>
+  <h3>계산 — <code>com.openpms.itsm.SlaClock</code> (순수 함수)</h3>
+  <ul>
+    <li><code>addMinutes(start, minutes, calendar, holidays)</code>: 24×7이면 단순 더하기, 근무 시간이면 근무 구간만 센다</li>
+    <li><code>elapsedMinutes(from, to, calendar, holidays)</code>: 멈춤 시간을 빼고 기한을 다시 셀 때 쓴다</li>
+    <li>DB에 접근하지 않는다. 휴무일은 호출하는 쪽이 넘긴다</li>
+  </ul>
+
+  <h3>갱신 — <code>SlaService</code> (작업 패키지 저장과 같은 트랜잭션)</h3>
+  <table>
+    <thead><tr><th style="width:280px">사건</th><th>처리</th></tr></thead>
+    <tbody>
+      <tr><td>접수</td><td>정책을 고르고(프로젝트 + 유형 + 우선순위) 두 기한을 저장한다</td></tr>
+      <tr><td>처리자의 첫 공개 코멘트 또는 첫 상태 변경</td><td><code>first_responded_at</code>을 기록한다(한 번만)</td></tr>
+      <tr><td><code>sla_pause</code> 상태로 들어감</td><td><code>paused_since</code>를 기록한다</td></tr>
+      <tr><td><code>sla_pause</code> 상태에서 나옴</td><td>멈춘 시간을 달력 기준으로 세어 <code>paused_total_seconds</code>에 더하고 <code>resolve_due_at</code>을 그만큼 미룬다</td></tr>
+      <tr><td>우선순위·유형 변경</td><td>정책을 다시 고르고, 접수 시각 + 새 목표 + 누적 멈춤으로 기한을 다시 계산한다</td></tr>
+      <tr><td><code>is_closed</code> 상태가 됨</td><td><code>resolved_at</code>을 기록한다</td></tr>
+      <tr><td>재오픈</td><td><code>resolved_at</code>을 지우고 위반 표시는 그대로 둔다</td></tr>
+    </tbody>
+  </table>
+  <p><code>WorkPackageService</code>에 훅을 하나 두고, 서비스 데스크 프로젝트일 때만 <code>SlaService</code>를 부른다. <code>synchronized</code>나 <code>computeIfAbsent</code> 안에서 DB를 기다리지 않는다(BUG-012).</p>
+
+  <h3>위반 감지 — <code>SlaJobs</code> (기존 <code>Jobs</code>에 1분 주기로 등록)</h3>
+  <ul>
+    <li><span class="tag bad">위반</span> 기한이 지났는데 응답·해결이 없으면 <code>*_breached</code>를 켜고 담당자와 처리 그룹에 알림·메일을 보내며, 웹훅 <code>service_ticket.sla_breached</code>를 낸다</li>
+    <li><span class="tag warn">임박</span> 남은 시간이 목표의 20% 이하가 되면 <code>*_warned</code>를 켜고 알림을 한 번만 보낸다</li>
+    <li>멈춘 티켓은 건너뛴다</li>
+    <li>조건부 <code>update … where not *_breached returning</code>으로 표시하므로, 여러 번 돌거나 겹쳐 돌아도 알림은 한 번만 간다</li>
+  </ul>
+</section>
+
+<section id="s6">
+  <h2><span class="no">6</span>처리자 화면</h2>
+  <ul>
+    <li>작업 패키지 목록에 열과 필터를 더한다: 요청자, 처리 그룹, 접수 경로, SLA 남은 시간, 위반 여부. 정렬은 "기한 임박 순"</li>
+    <li>상세 화면에 SLA 패널(응답·해결 진행 막대, 멈춤 표시, 위반 배지)과 영향도·긴급도·처리 그룹 입력을 둔다</li>
+    <li>서비스 데스크 대시보드(프로젝트 개요 위젯): 처리 그룹별 미처리 건수, 오늘 위반, 평균 첫 응답 시간</li>
+    <li>관리 화면(프로젝트 설정 › 서비스 데스크): 달력, SLA 정책 표, 우선순위 행렬</li>
+    <li>가짜 데이터 계층(<code>frontend/src/api/fake</code>)에도 같은 규칙을 넣고 <code>db.ts</code>의 <code>SCHEMA</code>를 올린다. 서비스 데스크 시드는 TDZ 순환을 피해 <code>fake/service-desk-seed.ts</code>에 둔다</li>
+    <li>색은 브랜드 토큰만 쓴다(<code>sweep.py</code>가 깨끗해야 함)</li>
+  </ul>
+</section>
+
+<section id="s7">
+  <h2><span class="no">7</span>테스트</h2>
+  <div class="grid2">
+    <div class="card">
+      <h4>JUnit</h4>
+      <ul>
+        <li><code>SlaClockTest</code>: 주말, 휴무일, 근무 시간 시작·끝 경계, 근무 시간 밖 접수, 24×7, 멈춤 누적</li>
+        <li><code>SlaServiceIT</code>: 접수, 첫 응답, 멈춤과 재개, 우선순위 변경, 해결, 재오픈 때 기한</li>
+        <li><code>PortalSecurityIT</code>: 남의 티켓·댓글·첨부는 404, 내부 코멘트가 응답에 없음, 멤버가 아니어도 접수 가능, 멤버가 아니면 작업 패키지 API로 티켓이 안 보임</li>
+        <li><code>SlaJobsIT</code>: 위반·임박 알림이 한 번만 감, 멈춘 티켓은 건너뜀</li>
+        <li><code>PerfBudgetIT</code>에 포털 목록·처리자 목록 추가, <code>NoPinningTest</code>가 새 코드를 덮는지 확인</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>e2e</h4>
+      <ul>
+        <li>직원이 포털에서 접수 → 처리자가 배정·답변 → 답변 대기(SLA 멈춤) → 요청자 답변 → 해결 → 요청자 확인</li>
+        <li>관리 화면에서 SLA 정책을 만들고 바꾼 뒤 새 티켓의 기한에 반영되는지</li>
+        <li>포털 화면 <code>axe()</code> 접근성 검사, <code>perf.spec.ts</code>에 포털 측정 추가</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="s8">
+  <h2><span class="no">8</span>문서 <small style="font-weight:400;color:var(--muted);font-size:14px">판 2.4, 백그라운드 서브에이전트</small></h2>
+  <ul>
+    <li>01·02: REQ-ITSM-xxx와 추적</li>
+    <li>03 아키텍처, 04 인터페이스(포털·서비스 데스크 API, 웹훅 이벤트), 05 데이터베이스(V20), 06 화면, 08·09 시험</li>
+    <li>07 사용자 매뉴얼·10 운영자 매뉴얼: <b>새 절 번호</b>로 덧붙인다(기존 번호는 바꾸지 않음). 도움말 <code>topics.ts</code>에 포털과 서비스 데스크 화면을 잇는다</li>
+    <li>줄바꿈 규칙(03·04·05·10은 CRLF)을 지킨다</li>
+  </ul>
+</section>
+
+<section id="s9">
+  <h2><span class="no">9</span>위험과 대응</h2>
+  <table>
+    <thead><tr><th style="width:40%">위험</th><th>대응</th></tr></thead>
+    <tbody>
+      <tr><td>멤버가 아닌 사용자가 들어오는 첫 경로라 권한 누수 가능성</td><td>포털을 별도 컨트롤러로 두고, 모든 쿼리를 <code>requester_id</code>로 좁히고, <code>PortalSecurityIT</code>로 고정</td></tr>
+      <tr><td>작업 패키지 저장 경로에 SLA 갱신이 붙어 느려짐</td><td>서비스 데스크 프로젝트에서만 부르고, <code>PerfBudgetIT</code>로 SQL 수 확인</td></tr>
+      <tr><td>근무 시간 계산의 경계 오류</td><td>순수 함수로 분리해 경계 사례를 단위 테스트</td></tr>
+      <tr><td>위반 알림 중복</td><td>조건부 update로 한 번만 표시</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</main>
+</div>
+<footer>openPMS 개발팀 · 사내 전용 · 원문 <code>docs/superpowers/specs/2026-10-14-itsm-design.md</code></footer>
+</body>
+</html>

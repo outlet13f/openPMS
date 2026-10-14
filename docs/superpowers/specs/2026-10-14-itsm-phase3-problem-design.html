@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>설계: ITSM 3단계 — 문제 관리 | openPMS</title>
+<style>
+  :root {
+    --accent: #8b2f8f;
+    --accent-soft: #f5ecf6;
+    --ink: #1e1c22;
+    --text: #2b2930;
+    --muted: #625e69;
+    --line: #e2dfe6;
+    --bg: #faf9fb;
+    --warn: #9a5b00;
+    --warn-soft: #fff4e0;
+    --bad: #a3242a;
+    --bad-soft: #fdecec;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.65;
+    font-size: 15px;
+  }
+  header.top {
+    background: var(--ink);
+    color: #fff;
+    padding: 28px 32px 24px;
+  }
+  header.top .brand { font-size: 13px; letter-spacing: .04em; opacity: .75; }
+  header.top h1 { margin: 6px 0 10px; font-size: 26px; line-height: 1.3; }
+  header.top .meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px; }
+  .chip {
+    display: inline-block; padding: 2px 10px; border-radius: 999px;
+    background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
+  }
+  .layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); max-width: 1180px; margin: 0 auto; }
+  nav.toc {
+    position: sticky; top: 0; align-self: start; max-height: 100vh; overflow: auto;
+    padding: 24px 16px 24px 24px; font-size: 14px;
+  }
+  nav.toc strong { display: block; margin-bottom: 8px; color: var(--muted); font-size: 12px; letter-spacing: .05em; }
+  nav.toc a { display: block; padding: 4px 8px; border-radius: 6px; color: var(--text); text-decoration: none; }
+  nav.toc a:hover, nav.toc a:focus-visible { background: var(--accent-soft); color: var(--accent); outline: none; }
+  main { padding: 24px 32px 64px; min-width: 0; }
+  section { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 22px 26px; margin-bottom: 20px; }
+  h2 { margin: 0 0 14px; font-size: 20px; color: var(--ink); display: flex; align-items: baseline; gap: 10px; }
+  h2 .no { color: var(--accent); font-weight: 700; }
+  h3 { margin: 22px 0 8px; font-size: 16px; color: var(--ink); }
+  p { margin: 8px 0; }
+  ul { margin: 8px 0; padding-left: 22px; }
+  li { margin: 3px 0; }
+  code { font-family: "D2Coding", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; background: #f1eff3; padding: 1px 5px; border-radius: 4px; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f2f6; color: var(--ink); font-weight: 600; }
+  tr.current td { background: var(--accent-soft); }
+  .callout { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; }
+  .callout.warn { border-color: var(--warn); background: var(--warn-soft); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .card h4 { margin: 0 0 6px; font-size: 14px; color: var(--accent); font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .card ul { font-size: 13.5px; padding-left: 18px; }
+  .roadmap { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin: 14px 0 6px; }
+  .step { border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-size: 13px; background: #fff; }
+  .step b { display: block; font-size: 12px; color: var(--muted); }
+  .step span { font-weight: 600; color: var(--ink); }
+  .step.now { border-color: var(--accent); background: var(--accent-soft); }
+  .step.now b { color: var(--accent); }
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 12px 0; }
+  .state { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: #fff; font-size: 13.5px; font-weight: 600; }
+  .state.pause { background: var(--warn-soft); border-color: #e7c48a; color: var(--warn); }
+  .state.closed { background: #efedf1; color: var(--muted); }
+  .arrow { color: var(--muted); }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .tag.bad { background: var(--bad-soft); color: var(--bad); }
+  .tag.warn { background: var(--warn-soft); color: var(--warn); }
+  svg text { font-family: inherit; }
+  footer { color: var(--muted); font-size: 13px; text-align: center; padding: 20px; }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.toc { position: static; max-height: none; padding-bottom: 0; }
+    .roadmap { grid-template-columns: repeat(2, 1fr); }
+    main { padding: 16px; }
+  }
+  @media print {
+    nav.toc { display: none; }
+    .layout { display: block; }
+    section { break-inside: avoid; }
+  }
+/* extras */
+  .phasebar { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 0; }
+  .phasebar a { font-size: 12.5px; padding: 3px 10px; border-radius: 999px; color: #fff; text-decoration: none;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); }
+  .phasebar a[aria-current] { background: var(--accent); border-color: var(--accent); font-weight: 600; }
+  .phasebar a:hover, .phasebar a:focus-visible { background: rgba(255,255,255,.2); outline: none; }
+  .overview h3 { margin-top: 4px; }
+  a.step { text-decoration: none; color: inherit; display: block; }
+  a.step:hover, a.step:focus-visible { border-color: var(--accent); outline: none; }
+  .state.reject { background: var(--bad-soft); border-color: #eab3b5; color: var(--bad); }
+  .pager { display: flex; justify-content: space-between; gap: 12px; }
+  .pager a { color: var(--accent); text-decoration: none; font-weight: 600; }
+
+  svg.rm { display: block; max-width: 870px; margin: 8px auto 0; }
+  svg.rm a:hover rect, svg.rm a:focus rect { stroke: #8b2f8f; stroke-width: 2; }
+  .rm-legend { text-align: center; color: var(--muted); font-size: 12.5px; margin: 4px 0 12px; }
+  table.handoff td:first-child { font-weight: 700; color: var(--accent); }
+  .card p { margin: 0; font-size: 13.5px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">openPMS · ITSM 설계서</div>
+  <h1>설계: ITSM 3단계 — 문제 관리</h1>
+  <div class="meta"><span class="chip">날짜: 2026-10-14</span><span class="chip">상태: 설계 합의(구현 계획 전)</span><span class="chip">선행: 1단계(서비스 데스크, service_tickets)</span><span class="chip">다음 단계로 넘겨주는 것: 알려진 오류·임시 해결책 → 6(문서로 만들기). 장애·문제에서 변경 만들기 → 5</span><span class="chip">관련 요구사항: REQ-ITSM-2xx(이 단계에서 번호를 정한다)</span><span class="chip">원문 2026-10-14-itsm-phase3-problem-design.md</span></div>
+  <nav class="phasebar" aria-label="ITSM 단계"><a href="2026-10-14-itsm-index.html">전체</a><a href="2026-10-14-itsm-design.html">1 장애·서비스 요청</a><a href="2026-10-14-itsm-phase2-catalog-design.html">2 서비스 카탈로그</a><a href="2026-10-14-itsm-phase3-problem-design.html" aria-current="page">3 문제 관리</a><a href="2026-10-14-itsm-phase4-cmdb-design.html">4 CMDB</a><a href="2026-10-14-itsm-phase5-change-design.html">5 변경 관리</a><a href="2026-10-14-itsm-phase6-knowledge-design.html">6 지식 베이스</a></nav>
+</header>
+<div class="layout">
+<nav class="toc" aria-label="목차">
+  <strong>목차</strong>
+  <a href="#s1">1. 목적</a><a href="#s2">2. 데이터 (마이그레이션 V22 problem_management.sql, 개발 데이터 V1006)</a><a href="#s3">3. 동작 (com.openpms.itsm.Problems)</a><a href="#s4">4. 화면</a><a href="#s5">5. 보안</a><a href="#s6">6. 테스트</a><a href="#s7">7. 문서</a><a href="#s8">8. 위험과 대응</a>
+</nav>
+<main>
+<section id="s1"><h2><span class="no">1</span>목적</h2><div class="overview"><h3>로드맵에서의 위치</h3><svg class="rm" viewBox="0 0 870 370" width="100%" role="img" aria-labelledby="rm-t rm-d"><title id="rm-t">ITSM 단계 연결도</title><desc id="rm-d">1단계가 기반이고 2·3·4단계는 1단계 위에 만든다. 5단계 변경은 2단계 승인 엔진과 4단계 CI를, 6단계 지식 베이스는 3단계 알려진 오류와 4단계 업무 서비스를 쓴다. 5단계는 CI 변경을 4단계 CMDB에 반영한다.</desc><defs><marker id="rm-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#625e69"/></marker></defs><g font-family="inherit"><path d="M226,180 C278.0,180 278.0,55 326,55" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)" opacity=".25"/><path d="M226,180 C278.0,180 278.0,180 326,180" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)" opacity=".25"/><path d="M226,180 C278.0,180 278.0,305 326,305" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)"/><path d="M540,55 C592.0,55 592.0,104 640,104" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)" opacity=".25"/><text x="592.0" y="73.5" text-anchor="middle" font-size="11.5" fill="#625e69" paint-order="stroke" stroke="#fff" stroke-width="4" opacity=".25">승인 엔진</text><path d="M540,161 C592.0,161 592.0,118 640,118" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)" opacity=".25"/><text x="592.0" y="133.5" text-anchor="middle" font-size="11.5" fill="#625e69" paint-order="stroke" stroke="#fff" stroke-width="4" opacity=".25">CI · 충돌 확인</text><path d="M644,138 C592.0,138 592.0,181 544,181" fill="none" stroke="#625e69" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#rm-arr)" opacity=".25"/><text x="592.0" y="173.5" text-anchor="middle" font-size="11.5" fill="#625e69" paint-order="stroke" stroke="#fff" stroke-width="4" opacity=".25">CMDB 반영</text><path d="M540,201 C592.0,201 592.0,234 640,234" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)" opacity=".25"/><text x="592.0" y="211.5" text-anchor="middle" font-size="11.5" fill="#625e69" paint-order="stroke" stroke="#fff" stroke-width="4" opacity=".25">업무 서비스</text><path d="M540,305 C592.0,305 592.0,256 640,256" fill="none" stroke="#625e69" stroke-width="1.6" marker-end="url(#rm-arr)"/><text x="592.0" y="274.5" text-anchor="middle" font-size="11.5" fill="#625e69" paint-order="stroke" stroke="#fff" stroke-width="4">알려진 오류</text><text x="121" y="139" text-anchor="middle" font-size="11.5" fill="#625e69" paint-order="stroke" stroke="#fff" stroke-width="4">티켓 · SLA · 포털 → 2~6단계</text><a href="2026-10-14-itsm-design.html"><g><rect x="16" y="147" width="210" height="66" rx="9" fill="#ffffff" stroke="#c9c4ce" stroke-width="1.2"/><circle cx="38" cy="171" r="13" fill="#1e1c22"/><text x="38" y="175.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">1</text><text x="58" y="176" font-size="14" font-weight="700" fill="#1e1c22">장애·서비스 요청</text><text x="30" y="200" font-size="12" fill="#625e69">SLA, 포털, 처리 그룹</text><text x="216" y="163" text-anchor="end" font-size="10.5" fill="#8a8590">구현 1번째</text></g></a><a href="2026-10-14-itsm-phase2-catalog-design.html"><g opacity=".35"><rect x="330" y="22" width="210" height="66" rx="9" fill="#ffffff" stroke="#c9c4ce" stroke-width="1.2"/><circle cx="352" cy="46" r="13" fill="#1e1c22"/><text x="352" y="50.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">2</text><text x="372" y="51" font-size="14" font-weight="700" fill="#1e1c22">서비스 카탈로그</text><text x="344" y="75" font-size="12" fill="#625e69">요청 양식, 승인</text><text x="530" y="38" text-anchor="end" font-size="10.5" fill="#8a8590">구현 2번째</text></g></a><g><rect x="330" y="272" width="210" height="66" rx="9" fill="#f5ecf6" stroke="#8b2f8f" stroke-width="2.2"/><circle cx="352" cy="296" r="13" fill="#8b2f8f"/><text x="352" y="300.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">3</text><text x="372" y="301" font-size="14" font-weight="700" fill="#1e1c22">문제 관리</text><text x="344" y="325" font-size="12" fill="#625e69">근본 원인, 알려진 오류</text><text x="530" y="288" text-anchor="end" font-size="10.5" fill="#8b2f8f">이 문서</text></g><a href="2026-10-14-itsm-phase4-cmdb-design.html"><g opacity=".35"><rect x="330" y="147" width="210" height="66" rx="9" fill="#ffffff" stroke="#c9c4ce" stroke-width="1.2"/><circle cx="352" cy="171" r="13" fill="#1e1c22"/><text x="352" y="175.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">4</text><text x="372" y="176" font-size="14" font-weight="700" fill="#1e1c22">CMDB</text><text x="344" y="200" font-size="12" fill="#625e69">구성 항목, 영향 분석</text><text x="530" y="163" text-anchor="end" font-size="10.5" fill="#8a8590">구현 4번째</text></g></a><a href="2026-10-14-itsm-phase5-change-design.html"><g opacity=".35"><rect x="644" y="84" width="210" height="66" rx="9" fill="#ffffff" stroke="#c9c4ce" stroke-width="1.2"/><circle cx="666" cy="108" r="13" fill="#1e1c22"/><text x="666" y="112.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">5</text><text x="686" y="113" font-size="14" font-weight="700" fill="#1e1c22">변경 관리</text><text x="658" y="137" font-size="12" fill="#625e69">CAB 승인, 실행 계획서</text><text x="844" y="100" text-anchor="end" font-size="10.5" fill="#8a8590">구현 5번째</text></g></a><a href="2026-10-14-itsm-phase6-knowledge-design.html"><g><rect x="644" y="210" width="210" height="66" rx="9" fill="#ffffff" stroke="#c9c4ce" stroke-width="1.2"/><circle cx="666" cy="234" r="13" fill="#1e1c22"/><text x="666" y="238.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">6</text><text x="686" y="239" font-size="14" font-weight="700" fill="#1e1c22">지식 베이스</text><text x="658" y="263" font-size="12" fill="#625e69">포털 검색, 문서 추천</text><text x="844" y="226" text-anchor="end" font-size="10.5" fill="#8a8590">구현 6번째</text></g></a></g></svg><p class="rm-legend">실선: 앞 단계의 결과를 쓴다 · 점선: 뒤 단계가 앞 단계 데이터를 갱신한다 · 숫자: 구현 순서 · 상자를 누르면 그 설계서로 간다</p><div class="grid2"><div class="card"><h4>받는 것</h4><p>1: 장애(<code>service_tickets</code>)</p></div><div class="card"><h4>넘겨주는 것</h4><p>알려진 오류·임시 해결책 → 6(문서로 만들기). 장애·문제에서 변경 만들기 → 5</p></div></div><h3>문제 상태 흐름</h3><div class="flow"><span class="state ">등록</span><span class="arrow" aria-hidden="true">→</span><span class="state ">분석 중</span><span class="arrow" aria-hidden="true">→</span><span class="state pause">알려진 오류</span><span class="arrow" aria-hidden="true">→</span><span class="state closed">해결</span><span class="arrow" aria-hidden="true">→</span><span class="state closed">종료</span></div><div class="flow"><span class="state closed">문제 해결</span><span class="arrow" aria-hidden="true">→</span><span class="state ">연결된 장애 일괄 해결 (처리자가 고름)</span></div></div>
+<p>같은 원인으로 되풀이되는 장애를 <strong>문제</strong>로 묶어 근본 원인을 찾고, 해결 전까지 쓸 <strong>임시 해결책</strong>과 <strong>알려진 오류</strong>를 남겨 처리자가 다음 장애를 빨리 처리하게 한다. 문제가 해결되면 묶인 장애를 한 번에 정리한다.</p>
+<h3>합의한 것</h3>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>결정</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>저장</td>
+<td>문제 = 작업 패키지 유형 "문제" + 1:1 확장 <code>problem_records</code></td>
+</tr>
+<tr>
+<td>장애와의 연결</td>
+<td>장애 하나는 문제 하나에만 묶인다(<code>service_tickets.problem_id</code>). 일반 관계(<code>relations</code>)는 쓰지 않는다</td>
+</tr>
+<tr>
+<td>문제 해결 시</td>
+<td>묶인 미해결 장애 목록을 처리자에게 보여 주고, 처리자가 골라서 한 번에 해결 처리한다(요청자에게 알림)</td>
+</tr>
+<tr>
+<td>보기 권한</td>
+<td>문제는 처리자 전용. 요청자 포털에는 보이지 않는다</td>
+</tr>
+</tbody>
+</table>
+<h3>범위 밖</h3>
+<ul>
+<li>장애를 자동으로 묶는 규칙(같은 CI·같은 시간대 등). 4단계 CMDB 뒤에 다시 본다</li>
+<li>근본 원인 분석 양식(5 Whys, 피시본 등)의 구조화. 서식 있는 텍스트로 쓴다</li>
+<li>문제의 SLA</li>
+</ul>
+</section>
+<section id="s2"><h2><span class="no">2</span>데이터 (마이그레이션 V22 <code>problem_management.sql</code>, 개발 데이터 V1006)</h2>
+<ul>
+<li>유형 "문제"와 상태 "등록 → 분석 중 → 알려진 오류 → 해결 → 종료"를 더하고 워크플로를 잇는다. "해결"·"종료"는 <code>is_closed</code></li>
+<li><code>problem_records</code> (작업 패키지와 1:1)<ul>
+<li><code>work_package_id</code> PK, FK on delete cascade</li>
+<li><code>root_cause_html</code>, <code>root_cause_text</code></li>
+<li><code>workaround_html</code>, <code>workaround_text</code></li>
+<li><code>known_error boolean not null default false</code>, <code>known_error_at timestamptz</code></li>
+<li><code>resolved_at timestamptz</code></li>
+<li>인덱스: <code>workaround_text</code>·<code>root_cause_text</code>에 <code>gin_trgm_ops</code>(처리자 검색), <code>(known_error) where known_error</code></li>
+</ul>
+</li>
+<li><code>service_tickets</code>에 <code>problem_id uuid references work_packages (id) on delete set null</code>과 인덱스를 더한다. 앱에서 대상이 "문제" 유형이고 같은 서비스 데스크 프로젝트인지 확인한다</li>
+<li><code>known_error</code>를 켜면 상태를 "알려진 오류"로, 끄면 "분석 중"으로 맞춘다(같은 트랜잭션)</li>
+</ul>
+</section>
+<section id="s3"><h2><span class="no">3</span>동작 (<code>com.openpms.itsm.Problems</code>)</h2>
+<h3>묶기</h3>
+<ul>
+<li>장애 상세의 "문제에 연결": 기존 문제를 찾아 고르거나 "새 문제 만들기"(제목·설명을 장애에서 채움). 저널 양쪽에 남긴다</li>
+<li>문제 상세의 "장애 연결": 미해결 장애를 여러 개 골라 한 번에 묶는다</li>
+<li>이미 다른 문제에 묶인 장애는 옮길지 확인한다</li>
+</ul>
+<h3>알려진 오류와 임시 해결책</h3>
+<ul>
+<li>장애를 접수·처리할 때 제목으로 알려진 오류를 찾아(<code>similarity</code>, 상위 5개) 처리자 화면 옆에 "비슷한 알려진 오류"로 보여 준다. 고르면 그 문제에 묶고 임시 해결책을 답변 초안에 넣는다(보내기 전에 처리자가 고친다)</li>
+<li>임시 해결책을 요청자에게 그대로 보여 주지 않는다. 처리자가 고른 내용만 공개 코멘트로 나간다. 6단계에서 알려진 오류를 지식 베이스 문서로 만드는 기능을 더한다</li>
+</ul>
+<h3>문제 해결</h3>
+<ul>
+<li>문제가 "해결"이 되면 <code>resolved_at</code>을 기록하고, 처리자에게 "연결된 장애 일괄 해결" 대화상자를 연다(묶인 미해결 장애, 기본은 모두 선택)</li>
+<li>확인하면 고른 장애들을 해결 상태로 바꾸고, 공통 해결 메모(처리자가 쓴 공개 코멘트)를 각 장애에 남긴다. 각 장애마다 워크플로·권한을 검사하고 실패한 건은 결과 목록에 이유와 함께 보여 준다(일부만 성공 가능)</li>
+<li>일괄 처리는 장애마다 별도 트랜잭션으로 한다. 한 건의 실패가 나머지를 되돌리지 않고, 긴 트랜잭션으로 잠금을 오래 잡지 않는다</li>
+<li>처리자가 대화상자를 닫으면 아무것도 바꾸지 않는다. 나중에 문제 상세에서 다시 열 수 있다</li>
+</ul>
+</section>
+<section id="s4"><h2><span class="no">4</span>화면</h2>
+<ul>
+<li>작업 패키지 상세(문제): 근본 원인, 임시 해결책, 알려진 오류 토글, "연결된 장애" 표(번호, 제목, 요청자, 상태, SLA)</li>
+<li>작업 패키지 상세(장애): "문제" 칸(연결·해제), 비슷한 알려진 오류 패널</li>
+<li>목록: 열 "문제", "연결된 장애 수", 필터 "알려진 오류", "문제 없음(장애)"</li>
+<li>서비스 데스크 대시보드 위젯: 미해결 문제 수, 연결 장애가 많은 문제 상위 5개</li>
+</ul>
+</section>
+<section id="s5"><h2><span class="no">5</span>보안</h2>
+<ul>
+<li>포털 응답에 <code>problem_id</code>와 문제 정보를 넣지 않는다(<code>PortalSecurityIT</code>에 확인 추가)</li>
+<li>문제 보기·연결은 <code>view_service_tickets</code>·<code>handle_service_tickets</code> 권한을 그대로 쓴다</li>
+</ul>
+</section>
+<section id="s6"><h2><span class="no">6</span>테스트</h2>
+<ul>
+<li>JUnit<ul>
+<li><code>ProblemsIT</code>: 묶기·옮기기·해제, 다른 프로젝트·다른 유형 거부, 알려진 오류 토글과 상태 맞추기</li>
+<li><code>ProblemBulkResolveIT</code>: 일부 실패(워크플로 불가) 시 나머지는 해결, 요청자 알림, SLA <code>resolved_at</code></li>
+<li><code>KnownErrorSearchIT</code>: 비슷한 알려진 오류 순서</li>
+<li><code>PerfBudgetIT</code>: 연결 장애가 많은 문제 상세, 비슷한 알려진 오류 검색</li>
+</ul>
+</li>
+<li>e2e: 장애 둘을 새 문제로 묶음 → 임시 해결책 기록·알려진 오류 → 새 장애 접수 시 추천에서 골라 묶음 → 문제 해결 → 일괄 해결 → 요청자 포털에 해결 표시</li>
+<li>가짜 데이터 계층에 같은 규칙, <code>SCHEMA</code> 올림</li>
+</ul>
+</section>
+<section id="s7"><h2><span class="no">7</span>문서</h2>
+<p>01·02, 04(문제 API, 일괄 해결), 05(V22), 06, 07(새 절: 문제 관리), 08·09. 도움말 연결.</p>
+</section>
+<section id="s8"><h2><span class="no">8</span>위험과 대응</h2>
+<table>
+<thead>
+<tr>
+<th>위험</th>
+<th>대응</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>일괄 해결이 많은 장애를 한 번에 바꿔 느려짐</td>
+<td>장애마다 트랜잭션을 나누고 상한(한 번에 200건)</td>
+</tr>
+<tr>
+<td>임시 해결책의 내부 정보가 요청자에게 샘</td>
+<td>자동 공개 없음, 처리자가 고친 초안만 공개 코멘트로</td>
+</tr>
+<tr>
+<td>비슷한 오류 검색이 목록을 느리게 함</td>
+<td>상세 화면에서만 따로 불러오고 trgm 인덱스 사용</td>
+</tr>
+</tbody>
+</table></section>
+<section class="pager"><a href="2026-10-14-itsm-phase2-catalog-design.html">← 2단계 서비스 카탈로그</a><a href="2026-10-14-itsm-phase4-cmdb-design.html">4단계 CMDB →</a></section>
+</main>
+</div>
+<footer>openPMS 개발팀 · 사내 전용</footer>
+</body>
+</html>
