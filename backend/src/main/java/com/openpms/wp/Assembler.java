@@ -61,13 +61,18 @@ public class Assembler {
     public static List<UUID> allowedStatusIds(Ctx ctx, UUID typeId, UUID statusId, UUID projectId, UUID authorId, java.util.Collection<UUID> assigneeIds) {
         var s = ctx.s();
         if (ctx.isAdmin()) return s.statuses().stream().map(Snapshot.StatusRow::id).filter(id -> !id.equals(statusId)).toList();
-        var roleIds = s.memberRoleIds(ctx.userId(), projectId);
+        return allowedFor(s, s.memberRoleIds(ctx.userId(), projectId), ctx.userId(), typeId, statusId, authorId, assigneeIds);
+    }
+
+    /** The same for given roles, without the administrator's shortcut: the portal checks the built-in 요청자 role (ITSM 1단계). */
+    public static List<UUID> allowedFor(Snapshot s, java.util.Collection<UUID> roleIds, UUID userId, UUID typeId, UUID statusId, UUID authorId,
+                                        java.util.Collection<UUID> assigneeIds) {
         var out = new ArrayList<UUID>();
         for (var w : s.workflows()) {
             if (!w.typeId().equals(typeId) || !w.from().equals(statusId) || !roleIds.contains(w.roleId())) continue;
             boolean applies = switch (w.appliesTo()) {
-                case "author" -> ctx.userId().equals(authorId);
-                case "assignee" -> assigneeIds.contains(ctx.userId());
+                case "author" -> userId.equals(authorId);
+                case "assignee" -> assigneeIds.contains(userId);
                 default -> true;
             };
             if (applies && !out.contains(w.to())) out.add(w.to());
