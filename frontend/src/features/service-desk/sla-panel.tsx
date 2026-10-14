@@ -6,7 +6,7 @@ import type { Sla } from "@/api/types";
 import { Badge } from "@/components/ui/badges";
 import { cn } from "@/lib/cn";
 import { formatDateTime } from "@/lib/dates";
-import { remainingLabel, type SlaState } from "./sla";
+import { deadlineState, remainingLabel, type SlaState } from "./sla";
 
 export const SLA_TONE: Record<Exclude<SlaState, "none">, "danger" | "warning" | "neutral" | "success"> = {
   breached: "danger",
@@ -15,8 +15,6 @@ export const SLA_TONE: Record<Exclude<SlaState, "none">, "danger" | "warning" | 
   ok: "success",
   met: "success",
 };
-
-const WARN_MS = 2 * 3600_000;
 
 /** Re-renders every minute so the time left stays true while the tab is open. */
 export function useNow(intervalMs = 60_000) {
@@ -30,20 +28,10 @@ export function useNow(intervalMs = 60_000) {
 
 type Line = { kind: "firstResponse" | "resolve"; due: string | null; doneAt: string | null; breached: boolean; paused: boolean };
 
-function lineState(l: Line, now: number): SlaState {
-  if (!l.due) return "none";
-  if (l.breached) return "breached";
-  if (l.doneAt) return "met";
-  if (l.paused) return "paused";
-  const d = Date.parse(l.due);
-  if (d <= now) return "breached";
-  return d - now <= WARN_MS ? "warning" : "ok";
-}
-
 function SlaLine({ line, createdAt, now }: { line: Line; createdAt: string; now: number }) {
   const { t } = useTranslation();
   const name = t(`serviceDesk.sla.${line.kind}`);
-  const state = lineState(line, now);
+  const state = deadlineState(line.due, line.doneAt, line.breached, line.paused, now);
   if (!line.due || state === "none") return null;
   const start = Date.parse(createdAt);
   const end = Date.parse(line.due);

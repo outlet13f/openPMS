@@ -25,6 +25,9 @@ import { ServiceDeskSection } from "@/features/service-desk/settings-section";
 
 /** 서비스 데스크 settings: the module on and service.view. */
 const serviceOn = (p: Project) => p.enabledModules.includes("service_desk") && can(p, "service.view");
+/** The 정보·모듈·작업 설정·버전 sections: people with none of these (service desk agents) see only 서비스 데스크. */
+const projectSettingsOn = (p: Project) =>
+  can(p, "project.edit") || can(p, "project.manage_versions") || can(p, "project.manage_types") || can(p, "project.manage_custom_fields");
 
 const SECTIONS = ["general", "modules", "work-packages", "versions", "service-desk"] as const;
 type Section = (typeof SECTIONS)[number];
@@ -34,7 +37,7 @@ function SettingsNav({ base }: { base: string }) {
   const project = useCurrentProject();
   return (
     <nav aria-label={t("settings.nav")} className="mb-6 flex gap-1 overflow-x-auto border-b border-border">
-      {SECTIONS.filter((s) => s !== "service-desk" || serviceOn(project)).map((s) => (
+      {SECTIONS.filter((s) => (s === "service-desk" ? serviceOn(project) : projectSettingsOn(project))).map((s) => (
         <NavLink
           key={s}
           to={`${base}/${s}`}
@@ -647,8 +650,11 @@ export function ProjectSettingsPage() {
   const project = useCurrentProject();
   useDocumentTitle(`${t("nav.settings")} · ${project.name}`);
   const base = `/projects/${project.identifier}/settings`;
-  if (!SECTIONS.includes(section as Section) || (section === "service-desk" && !serviceOn(project))) return <Navigate to={`${base}/general`} replace />;
-  if (!can(project, "project.edit") && !can(project, "project.manage_versions") && !can(project, "project.manage_types") && !can(project, "project.manage_custom_fields") && !serviceOn(project))
+  if (!projectSettingsOn(project) && serviceOn(project)) {
+    // a service desk agent: every other (or unknown) section goes to 서비스 데스크
+    if (section !== "service-desk") return <Navigate to={`${base}/service-desk`} replace />;
+  } else if (!SECTIONS.includes(section as Section) || (section === "service-desk" && !serviceOn(project))) return <Navigate to={`${base}/general`} replace />;
+  if (!projectSettingsOn(project) && !serviceOn(project))
     return (
       <PageBody>
         <PageHeader title={t("nav.settings")} />

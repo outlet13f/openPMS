@@ -66,7 +66,7 @@ function RequesterPicker({ value, current, onChange, disabled, error }: { value:
   );
 }
 
-function TicketForm({ wp, editable }: { wp: WorkPackage; editable: boolean }) {
+function TicketForm({ wp, editable, onSaved }: { wp: WorkPackage; editable: boolean; onSaved: () => void }) {
   const { t } = useTranslation();
   const ticket = wp.serviceTicket!;
   const groups = useServiceDeskGroups(wp.project.identifier);
@@ -99,7 +99,8 @@ function TicketForm({ wp, editable }: { wp: WorkPackage; editable: boolean }) {
       aria-label={t("wp.tabs.service")}
       onSubmit={(e) => {
         e.preventDefault();
-        if (dirty) void runToast(update.mutateAsync({ number: wp.number, patch }), t("serviceDesk.saved"));
+        // a save that changes nothing visible (the matrix gives the same priority) still starts the form again
+        if (dirty) void runToast(update.mutateAsync({ number: wp.number, patch }), t("serviceDesk.saved")).then((r) => r && onSaved());
       }}
     >
       {!editable && <Banner tone="info">{t("serviceDesk.readOnly")}</Banner>}
@@ -134,13 +135,14 @@ function TicketForm({ wp, editable }: { wp: WorkPackage; editable: boolean }) {
 
 export function ServiceTab({ wp }: { wp: WorkPackage }) {
   const project = useProject(wp.project.identifier).data;
+  const [saves, setSaves] = useState(0);
   if (!wp.serviceTicket) return null;
   const editable = !!project && can(project, "service.handle");
   return (
     <div className="flex flex-col gap-5">
       <SlaPanel sla={wp.serviceTicket.sla} createdAt={wp.createdAt} />
-      {/* a saved change (or someone else's) starts the form again from the ticket */}
-      <TicketForm key={`${wp.lockVersion}-${wp.updatedAt}`} wp={wp} editable={editable} />
+      {/* my save, or someone else's change, starts the form again from the ticket */}
+      <TicketForm key={`${wp.lockVersion}-${wp.updatedAt}-${saves}`} wp={wp} editable={editable} onSaved={() => setSaves((n) => n + 1)} />
     </div>
   );
 }
