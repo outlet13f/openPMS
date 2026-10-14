@@ -246,7 +246,7 @@ public class Roles extends TableImpl<RolesRecord> {
     @Override
     public List<Check<RolesRecord>> getChecks() {
         return Arrays.asList(
-            Internal.createCheck(this, DSL.name("roles_builtin_check"), "((builtin = 'non_member'::text))", true),
+            Internal.createCheck(this, DSL.name("roles_builtin_check"), "((builtin = ANY (ARRAY['non_member'::text, 'requester'::text])))", true),
             Internal.createCheck(this, DSL.name("roles_builtin_is_project"), "(((builtin IS NULL) OR (scope = 'project'::text)))", true),
             Internal.createCheck(this, DSL.name("roles_name_check"), "(((length(name) >= 1) AND (length(name) <= 100)))", true),
             Internal.createCheck(this, DSL.name("roles_scope_check"), "((scope = ANY (ARRAY['project'::text, 'global'::text])))", true)

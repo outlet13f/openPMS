@@ -145,6 +145,11 @@ public class CustomFields extends TableImpl<CustomFieldsRecord> {
      */
     public final TableField<CustomFieldsRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
 
+    /**
+     * The column <code>public.custom_fields.portal_visible</code>.
+     */
+    public final TableField<CustomFieldsRecord, Boolean> PORTAL_VISIBLE = createField(DSL.name("portal_visible"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
+
     private CustomFields(Name alias, Table<CustomFieldsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }

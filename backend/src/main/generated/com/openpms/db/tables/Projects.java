@@ -14,10 +14,12 @@ import com.openpms.db.tables.CustomFields.CustomFieldsPath;
 import com.openpms.db.tables.Members.MembersPath;
 import com.openpms.db.tables.NotificationSettings.NotificationSettingsPath;
 import com.openpms.db.tables.Notifications.NotificationsPath;
+import com.openpms.db.tables.PriorityMatrix.PriorityMatrixPath;
 import com.openpms.db.tables.ProjectCustomFields.ProjectCustomFieldsPath;
 import com.openpms.db.tables.ProjectFavorites.ProjectFavoritesPath;
 import com.openpms.db.tables.ProjectTypes.ProjectTypesPath;
 import com.openpms.db.tables.Queries.QueriesPath;
+import com.openpms.db.tables.SlaPolicies.SlaPoliciesPath;
 import com.openpms.db.tables.TimeEntries.TimeEntriesPath;
 import com.openpms.db.tables.Types.TypesPath;
 import com.openpms.db.tables.Users.UsersPath;
@@ -357,6 +359,19 @@ public class Projects extends TableImpl<ProjectsRecord> {
         return _notifications;
     }
 
+    private transient PriorityMatrixPath _priorityMatrix;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.priority_matrix</code> table
+     */
+    public PriorityMatrixPath priorityMatrix() {
+        if (_priorityMatrix == null)
+            _priorityMatrix = new PriorityMatrixPath(this, null, Keys.PRIORITY_MATRIX__PRIORITY_MATRIX_PROJECT_ID_FKEY.getInverseKey());
+
+        return _priorityMatrix;
+    }
+
     private transient ProjectCustomFieldsPath _projectCustomFields;
 
     /**
@@ -407,6 +422,19 @@ public class Projects extends TableImpl<ProjectsRecord> {
             _queries = new QueriesPath(this, null, Keys.QUERIES__QUERIES_PROJECT_ID_FKEY.getInverseKey());
 
         return _queries;
+    }
+
+    private transient SlaPoliciesPath _slaPolicies;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.sla_policies</code> table
+     */
+    public SlaPoliciesPath slaPolicies() {
+        if (_slaPolicies == null)
+            _slaPolicies = new SlaPoliciesPath(this, null, Keys.SLA_POLICIES__SLA_POLICIES_PROJECT_ID_FKEY.getInverseKey());
+
+        return _slaPolicies;
     }
 
     private transient TimeEntriesPath _timeEntries;
@@ -485,7 +513,7 @@ public class Projects extends TableImpl<ProjectsRecord> {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("projects_custom_values_object"), "((jsonb_typeof(custom_values) = 'object'::text))", true),
             Internal.createCheck(this, DSL.name("projects_identifier_check"), "((identifier ~ '^[a-z][a-z0-9-]{0,99}$'::text))", true),
-            Internal.createCheck(this, DSL.name("projects_known_modules"), "((enabled_modules <@ ARRAY['work_packages'::text, 'gantt'::text, 'boards'::text, 'calendar'::text, 'team_planner'::text, 'time_tracking'::text]))", true),
+            Internal.createCheck(this, DSL.name("projects_known_modules"), "((enabled_modules <@ ARRAY['work_packages'::text, 'gantt'::text, 'boards'::text, 'calendar'::text, 'team_planner'::text, 'time_tracking'::text, 'service_desk'::text]))", true),
             Internal.createCheck(this, DSL.name("projects_name_check"), "(((length(name) >= 1) AND (length(name) <= 255)))", true),
             Internal.createCheck(this, DSL.name("projects_not_own_parent"), "((parent_id <> id))", true),
             Internal.createCheck(this, DSL.name("projects_status_check"), "((status = ANY (ARRAY['on_track'::text, 'at_risk'::text, 'off_track'::text])))", true)

@@ -186,6 +186,21 @@ public class StatusesRecord extends UpdatableRecordImpl<StatusesRecord> {
         return (OffsetDateTime) get(10);
     }
 
+    /**
+     * Setter for <code>public.statuses.sla_pause</code>.
+     */
+    public StatusesRecord setSlaPause(Boolean value) {
+        set(11, value);
+        return this;
+    }
+
+    /**
+     * Getter for <code>public.statuses.sla_pause</code>.
+     */
+    public Boolean getSlaPause() {
+        return (Boolean) get(11);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -209,7 +224,7 @@ public class StatusesRecord extends UpdatableRecordImpl<StatusesRecord> {
     /**
      * Create a detached, initialised StatusesRecord
      */
-    public StatusesRecord(UUID id, String name, String color, Integer position, Boolean isDefault, Boolean isClosed, Boolean isReadonly, Short defaultDoneRatio, Boolean excludedFromTotals, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
+    public StatusesRecord(UUID id, String name, String color, Integer position, Boolean isDefault, Boolean isClosed, Boolean isReadonly, Short defaultDoneRatio, Boolean excludedFromTotals, OffsetDateTime createdAt, OffsetDateTime updatedAt, Boolean slaPause) {
         super(Statuses.STATUSES);
 
         setId(id);
@@ -223,6 +238,7 @@ public class StatusesRecord extends UpdatableRecordImpl<StatusesRecord> {
         setExcludedFromTotals(excludedFromTotals);
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
+        setSlaPause(slaPause);
         resetTouchedOnNotNull();
     }
 }

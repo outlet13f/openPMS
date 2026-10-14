@@ -119,6 +119,11 @@ public class Statuses extends TableImpl<StatusesRecord> {
      */
     public final TableField<StatusesRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
 
+    /**
+     * The column <code>public.statuses.sla_pause</code>.
+     */
+    public final TableField<StatusesRecord, Boolean> SLA_PAUSE = createField(DSL.name("sla_pause"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
+
     private Statuses(Name alias, Table<StatusesRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }

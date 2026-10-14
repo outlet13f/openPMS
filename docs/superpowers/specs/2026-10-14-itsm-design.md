@@ -85,9 +85,9 @@ CI 기반 충돌 확인을 위해 CMDB(4)를 변경(5)보다 먼저 만든다(20
 
 ### 권한 (역할의 `permissions`에 추가)
 
-- `view_service_tickets`: 서비스 데스크 프로젝트의 티켓과 SLA 정보 보기
-- `handle_service_tickets`: 배정, 상태 변경, 영향도·긴급도·처리 그룹 변경, 내부 코멘트
-- `manage_service_desk`: SLA 정책, 달력, 우선순위 행렬 설정
+- `service.view`: 서비스 데스크 프로젝트의 티켓과 SLA 정보 보기
+- `service.handle`: 배정, 상태 변경, 영향도·긴급도·처리 그룹 변경, 내부 코멘트
+- `service.manage`: SLA 정책, 우선순위 행렬 설정(서비스 달력은 관리자만 고친다)
 
 처리자는 서비스 데스크 프로젝트의 멤버로서 이 권한을 받는다. 처리자 쪽 화면과 API는 기존 작업 패키지 화면과 API를 넓혀서 쓴다.
 
@@ -107,6 +107,15 @@ CI 기반 충돌 확인을 위해 CMDB(4)를 변경(5)보다 먼저 만든다(20
 - 포털 댓글의 HTML sanitize(기존 sanitize 재사용)
 - 기존 작업 패키지 API로 들어와도 멤버가 아니면 서비스 데스크 티켓이 보이지 않는지
 - 응답 크기와 SQL 수 예산(`PerfBudgetIT`)
+
+### 구현 조사 뒤 정한 것
+
+- **권한 키 이름**: 저장소 규칙(`wp.view`처럼 점으로 나눔)에 맞춰 `service.view`, `service.handle`, `service.manage`로 한다. 모듈 `service_desk`가 꺼지면 빠진다(`Ctx.MODULE_OF`).
+- **요청자 상태 전환**: 요청자는 프로젝트 역할이 없어서 기존 워크플로 검사(`Assembler.allowedStatusIds`, 역할 기준)에 걸리지 않는다. 그래서 내장 역할 "요청자"(`roles.builtin = 'requester'`)를 두고, 포털에서는 이 역할의 워크플로(`applies_to = 'author'`, 작성자 = 요청자)로 검사한다. 관리자는 기존 워크플로 화면에서 이 역할의 전환을 고칠 수 있다. 멤버 지정 화면에는 나오지 않는다(기존 `builtin() == null` 필터).
+- **요청자 알림**: 기존 알림 센터·메일은 받는 사람이 `wp.view`를 가져야 해서 멤버가 아닌 요청자에게 쓸 수 없다. 요청자에게는 포털의 "새 소식" 표시(`service_tickets.requester_seen_at`)와 별도 메일 작업 `portal-mail`(접수 확인·처리자 답변·해결)로 알린다. 처리자 알림은 기존 알림 센터를 쓰고, SLA 임박·위반은 새 이유 `sla_warning`·`sla_breached`로 보낸다.
+- **서비스 데스크 프로젝트는 비공개만**: 공개 프로젝트는 비멤버 역할에 `wp.view`가 있어 전 직원이 모든 티켓을 보게 된다. `service_desk` 모듈과 `isPublic = true`를 함께 둘 수 없다(422).
+- **ITSM 값 편집**: 요청자·영향도·긴급도·처리 그룹은 작업 패키지 PATCH가 아니라 `PATCH /api/v1/work-packages/{number}/service-ticket`로 고친다(저널에 남김). 목록 열을 위해 `Dto.WorkPackage`에 `serviceTicket` 필드를 더한다.
+- **서비스 달력**: 서비스 달력은 인스턴스 전체에 하나씩이고 관리자만 고친다(관리 › 서비스 달력). 프로젝트 설정에서는 정책이 달력을 고르기만 한다.
 
 ## 5. SLA 동작
 
