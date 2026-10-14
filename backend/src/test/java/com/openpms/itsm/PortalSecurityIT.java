@@ -2,18 +2,22 @@ package com.openpms.itsm;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.nio.charset.StandardCharsets;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.mock.web.MockHttpSession;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
@@ -89,5 +93,25 @@ class PortalSecurityIT {
                 + "\",\"subject\":\"관리자의 요청\"}").andExpect(status().isCreated()).andReturn()).get("number").asLong();
         f.send(admin, get("/api/v1/portal/tickets/" + n), "")
                 .andExpect(jsonPath("$.allowedStatuses[*].id", Matchers.contains(ItsmIds.STATUS_CANCELLED.toString())));
+    }
+
+    @Test void requestersAttachAndDownloadOnlyOnTheirOwnTickets() throws Exception {
+        var file = new MockMultipartFile("file", "screen.txt", "text/plain", "로그".getBytes(StandardCharsets.UTF_8));
+        var made = f.body(f.mvc.perform(multipart("/api/v1/portal/tickets/" + mine + "/attachments")
+                .file(file).session(requester).with(csrf()))
+                .andExpect(status().isCreated()).andReturn());
+        var id = made.get("id").asString();
+        f.send(requester, get("/api/v1/portal/tickets/" + mine + "/attachments/" + id + "/content"), "").andExpect(status().isOk());
+        f.send(other, get("/api/v1/portal/tickets/" + mine + "/attachments/" + id + "/content"), "").andExpect(status().isNotFound());
+        f.mvc.perform(multipart("/api/v1/portal/tickets/" + mine + "/attachments")
+                .file(file).session(other).with(csrf()))
+                .andExpect(status().isNotFound());
+        // an attachment of another work package, asked for through my ticket
+        var foreign = f.body(f.send(agent, post("/api/v1/projects/" + desk + "/work-packages"), "{\"subject\":\"내부 작업\",\"typeId\":\""
+                + ItsmIds.TYPE_INCIDENT + "\",\"requesterId\":\"" + ItsmFixture.DOYOON + "\"}").andReturn()).get("number").asLong();
+        var foreignFile = f.body(f.mvc.perform(multipart("/api/v1/work-packages/" + foreign + "/attachments")
+                .file(file).session(agent).with(csrf()))
+                .andExpect(status().isCreated()).andReturn()).get("id").asString();
+        f.send(requester, get("/api/v1/portal/tickets/" + mine + "/attachments/" + foreignFile + "/content"), "").andExpect(status().isNotFound());
     }
 }
