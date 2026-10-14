@@ -45,7 +45,8 @@ public class Jobs implements SmartLifecycle {
                 "token-cleanup", Schedules.cron("0 30 3 * * *", KST),
                 "file-sweep", Schedules.cron("0 0 4 * * SUN", KST),
                 // webhooks: what is due, every 15 seconds
-                "webhook-delivery", Schedules.fixedDelay(Duration.ofSeconds(15)));
+                "webhook-delivery", Schedules.fixedDelay(Duration.ofSeconds(15)),
+                "sla-check", Schedules.fixedDelay(Duration.ofMinutes(1)));
     }
 
     @Override

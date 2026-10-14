@@ -39,6 +39,8 @@ public class NotificationTexts {
         switch (n.getReason()) {
             case "date_alert_start" -> { return "시작일이 다가옵니다 · " + day; }
             case "date_alert_due" -> { return "완료일이 다가옵니다 · " + day; }
+            case "sla_warning" -> { return "SLA 기한이 다가옵니다"; }
+            case "sla_breached" -> { return "SLA 기한을 넘겼습니다"; }
             case "date_alert_overdue" -> { return "기한이 지났습니다 · 완료일 " + day; }
             default -> { }
         }
