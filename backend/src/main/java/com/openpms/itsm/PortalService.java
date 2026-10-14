@@ -36,7 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class PortalService {
-    public record PortalField(UUID id, String name, String format, boolean required, boolean multi, List<String> options) {}
+    public record PortalField(UUID id, String name, String format, boolean required, boolean multi, List<String> options, List<UUID> typeIds) {}
 
     public record PortalDesk(String identifier, String name, String descriptionText, List<Dto.IdName> types, List<PortalField> fields) {}
 
@@ -89,7 +89,8 @@ public class PortalService {
                 .fetch(PROJECT_CUSTOM_FIELDS.CUSTOM_FIELD_ID));
         return s.customFields().stream()
                 .filter(cf -> visible.contains(cf.id()) && (cf.isForAll() || enabled.contains(cf.id())) && cf.typeIds().stream().anyMatch(ItsmIds.TICKET_TYPES::contains))
-                .map(cf -> new PortalField(cf.id(), cf.name(), cf.format(), cf.isRequired(), cf.isMultiValue(), cf.options().stream().map(Snapshot.OptionRow::value).toList()))
+                .map(cf -> new PortalField(cf.id(), cf.name(), cf.format(), cf.isRequired(), cf.isMultiValue(), cf.options().stream().map(Snapshot.OptionRow::value).toList(),
+                        cf.typeIds().stream().filter(ItsmIds.TICKET_TYPES::contains).toList()))
                 .toList();
     }
 
@@ -106,7 +107,7 @@ public class PortalService {
         var typeId = In.uuid(in, "typeId", "type");
         if (typeId == null || !ItsmIds.TICKET_TYPES.contains(typeId) || !p.typeIds().contains(typeId)) throw ApiException.field("type", "장애 신고나 서비스 요청을 고르세요.");
         // only what the portal offers goes on: no assignee, status, priority, dates or hidden fields
-        var allowedFields = fields(s, p).stream().map(f -> f.id().toString()).collect(java.util.stream.Collectors.toSet());
+        var allowedFields = fields(s, p).stream().filter(f -> f.typeIds().contains(typeId)).map(f -> f.id().toString()).collect(java.util.stream.Collectors.toSet());
         var custom = new HashMap<String, Object>();
         if (in.get("customValues") instanceof Map<?, ?> m) m.forEach((k, v) -> { if (allowedFields.contains(String.valueOf(k))) custom.put(String.valueOf(k), v); });
         var safe = new HashMap<String, Object>();
@@ -134,7 +135,7 @@ public class PortalService {
     /** Public news: a comment or a status change by someone else, after the requester last looked. */
     private org.jooq.Condition news(UUID requesterId) {
         return DSL.exists(DSL.selectOne().from(JOURNALS).where(JOURNALS.WORK_PACKAGE_ID.eq(SERVICE_TICKETS.WORK_PACKAGE_ID), JOURNALS.IS_INTERNAL.isFalse(),
-                JOURNALS.USER_ID.ne(requesterId), JOURNALS.CREATED_AT.gt(DSL.coalesce(SERVICE_TICKETS.REQUESTER_SEEN_AT, SERVICE_TICKETS.CREATED_AT)),
+                JOURNALS.USER_ID.ne(requesterId), JOURNALS.UPDATED_AT.gt(DSL.coalesce(SERVICE_TICKETS.REQUESTER_SEEN_AT, SERVICE_TICKETS.CREATED_AT)),
                 JOURNALS.NOTES_TEXT.ne("").or(DSL.condition("jsonb_exists({0}, 'statusId')", JOURNALS.CHANGES))));
     }
 
@@ -149,9 +150,13 @@ public class PortalService {
                         WORK_PACKAGES.CREATED_AT, WORK_PACKAGES.UPDATED_AT, hasNews)
                 .from(SERVICE_TICKETS).join(WORK_PACKAGES).on(WORK_PACKAGES.ID.eq(SERVICE_TICKETS.WORK_PACKAGE_ID))
                 .where(where).orderBy(WORK_PACKAGES.UPDATED_AT.desc()).limit(200)
-                .fetch(r -> new PortalSummary(r.value1(), r.value2(), s.project(r.value3()).map(Snapshot.ProjectRow::name).orElse(""),
+                .fetch().stream().filter(r -> live(s, r.value3())).map(r -> new PortalSummary(r.value1(), r.value2(), s.project(r.value3()).map(Snapshot.ProjectRow::name).orElse(""),
                         s.type(r.value4()).map(Snapshot.TypeRow::name).orElse(""), Refs.status(s, r.value5()), r.value6(), r.value7(),
-                        Boolean.TRUE.equals(r.value8())));
+                        Boolean.TRUE.equals(r.value8()))).toList();
+    }
+
+    private static boolean live(Snapshot s, UUID projectId) {
+        return s.project(projectId).filter(x -> x.enabledModules().contains(ItsmIds.MODULE) && x.archivedAt() == null).isPresent();
     }
 
     @Transactional
@@ -192,7 +197,6 @@ public class PortalService {
                 to = st.get(1) == null ? null : s.status(UUID.fromString(String.valueOf(st.get(1)))).map(Snapshot.StatusRow::name).orElse(null);
             }
             if (j.getNotesHtml().isEmpty() && to == null) continue;
-            if (j.getUserId() == null) continue;
             out.add(new PortalEntry(j.getId(), Refs.user(s, j.getUserId()).name(), j.getUserId().equals(ctx.userId()), j.getNotesHtml(), from, to,
                     j.getCreatedAt()));
         }

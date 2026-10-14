@@ -1,5 +1,6 @@
 package com.openpms.wp;
 
+import static com.openpms.db.Tables.CUSTOM_FIELDS;
 import static com.openpms.db.Tables.JOURNALS;
 import static com.openpms.db.Tables.RELATIONS;
 import static com.openpms.db.Tables.TYPES;
@@ -219,7 +220,11 @@ public class WorkPackageService {
             parentId = parent.getId();
         }
 
-        var custom = customFields.initial(s, p.id(), typeId, customInput(in));
+        // portal: a required field the requester cannot see must not block (or reveal itself in) the submission
+        var hidden = acting == Acting.PORTAL
+                ? new java.util.HashSet<>(db.select(CUSTOM_FIELDS.ID).from(CUSTOM_FIELDS).where(CUSTOM_FIELDS.PORTAL_VISIBLE.isFalse()).fetch(CUSTOM_FIELDS.ID))
+                : java.util.Set.<UUID>of();
+        var custom = customFields.initial(s, p.id(), typeId, customInput(in), hidden);
 
         schedules.lock();
         var graph = schedules.load(ctx);

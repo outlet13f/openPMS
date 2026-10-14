@@ -1,12 +1,15 @@
 package com.openpms.itsm;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
@@ -98,5 +101,31 @@ class PortalFlowIT {
         f.send(agent, get("/api/v1/work-packages/" + r.get("number").asLong()), "")
                 .andExpect(jsonPath("$.assignee").doesNotExist())
                 .andExpect(jsonPath("$.status.id").value(ItsmIds.STATUS_RECEIVED.toString()));
+    }
+
+    @Test void aRequiredFieldThePortalDoesNotShowNeitherBlocksNorLeaks() throws Exception {
+        var name = "내부 분류 " + java.util.UUID.randomUUID().toString().substring(0, 6);
+        var field = f.body(f.send(admin, post("/api/v1/admin/custom-fields"), "{\"name\":\"" + name + "\",\"format\":\"string\",\"isRequired\":true,\"isForAll\":false,"
+                + "\"typeIds\":[\"" + ItsmIds.TYPE_INCIDENT + "\"]}").andExpect(status().isCreated()).andReturn()).get("id").asString();
+        try {
+            f.send(admin, put("/api/v1/projects/" + desk + "/custom-fields"), "{\"customFieldIds\":[\"" + field + "\"]}").andExpect(status().isOk());
+            var res = f.send(requester, post("/api/v1/portal/desks/" + desk + "/tickets"), "{\"typeId\":\"" + ItsmIds.TYPE_INCIDENT + "\",\"subject\":\"숨은 필드\"}")
+                    .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+            assertThat(res).doesNotContain(name);
+            f.send(requester, get("/api/v1/portal/desks"), "").andExpect(jsonPath("$[?(@.identifier == '" + desk + "')].fields").value(Matchers.contains(Matchers.empty())));
+        } finally {
+            f.send(admin, delete("/api/v1/admin/custom-fields/" + field), "");
+        }
+    }
+
+    @Test void aStatusChangeWithoutACommentIsNewsToo() throws Exception {
+        var n = submit();
+        f.send(requester, get("/api/v1/portal/tickets/" + n), "").andExpect(status().isOk());
+        Thread.sleep(30);
+        var lock = f.body(f.send(admin, get("/api/v1/work-packages/" + n), "").andReturn()).get("lockVersion").asInt();
+        f.send(admin, patch("/api/v1/work-packages/" + n), "{\"lockVersion\":" + lock + ",\"statusId\":\"" + ItsmIds.STATUS_HANDLING + "\"}").andExpect(status().isOk());
+        f.send(requester, get("/api/v1/portal/tickets"), "").andExpect(jsonPath("$[?(@.number == " + n + ")].hasNews").value(Matchers.contains(true)));
+        f.send(requester, get("/api/v1/portal/tickets/" + n), "").andExpect(status().isOk());
+        f.send(requester, get("/api/v1/portal/tickets"), "").andExpect(jsonPath("$[?(@.number == " + n + ")].hasNews").value(Matchers.contains(false)));
     }
 }
