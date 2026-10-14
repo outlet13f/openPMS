@@ -1,4 +1,5 @@
 // F11 관리자가 업무 규칙 구성 (S27 유형 → S29 워크플로, S30 상태)
+import { readdirSync } from "node:fs";
 import { test, expect, login, logout, resetDb, axe, api } from "./support";
 
 test.beforeAll(resetDb);
@@ -117,8 +118,14 @@ test.describe("F11 관리", () => {
     await expect(page.getByRole("heading", { name: "시스템 정보", level: 1 })).toBeVisible();
     const db = page.getByRole("region", { name: "데이터베이스" });
     await expect(db.getByText(/^17/)).toBeVisible();
-    // the newest schema migration (the list shows the latest eight, dev data V1000번대 included)
-    await expect(page.getByRole("region", { name: "최근 적용" }).getByRole("cell", { name: "v20", exact: true })).toBeVisible();
+    // the newest schema migration in the repository is listed (the list shows the latest eight, dev data V1000번대 included)
+    const newest = Math.max(
+      ...readdirSync("../backend/src/main/resources/db/migration")
+        .map((f) => Number(/^V(\d+)__.*\.sql$/.exec(f)?.[1] ?? NaN))
+        .filter((n) => n < 1000),
+    );
+    expect(newest).toBeGreaterThan(0);
+    await expect(page.getByRole("region", { name: "최근 적용" }).getByRole("cell", { name: `v${newest}`, exact: true })).toBeVisible();
     const backups = page.getByRole("region", { name: "백업", exact: true });
     await expect(backups.getByText("꺼짐")).toBeVisible(); // the dev profile
     await expect(backups.getByText(/실행할 수 없음/)).toBeVisible();

@@ -14,6 +14,8 @@ const JUNHO = "junho.park@openpms.local";
 const ADMIN = "seoyeon.kim@openpms.local";
 const SUBJECT = "노트북이 Wi-Fi에 안 붙습니다";
 let ticket = 0;
+/** What a private project shows someone who is not its member. */
+const DENIED = "프로젝트를 찾을 수 없습니다.";
 
 /** The status pill in the portal ticket's header (the activity below repeats status names). */
 const portalStatus = (page: Page, name: string) => page.getByRole("main").locator("h1").locator("xpath=../..").getByText(name, { exact: true });
@@ -54,10 +56,10 @@ test.describe("F20 서비스 데스크와 포털", () => {
     // not in his own 내 요청 (전체), and the service desk's work package list is not his to open
     await page.goto("/portal");
     await page.getByRole("tab", { name: "전체" }).click();
-    await expect(page.getByRole("heading", { name: "내 요청" })).toBeVisible();
+    await expect(page.getByRole("table", { name: "내 요청" }).getByText("회계 서버 응답 없음")).toBeVisible(); // his own (V1004)
     await expect(page.getByText(SUBJECT)).toHaveCount(0);
     await page.goto("/projects/service-desk/work-packages");
-    await expect(page.getByRole("main")).toBeVisible();
+    await expect(page.getByRole("main").getByText(DENIED)).toBeVisible();
     await expect(page.getByText(SUBJECT)).toHaveCount(0);
   });
 
@@ -105,7 +107,13 @@ test.describe("F20 서비스 데스크와 포털", () => {
     await logout(page);
 
     await login(page, MINJI);
-    await page.goto(`/portal/tickets/${ticket}`);
+    // R12: a resolved ticket waits for the requester's confirmation, so it stays under the default 진행 중 tab
+    await page.goto("/portal");
+    await expect(page.getByRole("tab", { name: "진행 중", selected: true })).toBeVisible();
+    await expect(myRow(page)).toBeVisible();
+    await expect(myRow(page).getByText("해결", { exact: true })).toBeVisible();
+    await myRow(page).getByRole("link", { name: SUBJECT }).click();
+    await expect(page).toHaveURL(new RegExp(`/portal/tickets/${ticket}$`));
     await expect(portalStatus(page, "해결")).toBeVisible();
     await expect(page.getByRole("button", { name: "다시 열기" })).toBeVisible();
     await page.getByRole("button", { name: "해결 확인" }).click();

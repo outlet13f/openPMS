@@ -4,7 +4,7 @@
 // (npm run build 뒤 dev.sh run). 서버 쪽 시간과 SQL 수는 backend PerfBudgetIT가 따로 봅니다.
 import { execSync } from "node:child_process";
 import type { Page } from "@playwright/test";
-import { test, expect, login, logout, resetDb } from "./support";
+import { test, expect, login, resetDb } from "./support";
 
 const BASE = process.env.E2E_BASE ?? "http://localhost:5174";
 const BUILT = !/:517\d\b/.test(BASE);
@@ -129,13 +129,15 @@ test.describe("성능 예산 · 작업 1,000건", () => {
 
   test("PERF-6 서비스 데스크: 요청자의 포털 홈, SLA 열을 켠 티켓 목록", async ({ page }) => {
     // 개발 데이터 V1004: 최민지의 진행 중인 요청 2건, service-desk 티켓 6건
-    await logout(page);
+    await page.context().clearCookies(); // the built app has no /src/api to call logout through
     await login(page, "minji.choi@openpms.local");
+    // polled every frame like count(): a role locator's retry backoff (up to 500 ms between tries) would land in the timing
     record("포털 홈", "데스크와 내 요청(진행 중 2건)", await timeOpen(page, "/portal", async () => {
-      await page.getByRole("link", { name: "IT 서비스 데스크에 장애 신고" }).waitFor({ timeout: 30_000 });
+      await count(page, 'main a[aria-label="IT 서비스 데스크에 장애 신고"]', 1);
       await count(page, "tbody tr", 2);
     }), budget("portal"));
-    await logout(page);
+    await expect(page.getByRole("link", { name: "IT 서비스 데스크에 장애 신고" })).toBeVisible();
+    await page.context().clearCookies();
     await login(page, "junho.park@openpms.local");
     const spec = { v: 1, filters: [], columns: ["number", "subject", "status", "requester", "assignmentGroup", "slaDue", "slaState"], sort: [{ field: "number", dir: "asc" }],
       groupBy: null, hierarchy: false, sums: false, includeSubprojects: false };
