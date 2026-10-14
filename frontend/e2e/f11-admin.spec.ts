@@ -117,7 +117,8 @@ test.describe("F11 관리", () => {
     await expect(page.getByRole("heading", { name: "시스템 정보", level: 1 })).toBeVisible();
     const db = page.getByRole("region", { name: "데이터베이스" });
     await expect(db.getByText(/^17/)).toBeVisible();
-    await expect(page.getByRole("region", { name: "최근 적용" }).getByText("v17")).toBeVisible();
+    // the newest schema migration (the list shows the latest eight, dev data V1000번대 included)
+    await expect(page.getByRole("region", { name: "최근 적용" }).getByRole("cell", { name: "v20", exact: true })).toBeVisible();
     const backups = page.getByRole("region", { name: "백업", exact: true });
     await expect(backups.getByText("꺼짐")).toBeVisible(); // the dev profile
     await expect(backups.getByText(/실행할 수 없음/)).toBeVisible();

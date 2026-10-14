@@ -4,7 +4,7 @@
 // (npm run build 뒤 dev.sh run). 서버 쪽 시간과 SQL 수는 backend PerfBudgetIT가 따로 봅니다.
 import { execSync } from "node:child_process";
 import type { Page } from "@playwright/test";
-import { test, expect, login, resetDb } from "./support";
+import { test, expect, login, logout, resetDb } from "./support";
 
 const BASE = process.env.E2E_BASE ?? "http://localhost:5174";
 const BUILT = !/:517\d\b/.test(BASE);
@@ -20,6 +20,8 @@ const BUDGET = {
   detail: 1000,
   slowFirst: 3000,
   slowAgain: 1500,
+  portal: 1000,
+  serviceDeskList: 1000,
 };
 const budget = (k: keyof typeof BUDGET) => (BUILT ? BUDGET[k] : BUDGET[k] * 2);
 
@@ -123,6 +125,25 @@ test.describe("성능 예산 · 작업 1,000건", () => {
   test("PERF-4 작업 상세: 이력 40건", async ({ page }) => {
     record("작업 상세", "전체 화면 · 이력 40건", await timeOpen(page, `/projects/perf-1000/work-packages/${detail}/activity`, () =>
       page.getByText("40번째 코멘트", { exact: false }).waitFor({ timeout: 30_000 })), budget("detail"));
+  });
+
+  test("PERF-6 서비스 데스크: 요청자의 포털 홈, SLA 열을 켠 티켓 목록", async ({ page }) => {
+    // 개발 데이터 V1004: 최민지의 진행 중인 요청 2건, service-desk 티켓 6건
+    await logout(page);
+    await login(page, "minji.choi@openpms.local");
+    record("포털 홈", "데스크와 내 요청(진행 중 2건)", await timeOpen(page, "/portal", async () => {
+      await page.getByRole("link", { name: "IT 서비스 데스크에 장애 신고" }).waitFor({ timeout: 30_000 });
+      await count(page, "tbody tr", 2);
+    }), budget("portal"));
+    await logout(page);
+    await login(page, "junho.park@openpms.local");
+    const spec = { v: 1, filters: [], columns: ["number", "subject", "status", "requester", "assignmentGroup", "slaDue", "slaState"], sort: [{ field: "number", dir: "asc" }],
+      groupBy: null, hierarchy: false, sums: false, includeSubprojects: false };
+    const list = `/projects/service-desk/work-packages?q=${Buffer.from(JSON.stringify(spec)).toString("base64url")}`;
+    record("서비스 데스크 목록", "티켓 6건 · SLA 열", await timeOpen(page, list, async () => {
+      await count(page, "tbody tr", 6);
+      await page.locator("tbody").getByText("위반", { exact: true }).first().waitFor({ timeout: 30_000 });
+    }), budget("serviceDeskList"));
   });
 
   test("PERF-5 느린 망(10 Mbps, 왕복 40 ms): 처음 열기와 다시 열기, 주고받은 양", async ({ browser }) => {

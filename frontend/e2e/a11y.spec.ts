@@ -25,6 +25,9 @@ const SCREENS: [string, string, RegExp | string][] = [
   ["S37 계정", "/my/account", /계정/],
   ["관리 로그인·비밀번호", "/admin/authentication", /비밀번호/],
   ["전역 Gantt", "/gantt", /Gantt/],
+  ["서비스 요청 홈", "/portal", "무엇을 도와드릴까요?"],
+  ["서비스 요청 접수", "/portal/new/service-desk", "장애 신고 · IT 서비스 데스크"],
+  ["관리 서비스 달력", "/admin/service-calendars", /평일 근무 시간/],
 ];
 
 test.describe("axe on every screen", () => {
