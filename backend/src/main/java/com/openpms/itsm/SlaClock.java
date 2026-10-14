@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -33,7 +34,18 @@ public final class SlaClock {
         }
 
         public static Calendar business(ZoneId zone, List<Window> windows) {
-            return new Calendar(false, zone, List.copyOf(windows));
+            var copy = List.copyOf(windows);
+            for (int i = 0; i < copy.size(); i++) {
+                for (int j = i + 1; j < copy.size(); j++) {
+                    var a = copy.get(i);
+                    var b = copy.get(j);
+                    // 같은 요일에서 끝과 시작이 맞닿는 것(12:00 끝, 12:00 시작)은 허용, 겹치는 것은 거부
+                    if (a.day() == b.day() && a.start().isBefore(b.end()) && b.start().isBefore(a.end())) {
+                        throw new IllegalArgumentException("같은 요일의 근무 시간이 겹칩니다.");
+                    }
+                }
+            }
+            return new Calendar(false, zone, copy);
         }
 
         List<Window> on(DayOfWeek d) {
@@ -96,9 +108,18 @@ public final class SlaClock {
     public static List<Window> parseHours(List<Map<String, Object>> hours) {
         var out = new ArrayList<Window>();
         for (var h : hours) {
-            var day = ((Number) h.get("day")).intValue();
+            int day;
+            LocalTime start;
+            LocalTime end;
+            try {
+                day = ((Number) h.get("day")).intValue();
+                start = LocalTime.parse((String) h.get("start"));
+                end = LocalTime.parse((String) h.get("end"));
+            } catch (NullPointerException | ClassCastException | DateTimeParseException e) {
+                throw new IllegalArgumentException("근무 시간 형식을 확인하세요.", e);
+            }
             if (day < 1 || day > 7) throw new IllegalArgumentException("요일은 1(월)부터 7(일)까지입니다.");
-            out.add(new Window(DayOfWeek.of(day), LocalTime.parse((String) h.get("start")), LocalTime.parse((String) h.get("end"))));
+            out.add(new Window(DayOfWeek.of(day), start, end));
         }
         return out;
     }

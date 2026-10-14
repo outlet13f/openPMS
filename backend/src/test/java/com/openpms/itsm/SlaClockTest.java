@@ -92,6 +92,28 @@ class SlaClockTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test void overlappingWindowsOnOneDayAreRejected() {
+        assertThatThrownBy(() -> SlaClock.Calendar.business(SEOUL, List.of(
+                new SlaClock.Window(DayOfWeek.WEDNESDAY, LocalTime.of(9, 0), LocalTime.of(13, 0)),
+                new SlaClock.Window(DayOfWeek.WEDNESDAY, LocalTime.of(12, 0), LocalTime.of(18, 0)))))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test void touchingWindowsOnOneDayAreAcceptedAndAgree() {
+        var split = SlaClock.Calendar.business(SEOUL, List.of(
+                new SlaClock.Window(DayOfWeek.WEDNESDAY, LocalTime.of(9, 0), LocalTime.of(12, 0)),
+                new SlaClock.Window(DayOfWeek.WEDNESDAY, LocalTime.of(12, 0), LocalTime.of(18, 0))));
+        var start = at("2026-10-14T09:00");
+        var due = SlaClock.add(start, Duration.ofHours(9), split, Set.of());
+        assertThat(due).isEqualTo(at("2026-10-14T18:00"));
+        assertThat(SlaClock.workingTime(start, due, split, Set.of())).isEqualTo(Duration.ofHours(9));
+    }
+
+    @Test void parseHoursWithAMissingKeyIsAnIllegalArgument() {
+        assertThatThrownBy(() -> SlaClock.parseHours(List.of(Map.of("day", 1, "start", "09:00"))))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     @Test void parsesStoredHours() {
         var w = SlaClock.parseHours(List.of(Map.of("day", 1, "start", "09:00", "end", "18:00")));
         assertThat(w).containsExactly(new SlaClock.Window(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(18, 0)));
