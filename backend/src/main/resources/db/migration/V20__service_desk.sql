@@ -74,10 +74,12 @@ create table service_tickets (
   resolve_warned        boolean not null default false,
   requester_seen_at     timestamptz,   -- 요청자가 포털 상세를 마지막으로 연 때("새 소식")
   requester_mailed_at   timestamptz,   -- portal-mail이 요청자에게 마지막으로 보낸 때
+  requester_mailed_status_id uuid references statuses (id) on delete set null,   -- portal-mail이 요청자에게 마지막으로 알린 상태
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now()
 );
 create index service_tickets_requester_idx on service_tickets (requester_id);
+create index service_tickets_mailed_status_idx on service_tickets (requester_mailed_status_id);
 create index service_tickets_group_idx on service_tickets (assignment_group_id);
 create index service_tickets_policy_idx on service_tickets (sla_policy_id);
 create index service_tickets_open_resolve_due_idx on service_tickets (resolve_due_at) where resolved_at is null;

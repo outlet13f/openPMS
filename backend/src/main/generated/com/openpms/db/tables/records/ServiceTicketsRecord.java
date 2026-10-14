@@ -307,10 +307,27 @@ public class ServiceTicketsRecord extends UpdatableRecordImpl<ServiceTicketsReco
     }
 
     /**
+     * Setter for
+     * <code>public.service_tickets.requester_mailed_status_id</code>.
+     */
+    public ServiceTicketsRecord setRequesterMailedStatusId(UUID value) {
+        set(19, value);
+        return this;
+    }
+
+    /**
+     * Getter for
+     * <code>public.service_tickets.requester_mailed_status_id</code>.
+     */
+    public UUID getRequesterMailedStatusId() {
+        return (UUID) get(19);
+    }
+
+    /**
      * Setter for <code>public.service_tickets.created_at</code>.
      */
     public ServiceTicketsRecord setCreatedAt(OffsetDateTime value) {
-        set(19, value);
+        set(20, value);
         return this;
     }
 
@@ -318,14 +335,14 @@ public class ServiceTicketsRecord extends UpdatableRecordImpl<ServiceTicketsReco
      * Getter for <code>public.service_tickets.created_at</code>.
      */
     public OffsetDateTime getCreatedAt() {
-        return (OffsetDateTime) get(19);
+        return (OffsetDateTime) get(20);
     }
 
     /**
      * Setter for <code>public.service_tickets.updated_at</code>.
      */
     public ServiceTicketsRecord setUpdatedAt(OffsetDateTime value) {
-        set(20, value);
+        set(21, value);
         return this;
     }
 
@@ -333,7 +350,7 @@ public class ServiceTicketsRecord extends UpdatableRecordImpl<ServiceTicketsReco
      * Getter for <code>public.service_tickets.updated_at</code>.
      */
     public OffsetDateTime getUpdatedAt() {
-        return (OffsetDateTime) get(20);
+        return (OffsetDateTime) get(21);
     }
 
     // -------------------------------------------------------------------------
@@ -359,7 +376,7 @@ public class ServiceTicketsRecord extends UpdatableRecordImpl<ServiceTicketsReco
     /**
      * Create a detached, initialised ServiceTicketsRecord
      */
-    public ServiceTicketsRecord(UUID workPackageId, UUID requesterId, String channel, Short impact, Short urgency, UUID assignmentGroupId, UUID slaPolicyId, OffsetDateTime firstResponseDueAt, OffsetDateTime firstRespondedAt, OffsetDateTime resolveDueAt, OffsetDateTime resolvedAt, OffsetDateTime pausedSince, Long pausedTotalSeconds, Boolean responseBreached, Boolean resolveBreached, Boolean responseWarned, Boolean resolveWarned, OffsetDateTime requesterSeenAt, OffsetDateTime requesterMailedAt, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
+    public ServiceTicketsRecord(UUID workPackageId, UUID requesterId, String channel, Short impact, Short urgency, UUID assignmentGroupId, UUID slaPolicyId, OffsetDateTime firstResponseDueAt, OffsetDateTime firstRespondedAt, OffsetDateTime resolveDueAt, OffsetDateTime resolvedAt, OffsetDateTime pausedSince, Long pausedTotalSeconds, Boolean responseBreached, Boolean resolveBreached, Boolean responseWarned, Boolean resolveWarned, OffsetDateTime requesterSeenAt, OffsetDateTime requesterMailedAt, UUID requesterMailedStatusId, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
         super(ServiceTickets.SERVICE_TICKETS);
 
         setWorkPackageId(workPackageId);
@@ -381,6 +398,7 @@ public class ServiceTicketsRecord extends UpdatableRecordImpl<ServiceTicketsReco
         setResolveWarned(resolveWarned);
         setRequesterSeenAt(requesterSeenAt);
         setRequesterMailedAt(requesterMailedAt);
+        setRequesterMailedStatusId(requesterMailedStatusId);
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
         resetTouchedOnNotNull();

@@ -29,7 +29,8 @@ import org.springframework.stereotype.Component;
  * (MailJobs is the other way round, at least once).
  *
  * <p>Journals are judged by updated_at, not created_at: an agent's consecutive plain changes are merged into their previous
- * entry (Journals.write), so a status change can arrive in an entry that was created before the last mail.
+ * entry (Journals.write), so a status change can arrive in an entry that was created before the last mail. For the same reason
+ * a status is mailed only when it differs from requester_mailed_status_id, so a mailed entry that later grows does not repeat it.
  */
 @Component
 public class PortalMail {
@@ -53,7 +54,8 @@ public class PortalMail {
         int sent = 0;
         var settled = now.minus(SETTLE).atOffset(ZoneOffset.UTC);
         var rows = db.select(SERVICE_TICKETS.WORK_PACKAGE_ID, SERVICE_TICKETS.REQUESTER_ID, SERVICE_TICKETS.REQUESTER_MAILED_AT, WORK_PACKAGES.NUMBER,
-                        WORK_PACKAGES.SUBJECT, WORK_PACKAGES.PROJECT_ID, USERS.EMAIL, USERS.STATUS)
+                        WORK_PACKAGES.SUBJECT, WORK_PACKAGES.PROJECT_ID, USERS.EMAIL, USERS.STATUS, WORK_PACKAGES.STATUS_ID,
+                        SERVICE_TICKETS.REQUESTER_MAILED_STATUS_ID)
                 .from(SERVICE_TICKETS).join(WORK_PACKAGES).on(WORK_PACKAGES.ID.eq(SERVICE_TICKETS.WORK_PACKAGE_ID))
                 .join(USERS).on(USERS.ID.eq(SERVICE_TICKETS.REQUESTER_ID))
                 .where(SERVICE_TICKETS.REQUESTER_MAILED_AT.isNull().or(DSL.exists(DSL.selectOne().from(JOURNALS).where(
@@ -64,48 +66,57 @@ public class PortalMail {
         for (var r : rows) {
             UUID wpId = r.value1();
             OffsetDateTime last = r.value3();
+            UUID currentStatus = r.value9();
+            UUID mailedStatus = r.value10();
             String subject, body;
-            var link = mailer.link("/portal/tickets/" + r.value4());
             if (last == null) {
+                var link = portalLink(r.value4());
                 var desk = s.project(r.value6()).map(Snapshot.ProjectRow::name).orElse("서비스 데스크");
                 subject = "[openPMS] #" + r.value4() + " 요청이 접수되었습니다: " + r.value5();
                 body = desk + "에 요청이 접수되었습니다.\n\n" + r.value5() + "\n\n진행 상황: " + link + "\n";
             } else {
                 var text = new StringBuilder();
-                boolean resolved = false;
+                String statusAuthor = null;
                 for (var j : db.selectFrom(JOURNALS).where(JOURNALS.WORK_PACKAGE_ID.eq(wpId), JOURNALS.IS_INTERNAL.isFalse(),
                         JOURNALS.USER_ID.ne(r.value2()), JOURNALS.UPDATED_AT.gt(last), JOURNALS.UPDATED_AT.le(settled))
                         .orderBy(JOURNALS.VERSION).fetch()) {
                     var who = Refs.user(s, j.getUserId()).name();
                     var changes = journals.changesOf(j);
-                    var st = changes.containsKey(Journals.CREATED) ? null : changes.get("statusId");
-                    if (st != null && st.size() == 2 && st.get(1) != null) {
-                        var to = s.status(UUID.fromString(String.valueOf(st.get(1)))).orElse(null);
-                        var from = st.get(0) == null ? null : s.status(UUID.fromString(String.valueOf(st.get(0)))).orElse(null);
-                        if (to != null) {
-                            text.append(who).append(" - 상태: ").append(from == null ? "" : from.name() + " → ").append(to.name()).append('\n');
-                            resolved = ItsmIds.STATUS_RESOLVED.equals(to.id()) || ItsmIds.STATUS_CLOSED.equals(to.id());
-                        }
-                    }
+                    if (!changes.containsKey(Journals.CREATED) && changes.containsKey("statusId")) statusAuthor = who;
                     if (!j.getNotesText().isEmpty()) text.append(who).append(":\n").append(j.getNotesText()).append("\n\n");
                 }
+                // the status is judged by where it stands now against what the requester was last told: a journal that was
+                // mailed and then grew by a merged plain edit does not say it again
+                boolean resolved = false;
+                var currentRow = currentStatus == null ? null : s.status(currentStatus).orElse(null);
+                if (statusAuthor != null && currentRow != null && !currentRow.id().equals(mailedStatus)) {
+                    var was = mailedStatus == null ? null : s.status(mailedStatus).map(Snapshot.StatusRow::name).orElse(null);
+                    text.insert(0, statusAuthor + " - 상태: " + (was == null ? "접수" : was) + " → " + currentRow.name() + "\n\n");
+                    resolved = ItsmIds.STATUS_RESOLVED.equals(currentRow.id()) || ItsmIds.STATUS_CLOSED.equals(currentRow.id());
+                }
                 if (text.isEmpty()) {
-                    mark(wpId, last, now);
+                    mark(wpId, last, now, currentStatus);
                     continue;
                 }
+                var link = portalLink(r.value4());
                 subject = "[openPMS] #" + r.value4() + (resolved ? " 요청이 해결되었습니다: " : " 새 소식: ") + r.value5();
-                body = text + "\n진행 상황: " + link + "\n";
+                body = text + "진행 상황: " + link + "\n";
             }
-            if (!mark(wpId, last, now)) continue; // another instance took it
+            if (!mark(wpId, last, now, currentStatus)) continue; // another instance took it
             if ("active".equals(r.value8()) && mailer.send(r.value7(), subject, body)) sent++;
         }
         return sent;
     }
 
-    /** Moves requester_mailed_at on, but only if nobody else did since we read it. A minute behind now, so entries still settling go into the next batch. */
-    private boolean mark(UUID wpId, OffsetDateTime last, Instant now) {
+    private String portalLink(long number) {
+        return mailer.link("/portal/tickets/" + number);
+    }
+
+    /** Moves requester_mailed_at (and the status the requester now knows) on, but only if nobody else did since we read it. A minute behind now, so entries still settling go into the next batch. */
+    private boolean mark(UUID wpId, OffsetDateTime last, Instant now, UUID status) {
         var cond = last == null ? SERVICE_TICKETS.REQUESTER_MAILED_AT.isNull() : SERVICE_TICKETS.REQUESTER_MAILED_AT.eq(last);
         return db.update(SERVICE_TICKETS).set(SERVICE_TICKETS.REQUESTER_MAILED_AT, now.minus(SETTLE).atOffset(ZoneOffset.UTC))
+                .set(SERVICE_TICKETS.REQUESTER_MAILED_STATUS_ID, status)
                 .where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wpId), cond).execute() == 1;
     }
 }

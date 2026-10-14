@@ -50,7 +50,7 @@ class PortalMailIT {
         agent = f.login(ItsmFixture.AGENT);
         requester = f.login(ItsmFixture.REQUESTER);
         desk = f.newDesk(admin);
-        mail.run(Instant.now().plusSeconds(120)); // clear what other tests left
+        mail.run(Instant.now()); // clear what is due for other tickets
         Mockito.clearInvocations(mailer);
     }
 
@@ -85,7 +85,7 @@ class PortalMailIT {
         Mockito.verifyNoInteractions(mailer);
     }
 
-    @Test void aMergedStatusChangeStillReachesTheRequesterOnceItHasSettled() throws Exception {
+    @Test void aPlainEditThenAMergedStatusChangeStillMailsTheStatusOnce() throws Exception {
         var n = f.body(f.send(requester, post("/api/v1/portal/desks/" + desk + "/tickets"), "{\"typeId\":\"" + ItsmIds.TYPE_INCIDENT
                 + "\",\"subject\":\"메일 안 옴\"}").andExpect(status().isCreated()).andReturn()).get("number").asLong();
         mail.run(Instant.now());
@@ -109,5 +109,33 @@ class PortalMailIT {
         var body = ArgumentCaptor.forClass(String.class);
         Mockito.verify(mailer).send(eq(ItsmFixture.REQUESTER), anyString(), body.capture());
         assertThat(body.getValue()).contains("상태").doesNotContain("재확인");
+    }
+
+    @Test void aMailedStatusIsNotMailedAgainWhenALaterPlainEditMergesIntoItsJournal() throws Exception {
+        var n = f.body(f.send(requester, post("/api/v1/portal/desks/" + desk + "/tickets"), "{\"typeId\":\"" + ItsmIds.TYPE_INCIDENT
+                + "\",\"subject\":\"로그인 불가\"}").andExpect(status().isCreated()).andReturn()).get("number").asLong();
+        mail.run(Instant.now());
+        Mockito.clearInvocations(mailer);
+        var lock = f.body(f.send(admin, get("/api/v1/work-packages/" + n), "").andReturn()).get("lockVersion").asInt();
+        f.send(admin, patch("/api/v1/work-packages/" + n), "{\"lockVersion\":" + lock + ",\"statusId\":\"" + ItsmIds.STATUS_RESOLVED + "\"}").andExpect(status().isOk());
+        mail.run(Instant.now().plusSeconds(120));
+        var subject = ArgumentCaptor.forClass(String.class);
+        var body = ArgumentCaptor.forClass(String.class);
+        Mockito.verify(mailer).send(eq(ItsmFixture.REQUESTER), subject.capture(), body.capture());
+        assertThat(subject.getValue()).contains("해결되었습니다");
+        assertThat(body.getValue()).contains("상태");
+        Mockito.clearInvocations(mailer);
+
+        var wpId = db.select(WORK_PACKAGES.ID).from(WORK_PACKAGES).where(WORK_PACKAGES.NUMBER.eq(n)).fetchOne().value1();
+        var now = OffsetDateTime.now(ZoneOffset.UTC);
+        var latest = db.select(JOURNALS.ID).from(JOURNALS).where(JOURNALS.WORK_PACKAGE_ID.eq(wpId)).orderBy(JOURNALS.VERSION.desc()).limit(1).fetchOne().value1();
+        db.update(JOURNALS).set(JOURNALS.CREATED_AT, now.minusMinutes(2)).set(JOURNALS.UPDATED_AT, now.minusMinutes(2)).where(JOURNALS.ID.eq(latest)).execute();
+        db.update(SERVICE_TICKETS).set(SERVICE_TICKETS.REQUESTER_MAILED_AT, now.minusMinutes(1)).where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wpId)).execute();
+        lock = f.body(f.send(admin, get("/api/v1/work-packages/" + n), "").andReturn()).get("lockVersion").asInt();
+        f.send(admin, patch("/api/v1/work-packages/" + n), "{\"lockVersion\":" + lock + ",\"subject\":\"로그인 불가 (재확인)\"}").andExpect(status().isOk());
+        assertThat(db.fetchCount(JOURNALS, JOURNALS.ID.eq(latest))).isEqualTo(1); // merged into the mailed entry
+        assertThat(db.select(JOURNALS.UPDATED_AT).from(JOURNALS).where(JOURNALS.ID.eq(latest)).fetchOne().value1()).isAfter(now.minusMinutes(1));
+        mail.run(Instant.now().plusSeconds(120));
+        Mockito.verifyNoInteractions(mailer);
     }
 }

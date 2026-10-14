@@ -8,6 +8,7 @@ import com.openpms.db.Indexes;
 import com.openpms.db.Keys;
 import com.openpms.db.Public;
 import com.openpms.db.tables.BoardColumns.BoardColumnsPath;
+import com.openpms.db.tables.ServiceTickets.ServiceTicketsPath;
 import com.openpms.db.tables.WorkPackages.WorkPackagesPath;
 import com.openpms.db.tables.Workflows.WorkflowsPath;
 import com.openpms.db.tables.records.StatusesRecord;
@@ -217,6 +218,19 @@ public class Statuses extends TableImpl<StatusesRecord> {
             _boardColumns = new BoardColumnsPath(this, null, Keys.BOARD_COLUMNS__BOARD_COLUMNS_STATUS_ID_FKEY.getInverseKey());
 
         return _boardColumns;
+    }
+
+    private transient ServiceTicketsPath _serviceTickets;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.service_tickets</code> table
+     */
+    public ServiceTicketsPath serviceTickets() {
+        if (_serviceTickets == null)
+            _serviceTickets = new ServiceTicketsPath(this, null, Keys.SERVICE_TICKETS__SERVICE_TICKETS_REQUESTER_MAILED_STATUS_ID_FKEY.getInverseKey());
+
+        return _serviceTickets;
     }
 
     private transient WorkPackagesPath _workPackages;
