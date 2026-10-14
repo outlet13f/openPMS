@@ -54,7 +54,7 @@ export interface DbType { id: Id; name: string; color: string; position: number;
 /** slaPause: the resolve clock of a service ticket stops while it is here (답변 대기); absent = false */
 export interface DbStatus { id: Id; name: string; color: string; position: number; isDefault: boolean; isClosed: boolean; isReadonly: boolean; defaultDoneRatio: number; excludedFromTotals: boolean; slaPause?: boolean }
 export interface DbPriority { id: Id; name: string; color: string; position: number; isDefault: boolean; isActive: boolean }
-/** appliesTo (absent = always): author / assignee rows only apply to the item's author / assignees (요청자 rows are "author") */
+/** appliesTo (absent = always): author / assignee rows only apply to the item's author / assignees */
 export interface DbWorkflow { typeId: Id; roleId: Id; from: Id; to: Id; appliesTo?: "always" | "author" | "assignee" }
 export interface DbVersion { id: Id; projectId: Id; name: string; description: string; status: "open" | "locked" | "closed"; startDate: IsoDate | null; endDate: IsoDate | null }
 export interface DbCategory { id: Id; projectId: Id; name: string; defaultAssigneeId: Id | null }
@@ -200,7 +200,7 @@ export interface Db {
 }
 
 const KEY = "openpms.fakedb";
-const SCHEMA = 15;
+const SCHEMA = 16;
 
 function load(): Db {
   try {

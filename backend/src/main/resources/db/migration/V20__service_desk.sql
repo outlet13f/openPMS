@@ -97,6 +97,17 @@ alter table webhooks add constraint webhooks_known_events check (events <@ array
   'work_package.deleted', 'work_package.commented', 'service_ticket.sla_breached']::text[]);
 
 -- 기본 데이터 ---------------------------------------------------------------
+-- 이름은 유일하다. 이미 같은 이름의 유형·상태·역할을 만들어 둔 설치에서도 올라가도록 그 행 이름 뒤에 ' (기존)'을 붙인다(10 운영자 매뉴얼 6.12).
+update types set name = left(name, 95) || ' (기존)'
+  where name in ('장애', '서비스 요청')
+    and id not in ('2dcd4691-d4a9-5bf0-8908-e4740b42616e', 'a3af2ccf-05c6-5b1c-84bc-4d815791e4eb');
+update statuses set name = left(name, 95) || ' (기존)'
+  where name in ('접수', '처리 중', '답변 대기', '해결', '종료')
+    and id not in ('198d200e-a1ba-5692-ae3c-6ba0bc4319ad', 'd34fe673-69b6-56f9-85fd-2cb8198cfba5', 'b42e3256-ffde-5d57-a323-43c8be0d70bd',
+                   '8201e445-a46a-5135-a972-3f83ee10c3ba', '69baa129-0283-56e0-be38-b73ce5db2b64');
+update roles set name = left(name, 95) || ' (기존)'
+  where name = '요청자' and id <> 'a9137727-cb80-51db-98d8-8a9a04f84802';
+
 insert into types (id, name, color, position, is_milestone, is_default, is_in_roadmap) values
   ('2dcd4691-d4a9-5bf0-8908-e4740b42616e', '장애',        '#c02c39', 6, false, false, false),
   ('a3af2ccf-05c6-5b1c-84bc-4d815791e4eb', '서비스 요청', '#8b2f8f', 7, false, false, false);
@@ -124,9 +135,10 @@ where t.id in ('2dcd4691-d4a9-5bf0-8908-e4740b42616e', 'a3af2ccf-05c6-5b1c-84bc-
   and a.id <> b.id
 on conflict do nothing;
 
--- 요청자(작성자 = 요청자일 때): 답변하면 처리 중으로, 해결을 확인(종료)하거나 다시 열기, 끝나지 않은 요청 취소
+-- 요청자: 답변하면 처리 중으로, 해결을 확인(종료)하거나 다시 열기, 끝나지 않은 요청 취소.
+-- 포털은 요청자 본인의 티켓에서만 이 역할로 검사하므로 'always'로 둔다(관리 · 워크플로 화면은 'always' 행을 보이고 고친다).
 insert into workflows (type_id, role_id, from_status_id, to_status_id, applies_to)
-select t.id, 'a9137727-cb80-51db-98d8-8a9a04f84802', x.from_id::uuid, x.to_id::uuid, 'author'
+select t.id, 'a9137727-cb80-51db-98d8-8a9a04f84802', x.from_id::uuid, x.to_id::uuid, 'always'
 from types t cross join (values
   ('b42e3256-ffde-5d57-a323-43c8be0d70bd', 'd34fe673-69b6-56f9-85fd-2cb8198cfba5'),
   ('8201e445-a46a-5135-a972-3f83ee10c3ba', 'd34fe673-69b6-56f9-85fd-2cb8198cfba5'),

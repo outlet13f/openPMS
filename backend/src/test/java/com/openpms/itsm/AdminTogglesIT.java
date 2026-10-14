@@ -69,4 +69,13 @@ class AdminTogglesIT {
             f.send(admin, delete("/api/v1/admin/custom-fields/" + field), "");
         }
     }
+
+    @Test void theRequesterWorkflowIsOnTheWorkflowScreen() throws Exception {
+        f.send(admin, get("/api/v1/admin/roles"), "").andExpect(jsonPath("$[?(@.id == '" + ItsmIds.ROLE_REQUESTER + "')].builtin").value(Matchers.contains("requester")));
+        f.send(admin, get("/api/v1/admin/workflows?typeId=" + ItsmIds.TYPE_INCIDENT + "&roleId=" + ItsmIds.ROLE_REQUESTER), "")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.transitions.length()").value(6))
+                .andExpect(jsonPath("$.transitions", Matchers.hasItem(java.util.List.of(ItsmIds.STATUS_WAITING_REQUESTER.toString(), ItsmIds.STATUS_HANDLING.toString()))))
+                .andExpect(jsonPath("$.transitions", Matchers.hasItem(java.util.List.of(ItsmIds.STATUS_RESOLVED.toString(), ItsmIds.STATUS_CLOSED.toString()))));
+    }
 }

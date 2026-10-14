@@ -83,7 +83,7 @@ export function seedServiceDesk(now: number, firstNumber: number) {
   const workflows: DbWorkflow[] = TICKET_TYPES.flatMap((typeId) =>
     ["r-manager", "r-member"].flatMap((roleId) => desk.flatMap((from) => desk.filter((to) => to !== from).map((to) => ({ typeId, roleId, from, to })))),
   );
-  // 요청자(작성자 = 요청자일 때): 답변하면 처리 중으로, 해결을 확인(종료)하거나 다시 열기, 끝나지 않은 요청 취소
+  // 요청자(포털이 요청자 본인의 티켓에서만 검사하므로 "always"): 답변하면 처리 중으로, 해결을 확인(종료)하거나 다시 열기, 끝나지 않은 요청 취소
   const requesterMoves: [string, string][] = [
     [ITSM.waiting, ITSM.handling],
     [ITSM.resolved, ITSM.handling],
@@ -93,7 +93,7 @@ export function seedServiceDesk(now: number, firstNumber: number) {
     [ITSM.waiting, ITSM.cancelled],
   ];
   for (const typeId of TICKET_TYPES)
-    for (const [from, to] of requesterMoves) workflows.push({ typeId, roleId: ITSM.requesterRole, from, to, appliesTo: "author" });
+    for (const [from, to] of requesterMoves) workflows.push({ typeId, roleId: ITSM.requesterRole, from, to });
 
   const weekdays = [1, 2, 3, 4, 5].map((day) => ({ day, start: "09:00", end: "18:00" }));
   const serviceCalendars: DbServiceCalendar[] = [
