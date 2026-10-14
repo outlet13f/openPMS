@@ -47,8 +47,11 @@ public class ProjectCopy {
     private final Journals journals;
     private final com.openpms.webhook.Webhooks webhooks;
     private final com.openpms.wp.Assignees assignees;
+    private final com.openpms.itsm.ServiceDesk serviceDesk;
 
-    public ProjectCopy(DSLContext db, Journals journals, com.openpms.webhook.Webhooks webhooks, com.openpms.wp.Assignees assignees) {
+    public ProjectCopy(DSLContext db, Journals journals, com.openpms.webhook.Webhooks webhooks, com.openpms.wp.Assignees assignees,
+                       com.openpms.itsm.ServiceDesk serviceDesk) {
+        this.serviceDesk = serviceDesk;
         this.webhooks = webhooks;
         this.assignees = assignees;
         this.db = db;
@@ -117,7 +120,7 @@ public class ProjectCopy {
         var shift = start == null ? null : Shift.of(ctx.s().calendar(), anchor(template.id(), parts), start);
         if (parts.contains("versions")) copyVersions(template.id(), target, ids, shift);
         if (parts.contains("categories")) copyCategories(template.id(), target, people, ids);
-        if (parts.contains("workPackages")) copyWorkPackages(ctx, template.id(), target, people, ids, shift);
+        if (parts.contains("workPackages")) copyWorkPackages(ctx, template, target, people, ids, shift);
         if (parts.contains("boards")) copyBoards(ctx, template.id(), target, people, ids, parts.contains("workPackages"));
         if (parts.contains("queries")) copyQueries(ctx, template.id(), target, ids);
     }
@@ -176,7 +179,8 @@ public class ProjectCopy {
         }
     }
 
-    private void copyWorkPackages(Ctx ctx, UUID template, UUID target, Set<UUID> people, Map<UUID, UUID> ids, Shift shift) {
+    private void copyWorkPackages(Ctx ctx, ProjectRow templateRow, UUID target, Set<UUID> people, Map<UUID, UUID> ids, Shift shift) {
+        var template = templateRow.id();
         var sources = db.selectFrom(WORK_PACKAGES).where(WORK_PACKAGES.PROJECT_ID.eq(template)).orderBy(WORK_PACKAGES.NUMBER).fetch();
         var made = new LinkedHashMap<UUID, com.openpms.db.tables.records.WorkPackagesRecord>();
         for (var w : sources) {
@@ -228,6 +232,8 @@ public class ProjectCopy {
             journals.write(ctx, c, new LinkedHashMap<>(Map.of(Journals.CREATED, Journals.listOf(null, true))), "", null, false);
             webhooks.enqueue(ctx, c, "work_package.created", null);
         }
+        // ITSM 1단계: copied tickets keep their requester and classification (the new project took the template's modules)
+        made.forEach((source, c) -> serviceDesk.copied(ctx, templateRow, source, c));
     }
 
     private void copyBoards(Ctx ctx, UUID template, UUID target, Set<UUID> people, Map<UUID, UUID> ids, boolean withCards) {

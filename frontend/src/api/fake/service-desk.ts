@@ -127,8 +127,30 @@ export function ticketCreated(wp: DbWp, d: Draft) {
     responseBreached: false, resolveBreached: false, responseWarned: false, resolveWarned: false,
     requesterSeenAt: null, requesterMailedAt: null, requesterMailedStatusId: null, createdAt: wp.createdAt, updatedAt: wp.createdAt,
   };
+  // made straight in a closed or SLA-pause status (an agent's choice, or a copy): the clocks start in that state
+  const status = db.statuses.find((s) => s.id === wp.statusId);
+  if (status?.isClosed) t.resolvedAt = wp.createdAt;
+  else if (status?.slaPause) t.pausedSince = wp.createdAt;
   recompute(t, wp, Date.now());
   db.serviceTickets.push(t);
+}
+
+/**
+ * A copy of a ticket (작업 복사, 프로젝트 복사; backend ServiceDesk.copied): the original's requester, impact, urgency and
+ * group, and no receipt mail for it. modulesOf is the target project, or for a project copy the template.
+ */
+export function ticketCopied(modulesOf: DbProject, originalId: Id, copy: DbWp) {
+  if (!appliesTo(modulesOf, copy.typeId)) return;
+  const original = db.serviceTickets.find((x) => x.workPackageId === originalId);
+  let t = db.serviceTickets.find((x) => x.workPackageId === copy.id);
+  if (!t) {
+    if (!original) return;
+    ticketCreated(copy, { requesterId: original.requesterId, channel: "agent", impact: original.impact, urgency: original.urgency, groupId: original.assignmentGroupId });
+    t = db.serviceTickets.find((x) => x.workPackageId === copy.id)!;
+  } else if (original) {
+    Object.assign(t, { requesterId: original.requesterId, impact: original.impact, urgency: original.urgency, assignmentGroupId: original.assignmentGroupId });
+  }
+  Object.assign(t, { requesterMailedAt: nowIso(), requesterMailedStatusId: copy.statusId });
 }
 
 /**

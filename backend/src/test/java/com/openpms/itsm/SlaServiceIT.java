@@ -1,5 +1,6 @@
 package com.openpms.itsm;
 
+import static com.openpms.db.Tables.NOTIFICATIONS;
 import static com.openpms.db.Tables.SERVICE_TICKETS;
 import static com.openpms.db.Tables.WORK_PACKAGES;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,6 +29,7 @@ import org.springframework.web.context.WebApplicationContext;
 class SlaServiceIT {
     @Autowired WebApplicationContext context;
     @Autowired DSLContext db;
+    @Autowired SlaJobs jobs;
     ItsmFixture f;
     MockHttpSession admin, agent;
     String desk;
@@ -150,4 +152,38 @@ class SlaServiceIT {
         var requester = f.login(ItsmFixture.REQUESTER);
         f.send(requester, patch("/api/v1/work-packages/" + n + "/service-ticket"), "{\"impact\":3}").andExpect(status().isNotFound());
     }
+
+    @Test void aTicketMadeInAPauseStatusIsPausedFromTheStart() throws Exception {
+        var n = incident(",\"statusId\":\"" + ItsmIds.STATUS_WAITING_REQUESTER + "\"");
+        var t = ticket(n);
+        assertThat(t.get(SERVICE_TICKETS.PAUSED_SINCE)).isEqualTo(t.get(SERVICE_TICKETS.CREATED_AT));
+        assertThat(t.get(SERVICE_TICKETS.RESOLVED_AT)).isNull();
+        var closed = ticket(incident(",\"statusId\":\"" + ItsmIds.STATUS_RESOLVED + "\""));
+        assertThat(closed.get(SERVICE_TICKETS.RESOLVED_AT)).isEqualTo(closed.get(SERVICE_TICKETS.CREATED_AT));
+        assertThat(closed.get(SERVICE_TICKETS.PAUSED_SINCE)).isNull();
+    }
+
+    @Test void aCopyOfAResolvedTicketIsResolvedKeepsTheRequesterAndRaisesNoAlarm() throws Exception {
+        var n = incident(",\"impact\":1,\"urgency\":1"); // 긴급, 24x7: 15 / 120 min
+        f.send(agent, patch("/api/v1/work-packages/" + n + "/service-ticket"), "{\"assignmentGroupId\":\"25629a29-9f0b-50a1-a812-f04018678b83\"}")
+                .andExpect(status().isOk());
+        setStatus(n, ItsmIds.STATUS_RESOLVED);
+        var copy = f.body(f.send(agent, post("/api/v1/work-packages/" + n + "/copy"), "{}").andExpect(status().is2xxSuccessful()).andReturn())
+                .get("number").asLong();
+        f.send(agent, get("/api/v1/work-packages/" + copy), "")
+                .andExpect(jsonPath("$.serviceTicket.requester.id").value(ItsmFixture.MINJI.toString()))
+                .andExpect(jsonPath("$.serviceTicket.impact").value(1))
+                .andExpect(jsonPath("$.serviceTicket.assignmentGroup.id").value("25629a29-9f0b-50a1-a812-f04018678b83"));
+        var t = ticket(copy);
+        assertThat(t.get(SERVICE_TICKETS.RESOLVED_AT)).isNotNull();
+        assertThat(t.get(SERVICE_TICKETS.REQUESTER_ID)).isEqualTo(ItsmFixture.MINJI);
+        assertThat(t.get(SERVICE_TICKETS.URGENCY)).isEqualTo((short) 1);
+        // no receipt: the requester is told about the copy as it stands
+        assertThat(t.get(SERVICE_TICKETS.REQUESTER_MAILED_AT)).isNotNull();
+        assertThat(t.get(SERVICE_TICKETS.REQUESTER_MAILED_STATUS_ID)).isEqualTo(ItsmIds.STATUS_RESOLVED);
+        var id = t.get(SERVICE_TICKETS.WORK_PACKAGE_ID);
+        jobs.run(java.time.Instant.now().plus(Duration.ofHours(5)));
+        assertThat(db.fetchCount(NOTIFICATIONS, NOTIFICATIONS.WORK_PACKAGE_ID.eq(id), NOTIFICATIONS.REASON.in("sla_warning", "sla_breached"))).isZero();
+    }
+
 }

@@ -79,8 +79,37 @@ public class ServiceDesk {
         t.setPausedTotalSeconds(0L); // a new record does not carry the column default
         t.setCreatedAt(w.getCreatedAt());
         t.setUpdatedAt(w.getCreatedAt());
+        // made straight in a closed or SLA-pause status (an agent's choice, or a copy): the clocks start in that state
+        var status = ctx.s().status(w.getStatusId()).orElseThrow();
+        if (status.isClosed()) t.setResolvedAt(w.getCreatedAt());
+        else if (status.slaPause()) t.setPausedSince(w.getCreatedAt());
         recompute(ctx, t, w, Instant.now());
         t.store();
+    }
+
+    /**
+     * A copy of a ticket (작업 복사, 프로젝트 복사): the original's requester, impact, urgency and group, and no receipt mail
+     * for it (the requester asked once). The SLA runs from the copy's own start and status.
+     *
+     * @param modulesOf the project whose modules decide: the target, or for a project copy the template it took them from
+     */
+    public void copied(Ctx ctx, Snapshot.ProjectRow modulesOf, UUID originalId, WorkPackagesRecord copy) {
+        if (!applies(modulesOf, copy.getTypeId())) return;
+        var original = tickets.of(originalId).orElse(null);
+        var t = tickets.of(copy.getId()).orElse(null);
+        if (t == null) {
+            if (original == null) return;
+            created(ctx, copy, new Draft(original.getRequesterId(), "agent", original.getImpact(), original.getUrgency(), original.getAssignmentGroupId()));
+            t = tickets.of(copy.getId()).orElseThrow();
+        } else if (original != null) {
+            t.setRequesterId(original.getRequesterId());
+            t.setImpact(original.getImpact());
+            t.setUrgency(original.getUrgency());
+            t.setAssignmentGroupId(original.getAssignmentGroupId());
+        }
+        t.setRequesterMailedAt(at(Instant.now()));
+        t.setRequesterMailedStatusId(copy.getStatusId());
+        if (t.changed()) t.store();
     }
 
     public void updated(Ctx ctx, WorkPackagesRecord before, WorkPackagesRecord after) {

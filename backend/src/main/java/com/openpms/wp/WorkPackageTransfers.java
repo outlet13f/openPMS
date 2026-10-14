@@ -36,9 +36,11 @@ public class WorkPackageTransfers {
     private final CustomFields customFields;
     private final com.openpms.webhook.Webhooks webhooks;
     private final Assignees assignees;
+    private final com.openpms.itsm.ServiceDesk serviceDesk;
 
     public WorkPackageTransfers(DSLContext db, WorkPackageService service, Assembler assembler, Journals journals, CustomFields customFields,
-                                com.openpms.webhook.Webhooks webhooks, Assignees assignees) {
+                                com.openpms.webhook.Webhooks webhooks, Assignees assignees, com.openpms.itsm.ServiceDesk serviceDesk) {
+        this.serviceDesk = serviceDesk;
         this.webhooks = webhooks;
         this.assignees = assignees;
         this.db = db;
@@ -114,6 +116,8 @@ public class WorkPackageTransfers {
         });
         in.put("customValues", values);
         var made = service.create(ctx, target.id().toString(), in);
+        // ITSM 1단계: a copied ticket keeps the original's requester and classification and sends no new receipt
+        serviceDesk.copied(ctx, target, w.getId(), db.selectFrom(WORK_PACKAGES).where(WORK_PACKAGES.NUMBER.eq(made.number())).fetchOne());
         if (w.getWorkHours() != null) {
             var patch = new HashMap<String, Object>();
             patch.put("lockVersion", made.lockVersion());

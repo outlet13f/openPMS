@@ -53,7 +53,7 @@ import { adminApi, categoriesApi, projectExtras, versionsApi } from "./admin";
 import { followMove, timeApi } from "./time";
 import { beyondMain, journalTeam, readTeam, sameTeam, swap, teamOf, withMain, type TeamEntry } from "./assignees";
 import {
-  appliesTo, cannotMoveTickets, connectWriters, hiddenFieldIds, matrixPriority, portalApi, serviceDeskApi, staysPrivate, ticketCommented, ticketCreated,
+  appliesTo, cannotMoveTickets, connectWriters, hiddenFieldIds, matrixPriority, portalApi, serviceDeskApi, staysPrivate, ticketCommented, ticketCopied, ticketCreated,
   ticketDraft, ticketUpdated, type Acting,
 } from "./service-desk";
 import { ITSM } from "./service-desk-seed";
@@ -159,6 +159,8 @@ function copyTemplate(t: DbProject, p: DbProject, parts: Set<string>, user: DbUs
     for (const r of db.relations.filter((x) => ids.has(x.fromId) && ids.has(x.toId) && sources.some((w) => w.id === x.fromId)))
       db.relations.push({ ...r, id: newId("rel"), fromId: ids.get(r.fromId)!, toId: ids.get(r.toId)! });
     for (const c of made) db.journals.push({ id: newId("j"), wpId: c.id, version: 1, userId: user.id, notesHtml: "", isInternal: false, changes: {}, cause: null, createdAt: now, updatedAt: now });
+    // ITSM 1단계: copied tickets keep their requester and classification (the new project took the template's modules)
+    sources.forEach((w, i) => ticketCopied(t, w.id, made[i]));
   }
   const remap = <T,>(v: T): T => {
     let s = JSON.stringify(v);
@@ -804,7 +806,10 @@ function copyWp(user: DbUser, w: DbWp, target: DbProject, subject: string, paren
     dueDate: w.dueDate,
     customValues: Object.fromEntries(Object.entries(w.customValues ?? {}).filter(([k]) => active.has(k))),
   });
-  return w.workHours === null ? made : applyPatch(user, made.number, { lockVersion: made.lockVersion, workHours: w.workHours });
+  // ITSM 1단계: a copied ticket keeps the original's requester and classification and sends no new receipt
+  const copy = db.workPackages.find((x) => x.id === made.id)!;
+  ticketCopied(target, w.id, copy);
+  return w.workHours === null ? toWp(copy, user) : applyPatch(user, made.number, { lockVersion: made.lockVersion, workHours: w.workHours });
 }
 
 function copyChildren(user: DbUser, sourceParentId: string, target: DbProject, newParentNumber: number) {
