@@ -31,11 +31,13 @@ public class ServiceDesk {
     private final DSLContext db;
     private final ServiceDeskConfig config;
     private final ServiceTickets tickets;
+    private final Approvals approvals;
 
-    public ServiceDesk(DSLContext db, ServiceDeskConfig config, ServiceTickets tickets) {
+    public ServiceDesk(DSLContext db, ServiceDeskConfig config, ServiceTickets tickets, Approvals approvals) {
         this.db = db;
         this.config = config;
         this.tickets = tickets;
+        this.approvals = approvals;
     }
 
     public boolean applies(Snapshot.ProjectRow p, UUID typeId) {
@@ -129,7 +131,10 @@ public class ServiceDesk {
             if ((!to.slaPause() || to.isClosed()) && t.getPausedSince() != null) closePause(ctx, t, after, now);
             if (to.isClosed() && !from.isClosed()) t.setResolvedAt(at(now));
             if (!to.isClosed() && from.isClosed()) t.setResolvedAt(null);
-            firstResponse(ctx, t, now);
+            // leaving 승인 대기 is the approvers' decision (or the end of the request), not an answer to the requester
+            if (!from.id().equals(ItsmIds.STATUS_AWAITING_APPROVAL)) firstResponse(ctx, t, now);
+            // out of 승인 대기 other than by the last approval (cancelled, an administrator's change): the open approvals are skipped
+            if (from.id().equals(ItsmIds.STATUS_AWAITING_APPROVAL)) approvals.skipRemaining(ctx, after);
             // the requester made this change themselves, so portal-mail must not announce it back (or mistake it for "already told")
             if (ctx.userId().equals(t.getRequesterId())) t.setRequesterMailedStatusId(to.id());
         }

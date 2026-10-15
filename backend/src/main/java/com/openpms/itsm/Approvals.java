@@ -124,6 +124,18 @@ public class Approvals {
                 .toList();
     }
 
+    /**
+     * The request left 승인 대기 some other way than the last approval (a rejection, a cancellation, an administrator's
+     * change): the rows still waiting for a decision are skipped, with one line in the activity when any were.
+     */
+    public void skipRemaining(Ctx ctx, WorkPackagesRecord w) {
+        var ids = db.update(TICKET_APPROVALS).set(TICKET_APPROVALS.DECISION, "skipped").set(TICKET_APPROVALS.SKIP_REASON, "left_approval")
+                .set(TICKET_APPROVALS.DECIDED_AT, OffsetDateTime.now())
+                .where(TICKET_APPROVALS.WORK_PACKAGE_ID.eq(w.getId()), TICKET_APPROVALS.DECISION.in("pending", "waiting"))
+                .returning(TICKET_APPROVALS.ID).fetch(TICKET_APPROVALS.ID);
+        if (!ids.isEmpty()) journal(ctx, w, ids.get(0), "남은 승인 건너뜀");
+    }
+
     /** One line in the request's activity, keyed "approval:<row id>" (Journals shows it as 승인). */
     public void journal(Ctx ctx, WorkPackagesRecord w, UUID approvalId, String text) {
         var changes = new LinkedHashMap<String, List<Object>>();
@@ -136,7 +148,8 @@ public class Approvals {
         return MANAGER.equals(kind) ? "관리자" : "그룹 책임자";
     }
 
-    private static final Map<String, String> SKIP_TEXT = Map.of("no_approver", "승인자 없음", "requester", "요청자 본인", "duplicate", "같은 승인자");
+    private static final Map<String, String> SKIP_TEXT = Map.of("no_approver", "승인자 없음", "requester", "요청자 본인", "duplicate", "같은 승인자",
+            "step_done", "같은 단계에서 결정됨", "left_approval", "승인 대기에서 나감");
 
     static String skipText(String reason) {
         return SKIP_TEXT.getOrDefault(reason, String.valueOf(reason));

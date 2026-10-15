@@ -134,7 +134,7 @@ public class PortalService {
      * An item's form: its fields whether or not they are marked for the portal, while they are still on for the desk and
      * the item's type. User and version fields stay off the portal here too (they point at people and plans).
      */
-    private List<PortalField> itemFields(Snapshot s, Snapshot.ProjectRow p, ServiceCatalog.Item item) {
+    List<PortalField> itemFields(Snapshot s, Snapshot.ProjectRow p, ServiceCatalog.Item item) {
         var active = new HashMap<UUID, Snapshot.CustomFieldRow>();
         for (var cf : s.activeCustomFields(p.id(), item.typeId())) active.put(cf.id(), cf);
         var out = new ArrayList<PortalField>();
@@ -286,7 +286,7 @@ public class PortalService {
                 item == null ? null : new Dto.IdName(item.id(), item.name()), portalApprovals(s, w.getId()));
     }
 
-    private List<PortalApproval> portalApprovals(Snapshot s, UUID wpId) {
+    List<PortalApproval> portalApprovals(Snapshot s, UUID wpId) {
         return approvals.of(wpId).stream().map(a -> new PortalApproval(a.stepNo(),
                 "skipped".equals(a.decision()) || a.approverId() == null ? null : Refs.user(s, a.approverId()).name(), a.decision(), a.decidedAt())).toList();
     }
@@ -309,7 +309,7 @@ public class PortalService {
         return out;
     }
 
-    private static String display(Object v) {
+    static String display(Object v) {
         if (v instanceof Dto.CustomValue cv) return String.valueOf(cv.text());
         return String.valueOf(v);
     }
