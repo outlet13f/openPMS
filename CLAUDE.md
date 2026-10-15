@@ -30,7 +30,7 @@
 - 앱 도움말(`frontend/src/features/help/topics.ts`)은 화면을 매뉴얼 **절 번호**로 잇습니다. `07-사용자매뉴얼.md`·`10-운영자매뉴얼.md`의 기존 번호 붙은 제목은 **번호를 바꾸거나 지우지 말고**, 새 내용은 새 번호로 덧붙입니다(e2e f17-H3가 확인).
 - 서비스 데스크 프로젝트는 **비공개만**입니다(공개면 비멤버가 모든 티켓을 봄). 앱이 422로 막고, 모듈 `service_desk`와 `isPublic = true`를 함께 두지 않습니다.
 - 요청자는 멤버가 아닙니다: 포털 코드(`itsm/PortalService`)는 항상 `service_tickets.requester_id`로 좁히고, 작업 패키지 API 응답(409의 `current` 포함)을 포털에 돌려주지 않습니다. 남의 티켓은 403이 아니라 404입니다(`PortalSecurityIT`).
-- 요청자의 상태 전환은 내장 역할 "요청자"(`roles.builtin = 'requester'`)의 워크플로(`applies_to = 'author'`)로 정합니다. 서비스 데스크의 `service.*` 권한은 `Ctx.MODULE_OF`가 모듈에 묶습니다.
+- 요청자의 상태 전환은 내장 역할 "요청자"(`roles.builtin = 'requester'`)의 워크플로로 정합니다(V20은 `applies_to = 'always'`로 넣고 포털이 작성자 = 요청자로 검사하므로, 관리 › 워크플로에서 고칠 수 있음). 서비스 데스크의 `service.*` 권한은 `Ctx.MODULE_OF`가 모듈에 묶습니다.
 - 가짜 데이터 계층(`frontend/src/api/fake`)도 실제 API와 같은 규칙으로 맞춥니다. 시드 모양을 바꾸면 `db.ts`의 `SCHEMA`를 올립니다. `seed.ts`가 db를 import하는 모듈을 import하면 TDZ 순환이 생깁니다(시간 기록 시드는 `fake/time-seed.ts`).
 - 측정 예산: 서버는 `PerfBudgetIT`(p95·SQL 수·응답 크기), 화면은 `e2e/perf.spec.ts`(`E2E_BASE=http://localhost:8090`이면 빌드된 화면), 부하는 `backend/scripts/perf_load.py`(시험용 설치에서만, 비밀번호는 `OPENPMS_PERF_PASSWORD`). 부하 측정은 CPU를 제한한 컨테이너로 합니다(8코어 PC에서는 BUG-012가 안 보였음). `podman stats`의 CPU %는 시작 이후 평균이므로 `CPUNano` 차이를 씁니다.
 - 운영 이미지 확인은 스크래치 폴더에 compose를 복사해 별도 프로젝트 이름·포트로 띄웁니다(개발 컨테이너와 겹치지 않게).

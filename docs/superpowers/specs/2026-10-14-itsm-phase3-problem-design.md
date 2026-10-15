@@ -68,7 +68,7 @@
 ## 5. 보안
 
 - 포털 응답에 `problem_id`와 문제 정보를 넣지 않는다(`PortalSecurityIT`에 확인 추가)
-- 문제 보기·연결은 `view_service_tickets`·`handle_service_tickets` 권한을 그대로 쓴다
+- 문제 보기·연결은 `service.view`·`service.handle` 권한을 그대로 쓴다
 
 ## 6. 테스트
 

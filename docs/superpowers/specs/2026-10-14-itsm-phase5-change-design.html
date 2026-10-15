@@ -339,7 +339,7 @@
 </table>
 <ul>
 <li>항목 처리: <code>done</code>(증적이 필요한 항목은 <code>evidence_text</code> 필수) 또는 <code>na</code>(사유 필수). 처리자와 시각을 남기고 저널에 기록한다. 되돌리기(<code>open</code>)도 기록한다</li>
-<li>처리 권한: 변경 담당자와 <code>handle_service_tickets</code> 권한자. 담당자는 항목을 더할 수 있다(<code>source = manual</code>, 필수 여부를 고를 수 있음)</li>
+<li>처리 권한: 변경 담당자와 <code>service.handle</code> 권한자. 담당자는 항목을 더할 수 있다(<code>source = manual</code>, 필수 여부를 고를 수 있음)</li>
 <li>잠금은 서버가 검사한다. 미완료 필수 항목이 있으면 전환을 거부하고 항목 목록을 돌려준다</li>
 <li>결과에 따라 쓰는 항목이 바뀐다. 결과(<code>outcome</code>)를 기록하는 "완료" 전환에서 항목의 <code>applies_when</code>을 본다<ul>
 <li><code>successful</code>·<code>partial</code> → <code>deployed</code> 항목과 <code>always</code> 항목이 쓰인다</li>

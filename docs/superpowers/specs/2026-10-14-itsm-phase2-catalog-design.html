@@ -206,7 +206,7 @@
 <li>승인자는 자기 <code>pending</code> 행만 결정할 수 있다. 조건부 <code>update ... where decision = 'pending' returning</code>으로 처리해 두 사람이 동시에 눌러도 한 번만 반영한다.</li>
 <li>승인: 같은 단계의 다른 <code>pending</code>은 <code>skipped</code>로 바꾸고 다음 단계로 간다. 마지막 단계면 "접수"로 보내고 SLA를 다시 움직인다.</li>
 <li>반려: 남은 <code>pending</code>을 모두 <code>skipped</code>로 바꾸고 "반려"로 닫는다. 사유(필수)는 요청자에게 보이는 코멘트로 남긴다.</li>
-<li>승인자를 바꿔야 하면(퇴사 등) <code>handle_service_tickets</code> 권한이 있는 처리자가 <code>pending</code> 행의 승인자를 다른 사람으로 바꾼다. 저널에 남긴다.</li>
+<li>승인자를 바꿔야 하면(퇴사 등) <code>service.handle</code> 권한이 있는 처리자가 <code>pending</code> 행의 승인자를 다른 사람으로 바꾼다. 저널에 남긴다.</li>
 <li>모든 결정과 변경은 작업 패키지 저장과 같은 트랜잭션에서 하고 저널에 기록한다.</li>
 </ul>
 </section>
