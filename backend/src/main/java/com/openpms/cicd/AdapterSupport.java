@@ -42,9 +42,9 @@ final class AdapterSupport {
         }
     }
 
-    /** The same instant, spelled the same way whatever offset it came in (webhook and polling keys must match). */
+    /** The same instant, spelled the same way whatever offset or fraction it came in (GitLab's webhook gives seconds, its REST API milliseconds; keys must match). */
     static String instant(OffsetDateTime t) {
-        return t == null ? "" : t.toInstant().toString();
+        return t == null ? "" : t.toInstant().truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString();
     }
 
     /** First line of a message, at most 500 characters. */

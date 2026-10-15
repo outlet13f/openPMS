@@ -1,5 +1,5 @@
 [ { "number": 7, "title": "로그인 오류 고침 #12", "body": "세션 만료 처리", "state": "closed", "draft": false,
-    "merged_at": "2026-10-15T11:00:00+09:00", "updated_at": "2026-10-15T11:00:00+09:00",
+    "merged_at": "2026-10-15T11:00:00+09:00", "updated_at": "2026-10-15T10:30:00.456+09:00",
     "html_url": "https://github.com/openpms-test/web/pull/7",
     "head": { "ref": "feature/12-login" }, "base": { "ref": "main" }, "user": { "login": "junho" } },
   { "number": 3, "title": "오래된 것", "body": null, "state": "closed", "draft": false,
