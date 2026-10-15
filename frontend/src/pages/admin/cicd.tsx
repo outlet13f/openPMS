@@ -1,0 +1,319 @@
+// 관리 › CI/CD 연동: the company's GitLab and GitHub servers. Administrators and people with global.manage_cicd (the
+// "CI/CD 연동 관리자" global role) register a connection, get its webhook address and secret once (again only by
+// rotating the secret), check that the API token works and remove a connection no project uses any more.
+// The API token is never shown again (the last four characters only); a changed address clears it unless a new one comes along.
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { Copy, GitMerge, KeyRound, MoreHorizontal, Pencil, Plus, PlugZap, Trash2 } from "lucide-react";
+import { isApiError, type CicdConnection, type CicdConnectionPatch, type CicdKind } from "@/api";
+import { useCicdConnectionMutations, useCicdConnections } from "@/api/admin-hooks";
+import { useMe } from "@/api/hooks";
+import { Badge } from "@/components/ui/badges";
+import { Button } from "@/components/ui/button";
+import { Checkbox, Segmented } from "@/components/ui/choice";
+import { Field, Input } from "@/components/ui/field";
+import { Banner, EmptyState, useToast } from "@/components/ui/feedback";
+import { Dialog, Menu } from "@/components/ui/overlay";
+import { Skeleton } from "@/components/ui/spinner";
+import { ErrorState, PageBody, PageHeader, useDocumentTitle } from "@/app/page";
+import { AdminTable, ConfirmDialog, fieldErrorOf, tbodyRow, th, theadRow, useRunWithToast } from "@/features/admin/common";
+import { AdminGuard } from "./index";
+
+const KINDS: CicdKind[] = ["gitlab", "github"];
+
+/** The server answers with a path when it has no public address configured: make it one the code host can call. */
+const absolute = (url: string) => (url.startsWith("/") ? `${location.origin}${url}` : url);
+
+function CopyRow({ label, copyLabel, copied, value }: { label: string; copyLabel: string; copied: string; value: string }) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-sm font-medium text-fg">{label}</span>
+      <div className="flex items-center gap-2">
+        <code className="min-w-0 flex-1 rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm break-all text-fg" aria-label={label}>
+          {value}
+        </code>
+        <Button
+          icon={<Copy />}
+          aria-label={copyLabel}
+          onClick={() => void navigator.clipboard?.writeText(value).then(() => toast({ tone: "success", title: copied }), () => undefined)}
+        >
+          {t("cicd.admin.copy")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** After making a connection or rotating its secret: the webhook address and secret, this once. */
+function SecretDialog({ webhookUrl, secret, onClose }: { webhookUrl: string; secret: string; onClose: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title={t("cicd.admin.secretTitle")} footer={<Button variant="primary" onClick={onClose}>{t("apiTokens.done")}</Button>}>
+      <div className="flex flex-col gap-4">
+        <Banner tone="warning">{t("cicd.admin.secretOnce")}</Banner>
+        <CopyRow label={t("cicd.admin.webhookUrl")} copyLabel={t("cicd.admin.copyUrl")} copied={t("cicd.admin.copiedUrl")} value={absolute(webhookUrl)} />
+        <CopyRow label={t("cicd.admin.webhookSecret")} copyLabel={t("cicd.admin.copySecret")} copied={t("cicd.admin.copiedSecret")} value={secret} />
+        <p className="text-xs text-fg-muted">{t("cicd.admin.secretHow")}</p>
+      </div>
+    </Dialog>
+  );
+}
+
+function ConnectionDialog({ editing, onClose, onSecret }: { editing: CicdConnection | null; onClose: () => void; onSecret: (s: { webhookUrl: string; secret: string }) => void }) {
+  const { t } = useTranslation();
+  const m = useCicdConnectionMutations();
+  const runToast = useRunWithToast();
+  const [kind, setKind] = useState<CicdKind>(editing?.kind ?? "gitlab");
+  const [name, setName] = useState(editing?.name ?? "");
+  const [baseUrl, setBaseUrl] = useState(editing?.baseUrl ?? "");
+  const [apiToken, setApiToken] = useState("");
+  const [clearToken, setClearToken] = useState(false);
+  const [active, setActive] = useState(editing?.active ?? true);
+  const mutation = editing ? m.update : m.create;
+  const err = (f: string) => fieldErrorOf(mutation.error, f);
+  const urlChanged = !!editing && baseUrl.trim().replace(/\/+$/, "") !== editing.baseUrl;
+  const generalError = isApiError(mutation.error) && !mutation.error.fieldErrors.length ? mutation.error.message : undefined;
+
+  const save = async () => {
+    if (!editing) {
+      const made = await runToast(m.create.mutateAsync({ kind, name, baseUrl, apiToken: apiToken.trim() || undefined }), t("cicd.admin.created"));
+      if (made) {
+        onClose();
+        onSecret({ webhookUrl: made.connection.webhookUrl, secret: made.webhookSecret });
+      }
+      return;
+    }
+    const patch: CicdConnectionPatch = {};
+    if (name !== editing.name) patch.name = name;
+    if (urlChanged) patch.baseUrl = baseUrl;
+    if (apiToken.trim()) patch.apiToken = apiToken.trim();
+    else if (clearToken) patch.apiToken = "";
+    if (active !== editing.active) patch.active = active;
+    if (!Object.keys(patch).length) return onClose();
+    if (await runToast(m.update.mutateAsync({ id: editing.id, patch }), t("cicd.admin.saved"))) onClose();
+  };
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="md"
+      title={editing ? t("cicd.admin.edit") : t("cicd.admin.new")}
+      footer={
+        <>
+          <Button onClick={onClose}>{t("app.cancel")}</Button>
+          <Button variant="primary" loading={mutation.isPending} onClick={() => void save()}>
+            {editing ? t("app.save") : t("apiTokens.make")}
+          </Button>
+        </>
+      }
+    >
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        {generalError && <Banner tone="danger">{generalError}</Banner>}
+        {!editing ? (
+          <fieldset className="flex flex-col gap-1.5">
+            <legend className="mb-1 text-sm font-medium text-fg">{t("cicd.admin.kind")}</legend>
+            <Segmented aria-label={t("cicd.admin.kind")} value={kind} onValueChange={(v) => setKind(v as CicdKind)} options={KINDS.map((k) => ({ value: k, label: t(`cicd.kinds.${k}`) }))} />
+            {err("kind") && <p className="text-xs text-danger">{err("kind")}</p>}
+          </fieldset>
+        ) : (
+          <Field label={t("cicd.admin.kind")}>
+            <Input readOnly value={t(`cicd.kinds.${editing.kind}`)} />
+          </Field>
+        )}
+        <Field label={t("cicd.admin.name")} required error={err("name")}>
+          <Input data-autofocus value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <Field label={t("cicd.admin.baseUrl")} required hint={t("cicd.admin.baseUrlHint")} error={err("baseUrl")}>
+          <Input type="url" value={baseUrl} placeholder="https://" spellCheck={false} onChange={(e) => setBaseUrl(e.target.value)} />
+        </Field>
+        {urlChanged && editing?.tokenHint && !apiToken.trim() && <Banner tone="warning">{t("cicd.admin.baseUrlChanged")}</Banner>}
+        <Field
+          label={t("cicd.admin.apiToken")}
+          error={err("apiToken")}
+          hint={
+            <>
+              {t("cicd.admin.tokenHint")}.{" "}
+              <br />
+              {editing ? (editing.tokenHint ? t("cicd.admin.tokenKeep", { hint: editing.tokenHint }) : t("cicd.admin.tokenNoneStored")) : t("cicd.admin.tokenOptional")}
+            </>
+          }
+        >
+          <Input type="password" autoComplete="off" spellCheck={false} value={apiToken} onChange={(e) => setApiToken(e.target.value)} />
+        </Field>
+        {editing?.tokenHint && !apiToken.trim() && !urlChanged && (
+          <Checkbox label={t("cicd.admin.clearToken")} checked={clearToken} onCheckedChange={(c) => setClearToken(c === true)} />
+        )}
+        {editing && <Checkbox label={t("cicd.admin.active")} description={t("cicd.admin.activeHint")} checked={active} onCheckedChange={(c) => setActive(c === true)} />}
+        <button type="submit" hidden />
+      </form>
+    </Dialog>
+  );
+}
+
+export function AdminCicdPage() {
+  const { t } = useTranslation();
+  const title = t("admin.sections.cicd");
+  useDocumentTitle(title);
+  const me = useMe().data;
+  const allowed = !!me && (me.isAdmin || me.globalPermissions.includes("global.manage_cicd"));
+  const list = useCicdConnections(allowed);
+  const m = useCicdConnectionMutations();
+  const toast = useToast();
+  const runToast = useRunWithToast();
+  const [dialog, setDialog] = useState<{ editing: CicdConnection | null } | null>(null);
+  const [secret, setSecret] = useState<{ webhookUrl: string; secret: string } | null>(null);
+  const [rotating, setRotating] = useState<CicdConnection | null>(null);
+  const [removing, setRemoving] = useState<CicdConnection | null>(null);
+  const [checks, setChecks] = useState<Record<string, { ok: boolean; status: number }>>({});
+  const [checking, setChecking] = useState<string | null>(null);
+
+  // a result belongs to the address and token it was made with: a change of either drops it
+  const checkKey = (c: CicdConnection) => `${c.id} ${c.baseUrl} ${c.tokenHint ?? ""}`;
+  const checkText = (r: { ok: boolean; status: number }) =>
+    r.ok ? t("cicd.admin.checkOk", { status: r.status }) : r.status === 0 ? t("cicd.admin.checkNoAnswer") : t("cicd.admin.checkFail", { status: r.status });
+  const check = async (c: CicdConnection) => {
+    setChecking(c.id);
+    try {
+      const r = await m.check.mutateAsync(c.id);
+      setChecks((cur) => ({ ...cur, [checkKey(c)]: r }));
+      toast({ tone: r.ok ? "success" : "danger", title: t("cicd.admin.checkResult", { result: checkText(r) }) });
+    } catch (e) {
+      toast({ tone: "danger", title: isApiError(e) ? e.title : t("app.errorTitle") });
+    } finally {
+      setChecking(null);
+    }
+  };
+
+  return (
+    <PageBody>
+      <PageHeader
+        title={title}
+        // a CI/CD 연동 관리자 who is not an administrator cannot open the 관리 landing page
+        breadcrumbs={[{ label: t("nav.admin"), href: me?.isAdmin ? "/admin" : undefined }, { label: title }]}
+        actions={
+          allowed && (
+            <Button variant="primary" icon={<Plus />} onClick={() => setDialog({ editing: null })}>
+              {t("cicd.admin.new")}
+            </Button>
+          )
+        }
+      />
+      <AdminGuard cicdManagers>
+        <p className="mb-4 max-w-3xl text-sm text-fg-muted">{t("cicd.admin.hint")}</p>
+        {list.isPending ? (
+          <Skeleton className="h-32 w-full" />
+        ) : list.isError ? (
+          <ErrorState error={list.error} onRetry={() => list.refetch()} />
+        ) : list.data.length === 0 ? (
+          <div className="rounded-md border border-border">
+            <EmptyState compact icon={<GitMerge />} title={t("cicd.admin.none")}>
+              {t("cicd.admin.noneHint")}
+            </EmptyState>
+          </div>
+        ) : (
+          <AdminTable minWidth={900}>
+            <caption className="sr-only">{t("cicd.admin.list")}</caption>
+            <thead>
+              <tr className={theadRow}>
+                <th scope="col" className={th}>{t("cicd.admin.cols.name")}</th>
+                <th scope="col" className={th}>{t("cicd.admin.cols.kind")}</th>
+                <th scope="col" className={th}>{t("cicd.admin.cols.baseUrl")}</th>
+                <th scope="col" className={th}>{t("cicd.admin.cols.token")}</th>
+                <th scope="col" className={th}>{t("cicd.admin.cols.repositories")}</th>
+                <th scope="col" className={th}>{t("cicd.admin.cols.status")}</th>
+                <th scope="col" className={`${th} w-40`}>
+                  <span className="sr-only">{t("app.more")}</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.data.map((c) => {
+                const result = checks[checkKey(c)];
+                return (
+                  <tr key={c.id} className={tbodyRow}>
+                    <td className="px-3 py-1.5">
+                      <span className="font-medium text-fg">{c.name}</span>
+                      {c.secretHint && <span className="block text-xs text-fg-muted">{t("cicd.admin.secretEnd", { hint: c.secretHint })}</span>}
+                    </td>
+                    <td className="px-3">{t(`cicd.kinds.${c.kind}`)}</td>
+                    <td className="max-w-64 truncate px-3 font-mono text-xs text-fg-muted" title={c.baseUrl}>
+                      {c.baseUrl}
+                    </td>
+                    <td className="px-3 text-fg-muted">
+                      {c.tokenHint ? <span className="font-mono text-xs">{t("cicd.admin.tokenEnd", { hint: c.tokenHint })}</span> : t("cicd.admin.tokenNone")}
+                    </td>
+                    <td className="px-3 tabular-nums">{t("cicd.admin.repositoryCount", { count: c.repositoryCount })}</td>
+                    <td className="px-3 py-1.5">
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        <Badge tone={c.active ? "accent" : "neutral"}>{c.active ? t("cicd.admin.statuses.active") : t("cicd.admin.statuses.off")}</Badge>
+                        {c.active && !c.tokenHint && <Badge>{t("cicd.admin.webhookOnly")}</Badge>}
+                        {!c.secretHint && <Badge tone="warning">{t("cicd.admin.noSecret")}</Badge>}
+                        {result && (
+                          <span className={result.ok ? "text-xs text-success" : "text-xs text-danger"}>{t("cicd.admin.checkResult", { result: checkText(result) })}</span>
+                        )}
+                      </span>
+                    </td>
+                    <td className="px-2">
+                      <span className="flex items-center justify-end gap-1">
+                        <Button size="sm" icon={<PlugZap />} aria-label={t("cicd.admin.checkFor", { name: c.name })} loading={checking === c.id} onClick={() => void check(c)}>
+                          {t("cicd.admin.check")}
+                        </Button>
+                        <Menu
+                          align="end"
+                          trigger={<Button variant="ghost" size="sm" iconOnly aria-label={t("admin.actionsFor", { name: c.name })} icon={<MoreHorizontal />} />}
+                          items={[
+                            { label: t("app.edit"), icon: <Pencil />, onSelect: () => setDialog({ editing: c }) },
+                            { label: t("cicd.admin.rotate"), icon: <KeyRound />, onSelect: () => setRotating(c) },
+                            { kind: "separator" as const },
+                            { label: t("app.delete"), icon: <Trash2 />, danger: true, onSelect: () => setRemoving(c) },
+                          ]}
+                        />
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </AdminTable>
+        )}
+      </AdminGuard>
+      {dialog && <ConnectionDialog key={dialog.editing?.id ?? "new"} editing={dialog.editing} onClose={() => setDialog(null)} onSecret={setSecret} />}
+      {secret && <SecretDialog webhookUrl={secret.webhookUrl} secret={secret.secret} onClose={() => setSecret(null)} />}
+      <ConfirmDialog
+        open={!!rotating}
+        onOpenChange={(o) => !o && setRotating(null)}
+        title={t("cicd.admin.rotateTitle", { name: rotating?.name ?? "" })}
+        body={t("cicd.admin.rotateBody")}
+        confirm={t("cicd.admin.rotate")}
+        pending={m.rotateSecret.isPending}
+        onConfirm={async () => {
+          const c = rotating;
+          const r = c ? await runToast(m.rotateSecret.mutateAsync(c.id)) : null;
+          setRotating(null);
+          if (c && r) setSecret({ webhookUrl: c.webhookUrl, secret: r.webhookSecret });
+        }}
+      />
+      <ConfirmDialog
+        open={!!removing}
+        onOpenChange={(o) => !o && setRemoving(null)}
+        title={t("cicd.admin.deleteTitle", { name: removing?.name ?? "" })}
+        body={t("cicd.admin.deleteBody")}
+        confirm={t("app.delete")}
+        pending={m.remove.isPending}
+        onConfirm={async () => {
+          if (removing) await runToast(m.remove.mutateAsync(removing.id), t("admin.deleted"));
+          setRemoving(null);
+        }}
+      />
+    </PageBody>
+  );
+}

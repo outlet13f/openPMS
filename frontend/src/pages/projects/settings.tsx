@@ -22,6 +22,7 @@ import { ErrorState, PageBody, PageHeader, useDocumentTitle } from "@/app/page";
 import { can, useCurrentProject } from "@/app/project";
 import { AdminTable, ConfirmDialog, fieldErrorOf, tbodyRow, th, theadRow, useRunWithToast } from "@/features/admin/common";
 import { ServiceDeskSection } from "@/features/service-desk/settings-section";
+import { RepositoriesSection } from "@/features/cicd/repositories-section";
 
 /** 서비스 데스크 settings: the module on and service.view. */
 const serviceOn = (p: Project) => p.enabledModules.includes("service_desk") && can(p, "service.view");
@@ -29,15 +30,21 @@ const serviceOn = (p: Project) => p.enabledModules.includes("service_desk") && c
 const projectSettingsOn = (p: Project) =>
   can(p, "project.edit") || can(p, "project.manage_versions") || can(p, "project.manage_types") || can(p, "project.manage_custom_fields");
 
-const SECTIONS = ["general", "modules", "work-packages", "versions", "service-desk"] as const;
+/** 저장소 (CI/CD): the module on and cicd.view (참관자 see the list; cicd.manage attaches and detaches). */
+const repositoriesOn = (p: Project) => p.enabledModules.includes("cicd") && can(p, "cicd.view");
+
+const SECTIONS = ["general", "modules", "work-packages", "versions", "service-desk", "repositories"] as const;
 type Section = (typeof SECTIONS)[number];
+/** The sections this person may open, in menu order. */
+const visibleSections = (p: Project): Section[] =>
+  SECTIONS.filter((s) => (s === "service-desk" ? serviceOn(p) : s === "repositories" ? repositoriesOn(p) : projectSettingsOn(p)));
 
 function SettingsNav({ base }: { base: string }) {
   const { t } = useTranslation();
   const project = useCurrentProject();
   return (
     <nav aria-label={t("settings.nav")} className="mb-6 flex gap-1 overflow-x-auto border-b border-border">
-      {SECTIONS.filter((s) => (s === "service-desk" ? serviceOn(project) : projectSettingsOn(project))).map((s) => (
+      {visibleSections(project).map((s) => (
         <NavLink
           key={s}
           to={`${base}/${s}`}
@@ -650,11 +657,10 @@ export function ProjectSettingsPage() {
   const project = useCurrentProject();
   useDocumentTitle(`${t("nav.settings")} · ${project.name}`);
   const base = `/projects/${project.identifier}/settings`;
-  if (!projectSettingsOn(project) && serviceOn(project)) {
-    // a service desk agent: every other (or unknown) section goes to 서비스 데스크
-    if (section !== "service-desk") return <Navigate to={`${base}/service-desk`} replace />;
-  } else if (!SECTIONS.includes(section as Section) || (section === "service-desk" && !serviceOn(project))) return <Navigate to={`${base}/general`} replace />;
-  if (!projectSettingsOn(project) && !serviceOn(project))
+  const visible = visibleSections(project);
+  // a section I may not open (or an unknown one) goes to the first I may: 정보, or 서비스 데스크 for an agent, or 저장소
+  if (visible.length && !visible.includes(section as Section)) return <Navigate to={`${base}/${visible[0]}`} replace />;
+  if (!visible.length)
     return (
       <PageBody>
         <PageHeader title={t("nav.settings")} />
@@ -670,6 +676,7 @@ export function ProjectSettingsPage() {
       {section === "work-packages" && <WorkPackagesSection />}
       {section === "versions" && <VersionsSection />}
       {section === "service-desk" && <ServiceDeskSection />}
+      {section === "repositories" && <RepositoriesSection />}
     </PageBody>
   );
 }

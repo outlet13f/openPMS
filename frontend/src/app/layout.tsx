@@ -126,7 +126,9 @@ function ProjectSidebar({ identifier, onNavigate, onCollapse }: { identifier: st
     can(p, "project.view_members") && { label: t("nav.members"), to: `${base}/members`, icon: <Users /> },
     can(p, "project.edit") ? { label: t("nav.settings"), to: `${base}/settings/general`, icon: <Settings /> }
     // agents without project.edit still reach the service desk settings (read-only below service.manage)
-    : mod("service_desk") && can(p, "service.view") && { label: t("nav.settings"), to: `${base}/settings/service-desk`, icon: <Settings /> },
+    : mod("service_desk") && can(p, "service.view") ? { label: t("nav.settings"), to: `${base}/settings/service-desk`, icon: <Settings /> }
+    // and people who may see the attached repositories (참관자 included) reach 저장소
+    : mod("cicd") && can(p, "cicd.view") && { label: t("nav.settings"), to: `${base}/settings/repositories`, icon: <Settings /> },
   ].filter(Boolean) as SidebarSection["items"];
   return <Sidebar label={t("nav.projectMenu")} header={<ProjectSwitcher project={p} />} sections={[{ items }]} onNavigate={onNavigate} onCollapse={onCollapse} />;
 }
@@ -137,10 +139,13 @@ function AdminSidebar({ me, onNavigate, onCollapse }: { me: Me; onNavigate?: () 
     { title: t("admin.groupTitles.workPackages"), keys: ["types", "statuses", "workflows", "priorities", "customFields", "progress"] },
     { title: t("admin.groupTitles.people"), keys: ["users", "groups", "roles", "authentication"] },
     { title: t("admin.groupTitles.calendar"), keys: ["calendar", "serviceCalendars"] },
-    { title: t("admin.groupTitles.integrations"), keys: ["integrations"] },
+    { title: t("admin.groupTitles.integrations"), keys: ["integrations", "cicd"] },
     { title: t("admin.groupTitles.system"), keys: ["system"] },
   ];
-  const visible = (k: string) => me.isAdmin || ((k === "users" || k === "groups") && me.globalPermissions.includes("global.manage_users"));
+  const visible = (k: string) =>
+    me.isAdmin ||
+    ((k === "users" || k === "groups") && me.globalPermissions.includes("global.manage_users")) ||
+    (k === "cicd" && me.globalPermissions.includes("global.manage_cicd"));
   return (
     <Sidebar
       label={t("nav.admin")}

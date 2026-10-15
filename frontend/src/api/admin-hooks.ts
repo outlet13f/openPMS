@@ -251,7 +251,7 @@ export function useServiceCalendarMutations() {
 
 /* ---------- CI/CD 연동 ---------- */
 
-export const useCicdConnections = () => useQuery({ queryKey: ["cicd", "connections"], queryFn: () => api.cicd.connections() });
+export const useCicdConnections = (enabled = true) => useQuery({ queryKey: ["cicd", "connections"], queryFn: () => api.cicd.connections(), enabled });
 
 /** create and rotateSecret answer with the webhook secret (shown once): the caller keeps it from the mutation result. */
 export function useCicdConnectionMutations() {
@@ -276,8 +276,9 @@ export const useProjectCicdConnections = (project: string, enabled = true) =>
 
 export function useRepositoryMutations(project: string) {
   const qc = useQueryClient();
-  // the connections list shows how many repositories each one has
-  const done = () => (qc.invalidateQueries({ queryKey: ["cicd", "project", project] }), qc.invalidateQueries({ queryKey: ["cicd", "connections"] }));
+  // everything CI/CD moves with it: this project's lists, the connections' repository counts, the search results'
+  // "already attached" marks (else a re-attach is a false 409) and the development tabs (detach deletes their links)
+  const done = () => qc.invalidateQueries({ queryKey: ["cicd"] });
   return {
     attach: useMutation({ mutationFn: (input: { connectionId: Id; externalId: string }) => api.cicd.attachRepository(project, input), onSuccess: done }),
     detach: useMutation({ mutationFn: (repoId: Id) => api.cicd.detachRepository(project, repoId), onSuccess: done }),

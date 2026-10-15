@@ -39,6 +39,7 @@ import { AdminGroupsPage, AdminUsersPage } from "@/pages/admin/users";
 import { AdminCalendarPage } from "@/pages/admin/calendar";
 import { AdminServiceCalendarsPage } from "@/pages/admin/service-calendars";
 import { AdminIntegrationsPage } from "@/pages/admin/integrations";
+import { AdminCicdPage } from "@/pages/admin/cicd";
 import { AdminSystemPage } from "@/pages/admin/system";
 import { ApiDocsPage } from "@/pages/api-docs";
 import { ProjectSettingsPage } from "@/pages/projects/settings";
@@ -200,6 +201,7 @@ export const router = createBrowserRouter([
       { path: "admin/calendar", element: <AdminCalendarPage /> },
       { path: "admin/service-calendars", element: <AdminServiceCalendarsPage /> },
       { path: "admin/integrations", element: <AdminIntegrationsPage /> },
+      { path: "admin/cicd", element: <AdminCicdPage /> },
       { path: "admin/system", element: <AdminSystemPage /> },
       { path: "help", element: helpPage("user") },
       { path: "help/admin", element: helpPage("admin") },

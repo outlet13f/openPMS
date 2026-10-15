@@ -2,17 +2,22 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
-import { CalendarClock, CalendarDays, CircleDot, Flag, Gauge, GitBranch, KeyRound, ListPlus, Lock, Plug, Server, Shapes, ShieldCheck, Users, UsersRound } from "lucide-react";
+import { CalendarClock, CalendarDays, CircleDot, Flag, Gauge, GitBranch, GitMerge, KeyRound, ListPlus, Lock, Plug, Server, Shapes, ShieldCheck, Users, UsersRound } from "lucide-react";
 import { useMe } from "@/api/hooks";
 import { EmptyState } from "@/components/ui/feedback";
 import { PageBody, PageHeader, useDocumentTitle } from "@/app/page";
 import { Capabilities } from "@/features/help/capabilities";
 
-/** Administrators only; user and group screens also accept global.manage_users (architecture.md §4.2). */
-export function AdminGuard({ children, userManagers }: { children: ReactNode; userManagers?: boolean }) {
+/**
+ * Administrators only; user and group screens also accept global.manage_users (architecture.md §4.2), the CI/CD
+ * connections screen global.manage_cicd.
+ */
+export function AdminGuard({ children, userManagers, cicdManagers }: { children: ReactNode; userManagers?: boolean; cicdManagers?: boolean }) {
   const { t } = useTranslation();
   const me = useMe().data;
-  const ok = !!me && (me.isAdmin || (userManagers && me.globalPermissions.includes("global.manage_users")));
+  const ok =
+    !!me &&
+    (me.isAdmin || (userManagers && me.globalPermissions.includes("global.manage_users")) || (cicdManagers && me.globalPermissions.includes("global.manage_cicd")));
   if (!ok)
     return (
       <EmptyState icon={<Lock />} title={t("app.forbiddenTitle")}>
@@ -36,6 +41,7 @@ export const ADMIN_SECTIONS = [
   { to: "/admin/calendar", key: "calendar", icon: <CalendarDays /> },
   { to: "/admin/service-calendars", key: "serviceCalendars", icon: <CalendarClock /> },
   { to: "/admin/integrations", key: "integrations", icon: <Plug /> },
+  { to: "/admin/cicd", key: "cicd", icon: <GitMerge /> },
   { to: "/admin/system", key: "system", icon: <Server /> },
 ] as const;
 
