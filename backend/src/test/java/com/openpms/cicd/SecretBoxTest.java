@@ -22,11 +22,25 @@ class SecretBoxTest {
         assertThat(box.seal("x")).isNotEqualTo(box.seal("x"));
     }
 
-    @Test void tamperedValueIsRefused() {
+    @Test void flippedCiphertextBitFailsTheGcmTag() {
         var box = new SecretBox(KEY);
-        var sealed = box.seal("secret");
-        var bad = sealed.substring(0, sealed.length() - 2) + (sealed.endsWith("A") ? "B" : "A") + "=";
+        var parts = box.seal("secret").split(":");
+        var ct = Base64.getDecoder().decode(parts[2]);
+        ct[0] ^= 1;
+        var bad = "v1:" + parts[1] + ":" + Base64.getEncoder().encodeToString(ct);
         assertThatThrownBy(() -> box.open(bad)).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test void malformedBase64PartIsRefused() {
+        var box = new SecretBox(KEY);
+        var parts = box.seal("secret").split(":");
+        assertThatThrownBy(() -> box.open("v1:" + parts[1] + ":!!!")).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test void nonBase64KeyErrorDoesNotEchoKeyCharacters() {
+        assertThatThrownBy(() -> new SecretBox("not*base64!"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .satisfies(e -> assertThat(e.getMessage()).doesNotContain("*").doesNotContain("!"));
     }
 
     @Test void noKeyMeansNotReady() {

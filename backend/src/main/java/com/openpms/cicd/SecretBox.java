@@ -25,7 +25,13 @@ public class SecretBox {
             key = null;
             return;
         }
-        var raw = Base64.getDecoder().decode(base64Key.trim());
+        byte[] raw;
+        try {
+            raw = Base64.getDecoder().decode(base64Key.trim());
+        } catch (IllegalArgumentException e) {
+            // no cause: the decoder's message echoes the offending key character into the start-up log
+            throw new IllegalArgumentException("OPENPMS_SECRET_KEY must be Base64 (32 bytes)");
+        }
         if (raw.length != 32) throw new IllegalArgumentException("OPENPMS_SECRET_KEY must be 32 bytes (Base64), got " + raw.length);
         key = new SecretKeySpec(raw, "AES");
     }
