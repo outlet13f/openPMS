@@ -5,11 +5,13 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 import tools.jackson.databind.json.JsonMapper;
@@ -36,7 +38,9 @@ public class SecurityConfig {
                                            RateLimiter limiter) throws Exception {
         http
                 // a request with an API token carries no cookie, so there is nothing for CSRF to protect (ApiTokenFilter)
-                .csrf(csrf -> csrf.spa().ignoringRequestMatchers(ApiTokenFilter::isBearer))
+                .csrf(csrf -> csrf.spa().ignoringRequestMatchers(ApiTokenFilter::isBearer)
+                        // CI/CD tools sign their webhooks instead (cicd/CicdHookController); no cookie, nothing for CSRF to protect
+                        .ignoringRequestMatchers(PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/api/v1/hooks/cicd/*")))
                 .addFilterBefore(new ApiTokenFilter(tokens, limiter, json), org.springframework.security.web.csrf.CsrfFilter.class)
                 .securityContext(sc -> sc.securityContextRepository(repo))
                 .sessionManagement(s -> s.sessionFixation(f -> f.changeSessionId()))
@@ -58,6 +62,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(a -> a
                         .requestMatchers("/api/v1/auth/login", "/api/v1/auth/password-reset", "/api/v1/auth/password-reset/confirm", "/api/v1/auth/password-change", "/api/v1/auth/password-policy",
                                 "/api/v1/auth/invitations/**", "/api/v1/auth/sso-providers", "/api/v1/auth/oidc/**", "/api/v1/openapi.json").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/hooks/cicd/*").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll())
                 .exceptionHandling(e -> e
