@@ -97,6 +97,7 @@ class PerfBudgetIT {
                 .where(WORK_PACKAGES.PROJECT_ID.eq(projectId), WORK_PACKAGES.SUBJECT.eq("상세 화면 측정용 작업")).fetchSingle().value1();
         boardId = db.select(BOARDS.ID).from(BOARDS).where(BOARDS.PROJECT_ID.eq(projectId)).fetchSingle().value1();
         assertThat(db.fetchCount(WORK_PACKAGES, WORK_PACKAGES.PROJECT_ID.eq(projectId))).isEqualTo(1000);
+        seedDevTab();
         deskId = db.select(PROJECTS.ID).from(PROJECTS).where(PROJECTS.IDENTIFIER.eq("perf-sd")).fetchSingle().value1();
         requesterTicket = db.select(WORK_PACKAGES.NUMBER).from(WORK_PACKAGES)
                 .where(WORK_PACKAGES.PROJECT_ID.eq(deskId), WORK_PACKAGES.SUBJECT.like("% (1)")).fetchSingle().value1();
@@ -125,10 +126,30 @@ class PerfBudgetIT {
         db.configuration().set(all);
     }
 
+    /** The development tab of the detail work package: the module on, one repository, 20 merge requests and 50 commits linked. */
+    void seedDevTab() {
+        db.execute("delete from cicd_connections where name = 'perf-cicd'");
+        db.execute("update projects set enabled_modules = enabled_modules || array['cicd']::text[] where id = ? and not ('cicd' = any (enabled_modules))", projectId);
+        db.execute("insert into cicd_connections (kind, name, base_url, hook_key, active) values ('gitlab', 'perf-cicd', 'https://gitlab.example.com', 'perf-cicd-key', false)");
+        db.execute("insert into cicd_repositories (connection_id, external_id, full_path, web_url, project_id) "
+                + "select id, 'perf-1', 'perf/web', 'https://gitlab.example.com/perf/web', ? from cicd_connections where name = 'perf-cicd'", projectId);
+        db.execute("insert into cicd_merge_requests (repository_id, iid, title, state, source_branch, target_branch, author_name, user_id, updated_at, web_url) "
+                + "select r.id, g, 'MR ' || g, 'open', 'topic-' || g, 'main', '박준호', (select id from users where email = 'junho.park@openpms.local'), now() - g * interval '1 hour', "
+                + "r.web_url || '/-/merge_requests/' || g from cicd_repositories r, generate_series(1, 20) g where r.external_id = 'perf-1' and r.project_id = ?", projectId);
+        db.execute("insert into cicd_commits (repository_id, sha, title, author_name, user_id, committed_at, web_url) "
+                + "select r.id, lpad(to_hex(g), 40, '0'), '커밋 ' || g, '박준호', (select id from users where email = 'junho.park@openpms.local'), now() - g * interval '1 minute', "
+                + "r.web_url || '/-/commit/' || g from cicd_repositories r, generate_series(1, 50) g where r.external_id = 'perf-1' and r.project_id = ?", projectId);
+        db.execute("insert into work_package_cicd_links (work_package_id, merge_request_id, source) select w.id, m.id, 'title' from work_packages w, cicd_merge_requests m "
+                + "where w.project_id = ? and w.subject = '상세 화면 측정용 작업' and m.repository_id in (select id from cicd_repositories where project_id = ?)", projectId, projectId);
+        db.execute("insert into work_package_cicd_links (work_package_id, commit_id, source) select w.id, c.id, 'message' from work_packages w, cicd_commits c "
+                + "where w.project_id = ? and w.subject = '상세 화면 측정용 작업' and c.repository_id in (select id from cicd_repositories where project_id = ?)", projectId, projectId);
+    }
+
     @AfterAll
     void cleanUp() throws Exception {
         if (before != null) db.configuration().set(before);
         db.deleteFrom(PROJECTS).where(PROJECTS.IDENTIFIER.in("perf-1000", "perf-sd")).execute();
+        db.execute("delete from cicd_connections where name = 'perf-cicd'");
         report();
     }
 
@@ -207,6 +228,7 @@ class PerfBudgetIT {
                 measure(new Budget("보드", "상태 보드 · 카드 1,000장", 600, 29, 3000), List.of(get("/api/v1/boards/" + boardId))),
                 measure(new Budget("작업 상세", "작업 · 이력 40건 · 관계 · 지켜보는 사람", 200, 45, 30),
                         List.of(get(n), get(n + "/activities"), get(n + "/relations"), get(n + "/watchers"))),
+                measure(new Budget("작업 상세", "개발 탭 · MR 20 · 커밋 50", 150, 8, 40), List.of(get(n + "/cicd"))),
                 // SQL budgets are the measured count + 2 (desk list 20, portal list 6, portal detail 16): the first desk list is the
                 // ordinary list plus the ticket join, the portal list and detail are separate endpoints with their own lookups
                 measure(new Budget("서비스 데스크 목록", "티켓 20건 · SLA 열", 250, 22, 60), List.of(serviceDeskQuery(20))),
