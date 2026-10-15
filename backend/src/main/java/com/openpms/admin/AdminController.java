@@ -651,6 +651,7 @@ public class AdminController {
         if (db.fetchExists(USERS, USERS.EMAIL.eq(email))) throw ApiException.field("email", "이미 등록된 이메일입니다.");
         boolean isAdmin = Boolean.TRUE.equals(In.bool(in, "isAdmin"));
         if (isAdmin && !ctx.isAdmin()) throw ApiException.forbidden("관리자만 관리자를 지정할 수 있습니다.");
+        requireAdminFor(ctx, in, "managerId");
         var managerId = In.has(in, "managerId") ? activeUser(in, "managerId", null) : null;
         var u = db.insertInto(USERS).set(USERS.EMAIL, email).set(USERS.NAME, n).set(USERS.STATUS, temporary ? "active" : "invited").set(USERS.IS_ADMIN, isAdmin)
                 .set(USERS.MANAGER_ID, managerId).returning(USERS.ID).fetchOne();
@@ -664,6 +665,11 @@ public class AdminController {
         ctx.refresh();
         return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore())
                 .body(new CreatedWithPassword(toUser(ctx, ctx.s().user(u.getId()).orElseThrow()), issued.temporaryPassword(), issued.expiresAt()));
+    }
+
+    /** Who approves whom follows from managers and group leads: only administrators set them (a user manager could route approvals to themselves). */
+    private static void requireAdminFor(Ctx ctx, Map<String, Object> in, String field) {
+        if (In.has(in, field) && !ctx.isAdmin()) throw ApiException.forbidden("관리자만 관리자(상사)·그룹 책임자를 정할 수 있습니다.");
     }
 
     /** A person named by a body field (승인자의 관리자, 그룹 책임자): active; null clears. {@code self} may not name itself. */
@@ -686,6 +692,7 @@ public class AdminController {
         var u = db.selectFrom(USERS).where(USERS.ID.eq(id), USERS.STATUS.ne("deleted")).fetchOne();
         if (u == null) throw notFound("사용자");
         requireAdminFor(ctx, u);
+        requireAdminFor(ctx, in, "managerId");
         var n = name(in, false);
         if (n != null) u.setName(n);
         if (In.has(in, "isAdmin")) {
@@ -796,6 +803,7 @@ public class AdminController {
         var ctx = userManager();
         var n = name(in, true);
         unique(USER_GROUPS, USER_GROUPS.NAME, USER_GROUPS.ID, n, null);
+        requireAdminFor(ctx, in, "leadUserId");
         var lead = In.has(in, "leadUserId") ? activeUser(in, "leadUserId", null) : null;
         var g = db.insertInto(USER_GROUPS).set(USER_GROUPS.NAME, n).set(USER_GROUPS.LEAD_USER_ID, lead).returning(USER_GROUPS.ID).fetchOne();
         ctx.refresh();
@@ -807,6 +815,7 @@ public class AdminController {
     public AdminGroup renameGroup(@PathVariable UUID id, @RequestBody Map<String, Object> in) {
         var ctx = userManager();
         if (!ctx.s().groups().containsKey(id)) throw notFound("그룹");
+        requireAdminFor(ctx, in, "leadUserId");
         var n = name(in, !In.has(in, "leadUserId"));
         if (n != null) {
             unique(USER_GROUPS, USER_GROUPS.NAME, USER_GROUPS.ID, n, id);

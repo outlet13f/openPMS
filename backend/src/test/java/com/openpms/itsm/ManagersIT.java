@@ -1,11 +1,14 @@
 package com.openpms.itsm;
 
+import static com.openpms.db.Tables.GLOBAL_ROLE_ASSIGNMENTS;
+import static com.openpms.db.Tables.ROLES;
 import static com.openpms.db.Tables.USERS;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -128,6 +131,37 @@ class ManagersIT {
             oidc.syncManager(ItsmFixture.MINJI, FORMER); // locked: not a manager
             assertThat(managerOf(ItsmFixture.MINJI)).isEqualTo(alex);
         } finally {
+            clearManager(ItsmFixture.MINJI);
+        }
+    }
+
+    @Test void onlyAdminsSetManagersAndGroupLeads() throws Exception {
+        var refused = "관리자만 관리자(상사)·그룹 책임자를 정할 수 있습니다.";
+        var doyoon = ItsmFixture.DOYOON;
+        var roleName = "사용자 관리자(시험) " + UUID.randomUUID().toString().substring(0, 6);
+        var role = f.body(f.send(admin, post("/api/v1/admin/roles"), "{\"name\":\"" + roleName + "\",\"scope\":\"global\",\"permissions\":[\"global.manage_users\"]}")
+                .andExpect(status().is2xxSuccessful()).andReturn()).get("id").asString();
+        var group = f.body(f.send(admin, post("/api/v1/admin/groups"), "{\"name\":\"책임자 권한 " + UUID.randomUUID().toString().substring(0, 6) + "\"}")
+                .andExpect(status().isCreated()).andReturn()).get("id").asString();
+        try {
+            f.send(admin, put("/api/v1/admin/users/" + doyoon + "/global-roles"), "{\"roleIds\":[\"" + role + "\"]}").andExpect(status().isOk());
+            var manager = f.login("doyoon.han@openpms.local");
+            f.mvc.perform(get("/api/v1/admin/users").session(manager)).andExpect(status().isOk());
+            f.send(manager, patch("/api/v1/admin/users/" + ItsmFixture.MINJI), "{\"managerId\":\"" + doyoon + "\"}")
+                    .andExpect(status().isForbidden()).andExpect(content().string(Matchers.containsString(refused)));
+            f.send(manager, patch("/api/v1/admin/users/" + ItsmFixture.MINJI), "{\"managerId\":null}").andExpect(status().isForbidden());
+            f.send(manager, patch("/api/v1/admin/groups/" + group), "{\"leadUserId\":\"" + doyoon + "\"}")
+                    .andExpect(status().isForbidden()).andExpect(content().string(Matchers.containsString(refused)));
+            f.send(manager, post("/api/v1/admin/groups"), "{\"name\":\"안 됨\",\"leadUserId\":\"" + doyoon + "\"}").andExpect(status().isForbidden());
+            f.send(manager, post("/api/v1/admin/users"), "{\"name\":\"안 됨\",\"email\":\"no-" + UUID.randomUUID().toString().substring(0, 6)
+                    + "@openpms.local\",\"managerId\":\"" + doyoon + "\"}").andExpect(status().isForbidden());
+            assertThat(managerOf(ItsmFixture.MINJI)).isNull();
+            // other edits stay open to a user manager
+            f.send(manager, patch("/api/v1/admin/groups/" + group), "{\"name\":\"책임자 권한 이름\"}").andExpect(status().isOk());
+        } finally {
+            f.send(admin, delete("/api/v1/admin/groups/" + group), "");
+            db.deleteFrom(GLOBAL_ROLE_ASSIGNMENTS).where(GLOBAL_ROLE_ASSIGNMENTS.USER_ID.eq(doyoon)).execute();
+            db.deleteFrom(ROLES).where(ROLES.ID.eq(UUID.fromString(role))).execute();
             clearManager(ItsmFixture.MINJI);
         }
     }
