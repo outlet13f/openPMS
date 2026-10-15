@@ -187,13 +187,14 @@ public class Journals {
             Map.entry("duration", "기간"), Map.entry("scheduleManually", "일정 방식"), Map.entry("ignoreNonWorkingDays", "근무일만 계산"),
             Map.entry("workHours", "작업량"), Map.entry("remainingHours", "남은 작업"), Map.entry("doneRatio", "완료 %"),
             Map.entry("attachment", "첨부 파일"),
-            Map.entry("requesterId", "요청자"), Map.entry("impact", "영향도"), Map.entry("urgency", "긴급도"), Map.entry("assignmentGroupId", "처리 그룹"));
+            Map.entry("requesterId", "요청자"), Map.entry("impact", "영향도"), Map.entry("urgency", "긴급도"), Map.entry("assignmentGroupId", "처리 그룹"),
+            Map.entry("approval", "승인"));
 
     private static final List<String> ORDER = List.of("projectId", "subject", "descriptionHtml", "typeId", "statusId", "priorityId", "assigneeId", "assignees", "responsibleId",
             "requesterId", "impact", "urgency", "assignmentGroupId", "versionId", "categoryId", "parentId", "startDate", "dueDate", "duration", "scheduleManually", "ignoreNonWorkingDays", "workHours",
-            "remainingHours", "doneRatio", "attachment");
+            "remainingHours", "doneRatio", "attachment", "approval");
 
-    /** "attachment:<id>" → "attachment" (files are keyed one by one). */
+    /** "attachment:<id>" → "attachment" (files are keyed one by one), "approval:<id>" → "approval". */
     private static String base(String field) {
         int i = field.indexOf(':');
         return i < 0 ? field : field.substring(0, i);
@@ -246,6 +247,8 @@ public class Journals {
             case "workHours", "remainingHours" -> trimNumber(v) + "시간";
             case "doneRatio" -> trimNumber(v) + "%";
             case "descriptionHtml" -> null;
+            // an approval step's line, already a sentence (itsm/Approvals)
+            case "approval" -> String.valueOf(v);
             default -> String.valueOf(v);
         };
     }

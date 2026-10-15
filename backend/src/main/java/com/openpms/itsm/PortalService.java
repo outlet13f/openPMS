@@ -19,6 +19,8 @@ import com.openpms.wp.Journals;
 import com.openpms.wp.WorkPackageService;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -44,7 +46,17 @@ public class PortalService {
     /** user and version values point at people and plans the requester cannot see, so those fields stay off the portal. */
     private static final Set<String> NOT_ON_PORTAL = Set.of("user", "version");
 
-    public record PortalDesk(String identifier, String name, String descriptionText, List<Dto.IdName> types, List<PortalField> fields) {}
+    /** A catalog item the requester can ask for: its form is the item's fields (required = the item's flag). */
+    public record PortalItem(UUID id, String name, String descriptionHtml, UUID typeId, List<PortalField> fields) {}
+
+    /** A catalog category with its active items; items without a category sit under a made-up 기타 with no id. */
+    public record PortalCategory(UUID id, String name, List<PortalItem> items) {}
+
+    public record PortalDesk(String identifier, String name, String descriptionText, List<Dto.IdName> types, List<PortalField> fields,
+                             List<PortalCategory> catalog) {}
+
+    /** An approval step as the requester sees it: who and how far, never comments or skip reasons (a skipped row has no name). */
+    public record PortalApproval(int stepNo, String approverName, String decision, OffsetDateTime decidedAt) {}
 
     public record PortalSummary(long number, String subject, String desk, String type, Dto.StatusRef status, OffsetDateTime createdAt,
                                 OffsetDateTime updatedAt, boolean hasNews) {}
@@ -57,7 +69,8 @@ public class PortalService {
 
     public record PortalTicket(long number, String subject, String descriptionHtml, String desk, Dto.IdName type, Dto.StatusRef status, boolean closed,
                                OffsetDateTime createdAt, OffsetDateTime updatedAt, int lockVersion, List<Dto.IdName> allowedStatuses,
-                               List<FieldValue> fields, List<PortalEntry> activity, List<PortalFile> files) {}
+                               List<FieldValue> fields, List<PortalEntry> activity, List<PortalFile> files, Dto.IdName item,
+                               List<PortalApproval> approvals) {}
 
     private static final String NOT_FOUND = "요청을 찾을 수 없습니다.";
 
@@ -66,14 +79,18 @@ public class PortalService {
     private final Journals journals;
     private final Assignees assignees;
     private final com.openpms.customfield.CustomFields customFields;
+    private final ServiceCatalog catalog;
+    private final Approvals approvals;
 
     public PortalService(DSLContext db, WorkPackageService workPackages, Journals journals, Assignees assignees,
-                         com.openpms.customfield.CustomFields customFields) {
+                         com.openpms.customfield.CustomFields customFields, ServiceCatalog catalog, Approvals approvals) {
         this.db = db;
         this.workPackages = workPackages;
         this.journals = journals;
         this.assignees = assignees;
         this.customFields = customFields;
+        this.catalog = catalog;
+        this.approvals = approvals;
     }
 
     /* ---------- desks ---------- */
@@ -86,7 +103,48 @@ public class PortalService {
         var s = ctx.s();
         return desks(s).stream().map(p -> new PortalDesk(p.identifier(), p.name(), com.openpms.common.Html.text(p.descriptionHtml()),
                 p.typeIds().stream().filter(ItsmIds.TICKET_TYPES::contains).map(t -> s.type(t).map(x -> new Dto.IdName(x.id(), x.name())).orElseThrow()).toList(),
-                fields(s, p))).toList();
+                fields(s, p), catalog(s, p))).toList();
+    }
+
+    /** An item can be asked for while it is active and its type is a ticket type the desk still uses. */
+    private static boolean requestable(Snapshot.ProjectRow p, ServiceCatalog.Item item) {
+        return item.isActive() && ItsmIds.TICKET_TYPES.contains(item.typeId()) && p.typeIds().contains(item.typeId());
+    }
+
+    private List<PortalCategory> catalog(Snapshot s, Snapshot.ProjectRow p) {
+        var c = catalog.catalog(p.id());
+        var items = c.items().stream().filter(i -> requestable(p, i)).toList();
+        var out = new ArrayList<PortalCategory>();
+        var known = new HashSet<UUID>();
+        for (var cat : c.categories()) {
+            known.add(cat.id());
+            var mine = items.stream().filter(i -> cat.id().equals(i.categoryId())).map(i -> portalItem(s, p, i)).toList();
+            if (!mine.isEmpty()) out.add(new PortalCategory(cat.id(), cat.name(), mine));
+        }
+        var loose = items.stream().filter(i -> i.categoryId() == null || !known.contains(i.categoryId())).map(i -> portalItem(s, p, i)).toList();
+        if (!loose.isEmpty()) out.add(new PortalCategory(null, "기타", loose));
+        return out;
+    }
+
+    private PortalItem portalItem(Snapshot s, Snapshot.ProjectRow p, ServiceCatalog.Item item) {
+        return new PortalItem(item.id(), item.name(), item.descriptionHtml(), item.typeId(), itemFields(s, p, item));
+    }
+
+    /**
+     * An item's form: its fields whether or not they are marked for the portal, while they are still on for the desk and
+     * the item's type. User and version fields stay off the portal here too (they point at people and plans).
+     */
+    private List<PortalField> itemFields(Snapshot s, Snapshot.ProjectRow p, ServiceCatalog.Item item) {
+        var active = new HashMap<UUID, Snapshot.CustomFieldRow>();
+        for (var cf : s.activeCustomFields(p.id(), item.typeId())) active.put(cf.id(), cf);
+        var out = new ArrayList<PortalField>();
+        for (var f : item.fields().stream().sorted(Comparator.comparingInt(ServiceCatalog.ItemField::position)).toList()) {
+            var cf = active.get(f.customFieldId());
+            if (cf == null || NOT_ON_PORTAL.contains(cf.format())) continue;
+            out.add(new PortalField(cf.id(), cf.name(), cf.format(), f.isRequired(), cf.isMultiValue(),
+                    cf.options().stream().map(o -> new PortalOption(o.id(), o.value())).toList(), List.of(item.typeId())));
+        }
+        return out;
     }
 
     private List<PortalField> fields(Snapshot s, Snapshot.ProjectRow p) {
@@ -112,12 +170,23 @@ public class PortalService {
     public PortalTicket submit(Ctx ctx, String identifier, Map<String, Object> in) {
         var s = ctx.s();
         var p = desk(s, identifier);
-        var typeId = In.uuid(in, "typeId", "type");
+        // a catalog item decides the type, the form, the priority, the group and the approvals
+        var itemId = In.uuid(in, "catalogItemId", "catalogItem");
+        var item = itemId == null ? null : catalog.item(p.id(), itemId).filter(i -> requestable(p, i))
+                .orElseThrow(() -> ApiException.field("catalogItem", "요청할 수 없는 항목입니다."));
+        var typeId = item != null ? item.typeId() : In.uuid(in, "typeId", "type");
         if (typeId == null || !ItsmIds.TICKET_TYPES.contains(typeId) || !p.typeIds().contains(typeId)) throw ApiException.field("type", "장애 신고나 서비스 요청을 고르세요.");
         // only what the portal offers goes on: no assignee, status, priority, dates or hidden fields
-        var allowedFields = fields(s, p).stream().filter(f -> f.typeIds().contains(typeId)).map(f -> f.id().toString()).collect(java.util.stream.Collectors.toSet());
+        var form = item != null ? itemFields(s, p, item) : fields(s, p).stream().filter(f -> f.typeIds().contains(typeId)).toList();
+        var allowedFields = form.stream().map(f -> f.id().toString()).collect(java.util.stream.Collectors.toSet());
         var custom = new HashMap<String, Object>();
         if (in.get("customValues") instanceof Map<?, ?> m) m.forEach((k, v) -> { if (allowedFields.contains(String.valueOf(k))) custom.put(String.valueOf(k), v); });
+        // the item's form says what is required, whatever the fields' own flags (those are waived for an item request)
+        if (item != null) {
+            for (var fld : form) {
+                if (fld.required() && blank(custom.get(fld.id().toString()))) throw ApiException.field("cf:" + fld.id(), fld.name() + ": 값을 입력하세요.");
+            }
+        }
         var safe = new HashMap<String, Object>();
         safe.put("typeId", typeId.toString());
         safe.put("subject", In.str(in, "subject"));
@@ -125,8 +194,25 @@ public class PortalService {
         if (In.has(in, "impact")) safe.put("impact", in.get("impact"));
         if (In.has(in, "urgency")) safe.put("urgency", in.get("urgency"));
         safe.put("customValues", custom);
-        var w = workPackages.createForPortal(ctx, p, safe);
+        if (item == null) {
+            var w = workPackages.createForPortal(ctx, p, safe);
+            return ticket(ctx, new WorkPackageService.Found(w, p), false);
+        }
+        var planned = approvals.planFor(item.id(), ctx.userId());
+        // 승인 대기 is an SLA pause: ServiceDesk.created starts the request paused
+        safe.put("statusId", (Approvals.needsApproval(planned) ? ItsmIds.STATUS_AWAITING_APPROVAL : ItsmIds.STATUS_RECEIVED).toString());
+        if (item.defaultPriorityId() != null && s.priority(item.defaultPriorityId()).isPresent()) safe.put("priorityId", item.defaultPriorityId().toString());
+        var waived = new HashSet<UUID>();
+        for (var cf : s.customFields()) waived.add(cf.id());
+        var w = workPackages.createForPortal(ctx, p, safe, waived);
+        db.update(SERVICE_TICKETS).set(SERVICE_TICKETS.CATALOG_ITEM_ID, item.id()).set(SERVICE_TICKETS.ASSIGNMENT_GROUP_ID, item.assignmentGroupId())
+                .where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(w.getId())).execute();
+        approvals.store(ctx, w, planned);
         return ticket(ctx, new WorkPackageService.Found(w, p), false);
+    }
+
+    private static boolean blank(Object v) {
+        return v == null || (v instanceof String str && str.isBlank()) || (v instanceof Collection<?> c && c.isEmpty());
     }
 
     /* ---------- my tickets ---------- */
@@ -181,7 +267,12 @@ public class PortalService {
         var status = s.status(w.getStatusId()).orElseThrow();
         var allowed = Assembler.allowedFor(s, Set.of(ItsmIds.ROLE_REQUESTER), ctx.userId(), w.getTypeId(), w.getStatusId(), ctx.userId(),
                 Assignees.ids(assignees.of(w.getId()))).stream().map(id -> s.status(id).map(x -> new Dto.IdName(x.id(), x.name())).orElseThrow()).toList();
-        var visible = fields(s, f.project()).stream().map(PortalField::id).collect(java.util.stream.Collectors.toSet());
+        var itemId = db.select(SERVICE_TICKETS.CATALOG_ITEM_ID).from(SERVICE_TICKETS).where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(w.getId()))
+                .fetchOne(SERVICE_TICKETS.CATALOG_ITEM_ID);
+        var item = itemId == null ? null : catalog.item(f.project().id(), itemId).orElse(null);
+        var visible = fields(s, f.project()).stream().map(PortalField::id).collect(java.util.stream.Collectors.toCollection(HashSet::new));
+        // the item's form is shown with the request even where the fields are not marked for the portal
+        if (item != null) itemFields(s, f.project(), item).forEach(x -> visible.add(x.id()));
         var values = customFields.values(s, w).entrySet().stream()
                 .filter(e -> visible.contains(UUID.fromString(e.getKey())))
                 .map(e -> new FieldValue(s.customField(UUID.fromString(e.getKey())).map(Snapshot.CustomFieldRow::name).orElse(""), display(e.getValue())))
@@ -191,7 +282,13 @@ public class PortalService {
                 .fetch(a -> new PortalFile(a.getId(), a.getFileName(), a.getByteSize(), a.getCreatedAt()));
         return new PortalTicket(w.getNumber(), w.getSubject(), w.getDescriptionHtml(), f.project().name(),
                 s.type(w.getTypeId()).map(t -> new Dto.IdName(t.id(), t.name())).orElseThrow(), Refs.status(s, w.getStatusId()),
-                status.isClosed(), w.getCreatedAt(), w.getUpdatedAt(), w.getLockVersion(), allowed, values, activity, files);
+                status.isClosed(), w.getCreatedAt(), w.getUpdatedAt(), w.getLockVersion(), allowed, values, activity, files,
+                item == null ? null : new Dto.IdName(item.id(), item.name()), portalApprovals(s, w.getId()));
+    }
+
+    private List<PortalApproval> portalApprovals(Snapshot s, UUID wpId) {
+        return approvals.of(wpId).stream().map(a -> new PortalApproval(a.stepNo(),
+                "skipped".equals(a.decision()) || a.approverId() == null ? null : Refs.user(s, a.approverId()).name(), a.decision(), a.decidedAt())).toList();
     }
 
     private List<PortalEntry> activity(Ctx ctx, UUID wpId) {
