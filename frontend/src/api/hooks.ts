@@ -2,7 +2,7 @@
 // rules live in one place.
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { TimeFilter, TimeGroupBy, TimeWeekCell, ApiTokenInput, QueryFilter, BoardKind, Id, NotificationFilter, NotificationSetting, Preferences, ProfileInput, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch, ServiceDeskSettings, ServiceTicketPatch, PortalSubmit } from "./types";
+import type { TimeFilter, TimeGroupBy, TimeWeekCell, ApiTokenInput, QueryFilter, BoardKind, Id, NotificationFilter, NotificationSetting, Preferences, ProfileInput, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch, ServiceDeskSettings, ServiceTicketPatch, PortalSubmit, CatalogCategoryInput, CatalogItemInput } from "./types";
 
 export const qk = {
   me: ["me"] as const,
@@ -395,4 +395,58 @@ export function usePortalMutations() {
     }),
     attach: useMutation({ mutationFn: (v: { number: number; file: File }) => api.portal.attach(v.number, v.file), onSuccess: done }),
   };
+}
+
+/* ---------- 서비스 카탈로그와 승인 (ITSM 2단계) ---------- */
+
+export const useServiceCatalog = (project: string) =>
+  useQuery({ queryKey: ["serviceDesk", project, "catalog"], queryFn: () => api.serviceDesk.catalog(project), enabled: !!project });
+
+/** Catalog edits refresh the desk's catalog and the portal's desks (the items the requesters see). */
+export function useCatalogMutations(project: string) {
+  const qc = useQueryClient();
+  const done = () => (qc.invalidateQueries({ queryKey: ["serviceDesk", project, "catalog"] }), qc.invalidateQueries({ queryKey: ["portal", "desks"] }));
+  return {
+    createCategory: useMutation({ mutationFn: (input: CatalogCategoryInput) => api.serviceDesk.createCategory(project, input), onSuccess: done }),
+    updateCategory: useMutation({ mutationFn: (v: { id: Id; patch: CatalogCategoryInput }) => api.serviceDesk.updateCategory(project, v.id, v.patch), onSuccess: done }),
+    deleteCategory: useMutation({ mutationFn: (id: Id) => api.serviceDesk.deleteCategory(project, id), onSuccess: done }),
+    createItem: useMutation({ mutationFn: (input: CatalogItemInput) => api.serviceDesk.createItem(project, input), onSuccess: done }),
+    updateItem: useMutation({ mutationFn: (v: { id: Id; patch: CatalogItemInput }) => api.serviceDesk.updateItem(project, v.id, v.patch), onSuccess: done }),
+    deleteItem: useMutation({ mutationFn: (id: Id) => api.serviceDesk.deleteItem(project, id), onSuccess: done }),
+  };
+}
+
+/** The agent's approval panel of one request. */
+export const useTicketApprovals = (number: number, enabled = true) =>
+  useQuery({ queryKey: ["serviceDesk", "approvals", number], queryFn: () => api.serviceDesk.approvals(number), enabled: enabled && Number.isInteger(number) && number > 0 });
+
+/** An agent hands an undecided row to someone else (journaled, so the activity refreshes too). */
+export function useReplaceApprover(number: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { approvalId: Id; approverId: Id }) => api.serviceDesk.replaceApprover(number, v.approvalId, v.approverId),
+    onSuccess: (rows) => {
+      qc.setQueryData(["serviceDesk", "approvals", number], rows);
+      invalidateWorkPackages(qc, number);
+    },
+  });
+}
+
+/** 내 승인함 (also the badge in the global menu). */
+export const usePortalApprovals = () => useQuery({ queryKey: ["portal", "approvals"], queryFn: () => api.portal.approvals() });
+export const usePortalApproval = (id: Id) =>
+  useQuery({ queryKey: ["portal", "approval", id], queryFn: () => api.portal.approval(id), enabled: !!id, retry: false });
+
+/** Approve or reject: the inbox, the request (its status may change) and any open work package views refresh. */
+export function useApprovalDecision() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: Id; decision: "approve" | "reject"; comment?: string }) => api.portal.decide(v.id, v.decision, v.comment),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["portal"] });
+      qc.invalidateQueries({ queryKey: ["serviceDesk"] });
+      qc.invalidateQueries({ queryKey: ["wp-query"] });
+      qc.invalidateQueries({ queryKey: ["wp"] });
+    },
+  });
 }

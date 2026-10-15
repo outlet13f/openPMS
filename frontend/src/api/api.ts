@@ -92,6 +92,14 @@ import type {
   ServiceDeskSettings,
   ServiceDeskSummary,
   ServiceTicketPatch,
+  AgentApproval,
+  ApprovalDetail,
+  ApprovalSummary,
+  CatalogCategory,
+  CatalogCategoryInput,
+  CatalogItem,
+  CatalogItemInput,
+  ServiceCatalog,
 } from "./types";
 
 /**
@@ -390,6 +398,24 @@ export interface Api {
     updateTicket(number: number, patch: ServiceTicketPatch): Promise<WorkPackage>;
     /** GET /projects/{p}/service-desk/summary (service.view) */
     summary(project: string): Promise<ServiceDeskSummary>;
+    /** GET /projects/{p}/service-desk/catalog (service.view) — categories and items by position, then name */
+    catalog(project: string): Promise<ServiceCatalog>;
+    /** POST /projects/{p}/service-desk/catalog/categories (service.manage) — 422 name "같은 이름의 분류가 있습니다." */
+    createCategory(project: string, input: CatalogCategoryInput): Promise<CatalogCategory>;
+    /** PATCH /projects/{p}/service-desk/catalog/categories/{id} (service.manage) */
+    updateCategory(project: string, id: Id, patch: CatalogCategoryInput): Promise<CatalogCategory>;
+    /** DELETE /projects/{p}/service-desk/catalog/categories/{id} (service.manage) — its items keep going, without a category */
+    deleteCategory(project: string, id: Id): Promise<void>;
+    /** POST /projects/{p}/service-desk/catalog/items (service.manage) — a 서비스 요청 item unless typeId says otherwise */
+    createItem(project: string, input: CatalogItemInput): Promise<CatalogItem>;
+    /** PATCH /projects/{p}/service-desk/catalog/items/{id} (service.manage) — only the keys sent; fields / steps replace the list */
+    updateItem(project: string, id: Id, patch: CatalogItemInput): Promise<CatalogItem>;
+    /** DELETE /projects/{p}/service-desk/catalog/items/{id} (service.manage) — requests made from it keep their approvals */
+    deleteItem(project: string, id: Id): Promise<void>;
+    /** GET /work-packages/{n}/approvals (service.view) — every approval row of a catalog request */
+    approvals(number: number): Promise<AgentApproval[]>;
+    /** PATCH /work-packages/{n}/approvals/{id} {approverId} (service.handle) — only an undecided row; 422 approver for the requester or someone inactive */
+    replaceApprover(number: number, approvalId: Id, approverId: Id): Promise<AgentApproval[]>;
   };
 
   /** 포털: any signed-in person, their own tickets only (someone else's is the same 404 "요청을 찾을 수 없습니다.") */
@@ -410,6 +436,14 @@ export interface Api {
     attach(number: number, file: File): Promise<PortalFile>;
     /** GET /portal/tickets/{n}/attachments/{id}/content */
     fileUrl(number: number, id: Id): string;
+    /** GET /portal/approvals — 내 승인함: my rows whose turn has come, oldest request first */
+    approvals(): Promise<ApprovalSummary[]>;
+    /** GET /portal/approvals/{id} — only my pending row; anything else is the same 404 "승인 요청을 찾을 수 없습니다." */
+    approval(id: Id): Promise<ApprovalDetail>;
+    /** POST /portal/approvals/{id}/decision — a rejection needs a reason (422 comment); 409 "이미 처리된 승인입니다." when decided already */
+    decide(id: Id, decision: "approve" | "reject", comment?: string): Promise<{ decision: "approved" | "rejected" }>;
+    /** GET /portal/approvals/{id}/attachments/{fileId}/content — a file of the request my pending row belongs to */
+    approvalFileUrl(id: Id, fileId: Id): string;
   };
 
   search: {
@@ -532,8 +566,8 @@ export interface Api {
       revokeToken(id: Id): Promise<void>;
     };
     users: {
-      /** GET /admin/users */
-      list(params?: { q?: string; status?: AdminUser["status"] }): Promise<AdminUser[]>;
+      /** GET /admin/users — noManager: active people without a 관리자(상사) */
+      list(params?: { q?: string; status?: AdminUser["status"]; noManager?: boolean }): Promise<AdminUser[]>;
       /** POST /admin/users — creates an invited user and sends the invitation */
       create(input: UserInput): Promise<AdminUser>;
       /** POST /admin/users { method: "temporaryPassword" } — an active account with a temporary password, no mail */
@@ -542,8 +576,8 @@ export interface Api {
       issueTemporaryPassword(id: Id): Promise<TemporaryPassword>;
       /** GET /admin/users/{id}/temporary-password — the one in force (404 when none or it ran out) */
       temporaryPassword(id: Id): Promise<TemporaryPassword>;
-      /** PATCH /admin/users/{id} (lock/unlock, admin flag, name) */
-      update(id: Id, patch: { name?: string; status?: "active" | "locked"; isAdmin?: boolean }): Promise<AdminUser>;
+      /** PATCH /admin/users/{id} (lock/unlock, admin flag, name; managerId only by administrators, null clears) */
+      update(id: Id, patch: { name?: string; status?: "active" | "locked"; isAdmin?: boolean; managerId?: Id | null }): Promise<AdminUser>;
       /** DELETE /admin/users/{id} — anonymises the account */
       remove(id: Id): Promise<void>;
       /** POST /admin/users/{id}/resend-invitation */
@@ -554,10 +588,12 @@ export interface Api {
     groups: {
       /** GET /admin/groups */
       list(): Promise<AdminGroup[]>;
-      /** POST /admin/groups */
-      create(name: string): Promise<AdminGroup>;
+      /** POST /admin/groups — leadUserId (그룹 책임자) only by administrators */
+      create(name: string, leadUserId?: Id | null): Promise<AdminGroup>;
       /** PATCH /admin/groups/{id} */
       rename(id: Id, name: string): Promise<AdminGroup>;
+      /** PATCH /admin/groups/{id} — name and/or leadUserId (administrators only, null clears) */
+      update(id: Id, patch: { name?: string; leadUserId?: Id | null }): Promise<AdminGroup>;
       /** DELETE /admin/groups/{id} */
       remove(id: Id): Promise<void>;
       /** PUT /admin/groups/{id}/members */

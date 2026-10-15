@@ -292,7 +292,7 @@ const ko = {
       number: "번호", subject: "제목", type: "유형", status: "상태", priority: "우선순위", assignee: "담당자",
       responsible: "책임자", author: "작성자", version: "버전", startDate: "시작일", dueDate: "완료일", duration: "기간",
       doneRatio: "완료 %", updatedAt: "최근 수정", project: "프로젝트", work: "작업량", remainingWork: "남은 작업",
-      requester: "요청자", assignmentGroup: "처리 그룹", slaDue: "해결 기한", slaState: "SLA",
+      requester: "요청자", assignmentGroup: "처리 그룹", catalogItem: "카탈로그 항목", slaDue: "해결 기한", slaState: "SLA",
     },
     grouping: {
       menu: "그룹화",
@@ -1785,8 +1785,11 @@ const ko = {
       assignmentGroup: "처리 그룹",
       channel: "접수 경로",
       slaBreached: "SLA 위반",
+      catalogItem: "카탈로그 항목",
+      approvalState: "승인 상태",
     },
     channels: { portal: "포털", agent: "처리자 등록", api: "API" },
+    approvalStates: { pending: "승인 중", delayed: "승인 지연", rejected: "반려", none: "승인 없음" },
   },
   serviceDesk: {
     sla: {

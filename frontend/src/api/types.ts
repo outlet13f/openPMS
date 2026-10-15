@@ -681,6 +681,10 @@ export type FilterField =
   | "channel"
   /** 서비스 데스크: "true" = a response or resolve deadline was missed (eq) */
   | "slaBreached"
+  /** 서비스 데스크: the catalog item the request came from (eq/neq, item id) */
+  | "catalogItem"
+  /** 서비스 데스크: exactly one of pending | delayed (the approver was reminded) | rejected | none (eq); more values are a 422 */
+  | "approvalState"
   /** a custom field, by id */
   | `cf:${string}`;
 
@@ -711,6 +715,8 @@ export type ColumnKey =
   /** 서비스 데스크 티켓: requester, assignment group, resolve deadline, SLA state (위반 / 멈춤 / 정상) */
   | "requester"
   | "assignmentGroup"
+  /** 서비스 데스크 티켓: the catalog item's name (ITSM 2단계) */
+  | "catalogItem"
   | "slaDue"
   | "slaState"
   | `cf:${string}`;
@@ -1235,6 +1241,8 @@ export interface AdminUser extends User {
   globalRoles: { id: Id; name: string }[];
   /** 임시 비밀번호: until when it runs (past = ran out, shown until the nightly cleanup); the password only via temporaryPassword(id) */
   temporaryPasswordUntil: IsoDateTime | null;
+  /** 관리자(상사): approves the person's catalog requests (null for deleted users); only administrators set it */
+  manager: UserRef | null;
 }
 /** 임시 비밀번호 as an administrator sees it: made, issued again, or looked up (issuedBy/issuedAt only when looked up). */
 export interface TemporaryPassword {
@@ -1247,12 +1255,16 @@ export interface UserInput {
   name: string;
   email: string;
   isAdmin: boolean;
+  /** 관리자(상사), an active user; administrators only (403 otherwise) */
+  managerId?: Id | null;
 }
 
 export interface AdminGroup {
   id: Id;
   name: string;
   members: UserRef[];
+  /** 그룹 책임자: approves catalog requests whose item sends work to this group */
+  lead: UserRef | null;
 }
 
 /**
@@ -1338,6 +1350,8 @@ export interface ServiceTicket {
   impact: Level;
   urgency: Level;
   assignmentGroup: IdName | null;
+  /** the catalog item the request came from (ITSM 2단계) */
+  catalogItem: IdName | null;
   sla: Sla;
 }
 
@@ -1400,6 +1414,8 @@ export interface PortalDesk {
   descriptionText: string;
   types: IdName[];
   fields: PortalField[];
+  /** the desk's catalog: categories with their requestable items (items without a category under 기타, id null) */
+  catalog: PortalCategory[];
 }
 export interface PortalSummary {
   number: number;
@@ -1444,12 +1460,139 @@ export interface PortalTicket {
   /** public comments and status changes, oldest first (empty right after submitting) */
   activity: PortalEntry[];
   files: PortalFile[];
+  /** the catalog item it was requested from */
+  item: IdName | null;
+  /** the approval steps, in order (empty when the request needed none) */
+  approvals: PortalApproval[];
 }
 export interface PortalSubmit {
+  /** a catalog item decides the type, the form, the priority, the group and the approvals (typeId is then ignored) */
+  catalogItemId?: Id;
   typeId: Id;
   subject: string;
   descriptionHtml: string;
   impact: Level;
   urgency: Level;
   customValues: Record<string, unknown>;
+}
+
+/* ---------- 서비스 카탈로그와 승인 (ITSM 2단계) ---------- */
+
+/** requester_manager: the requester's 관리자(상사); group_lead: the 책임자 of the item's group */
+export type ApprovalKind = "requester_manager" | "group_lead";
+/** waiting: a later step; pending: this step's turn; skipped: no approver, the requester, the same person twice, decided by another, or the request left 승인 대기 */
+export type ApprovalDecision = "waiting" | "pending" | "approved" | "rejected" | "skipped";
+export type ApprovalSkipReason = "no_approver" | "requester" | "duplicate" | "step_done" | "left_approval";
+
+export interface CatalogCategory {
+  id: Id;
+  name: string;
+  position: number;
+}
+/** A field of an item's request form: shown whether or not the field is marked for the portal; isRequired is the item's own */
+export interface CatalogItemField {
+  customFieldId: Id;
+  position: number;
+  isRequired: boolean;
+}
+/** One approver kind of one step; a step with both kinds is decided by whichever approves first */
+export interface CatalogStep {
+  stepNo: number;
+  kind: ApprovalKind;
+}
+export interface CatalogItem {
+  id: Id;
+  categoryId: Id | null;
+  name: string;
+  descriptionHtml: string;
+  typeId: Id;
+  defaultPriorityId: Id | null;
+  assignmentGroupId: Id | null;
+  isActive: boolean;
+  position: number;
+  fields: CatalogItemField[];
+  steps: CatalogStep[];
+}
+export interface ServiceCatalog {
+  categories: CatalogCategory[];
+  items: CatalogItem[];
+}
+export interface CatalogCategoryInput {
+  name?: string;
+  position?: number;
+}
+/** Only the keys sent change; fields or steps sent replace the whole list. A new item is a 서비스 요청 unless typeId says otherwise. */
+export interface CatalogItemInput {
+  name?: string;
+  categoryId?: Id | null;
+  descriptionHtml?: string;
+  typeId?: Id;
+  defaultPriorityId?: Id | null;
+  assignmentGroupId?: Id | null;
+  isActive?: boolean;
+  position?: number;
+  fields?: { customFieldId: Id; position?: number; isRequired?: boolean }[];
+  steps?: CatalogStep[];
+}
+
+/** A catalog item on the portal: its form is the item's fields (required = the item's flag) */
+export interface PortalItem {
+  id: Id;
+  name: string;
+  descriptionHtml: string;
+  typeId: Id;
+  fields: PortalField[];
+}
+export interface PortalCategory {
+  /** null: the made-up 기타 for items without a category */
+  id: Id | null;
+  name: string;
+  items: PortalItem[];
+}
+/** An approval step as the requester (and an approver) sees it: who and how far, never comments or skip reasons */
+export interface PortalApproval {
+  stepNo: number;
+  /** null when skipped or there was no approver */
+  approverName: string | null;
+  decision: ApprovalDecision;
+  decidedAt: IsoDateTime | null;
+}
+/** 내 승인함: one of my rows whose turn has come */
+export interface ApprovalSummary {
+  /** the approval row's id (the address of the approval page) */
+  id: Id;
+  number: number;
+  subject: string;
+  requester: string;
+  /** null when the item was deleted since */
+  item: string | null;
+  desk: string;
+  stepNo: number;
+  requestedAt: IsoDateTime;
+}
+/** What the approver reads: the request, the item's form values only, its files and the steps (no comments) */
+export interface ApprovalDetail {
+  id: Id;
+  number: number;
+  subject: string;
+  descriptionHtml: string;
+  requester: string;
+  item: string | null;
+  desk: string;
+  stepNo: number;
+  fields: { name: string; value: string }[];
+  files: PortalFile[];
+  steps: PortalApproval[];
+}
+/** The agent's approval panel: every row with why it was skipped and the approver's note */
+export interface AgentApproval {
+  id: Id;
+  stepNo: number;
+  kind: ApprovalKind;
+  approver: UserRef | null;
+  decision: ApprovalDecision;
+  skipReason: ApprovalSkipReason | null;
+  decidedAt: IsoDateTime | null;
+  /** the approver's note when approving (a rejection's reason is a public comment instead) */
+  comment: string;
 }

@@ -13,10 +13,13 @@ import { useLatestSent } from "@/lib/use-latest-sent";
 import { can, useOptionalProject } from "@/app/project";
 
 /** 서비스 데스크 filters: only in a project with the module on (no ticket matches anywhere else). */
-const SERVICE_FILTERS: FilterField[] = ["requester", "assignmentGroup", "channel", "slaBreached"];
+const SERVICE_FILTERS: FilterField[] = ["requester", "assignmentGroup", "channel", "slaBreached", "catalogItem", "approvalState"];
+/** Not offered yet: the catalog item filter needs the desk's items as options (the catalog screens come next). */
+const NOT_OFFERED: FilterField[] = ["catalogItem"];
 
 /** What the value part of a filter row looks like for an operator. */
-type ValueKind = "multi" | "text" | "number" | "days" | "date" | "range" | "bool" | "wp";
+/** one: a single value picked from a list (starts empty, unlike bool) */
+type ValueKind = "multi" | "text" | "number" | "days" | "date" | "range" | "bool" | "one" | "wp";
 type OpDef = { op: FilterOp; label: string; input?: ValueKind };
 type Def = { label: string; ops: OpDef[]; values?: (o: FilterOptions) => SelectOption[] };
 
@@ -104,6 +107,13 @@ function useDefs(options?: FilterOptions): Record<FilterField, Def> {
     assignmentGroup: { label: col("assignmentGroup"), ops: [is, isNot], values: (o) => o.groups.map((g) => ({ value: g.id, label: g.name })) },
     channel: { label: col("channel"), ops: [is], values: () => (["portal", "agent", "api"] as const).map((c) => ({ value: c, label: f(`channels.${c}`) })) },
     slaBreached: { label: col("slaBreached"), ops: bool, values: yesNo },
+    catalogItem: { label: col("catalogItem"), ops: [is, isNot], values: () => [] },
+    // exactly one value (the server answers 422 for more)
+    approvalState: {
+      label: col("approvalState"),
+      ops: [{ op: "eq", label: f("is"), input: "one" }],
+      values: () => (["pending", "delayed", "rejected", "none"] as const).map((s) => ({ value: s, label: f(`approvalStates.${s}`) })),
+    },
     // custom fields on in this scope that the administrator made filterable
     ...Object.fromEntries(
       (options?.customFields ?? [])
@@ -150,6 +160,7 @@ function ValueInput({ def, op, filter, options, onValues }: { def: Def; op: OpDe
     case "multi":
       return <MultiSelect size="sm" aria-label={label} value={v} placeholder={t("filters.pickValue")} onValueChange={onValues} options={options && def.values ? def.values(options) : []} />;
     case "bool":
+    case "one":
       return <Select size="sm" aria-label={label} value={v[0]} placeholder={t("filters.pickValue")} onValueChange={(x) => onValues([x])} options={options && def.values ? def.values(options) : []} />;
     case "text":
       return <LazyInput aria-label={label} value={v[0] ?? ""} onCommit={(x) => onValues([x])} placeholder={filter.field === "number" ? t("filters.numbersHint") : undefined} />;
@@ -208,7 +219,7 @@ export function FilterPanel({ spec, onSpec, options }: { spec: QuerySpec; onSpec
   const editable = cur.filters.filter(shownHere);
   const others = cur.filters.filter((f) => !shownHere(f));
   const unused = (Object.keys(defs) as FilterField[])
-    .filter((k) => !editable.some((f) => f.field === k))
+    .filter((k) => !editable.some((f) => f.field === k) && !NOT_OFFERED.includes(k))
     .sort((a, b) => defs[a].label.localeCompare(defs[b].label, "ko"));
   /** Rewrites the shown filters from the latest spec; `change` gets them and returns the new list. */
   const setFilters = (change: (shown: QueryFilter[]) => QueryFilter[]) => {

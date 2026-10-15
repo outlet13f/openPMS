@@ -424,7 +424,8 @@ function applyPatch(user: DbUser, number: number, patch: WorkPackagePatch): Work
  */
 function patchWp(user: DbUser, wp: DbWp, project: DbProject, patch: WorkPackagePatch, acting: Acting): DbWp {
   if (patch.lockVersion !== wp.lockVersion) {
-    throw new ApiError(409, "다른 사람이 먼저 수정했습니다.", "최신 내용을 불러온 뒤 다시 저장하세요.", acting === "portal" ? {} : { current: toWp(wp, user) });
+    // only a member's conflict carries the work package: a requester or an approver never gets it
+    throw new ApiError(409, "다른 사람이 먼저 수정했습니다.", "최신 내용을 불러온 뒤 다시 저장하세요.", acting === "member" ? { current: toWp(wp, user) } : {});
   }
 
   const given = Object.entries(patch).filter(([k, v]) => !["lockVersion", "touched"].includes(k) && v !== undefined).map(([k]) => k);
@@ -442,7 +443,11 @@ function patchWp(user: DbUser, wp: DbWp, project: DbProject, patch: WorkPackageP
   };
 
   if (patch.statusId !== undefined && patch.statusId !== wp.statusId) {
-    const allowed = acting === "portal" ? allowedFor([ITSM.requesterRole], user.id, wp, user.id) : allowedStatusIds(user, wp);
+    const allowed =
+      acting === "portal" ? allowedFor([ITSM.requesterRole], user.id, wp, user.id)
+      // an approver's decision: only out of 승인 대기, only to 접수 (last approval) or 반려 (rejection)
+      : acting === "approval" ? (wp.statusId === ITSM.awaitingApproval && (patch.statusId === ITSM.received || patch.statusId === ITSM.rejected) ? [patch.statusId] : [])
+      : allowedStatusIds(user, wp);
     if (!allowed.includes(patch.statusId)) {
       const from = statusOf(wp).name;
       const to = db.statuses.find((s) => s.id === patch.statusId)?.name ?? "?";
@@ -711,8 +716,11 @@ function createWp(user: DbUser, projectId: string, input: WorkPackageInput): Wor
   return toWp(insertWp(user, p, input, "member"), user);
 }
 
-/** A new row; acting "portal": a requester's ticket (the portal checked who may and passes only portal fields). */
-function insertWp(user: DbUser, p: DbProject, input: WorkPackageInput, acting: Acting): DbWp {
+/**
+ * A new row; acting "portal": a requester's ticket (the portal checked who may and passes only portal fields). waived:
+ * more fields whose required check is waived when empty (a catalog item's form decides what is required).
+ */
+function insertWp(user: DbUser, p: DbProject, input: WorkPackageInput, acting: Acting, waived?: Set<string>): DbWp {
   const subject = input.subject?.trim() ?? "";
   if (!subject) throw fieldError("subject", "제목을 입력하세요.");
   if (subject.length > 255) throw fieldError("subject", "제목은 255자 이하로 입력하세요.");
@@ -737,7 +745,9 @@ function insertWp(user: DbUser, p: DbProject, input: WorkPackageInput, acting: A
     parentId = parent.id;
   }
   // portal: a required field the requester cannot see must not block (or reveal itself in) the submission
-  const customValues = initialValues(p.id, input.typeId, input.customValues, acting === "portal" ? hiddenFieldIds() : undefined);
+  const skipRequired = acting === "portal" ? hiddenFieldIds() : new Set<string>();
+  waived?.forEach((id) => skipRequired.add(id));
+  const customValues = initialValues(p.id, input.typeId, input.customValues, skipRequired.size ? skipRequired : undefined);
   const now = nowIso();
   db.seq.wp += 1;
   const base: DbWp = {
@@ -782,6 +792,7 @@ function removeWp(user: DbUser, number: number, childrenMode: "delete" | "repare
   db.watchers = db.watchers.filter((x) => !doomed.has(x.wpId));
   db.notifications = db.notifications.filter((x) => !doomed.has(x.wpId));
   db.serviceTickets = db.serviceTickets.filter((x) => !doomed.has(x.workPackageId));
+  db.ticketApprovals = db.ticketApprovals.filter((x) => !doomed.has(x.wpId));
 }
 
 /** A copy goes through the create rules: what still fits the target (members, its versions and categories, its active fields). */

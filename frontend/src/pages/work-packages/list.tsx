@@ -28,7 +28,7 @@ import { formatDateTime, todayIso } from "@/lib/dates";
 
 const ALL_COLUMNS: ColumnKey[] = ["number", "subject", "type", "status", "priority", "assignee", "responsible", "author", "version", "startDate", "dueDate", "duration", "work", "remainingWork", "doneRatio", "updatedAt", "project"];
 /** 서비스 데스크 columns: only in a project with the module on (they are empty everywhere else). */
-const SERVICE_COLUMNS: ColumnKey[] = ["requester", "assignmentGroup", "slaDue", "slaState"];
+const SERVICE_COLUMNS: ColumnKey[] = ["requester", "assignmentGroup", "catalogItem", "slaDue", "slaState"];
 
 function SaveViewDialog({ open, onOpenChange, spec, project, onSaved }: { open: boolean; onOpenChange: (o: boolean) => void; spec: QuerySpec; project: Project | null; onSaved: (id: string) => void }) {
   const { t } = useTranslation();

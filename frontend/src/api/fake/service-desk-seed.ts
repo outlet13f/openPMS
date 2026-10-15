@@ -1,8 +1,10 @@
 // 서비스 데스크 seed for the fake layer (no imports of the database: seed.ts builds it). The same rows as the server's
 // V20__service_desk.sql (types, statuses, 요청자 role, workflows, calendars) and V1004__dev_service_desk.sql (the
-// service-desk project, groups, members, policies, matrix and six tickets), with readable ids instead of uuids.
-import type { Id, IsoDateTime } from "../types";
-import type { DbJournal, DbRole, DbStatus, DbType, DbWorkflow, DbWp } from "./db";
+// service-desk project, groups, members, policies, matrix and six tickets), with readable ids instead of uuids; ITSM 2단계
+// adds V21__service_catalog.sql (승인 대기·반려, the workflow out of 승인 대기) and V1005__dev_service_catalog.sql (managers,
+// group leads, two categories, three items, the 노트북 기종 field and one request awaiting approval).
+import type { ApprovalDecision, ApprovalKind, ApprovalSkipReason, Id, IsoDateTime } from "../types";
+import type { DbCustomField, DbJournal, DbRole, DbStatus, DbType, DbWorkflow, DbWp } from "./db";
 
 export interface DbServiceCalendar {
   id: Id;
@@ -37,10 +39,48 @@ export interface DbServiceTicket {
   resolveWarned: boolean;
   /** when the requester last opened it on the portal ("새 소식") */
   requesterSeenAt: IsoDateTime | null;
+  /** ITSM 2단계: the catalog item it was requested from (absent = none) */
+  catalogItemId?: Id | null;
   requesterMailedAt: IsoDateTime | null;
   requesterMailedStatusId: Id | null;
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
+}
+
+/** catalog_categories */
+export interface DbCatalogCategory { id: Id; projectId: Id; name: string; position: number }
+/** catalog_items with their catalog_item_fields and catalog_item_approval_steps */
+export interface DbCatalogItem {
+  id: Id;
+  projectId: Id;
+  categoryId: Id | null;
+  name: string;
+  descriptionHtml: string;
+  typeId: Id;
+  defaultPriorityId: Id | null;
+  assignmentGroupId: Id | null;
+  isActive: boolean;
+  position: number;
+  fields: { customFieldId: Id; position: number; isRequired: boolean }[];
+  steps: { stepNo: number; kind: ApprovalKind }[];
+}
+/**
+ * ticket_approvals. The fake sends no approval mail: pendingSince (when the row's turn came) stands in for notified_at,
+ * and a pending row counts as 승인 지연 once it was reminded or three working days have passed since (fake/approvals.ts).
+ */
+export interface DbTicketApproval {
+  id: Id;
+  wpId: Id;
+  stepNo: number;
+  kind: ApprovalKind;
+  approverId: Id | null;
+  decision: ApprovalDecision;
+  skipReason: ApprovalSkipReason | null;
+  decidedAt: IsoDateTime | null;
+  comment: string;
+  pendingSince: IsoDateTime | null;
+  remindedAt: IsoDateTime | null;
+  createdAt: IsoDateTime;
 }
 
 /** The fixed rows the server's ItsmIds names. */
@@ -53,6 +93,9 @@ export const ITSM = {
   resolved: "s-resolved",
   closed: "s-sd-closed",
   cancelled: "s-cancel",
+  /** ITSM 2단계 (V21): 승인 대기 stops the SLA clock; 반려 is closed */
+  awaitingApproval: "s-awaiting-approval",
+  rejected: "s-rejected",
   requesterRole: "r-requester",
   module: "service_desk",
 } as const;
@@ -75,6 +118,8 @@ export function seedServiceDesk(now: number, firstNumber: number) {
     { id: ITSM.waiting, name: "답변 대기", color: "#8a5300", position: 9, isDefault: false, isClosed: false, isReadonly: false, defaultDoneRatio: 0, excludedFromTotals: false, slaPause: true },
     { id: ITSM.resolved, name: "해결", color: "#1e7a4c", position: 10, isDefault: false, isClosed: true, isReadonly: false, defaultDoneRatio: 100, excludedFromTotals: false, slaPause: false },
     { id: ITSM.closed, name: "종료", color: "#5f6873", position: 11, isDefault: false, isClosed: true, isReadonly: true, defaultDoneRatio: 100, excludedFromTotals: false, slaPause: false },
+    { id: ITSM.awaitingApproval, name: "승인 대기", color: "#5f6a12", position: 12, isDefault: false, isClosed: false, isReadonly: false, defaultDoneRatio: 0, excludedFromTotals: false, slaPause: true },
+    { id: ITSM.rejected, name: "반려", color: "#c02c39", position: 13, isDefault: false, isClosed: true, isReadonly: true, defaultDoneRatio: 0, excludedFromTotals: true, slaPause: false },
   ];
   const roles: DbRole[] = [{ id: ITSM.requesterRole, name: "요청자", scope: "project", builtin: "requester", permissions: [] }];
 
@@ -94,6 +139,9 @@ export function seedServiceDesk(now: number, firstNumber: number) {
   ];
   for (const typeId of TICKET_TYPES)
     for (const [from, to] of requesterMoves) workflows.push({ typeId, roleId: ITSM.requesterRole, from, to });
+  // V21: agents cannot skip the approvals (승인 대기 only goes to 취소); the requester may cancel too. 반려 ends the request.
+  for (const typeId of TICKET_TYPES)
+    for (const roleId of ["r-manager", "r-member", ITSM.requesterRole]) workflows.push({ typeId, roleId, from: ITSM.awaitingApproval, to: ITSM.cancelled, appliesTo: "always" });
 
   const weekdays = [1, 2, 3, 4, 5].map((day) => ({ day, start: "09:00", end: "18:00" }));
   const serviceCalendars: DbServiceCalendar[] = [
@@ -110,10 +158,13 @@ export function seedServiceDesk(now: number, firstNumber: number) {
     enabledModules: ["work_packages", "boards", "service_desk"] as ("work_packages" | "boards" | "service_desk")[],
     typeIds: [...TICKET_TYPES], createdAt: t0, updatedAt: t0, latestActivityAt: t0,
   };
+  // V1005: 그룹 책임자 1선 지원 → 박준호, 인프라 → alex.kim
   const groups = [
-    { id: "g-sd-l1", name: "1선 지원", memberIds: ["u-junho", "u-haneul"] },
-    { id: "g-sd-infra", name: "인프라", memberIds: ["u-alex"] },
+    { id: "g-sd-l1", name: "1선 지원", memberIds: ["u-junho", "u-haneul"], leadUserId: "u-junho" as string | null },
+    { id: "g-sd-infra", name: "인프라", memberIds: ["u-alex"], leadUserId: "u-alex" as string | null },
   ];
+  // V1005: 요청자의 관리자(상사) — 최민지와 한도윤 모두 alex.kim
+  const managerOf: Record<Id, Id> = { "u-minji": "u-alex", "u-doyoon": "u-alex" };
   const members = ["u-junho", "u-haneul"].map((userId, i) => ({ id: `m-sd-${i + 1}`, projectId, userId, groupId: null as string | null, roleIds: ["r-member"], createdAt: t0 }));
 
   // 정책: 장애 긴급 24시간(15분/2시간), 장애 높음·보통·낮음과 서비스 요청 보통은 평일 근무 시간
@@ -172,5 +223,57 @@ export function seedServiceDesk(now: number, firstNumber: number) {
     });
   });
 
-  return { types, statuses, roles, workflows, serviceCalendars, project, groups, members, slaPolicies, priorityMatrix, workPackages, journals, serviceTickets };
+  /* ---------- ITSM 2단계 (V1005): catalog and one request awaiting approval ---------- */
+
+  // 항목 양식의 필드: 서비스 요청 유형에서 쓰고 서비스 데스크에만 켠다. 포털 공통 양식에는 나오지 않고 항목 양식으로만 보인다.
+  const customFields: DbCustomField[] = [
+    {
+      id: "cf-laptop", name: "노트북 기종", format: "list", isRequired: false, isForAll: false, isFilterable: true, isMultiValue: false, defaultValue: null,
+      minLength: null, maxLength: null, regexp: null, position: 10, typeIds: [ITSM.serviceRequest], portalVisible: false,
+      options: [{ id: "cfo-laptop-14", value: "14인치 표준" }, { id: "cfo-laptop-16", value: "16인치 개발용" }],
+    },
+  ];
+  const projectCustomFields = [{ projectId, customFieldId: "cf-laptop" }];
+  const catalogCategories: DbCatalogCategory[] = [
+    { id: "cc-hardware", projectId, name: "하드웨어", position: 1 },
+    { id: "cc-account", projectId, name: "계정·권한", position: 2 },
+  ];
+  const item = (id: string, categoryId: string, name: string, description: string, groupId: string, position: number,
+    fields: DbCatalogItem["fields"], steps: DbCatalogItem["steps"]): DbCatalogItem => ({
+    id, projectId, categoryId, name, descriptionHtml: `<p>${description}</p>`, typeId: ITSM.serviceRequest, defaultPriorityId: "pr-normal",
+    assignmentGroupId: groupId, isActive: true, position, fields, steps,
+  });
+  const catalogItems: DbCatalogItem[] = [
+    item("ci-laptop", "cc-hardware", "노트북 신청", "새 노트북이 필요할 때 신청합니다. 관리자와 그룹 책임자의 승인을 거칩니다.", "g-sd-l1", 1,
+      [{ customFieldId: "cf-laptop", position: 1, isRequired: true }], [{ stepNo: 1, kind: "requester_manager" }, { stepNo: 2, kind: "group_lead" }]),
+    item("ci-vpn", "cc-account", "VPN 계정", "원격 근무용 VPN 계정을 신청합니다. 관리자의 승인이 필요합니다.", "g-sd-infra", 2, [], [{ stepNo: 1, kind: "requester_manager" }]),
+    item("ci-folder", "cc-account", "공유 폴더 권한", "부서 공유 폴더의 읽기·쓰기 권한을 신청합니다. 승인 없이 바로 접수됩니다.", "g-sd-l1", 3, [], []),
+  ];
+
+  // 승인 대기 요청 1건: 최민지의 노트북 신청. 1단계는 alex.kim(요청자 관리자)이 결정할 차례(이미 독촉까지 나가 승인 지연), 2단계는 박준호(그룹 책임자)가 기다림.
+  const number = firstNumber + rows.length;
+  const id = `wp-${number}`;
+  const createdAt = iso(now - 2 * HOUR);
+  workPackages.push({
+    id, number, projectId, typeId: ITSM.serviceRequest, statusId: ITSM.awaitingApproval, priorityId: "pr-normal", subject: "노트북 신청",
+    descriptionHtml: "<p>개발용 노트북이 필요합니다.</p>", authorId: "u-minji", assigneeId: null, responsibleId: null, versionId: null, categoryId: null,
+    parentId: null, startDate: null, dueDate: null, duration: null, ignoreNonWorkingDays: false, scheduleManually: true, workHours: null,
+    remainingHours: null, doneRatio: 0, customValues: { "cf-laptop": "cfo-laptop-16" }, lockVersion: 0, createdAt, updatedAt: createdAt,
+  });
+  journals.push({ id: "j-sd-approval", wpId: id, version: 1, userId: "u-minji", notesHtml: "", isInternal: false, changes: { _created: [null, true] }, cause: null, createdAt, updatedAt: createdAt });
+  serviceTickets.push({
+    workPackageId: id, requesterId: "u-minji", channel: "portal", impact: 2, urgency: 2, assignmentGroupId: "g-sd-l1", catalogItemId: "ci-laptop",
+    slaPolicyId: "sla-request-normal", firstResponseDueAt: iso(now + 2 * HOUR), firstRespondedAt: null, resolveDueAt: iso(now + 38 * HOUR), resolvedAt: null,
+    pausedSince: createdAt, pausedTotalSeconds: 0, responseBreached: false, resolveBreached: false, responseWarned: false, resolveWarned: false,
+    requesterSeenAt: null, requesterMailedAt: t0, requesterMailedStatusId: ITSM.awaitingApproval, createdAt, updatedAt: createdAt,
+  });
+  const ticketApprovals: DbTicketApproval[] = [
+    { id: "ta-1", wpId: id, stepNo: 1, kind: "requester_manager", approverId: "u-alex", decision: "pending", skipReason: null, decidedAt: null, comment: "", pendingSince: t0, remindedAt: t0, createdAt },
+    { id: "ta-2", wpId: id, stepNo: 2, kind: "group_lead", approverId: "u-junho", decision: "waiting", skipReason: null, decidedAt: null, comment: "", pendingSince: null, remindedAt: null, createdAt },
+  ];
+
+  return {
+    types, statuses, roles, workflows, serviceCalendars, project, groups, members, slaPolicies, priorityMatrix, workPackages, journals, serviceTickets,
+    managerOf, customFields, projectCustomFields, catalogCategories, catalogItems, ticketApprovals,
+  };
 }

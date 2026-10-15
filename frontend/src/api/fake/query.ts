@@ -5,6 +5,7 @@ import { addDays, isoWeekday, todayIso, weekStart } from "@/lib/dates";
 import { db, type DbProject, type DbUser, type DbWp } from "./db";
 import { can, memberRoleIds } from "./permissions";
 import { ticketOf, toWp } from "./dto";
+import { isDelayed } from "./approvals";
 import { cfText, findField, opsFor, sortKey, valueOn } from "./custom-fields";
 import { progressSettings } from "./progress";
 import { teamOf } from "./assignees";
@@ -46,6 +47,7 @@ const OPS: Record<QueryFilter["field"], readonly QueryFilter["op"][]> = (() => {
     isMilestone: ["eq"], scheduleManually: ["eq"], blocked: ["eq"],
     // 서비스 데스크 티켓: facts of the ticket now (QueryEngine)
     requester: ["eq", "neq"], assignmentGroup: ["eq", "neq"], channel: ["eq"], slaBreached: ["eq"],
+    catalogItem: ["eq", "neq"], approvalState: ["eq"],
   };
 })();
 
@@ -225,15 +227,28 @@ export function matches(w: DbWp, f: QueryFilter, user: DbUser): boolean {
       return num(w.remainingHours);
     case "requester":
     case "assignmentGroup":
+    case "catalogItem":
     case "channel": {
       const t = ticketOf(w);
-      const v = !t ? null : f.field === "requester" ? t.requesterId : f.field === "assignmentGroup" ? t.assignmentGroupId : t.channel;
+      const v = !t ? null : f.field === "requester" ? t.requesterId : f.field === "assignmentGroup" ? t.assignmentGroupId : f.field === "catalogItem" ? (t.catalogItemId ?? null) : t.channel;
       const hit = v !== null && vals.includes(v);
       return f.op === "neq" ? !hit : hit;
     }
     case "slaBreached": {
       const t = ticketOf(w);
       return bool(!!t && (t.responseBreached || t.resolveBreached));
+    }
+    case "approvalState": {
+      // pending: a decision is awaited; delayed: that approver was reminded (fake: or three working days passed); rejected; none: no approval rows
+      if (vals.length !== 1) throw new ApiError(422, "필터를 확인하세요.", "승인 상태는 하나만 고를 수 있습니다.");
+      const rows = db.ticketApprovals.filter((a) => a.wpId === w.id);
+      switch (vals[0]) {
+        case "pending": return rows.some((a) => a.decision === "pending");
+        case "delayed": return rows.some((a) => isDelayed(a));
+        case "rejected": return rows.some((a) => a.decision === "rejected");
+        case "none": return rows.length === 0;
+        default: throw new ApiError(422, "필터를 확인하세요.", "승인 상태는 pending, delayed, rejected, none 중 하나여야 합니다.");
+      }
     }
     case "dates": {
       const s = w.startDate ?? w.dueDate;
