@@ -2,12 +2,19 @@ package com.openpms.cicd;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static com.openpms.db.Tables.CICD_CONNECTIONS;
+import static com.openpms.db.Tables.CICD_REPOSITORIES;
+import static com.openpms.db.Tables.PROJECTS;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.UUID;
+import org.jooq.DSLContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,6 +29,7 @@ import org.springframework.web.context.WebApplicationContext;
 @ActiveProfiles("dev")
 class CicdConnectionsIT {
     @Autowired WebApplicationContext context;
+    @Autowired DSLContext db;
     CicdFixture f;
     MockHttpSession admin, junho;
     FakeGitServer git;
@@ -73,6 +81,69 @@ class CicdConnectionsIT {
         var next = f.body(f.send(admin, post("/api/v1/admin/cicd/connections/" + c[0] + "/secret"), "").andExpect(status().isOk()).andReturn())
                 .get("webhookSecret").asString();
         assertThat(next).isNotEqualTo(c[1]);
+    }
+
+    @Test void changingTheAddressDropsTheStoredToken() throws Exception {
+        var id = f.newConnection(admin, "gitlab", git.baseUrl(), "glpat-ABCD1234")[0];
+        try (var evil = new FakeGitServer()) {
+            var patched = f.body(f.send(admin, patch("/api/v1/admin/cicd/connections/" + id), "{\"baseUrl\":\"" + evil.baseUrl() + "\"}")
+                    .andExpect(status().isOk()).andReturn());
+            assertThat(patched.get("tokenHint").isNull()).isTrue();
+            var check = f.send(admin, post("/api/v1/admin/cicd/connections/" + id + "/check"), "").andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            assertThat(check).isEqualTo("{\"ok\":false,\"status\":0}");
+            assertThat(evil.requests()).isEmpty();
+            // a new token in the same request is kept
+            try (var other = new FakeGitServer()) {
+                var both = f.body(f.send(admin, patch("/api/v1/admin/cicd/connections/" + id),
+                        "{\"baseUrl\":\"" + other.baseUrl() + "\",\"apiToken\":\"glpat-NEWTOKEN5678\"}").andExpect(status().isOk()).andReturn());
+                assertThat(both.get("tokenHint").asString()).isEqualTo("5678");
+            }
+        }
+    }
+
+    @Test void sameAddressKeepsTheTokenAndEmptyTokenClearsIt() throws Exception {
+        var id = f.newConnection(admin, "gitlab", git.baseUrl(), "glpat-ABCD1234")[0];
+        var same = f.body(f.send(admin, patch("/api/v1/admin/cicd/connections/" + id), "{\"baseUrl\":\"" + git.baseUrl() + "/\"}")
+                .andExpect(status().isOk()).andReturn());
+        assertThat(same.get("tokenHint").asString()).isEqualTo("1234");
+        var cleared = f.body(f.send(admin, patch("/api/v1/admin/cicd/connections/" + id), "{\"apiToken\":\"\"}").andExpect(status().isOk()).andReturn());
+        assertThat(cleared.get("tokenHint").isNull()).isTrue();
+    }
+
+    @Test void ordinaryUsersCannotChangeOrDeleteConnections() throws Exception {
+        var id = f.newConnection(admin, "github", git.baseUrl(), null)[0];
+        var url = "/api/v1/admin/cicd/connections/" + id;
+        f.send(junho, patch(url), "{\"active\":false}").andExpect(status().isForbidden());
+        f.send(junho, post(url + "/secret"), "").andExpect(status().isForbidden());
+        f.send(junho, post(url + "/check"), "").andExpect(status().isForbidden());
+        f.send(junho, delete(url), "").andExpect(status().isForbidden());
+    }
+
+    @Test void renameToAnExistingNameConflicts() throws Exception {
+        var a = f.newConnection(admin, "github", git.baseUrl(), null)[0];
+        var b = f.newConnection(admin, "github", git.baseUrl(), null)[0];
+        var existing = db.select(CICD_CONNECTIONS.NAME).from(CICD_CONNECTIONS).where(CICD_CONNECTIONS.ID.eq(UUID.fromString(a))).fetchOne(0, String.class);
+        f.send(admin, patch("/api/v1/admin/cicd/connections/" + b), "{\"name\":\"" + existing + "\"}").andExpect(status().isConflict())
+                .andExpect(jsonPath("$.title").value("같은 이름의 연동이 있습니다."));
+    }
+
+    @Test void deleteWorksUnlessRepositoriesAreAttached() throws Exception {
+        var free = f.newConnection(admin, "github", git.baseUrl(), null)[0];
+        f.send(admin, delete("/api/v1/admin/cicd/connections/" + free), "").andExpect(status().isNoContent());
+        var busy = f.newConnection(admin, "github", git.baseUrl(), null)[0];
+        var project = f.newProject(admin, "work_packages", "cicd");
+        var projectId = db.select(PROJECTS.ID).from(PROJECTS).where(PROJECTS.IDENTIFIER.eq(project)).fetchOne(0, UUID.class);
+        db.insertInto(CICD_REPOSITORIES).set(CICD_REPOSITORIES.CONNECTION_ID, UUID.fromString(busy)).set(CICD_REPOSITORIES.EXTERNAL_ID, "1")
+                .set(CICD_REPOSITORIES.FULL_PATH, "g/r").set(CICD_REPOSITORIES.WEB_URL, "https://g.local/g/r").set(CICD_REPOSITORIES.PROJECT_ID, projectId).execute();
+        f.send(admin, delete("/api/v1/admin/cicd/connections/" + busy), "").andExpect(status().isConflict())
+                .andExpect(jsonPath("$.title").value("저장소가 붙어 있는 연동은 지울 수 없습니다. 먼저 저장소를 떼세요."));
+    }
+
+    @Test void namesWithControlCharactersAreRefused() throws Exception {
+        for (var bad : new String[] {"a\\nb", "a\\rb", "a\\tb", "a\\u007fb"})
+            f.send(admin, post("/api/v1/admin/cicd/connections"), "{\"kind\":\"gitlab\",\"name\":\"" + bad + "\",\"baseUrl\":\"https://x\"}")
+                    .andExpect(status().isUnprocessableEntity());
     }
 
     @Test void badInputs() throws Exception {

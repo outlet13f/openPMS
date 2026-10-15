@@ -107,9 +107,20 @@ public class CicdConnections {
             if (!name.equals(r.getName()) && db.fetchExists(CICD_CONNECTIONS, CICD_CONNECTIONS.NAME.eq(name))) throw duplicate();
             r.setName(name);
         }
-        if (In.has(in, "baseUrl")) r.setBaseUrl(baseUrl(In.str(in, "baseUrl")));
+        boolean tokenCleared = false;
+        var newToken = In.has(in, "apiToken") ? In.str(in, "apiToken") : null;
+        if (In.has(in, "baseUrl")) {
+            var url = baseUrl(In.str(in, "baseUrl"));
+            if (!url.equals(r.getBaseUrl())) {
+                // a stored token must never follow the connection to another address
+                r.setBaseUrl(url);
+                if (r.getApiTokenEnc() != null) tokenCleared = true;
+                r.setApiTokenEnc(null);
+                r.setApiTokenHint(null);
+            }
+        }
         if (In.has(in, "apiToken")) {
-            var token = In.str(in, "apiToken");
+            var token = newToken;
             if (token == null || token.isEmpty()) {
                 r.setApiTokenEnc(null);
                 r.setApiTokenHint(null);
@@ -124,7 +135,8 @@ public class CicdConnections {
             r.setActive(b);
         }
         r.update();
-        AUDIT.info("cicd.connection.updated by={} id={} name={}", ctx.userId(), id, r.getName());
+        if (tokenCleared && r.getApiTokenEnc() != null) tokenCleared = false; // replaced in the same request
+        AUDIT.info("cicd.connection.updated by={} id={} name={} tokenCleared={}", ctx.userId(), id, r.getName(), tokenCleared);
         return dto(r, count(id));
     }
 
@@ -186,6 +198,8 @@ public class CicdConnections {
     private static String name(String v) {
         var n = v == null ? "" : v.trim();
         if (n.isEmpty() || n.length() > 100) throw ApiException.field("name", "이름은 1자에서 100자 사이여야 합니다.");
+        // the name goes into the audit log line
+        if (n.chars().anyMatch(c -> c < 0x20 || c == 0x7f)) throw ApiException.field("name", "이름에 쓸 수 없는 문자가 있습니다.");
         return n;
     }
 
