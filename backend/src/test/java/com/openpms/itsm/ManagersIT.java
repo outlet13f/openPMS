@@ -73,12 +73,13 @@ class ManagersIT {
     }
 
     @Test void aManagerCannotBeSelfOrInactive() throws Exception {
+        var before = managerOf(ItsmFixture.MINJI); // the dev data gives 최민지 a manager (V1005)
         try {
             f.send(admin, patch("/api/v1/admin/users/" + ItsmFixture.MINJI), "{\"managerId\":\"" + ItsmFixture.MINJI + "\"}")
                     .andExpect(status().isUnprocessableEntity()).andExpect(content().string(Matchers.containsString("자기 자신을 관리자로 지정할 수 없습니다.")));
             f.send(admin, patch("/api/v1/admin/users/" + ItsmFixture.MINJI), "{\"managerId\":\"" + FORMER_ID + "\"}").andExpect(status().isUnprocessableEntity());
             f.send(admin, patch("/api/v1/admin/users/" + ItsmFixture.MINJI), "{\"managerId\":\"" + UUID.randomUUID() + "\"}").andExpect(status().isUnprocessableEntity());
-            assertThat(managerOf(ItsmFixture.MINJI)).isNull();
+            assertThat(managerOf(ItsmFixture.MINJI)).isEqualTo(before);
         } finally {
             clearManager(ItsmFixture.MINJI);
         }

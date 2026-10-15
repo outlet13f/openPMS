@@ -140,6 +140,7 @@ public class Assembler {
         var totals = totals(s, rows.stream().filter(w -> childCount.getOrDefault(w.getId(), 0) > 0).map(WorkPackagesRecord::getId).toList());
         var teams = assignees.of(ids);
         var tickets = serviceTickets.of(ids);
+        var itemNames = serviceTickets.itemNames(tickets.values());
         var out = new ArrayList<Dto.WorkPackage>(rows.size());
         for (var w : rows) {
             var project = s.project(w.getProjectId()).orElseThrow();
@@ -178,7 +179,7 @@ public class Assembler {
                     watching.contains(w.getId()), watcherCount.getOrDefault(w.getId(), 0),
                     relationCount.getOrDefault(w.getId(), 0) + kids + (parent != null ? 1 : 0), attachmentCount.getOrDefault(w.getId(), 0),
                     customFields.values(s, w), totals.get(w.getId()), w.getLockVersion(), w.getCreatedAt(), w.getUpdatedAt(),
-                    ctx.can(project, "service.view") ? com.openpms.itsm.ServiceTickets.dto(s, tickets.get(w.getId())) : null, meta));
+                    ctx.can(project, "service.view") ? com.openpms.itsm.ServiceTickets.dto(s, tickets.get(w.getId()), itemNames) : null, meta));
         }
         return out;
     }

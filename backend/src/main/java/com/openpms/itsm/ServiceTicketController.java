@@ -47,7 +47,7 @@ public class ServiceTicketController {
         var ctx = current.ctx();
         var f = workPackages.find(ctx, number);
         if (!ctx.can(f.project(), "service.view")) throw ApiException.notFound("작업을 찾을 수 없습니다.");
-        return ServiceTickets.dto(ctx.s(), tickets.of(f.wp().getId()).orElseThrow(() -> ApiException.notFound("서비스 데스크 티켓이 아닙니다.")));
+        return tickets.dto(ctx.s(), tickets.of(f.wp().getId()).orElseThrow(() -> ApiException.notFound("서비스 데스크 티켓이 아닙니다.")));
     }
 
     /** requesterId, impact, urgency, assignmentGroupId; applyMatrix also sets the priority from the matrix. */

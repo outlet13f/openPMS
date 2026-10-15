@@ -1,5 +1,6 @@
 package com.openpms.itsm;
 
+import static com.openpms.db.Tables.CATALOG_ITEMS;
 import static com.openpms.db.Tables.SERVICE_TICKETS;
 
 import com.openpms.api.Dto;
@@ -23,6 +24,15 @@ public class ServiceTickets {
         this.db = db;
     }
 
+    /** Names of the catalog items the given tickets were requested from, in one query (for lists). */
+    public Map<UUID, String> itemNames(Collection<ServiceTicketsRecord> tickets) {
+        var itemIds = tickets.stream().map(ServiceTicketsRecord::getCatalogItemId).filter(x -> x != null).distinct().toList();
+        var out = new HashMap<UUID, String>();
+        if (itemIds.isEmpty()) return out;
+        db.select(CATALOG_ITEMS.ID, CATALOG_ITEMS.NAME).from(CATALOG_ITEMS).where(CATALOG_ITEMS.ID.in(itemIds)).fetch().forEach(r -> out.put(r.value1(), r.value2()));
+        return out;
+    }
+
     public Map<UUID, ServiceTicketsRecord> of(Collection<UUID> ids) {
         var out = new HashMap<UUID, ServiceTicketsRecord>();
         if (ids.isEmpty()) return out;
@@ -39,10 +49,16 @@ public class ServiceTickets {
                 t.getPausedTotalSeconds(), t.getResponseBreached(), t.getResolveBreached());
     }
 
-    public static Dto.ServiceTicket dto(Snapshot s, ServiceTicketsRecord t) {
+    /** The ticket for one work package (reads the item name with one extra query). */
+    public Dto.ServiceTicket dto(Snapshot s, ServiceTicketsRecord t) {
+        return dto(s, t, t == null ? Map.of() : itemNames(java.util.List.of(t)));
+    }
+
+    public static Dto.ServiceTicket dto(Snapshot s, ServiceTicketsRecord t, Map<UUID, String> itemNames) {
         if (t == null) return null;
         var group = t.getAssignmentGroupId() == null ? null
                 : Optional.ofNullable(s.groups().get(t.getAssignmentGroupId())).map(g -> new Dto.IdName(g.id(), g.name())).orElse(null);
-        return new Dto.ServiceTicket(Refs.user(s, t.getRequesterId()), t.getChannel(), t.getImpact(), t.getUrgency(), group, sla(t));
+        return new Dto.ServiceTicket(Refs.user(s, t.getRequesterId()), t.getChannel(), t.getImpact(), t.getUrgency(), group,
+                t.getCatalogItemId() == null || !itemNames.containsKey(t.getCatalogItemId()) ? null : new Dto.IdName(t.getCatalogItemId(), itemNames.get(t.getCatalogItemId())), sla(t));
     }
 }
