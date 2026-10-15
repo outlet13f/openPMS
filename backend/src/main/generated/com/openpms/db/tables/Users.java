@@ -12,6 +12,9 @@ import com.openpms.db.tables.Attachments.AttachmentsPath;
 import com.openpms.db.tables.BoardColumns.BoardColumnsPath;
 import com.openpms.db.tables.Boards.BoardsPath;
 import com.openpms.db.tables.Categories.CategoriesPath;
+import com.openpms.db.tables.CicdCommits.CicdCommitsPath;
+import com.openpms.db.tables.CicdConnections.CicdConnectionsPath;
+import com.openpms.db.tables.CicdMergeRequests.CicdMergeRequestsPath;
 import com.openpms.db.tables.GlobalRoleAssignments.GlobalRoleAssignmentsPath;
 import com.openpms.db.tables.IdempotencyKeys.IdempotencyKeysPath;
 import com.openpms.db.tables.Journals.JournalsPath;
@@ -37,6 +40,7 @@ import com.openpms.db.tables.UserTokens.UserTokensPath;
 import com.openpms.db.tables.Watchers.WatchersPath;
 import com.openpms.db.tables.Webhooks.WebhooksPath;
 import com.openpms.db.tables.WorkPackageAssignees.WorkPackageAssigneesPath;
+import com.openpms.db.tables.WorkPackageCicdLinks.WorkPackageCicdLinksPath;
 import com.openpms.db.tables.WorkPackageShares.WorkPackageSharesPath;
 import com.openpms.db.tables.WorkPackages.WorkPackagesPath;
 import com.openpms.db.tables.records.UsersRecord;
@@ -308,6 +312,45 @@ public class Users extends TableImpl<UsersRecord> {
             _categories = new CategoriesPath(this, null, Keys.CATEGORIES__CATEGORIES_DEFAULT_ASSIGNEE_ID_FKEY.getInverseKey());
 
         return _categories;
+    }
+
+    private transient CicdCommitsPath _cicdCommits;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_commits</code> table
+     */
+    public CicdCommitsPath cicdCommits() {
+        if (_cicdCommits == null)
+            _cicdCommits = new CicdCommitsPath(this, null, Keys.CICD_COMMITS__CICD_COMMITS_USER_ID_FKEY.getInverseKey());
+
+        return _cicdCommits;
+    }
+
+    private transient CicdConnectionsPath _cicdConnections;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_connections</code> table
+     */
+    public CicdConnectionsPath cicdConnections() {
+        if (_cicdConnections == null)
+            _cicdConnections = new CicdConnectionsPath(this, null, Keys.CICD_CONNECTIONS__CICD_CONNECTIONS_CREATED_BY_FKEY.getInverseKey());
+
+        return _cicdConnections;
+    }
+
+    private transient CicdMergeRequestsPath _cicdMergeRequests;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_merge_requests</code> table
+     */
+    public CicdMergeRequestsPath cicdMergeRequests() {
+        if (_cicdMergeRequests == null)
+            _cicdMergeRequests = new CicdMergeRequestsPath(this, null, Keys.CICD_MERGE_REQUESTS__CICD_MERGE_REQUESTS_USER_ID_FKEY.getInverseKey());
+
+        return _cicdMergeRequests;
     }
 
     private transient GlobalRoleAssignmentsPath _globalRoleAssignments;
@@ -637,6 +680,34 @@ public class Users extends TableImpl<UsersRecord> {
             _workPackageAssignees = new WorkPackageAssigneesPath(this, null, Keys.WORK_PACKAGE_ASSIGNEES__WORK_PACKAGE_ASSIGNEES_USER_ID_FKEY.getInverseKey());
 
         return _workPackageAssignees;
+    }
+
+    private transient WorkPackageCicdLinksPath _workPackageCicdLinksCreatedByFkey;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.work_package_cicd_links</code> table, via the
+     * <code>work_package_cicd_links_created_by_fkey</code> key
+     */
+    public WorkPackageCicdLinksPath workPackageCicdLinksCreatedByFkey() {
+        if (_workPackageCicdLinksCreatedByFkey == null)
+            _workPackageCicdLinksCreatedByFkey = new WorkPackageCicdLinksPath(this, null, Keys.WORK_PACKAGE_CICD_LINKS__WORK_PACKAGE_CICD_LINKS_CREATED_BY_FKEY.getInverseKey());
+
+        return _workPackageCicdLinksCreatedByFkey;
+    }
+
+    private transient WorkPackageCicdLinksPath _workPackageCicdLinksDismissedByFkey;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.work_package_cicd_links</code> table, via the
+     * <code>work_package_cicd_links_dismissed_by_fkey</code> key
+     */
+    public WorkPackageCicdLinksPath workPackageCicdLinksDismissedByFkey() {
+        if (_workPackageCicdLinksDismissedByFkey == null)
+            _workPackageCicdLinksDismissedByFkey = new WorkPackageCicdLinksPath(this, null, Keys.WORK_PACKAGE_CICD_LINKS__WORK_PACKAGE_CICD_LINKS_DISMISSED_BY_FKEY.getInverseKey());
+
+        return _workPackageCicdLinksDismissedByFkey;
     }
 
     private transient WorkPackageSharesPath _workPackageSharesCreatedByFkey;

@@ -231,7 +231,8 @@
   </table>
   <ul>
     <li>모듈 <code>cicd</code>를 넣고 <code>projects_known_modules</code> check 제약을 넓힌다.</li>
-    <li>개발 데이터 V1010: 연동 1개(가짜 GitLab), 저장소 2개, 커밋·MR 몇 개와 연결.</li>
+    <li>개발 데이터 V1010: 연동 1개(가짜 GitLab), 저장소 2개, 커밋·MR 몇 개와 연결. SQL로는 AES-GCM 값을 만들 수 없으므로 연동은 <code>api_token_enc</code>·<code>webhook_secret_enc</code>가 비고 <code>active = false</code>다(화면에서 "비밀 다시 발급"과 토큰 입력으로 켠다).</li>
+    <li>토큰이 없는 연동(<code>api_token_enc</code>가 빔)은 폴링과 저장소 검색을 하지 않고 웹훅만 받는다. 저장소 검색(붙이기 화면)은 토큰이 있어야 한다.</li>
     <li>jOOQ 생성 코드를 다시 만들어 커밋한다.</li>
   </ul>
 </section>
@@ -279,10 +280,10 @@
     <span class="state">멤버<br><small>커밋·브랜치에 #123, 잘못된 연결 끊기</small></span><span class="arrow">→</span>
     <span class="state closed">참관자<br><small>개발 탭에서 상태 보기</small></span>
   </div>
-  <p>이미 설치된 곳은 역할 이름이 아니라 가진 권한으로 판단해 새 권한을 더하고(위 목록), "개발 리더"는 새로 생기므로 프로젝트 관리자가 해당자의 역할을 바꾼다.</p>
+  <p>이미 설치된 곳은 역할 이름이 아니라 가진 권한으로 판단해 새 권한을 더하고(<code>scope = 'project'</code>이고 <code>builtin</code>이 없는 역할 중 <code>wp.view</code>가 있으면 <code>cicd.view</code>, <code>wp.edit</code>이 있으면 <code>cicd.link</code>, <code>project.manage_members</code>가 있으면 <code>cicd.manage</code>. 비멤버·요청자 내장 역할은 건드리지 않음), "개발 리더"는 새로 생기므로 프로젝트 관리자가 해당자의 역할을 바꾼다.</p>
 
   <h3>들어오는 웹훅</h3>
-  <div class="callout"><code>POST /hooks/cicd/{hookKey}</code> — <code>/api/**</code> 밖의 <b>이 경로만</b> 세션·CSRF 없이 연다.</div>
+  <div class="callout"><code>POST /api/v1/hooks/cicd/{hookKey}</code> — <code>SpaConfig</code>가 <code>/api</code> 밖의 주소를 <code>index.html</code>로 돌려주고 운영 프록시도 <code>/api</code>만 백엔드로 보내므로 <code>/api</code> 아래에 둔다. <code>SecurityConfig</code>에서 <b>이 경로만</b> <code>permitAll</code>과 CSRF 제외를 건다(<code>/api/**</code> authenticated보다 앞에).</div>
   <div class="grid2">
     <div class="card"><h4>검증</h4><ul>
       <li>GitHub: <code>X-Hub-Signature-256</code>(HMAC-SHA256)</li>
@@ -301,7 +302,7 @@
 
   <h3>자격 증명</h3>
   <ul>
-    <li>도구 API 토큰과 웹훅 비밀은 환경 변수 <code>OPENPMS_SECRET_KEY</code>로 AES-GCM 암호화해 저장한다. 키가 없으면 연동 저장을 막는다(422).</li>
+    <li>도구 API 토큰과 웹훅 비밀은 환경 변수 <code>OPENPMS_SECRET_KEY</code>(32바이트를 Base64로 적은 값, <code>openssl rand -base64 32</code>, 설정 키 <code>openpms.secret-key</code>)로 AES-GCM 암호화해 저장한다. dev 프로필은 고정된 개발용 키를 기본값으로 두고, 운영 기본값은 빈 값이라 연동 저장이 422 "암호화 키(OPENPMS_SECRET_KEY)가 설정되지 않았습니다."로 막힌다.</li>
     <li>API는 끝 4자리만 돌려준다. 웹훅 비밀은 만들 때 한 번만 보여 주고, 이후에는 다시 발급만 한다.</li>
     <li>토큰은 읽기 전용 범위(GitLab <code>read_api</code>, GitHub contents·pull requests read)를 쓰도록 화면에서 안내한다.</li>
     <li>키 보관·백업은 운영자 매뉴얼에 적는다(키를 잃으면 연동 토큰을 다시 넣어야 함).</li>
@@ -310,7 +311,7 @@
   <h3>밖으로 나가는 호출과 위임</h3>
   <ul>
     <li>폴링은 등록된 base_url로만 보낸다. 리다이렉트를 따르지 않고 시간 제한을 둔다. 사내 GitLab에 닿아야 하므로 사설 주소는 허용한다.</li>
-    <li><code>global.manage_cicd</code>는 사내 주소로 나가는 호출을 만들 수 있으므로: 토큰 평문은 등록자에게도 다시 보여 주지 않고, 연동 만들기·바꾸기는 감사 로그에 남기고, "연결 확인"은 상대 본문 없이 성공/실패와 HTTP 코드만 돌려준다.</li>
+    <li><code>global.manage_cicd</code>는 사내 주소로 나가는 호출을 만들 수 있으므로: 토큰 평문은 등록자에게도 다시 보여 주지 않고, 연동 만들기·바꾸기·비밀 다시 발급·지우기는 감사 로그(로거 <code>openpms.audit</code>, INFO: 누가·무엇을·연동 id와 이름. 토큰·비밀·URL의 사용자 정보는 남기지 않음)에 남기고, "연결 확인"은 상대 본문 없이 성공/실패와 HTTP 코드만 돌려준다.</li>
     <li>HTTP·DB를 기다리는 동안 <code>synchronized</code>·<code>computeIfAbsent</code> 안에 있지 않는다(BUG-012).</li>
   </ul>
 </section>

@@ -25,6 +25,7 @@ import com.openpms.db.tables.Users.UsersPath;
 import com.openpms.db.tables.Versions.VersionsPath;
 import com.openpms.db.tables.Watchers.WatchersPath;
 import com.openpms.db.tables.WorkPackageAssignees.WorkPackageAssigneesPath;
+import com.openpms.db.tables.WorkPackageCicdLinks.WorkPackageCicdLinksPath;
 import com.openpms.db.tables.WorkPackageShares.WorkPackageSharesPath;
 import com.openpms.db.tables.records.WorkPackagesRecord;
 
@@ -591,6 +592,19 @@ public class WorkPackages extends TableImpl<WorkPackagesRecord> {
             _workPackageAssignees = new WorkPackageAssigneesPath(this, null, Keys.WORK_PACKAGE_ASSIGNEES__WORK_PACKAGE_ASSIGNEES_WORK_PACKAGE_ID_FKEY.getInverseKey());
 
         return _workPackageAssignees;
+    }
+
+    private transient WorkPackageCicdLinksPath _workPackageCicdLinks;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.work_package_cicd_links</code> table
+     */
+    public WorkPackageCicdLinksPath workPackageCicdLinks() {
+        if (_workPackageCicdLinks == null)
+            _workPackageCicdLinks = new WorkPackageCicdLinksPath(this, null, Keys.WORK_PACKAGE_CICD_LINKS__WORK_PACKAGE_CICD_LINKS_WORK_PACKAGE_ID_FKEY.getInverseKey());
+
+        return _workPackageCicdLinks;
     }
 
     private transient WorkPackageSharesPath _workPackageShares;

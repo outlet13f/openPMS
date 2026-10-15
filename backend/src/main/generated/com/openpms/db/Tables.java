@@ -10,6 +10,11 @@ import com.openpms.db.tables.BoardCards;
 import com.openpms.db.tables.BoardColumns;
 import com.openpms.db.tables.Boards;
 import com.openpms.db.tables.Categories;
+import com.openpms.db.tables.CicdCommits;
+import com.openpms.db.tables.CicdConnections;
+import com.openpms.db.tables.CicdEvents;
+import com.openpms.db.tables.CicdMergeRequests;
+import com.openpms.db.tables.CicdRepositories;
 import com.openpms.db.tables.CustomFieldOptions;
 import com.openpms.db.tables.CustomFieldTypes;
 import com.openpms.db.tables.CustomFields;
@@ -52,6 +57,7 @@ import com.openpms.db.tables.Watchers;
 import com.openpms.db.tables.WebhookDeliveries;
 import com.openpms.db.tables.Webhooks;
 import com.openpms.db.tables.WorkPackageAssignees;
+import com.openpms.db.tables.WorkPackageCicdLinks;
 import com.openpms.db.tables.WorkPackageShares;
 import com.openpms.db.tables.WorkPackages;
 import com.openpms.db.tables.Workflows;
@@ -92,6 +98,31 @@ public class Tables {
      * The table <code>public.categories</code>.
      */
     public static final Categories CATEGORIES = Categories.CATEGORIES;
+
+    /**
+     * The table <code>public.cicd_commits</code>.
+     */
+    public static final CicdCommits CICD_COMMITS = CicdCommits.CICD_COMMITS;
+
+    /**
+     * The table <code>public.cicd_connections</code>.
+     */
+    public static final CicdConnections CICD_CONNECTIONS = CicdConnections.CICD_CONNECTIONS;
+
+    /**
+     * The table <code>public.cicd_events</code>.
+     */
+    public static final CicdEvents CICD_EVENTS = CicdEvents.CICD_EVENTS;
+
+    /**
+     * The table <code>public.cicd_merge_requests</code>.
+     */
+    public static final CicdMergeRequests CICD_MERGE_REQUESTS = CicdMergeRequests.CICD_MERGE_REQUESTS;
+
+    /**
+     * The table <code>public.cicd_repositories</code>.
+     */
+    public static final CicdRepositories CICD_REPOSITORIES = CicdRepositories.CICD_REPOSITORIES;
 
     /**
      * The table <code>public.custom_field_options</code>.
@@ -302,6 +333,11 @@ public class Tables {
      * The table <code>public.work_package_assignees</code>.
      */
     public static final WorkPackageAssignees WORK_PACKAGE_ASSIGNEES = WorkPackageAssignees.WORK_PACKAGE_ASSIGNEES;
+
+    /**
+     * The table <code>public.work_package_cicd_links</code>.
+     */
+    public static final WorkPackageCicdLinks WORK_PACKAGE_CICD_LINKS = WorkPackageCicdLinks.WORK_PACKAGE_CICD_LINKS;
 
     /**
      * The table <code>public.work_package_shares</code>.
