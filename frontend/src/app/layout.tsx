@@ -25,7 +25,7 @@ import { topicFor, type Topic } from "@/features/help/topics";
 function GlobalSidebar({ me, onNavigate, unread, onCollapse }: { me: Me; onNavigate?: () => void; unread: number; onCollapse?: () => void }) {
   const { t } = useTranslation();
   // 내 승인함: the badge counts the approvals waiting for me and is hidden at 0 (the text carries the count for screen readers)
-  const approvals = usePortalApprovals().data?.length ?? 0;
+  const approvals = usePortalApprovals(true).data?.length ?? 0;
   const sections: SidebarSection[] = [
     {
       items: [

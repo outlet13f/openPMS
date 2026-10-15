@@ -87,7 +87,7 @@ test.describe("F21 서비스 카탈로그와 승인", () => {
     await login(page, ALEX);
     await page.goto("/portal");
     // 개발 데이터의 노트북 신청 1건과 이번 요청: 전역 메뉴 배지
-    await expect(inboxLink(page)).toContainText("2");
+    await expect(inboxLink(page)).toContainText(/승인 대기 2건/);
     await openInbox(page);
     await inboxRow(page, SUBJECT).getByRole("link", { name: SUBJECT }).click();
     await expect(page).toHaveURL(new RegExp(`${approvalPath}$`));
@@ -99,7 +99,7 @@ test.describe("F21 서비스 카탈로그와 승인", () => {
     await expect(page.getByText("승인했습니다.", { exact: true })).toBeVisible();
     await expect(page).toHaveURL(/\/portal\/approvals$/);
     await expect(inboxRow(page, SUBJECT)).toHaveCount(0);
-    await expect(inboxLink(page)).toContainText("1");
+    await expect(inboxLink(page)).toContainText(/승인 대기 1건/);
     // 한 번 처리한 승인 상세는 다시 열 수 없다
     await page.goto(approvalPath);
     await expect(page.getByText("승인 요청을 찾을 수 없습니다.").first()).toBeVisible();

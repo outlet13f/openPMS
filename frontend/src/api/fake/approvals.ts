@@ -170,7 +170,6 @@ export function itemFields(p: DbProject, item: DbCatalogItem): PortalField[] {
 
 export const NOT_FOUND = "승인 요청을 찾을 수 없습니다.";
 const liveDesk = (projectId: Id) => db.projects.find((p) => p.id === projectId && !p.archivedAt && p.enabledModules.includes("service_desk"));
-const plain = (html: string) => html.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
 
 /** The request of a row, while its desk is live. */
 function requestOf(a: DbTicketApproval): { wp: DbWp; project: DbProject } | null {
@@ -240,6 +239,14 @@ export function fileUrl(user: DbUser, id: Id, fileId: Id): string {
   return db.attachments.find((a) => a.id === fileId && a.wpId === wp.id)?.dataUrl ?? "#";
 }
 
+/** The reject reason is plain text from a textarea: escaped, one paragraph per line (as the server does). */
+const plainToHtml = (text: string) =>
+  text
+    .split(/\r?\n|\r/)
+    .filter((l) => l.trim())
+    .map((l) => `<p>${l.trim().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`)
+    .join("");
+
 /**
  * Approve or reject my pending row; a decision counts once (409 for the second). Approving finishes the step (the others
  * of it are skipped), then the next waiting step is pending, or after the last one the request is 접수. Rejecting skips the
@@ -251,15 +258,15 @@ export function decide(wr: ApprovalWriters, user: DbUser, id: Id, approve: boole
   if (!row || row.decision === "waiting" || row.decision === "skipped") throw new ApiError(404, NOT_FOUND);
   const r = requestOf(row);
   if (!r) throw new ApiError(404, NOT_FOUND);
-  if (!approve && !plain(comment ?? "")) throw fieldError("comment", "반려 사유를 입력하세요.");
+  if (!approve && !(comment ?? "").trim()) throw fieldError("comment", "반려 사유를 입력하세요.");
   if (row.decision !== "pending") throw new ApiError(409, "이미 처리된 승인입니다.", "승인함을 새로 고치세요.");
   const now = nowIso();
-  Object.assign(row, { decision: approve ? "approved" : "rejected", decidedAt: now, comment: approve && comment ? comment.trim() : "" });
+  Object.assign(row, { decision: approve ? "approved" : "rejected", decidedAt: now, comment: (comment ?? "").trim() });
   const { wp, project } = r;
   line(wr, user, wp, row.id, `${row.stepNo}단계 ${userRef(user.id)!.name} ${approve ? "승인" : "반려"}`);
   if (!approve) {
     skipRemaining(wr, user, wp);
-    wr.comment(user, wp, comment!);
+    wr.comment(user, wp, plainToHtml(comment!.trim()));
     wr.status(user, wp, project, ITSM.rejected);
     return "rejected";
   }

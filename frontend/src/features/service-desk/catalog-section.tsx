@@ -25,6 +25,8 @@ import { TICKET_TYPE_IDS } from "./settings-section";
 
 const KINDS: ApprovalKind[] = ["requester_manager", "group_lead"];
 const NONE = "none";
+/** the server accepts 1-9 steps */
+const MAX_STEPS = 9;
 /** 서비스 요청 (server ItsmIds and the fake data layer's readable id): a new item's type */
 const SERVICE_REQUEST_IDS = ["a3af2ccf-05c6-5b1c-84bc-4d815791e4eb", "t-service-request"];
 
@@ -164,7 +166,7 @@ function ItemDialog({ project, catalog, editing, editable, onClose }: { project:
         )}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label={t("serviceDesk.catalog.itemName")} required error={err("name")}>
-            <Input data-autofocus value={name} maxLength={200} disabled={!editable} onChange={(e) => setName(e.target.value)} />
+            <Input data-autofocus value={name} maxLength={100} disabled={!editable} onChange={(e) => setName(e.target.value)} />
           </Field>
           <Field label={t("serviceDesk.catalog.categories")} error={err("categoryId")}>
             <Select
@@ -299,7 +301,7 @@ function ItemDialog({ project, catalog, editing, editable, onClose }: { project:
           {err("steps") && <p className="text-xs text-danger">{err("steps")}</p>}
           {editable && (
             <div>
-              <Button size="sm" icon={<Plus />} onClick={() => setSteps((cur) => [...cur, ["requester_manager"]])}>
+              <Button size="sm" icon={<Plus />} disabled={steps.length >= MAX_STEPS} onClick={() => setSteps((cur) => [...cur, ["requester_manager"]])}>
                 {t("serviceDesk.catalog.addStep")}
               </Button>
             </div>

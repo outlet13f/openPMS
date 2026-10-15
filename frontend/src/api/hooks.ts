@@ -38,6 +38,8 @@ export function invalidateWorkPackages(qc: QueryClient, number?: number) {
   qc.invalidateQueries({ queryKey: ["board"] });
   qc.invalidateQueries({ queryKey: ["notifications"] });
   qc.invalidateQueries({ queryKey: ["project"] });
+  // a status change out of 승인 대기 closes the open approval rows of the agent's panel
+  qc.invalidateQueries({ queryKey: ["serviceDesk", "approvals"] });
   if (number !== undefined) qc.invalidateQueries({ queryKey: ["wp", number] });
   else qc.invalidateQueries({ queryKey: ["wp"] });
 }
@@ -433,7 +435,9 @@ export function useReplaceApprover(number: number) {
 }
 
 /** 내 승인함 (also the badge in the global menu). */
-export const usePortalApprovals = () => useQuery({ queryKey: ["portal", "approvals"], queryFn: () => api.portal.approvals() });
+/** `poll`: the nav badge asks again every minute (new requests reach an approver without a reload). */
+export const usePortalApprovals = (poll = false) =>
+  useQuery({ queryKey: ["portal", "approvals"], queryFn: () => api.portal.approvals(), refetchInterval: poll ? 60_000 : false });
 export const usePortalApproval = (id: Id) =>
   useQuery({ queryKey: ["portal", "approval", id], queryFn: () => api.portal.approval(id), enabled: !!id, retry: false });
 

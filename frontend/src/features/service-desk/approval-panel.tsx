@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/overlay";
 import { formatDateTime } from "@/lib/dates";
 import { AdminTable, fieldErrorOf, tbodyRow, th, theadRow, useRunWithToast } from "@/features/admin/common";
-import { RequesterPicker } from "./service-tab";
+import { RequesterPicker } from "./requester-picker";
 
 const DECISION_TONE: Record<ApprovalDecision, "neutral" | "accent" | "success" | "danger"> = {
   waiting: "neutral",
@@ -72,7 +72,7 @@ export function ApprovalPanel({ number }: { number: number }) {
       <h3 id="approval-panel-h" className="text-sm font-semibold text-fg">
         {t("serviceDesk.approvals.title")}
       </h3>
-      <AdminTable minWidth={640}>
+      <AdminTable minWidth={560}>
         <thead>
           <tr className={theadRow}>
             <th scope="col" className={th}>{t("serviceDesk.approvals.stepCol")}</th>
@@ -81,9 +81,6 @@ export function ApprovalPanel({ number }: { number: number }) {
             <th scope="col" className={th}>{t("serviceDesk.approvals.decision")}</th>
             <th scope="col" className={th}>{t("serviceDesk.approvals.decidedAt")}</th>
             <th scope="col" className={th}>{t("serviceDesk.approvals.comment")}</th>
-            <th scope="col" className={`${th} w-12`}>
-              <span className="sr-only">{t("app.more")}</span>
-            </th>
           </tr>
         </thead>
         <tbody>
@@ -91,7 +88,23 @@ export function ApprovalPanel({ number }: { number: number }) {
             <tr key={r.id} className={`${tbodyRow} align-top`}>
               <td className="px-3 py-1.5 whitespace-nowrap">{t("serviceDesk.approvals.step", { n: r.stepNo })}</td>
               <td className="px-3 py-1.5 whitespace-nowrap">{t(`serviceDesk.approvalKinds.${r.kind}`)}</td>
-              <td className="px-3 py-1.5 whitespace-nowrap">{r.approver ? <Principal id={r.approver.id} name={r.approver.name} size="xs" /> : <span className="text-fg-muted">-</span>}</td>
+              <td className="px-3 py-1.5 whitespace-nowrap">
+                <span className="inline-flex flex-col items-start gap-0.5">
+                  {r.approver ? <Principal id={r.approver.id} name={r.approver.name} size="xs" /> : <span className="text-fg-muted">-</span>}
+                  {(r.decision === "pending" || r.decision === "waiting") && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={<UserCog />}
+                      className="whitespace-nowrap"
+                      aria-label={`${t("serviceDesk.approvals.step", { n: r.stepNo })} ${t(`serviceDesk.approvalKinds.${r.kind}`)} ${t("serviceDesk.approvals.replace")}`}
+                      onClick={() => setReplacing(r)}
+                    >
+                      {t("serviceDesk.approvals.replace")}
+                    </Button>
+                  )}
+                </span>
+              </td>
               <td className="px-3 py-1.5">
                 <span className="inline-flex flex-col items-start gap-0.5">
                   <Badge tone={DECISION_TONE[r.decision]} className="whitespace-nowrap">{t(`serviceDesk.approvals.decisions.${r.decision}`)}</Badge>
@@ -107,20 +120,6 @@ export function ApprovalPanel({ number }: { number: number }) {
                   </p>
                 ) : (
                   <span className="text-fg-muted">-</span>
-                )}
-              </td>
-              <td className="px-2 py-1">
-                {(r.decision === "pending" || r.decision === "waiting") && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    icon={<UserCog />}
-                    className="whitespace-nowrap"
-                    aria-label={`${t("serviceDesk.approvals.step", { n: r.stepNo })} ${t(`serviceDesk.approvalKinds.${r.kind}`)} ${t("serviceDesk.approvals.replace")}`}
-                    onClick={() => setReplacing(r)}
-                  >
-                    {t("serviceDesk.approvals.replace")}
-                  </Button>
                 )}
               </td>
             </tr>
