@@ -2,7 +2,7 @@
 // "CI/CD 연동 관리자" global role) register a connection, get its webhook address and secret once (again only by
 // rotating the secret), check that the API token works and remove a connection no project uses any more.
 // The API token is never shown again (the last four characters only); a changed address clears it unless a new one comes along.
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Copy, GitMerge, KeyRound, MoreHorizontal, Pencil, Plus, PlugZap, Trash2 } from "lucide-react";
 import { isApiError, type CicdConnection, type CicdConnectionPatch, type CicdKind } from "@/api";
@@ -27,11 +27,14 @@ const absolute = (url: string) => (url.startsWith("/") ? `${location.origin}${ur
 function CopyRow({ label, copyLabel, copied, value }: { label: string; copyLabel: string; copied: string; value: string }) {
   const { t } = useTranslation();
   const toast = useToast();
+  const id = useId();
   return (
-    <div className="flex flex-col gap-1">
-      <span className="text-sm font-medium text-fg">{label}</span>
+    <div role="group" aria-labelledby={id} className="flex flex-col gap-1">
+      <span id={id} className="text-sm font-medium text-fg">
+        {label}
+      </span>
       <div className="flex items-center gap-2">
-        <code className="min-w-0 flex-1 rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm break-all text-fg" aria-label={label}>
+        <code className="min-w-0 flex-1 rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm break-all text-fg">
           {value}
         </code>
         <Button
@@ -80,6 +83,8 @@ function ConnectionDialog({ editing, onClose, onSecret }: { editing: CicdConnect
     if (!editing) {
       const made = await runToast(m.create.mutateAsync({ kind, name, baseUrl, apiToken: apiToken.trim() || undefined }), t("cicd.admin.created"));
       if (made) {
+        // the secret leaves the mutation's memory: the dialog below is its one showing
+        m.create.reset();
         onClose();
         onSecret({ webhookUrl: made.connection.webhookUrl, secret: made.webhookSecret });
       }
@@ -287,7 +292,7 @@ export function AdminCicdPage() {
         )}
       </AdminGuard>
       {dialog && <ConnectionDialog key={dialog.editing?.id ?? "new"} editing={dialog.editing} onClose={() => setDialog(null)} onSecret={setSecret} />}
-      {secret && <SecretDialog webhookUrl={secret.webhookUrl} secret={secret.secret} onClose={() => setSecret(null)} />}
+      {secret && <SecretDialog webhookUrl={secret.webhookUrl} secret={secret.secret} onClose={() => (setSecret(null), m.rotateSecret.reset())} />}
       <ConfirmDialog
         open={!!rotating}
         onOpenChange={(o) => !o && setRotating(null)}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useMatch, useNavigate, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { applyTheme } from "@/lib/theme";
-import { ArrowLeft, Bell, BookOpen, CalendarDays, CalendarRange, ChevronDown, Clock, Code2, FolderKanban, GanttChart, Home, KanbanSquare, Keyboard, LayoutDashboard, LifeBuoy, ListTodo, Palette, PanelLeftOpen, Settings, Shield, Star, UserRound, Users } from "lucide-react";
+import { ArrowLeft, Bell, BookOpen, CalendarDays, CalendarRange, ChevronDown, Clock, Code2, FolderKanban, GanttChart, GitMerge, Home, KanbanSquare, Keyboard, LayoutDashboard, LifeBuoy, ListTodo, Palette, PanelLeftOpen, Settings, Shield, Star, UserRound, Users } from "lucide-react";
 import type { Me, Project } from "@/api";
 import { API_MODE } from "@/api";
 import { resetFakeDb } from "@/api/fake";
@@ -22,6 +22,10 @@ import { topicFor, type Topic } from "@/features/help/topics";
 
 /* ---------- sidebars ---------- */
 
+
+/** global.manage_cicd without being an administrator: 관리 › CI/CD 연동 is the only admin screen they may open. */
+const cicdManagerOnly = (me: Me) => !me.isAdmin && me.globalPermissions.includes("global.manage_cicd");
+
 function GlobalSidebar({ me, onNavigate, unread, onCollapse }: { me: Me; onNavigate?: () => void; unread: number; onCollapse?: () => void }) {
   const { t } = useTranslation();
   const sections: SidebarSection[] = [
@@ -39,6 +43,8 @@ function GlobalSidebar({ me, onNavigate, unread, onCollapse }: { me: Me; onNavig
     },
   ];
   if (me.isAdmin) sections.push({ items: [{ label: t("nav.admin"), to: "/admin", icon: <Shield /> }] });
+  // a CI/CD 연동 관리자 who is not an administrator: the one admin screen they may open
+  else if (cicdManagerOnly(me)) sections.push({ items: [{ label: t("admin.sections.cicd"), to: "/admin/cicd", icon: <GitMerge /> }] });
   return <Sidebar label={t("nav.globalMenu")} sections={sections} onNavigate={onNavigate} onCollapse={onCollapse} />;
 }
 
@@ -158,7 +164,8 @@ function AdminSidebar({ me, onNavigate, onCollapse }: { me: Me; onNavigate?: () 
         </Link>
       }
       sections={[
-        { items: [{ label: t("nav.admin"), to: "/admin", icon: <Shield />, end: true }] },
+        // the 관리 landing page is for administrators; a CI/CD 연동 관리자 lands on their screen
+        { items: [{ label: t("nav.admin"), to: cicdManagerOnly(me) ? "/admin/cicd" : "/admin", icon: <Shield />, end: true }] },
         ...groups.map((g) => ({
           title: g.title,
           items: ADMIN_SECTIONS.filter((s) => g.keys.includes(s.key) && visible(s.key)).map((s) => ({ label: t(`admin.sections.${s.key}`), to: s.to, icon: s.icon })),
@@ -235,6 +242,7 @@ export function AppLayout({ me }: { me: Me }) {
     { label: t("nav.notifications"), icon: <Bell />, onSelect: () => navigate("/notifications") },
     { label: t("portal.title"), icon: <LifeBuoy />, onSelect: () => navigate("/portal") },
     ...(me.isAdmin ? [{ kind: "separator" as const }, { label: t("nav.admin"), icon: <Shield />, onSelect: () => navigate("/admin") }] : []),
+    ...(cicdManagerOnly(me) ? [{ kind: "separator" as const }, { label: t("admin.sections.cicd"), icon: <GitMerge />, onSelect: () => navigate("/admin/cicd") }] : []),
   ];
 
   const quickAdd = useMemo<MenuEntry[]>(() => {
