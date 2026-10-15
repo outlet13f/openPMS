@@ -23,7 +23,7 @@ import org.springframework.stereotype.Component;
 /**
  * Mail to approvers (ITSM 2단계). An approver is not necessarily a project member and so gets nothing from the notification
  * centre: this job mails them when a request reaches their turn (a pending row never mailed), and once more when three
- * working days have passed without a decision. Their desk's work calendar says which days work; the count runs from the day
+ * working days have passed without a decision. The global work calendar (Snapshot.calendar(), 관리 › 달력과 날짜) says which days work; the count runs from the day
  * after the first mail up to today (Asia/Seoul).
  *
  * <p>Delivery is at most once, like {@link PortalMail}: notified_at / reminded_at are set (only if still unset, so two instances
@@ -53,7 +53,8 @@ public class ApprovalMail {
         var cal = s.calendar();
         var today = now.atZone(KST).toLocalDate();
         var rows = db.select(TICKET_APPROVALS.ID, TICKET_APPROVALS.NOTIFIED_AT, TICKET_APPROVALS.REMINDED_AT, WORK_PACKAGES.NUMBER, WORK_PACKAGES.SUBJECT,
-                        WORK_PACKAGES.PROJECT_ID, USERS.EMAIL, USERS.STATUS, CATALOG_ITEMS.NAME, SERVICE_TICKETS.REQUESTER_ID)
+                        WORK_PACKAGES.PROJECT_ID, USERS.EMAIL, USERS.STATUS, CATALOG_ITEMS.NAME, SERVICE_TICKETS.REQUESTER_ID,
+                        TICKET_APPROVALS.APPROVER_ID)
                 .from(TICKET_APPROVALS).join(WORK_PACKAGES).on(WORK_PACKAGES.ID.eq(TICKET_APPROVALS.WORK_PACKAGE_ID))
                 .join(SERVICE_TICKETS).on(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(TICKET_APPROVALS.WORK_PACKAGE_ID))
                 .join(USERS).on(USERS.ID.eq(TICKET_APPROVALS.APPROVER_ID))
@@ -73,7 +74,8 @@ public class ApprovalMail {
                 var field = reminder ? TICKET_APPROVALS.REMINDED_AT : TICKET_APPROVALS.NOTIFIED_AT;
                 // marked first: a mail that fails is lost, one that succeeds is never repeated
                 if (db.update(TICKET_APPROVALS).set(field, now.atOffset(ZoneOffset.UTC))
-                        .where(TICKET_APPROVALS.ID.eq(id), TICKET_APPROVALS.DECISION.eq("pending"), cond).execute() != 1) continue;
+                        .where(TICKET_APPROVALS.ID.eq(id), TICKET_APPROVALS.DECISION.eq("pending"),
+                                TICKET_APPROVALS.APPROVER_ID.eq(r.value11()), cond).execute() != 1) continue;
                 if (!"active".equals(r.value8())) continue;
                 var subject = "[openPMS] " + (reminder ? "승인 대기 중: #" : "승인 요청: #") + r.value4() + " " + r.value5();
                 var requester = Refs.user(s, r.value10()).name();

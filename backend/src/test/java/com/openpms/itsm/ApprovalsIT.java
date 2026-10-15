@@ -55,12 +55,14 @@ class ApprovalsIT {
     static final String ALEX = "alex.kim@openpms.local";
     static final String HANEUL = "haneul.lee@openpms.local";
     static final String TWO_STEPS = "[{\"stepNo\":1,\"kind\":\"requester_manager\"},{\"stepNo\":2,\"kind\":\"group_lead\"}]";
+    static final String ONE_STEP = "[{\"stepNo\":1,\"kind\":\"requester_manager\"}]";
     static final String ONE_STEP_TWO_PEOPLE = "[{\"stepNo\":1,\"kind\":\"requester_manager\"},{\"stepNo\":1,\"kind\":\"group_lead\"}]";
 
     @Autowired WebApplicationContext context;
     @Autowired DSLContext db;
     @Autowired PortalMail mail;
     @Autowired Current current;
+    @Autowired SlaJobs jobs;
     @Autowired WorkPackageService workPackages;
     @MockitoBean Mailer mailer;
     ItsmFixture f;
@@ -188,12 +190,12 @@ class ApprovalsIT {
         var n = request(TWO_STEPS);
         mail.run(Instant.now()); // the receipt
         Mockito.clearInvocations(mailer);
-        f.send(alex, post("/api/v1/portal/approvals/" + inboxId(alex, n) + "/decision"), decision("reject", "<p>예산 초과</p>"))
+        f.send(alex, post("/api/v1/portal/approvals/" + inboxId(alex, n) + "/decision"), decision("reject", "예산 초과"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.decision").value("rejected"));
         assertThat(statusOf(n)).isEqualTo(ItsmIds.STATUS_REJECTED);
         var r = rows(n);
         assertThat(r.get(0).getDecision()).isEqualTo("rejected");
-        assertThat(r.get(0).getComment()).as("the reason is a public comment, not the row's note").isEmpty();
+        assertThat(r.get(0).getComment()).as("the agent panel shows the reason too").isEqualTo("예산 초과");
         assertThat(r.get(1).getDecision()).isEqualTo("skipped");
         assertThat(r.get(1).getSkipReason()).isEqualTo("left_approval");
         f.send(requester, get("/api/v1/portal/tickets/" + n), "").andExpect(status().isOk())
@@ -212,7 +214,7 @@ class ApprovalsIT {
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.errors[0].field").value("comment"))
                 .andExpect(jsonPath("$.errors[0].message").value("반려 사유를 입력하세요."));
-        f.send(alex, post("/api/v1/portal/approvals/" + id + "/decision"), decision("reject", "<p> </p>")).andExpect(status().isUnprocessableContent());
+        f.send(alex, post("/api/v1/portal/approvals/" + id + "/decision"), decision("reject", "  \\n ")).andExpect(status().isUnprocessableContent());
         f.send(alex, post("/api/v1/portal/approvals/" + id + "/decision"), decision("maybe", null)).andExpect(status().isUnprocessableContent());
         assertThat(rows(n).get(0).getDecision()).isEqualTo("pending");
         assertThat(statusOf(n)).isEqualTo(ItsmIds.STATUS_AWAITING_APPROVAL);
@@ -252,6 +254,75 @@ class ApprovalsIT {
         var winner = codes[0] == 200 ? 0 : 1;
         f.send(sessions.get(winner), post("/api/v1/portal/approvals/" + ids.get(winner) + "/decision"), decision("approve", null))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.title").value("이미 처리된 승인입니다."));
+    }
+
+    @Test void rejectReasonIsPlainText() throws Exception {
+        var n = request(TWO_STEPS);
+        f.send(alex, post("/api/v1/portal/approvals/" + inboxId(alex, n) + "/decision"), decision("reject", "금액 < 한도 & 기타\\n둘째 줄"))
+                .andExpect(status().isOk());
+        assertThat(rows(n).get(0).getComment()).isEqualTo("금액 < 한도 & 기타\n둘째 줄");
+        var notes = f.body(f.send(requester, get("/api/v1/portal/tickets/" + n), "").andExpect(status().isOk()).andReturn()).get("activity").toString();
+        assertThat(notes).contains("금액 &lt; 한도 &amp; 기타").contains("<p>둘째 줄</p>");
+    }
+
+    /** An approver's decision and an agent's status change of the same request take the same locks in the same order. */
+    @Test void decisionAndCancelDoNotDeadlock() throws Exception {
+        for (int round = 0; round < 20; round++) {
+            var n = request(ONE_STEP);
+            var id = inboxId(alex, n);
+            var lock = f.body(f.send(agent, get("/api/v1/work-packages/" + n), "").andExpect(status().isOk()).andReturn()).get("lockVersion").asInt();
+            var start = new CountDownLatch(1);
+            var codes = new int[2];
+            try (var pool = Executors.newFixedThreadPool(2)) {
+                var a = pool.submit(() -> {
+                    start.await();
+                    codes[0] = f.send(alex, post("/api/v1/portal/approvals/" + id + "/decision"), decision("approve", null)).andReturn().getResponse().getStatus();
+                    return null;
+                });
+                var b = pool.submit(() -> {
+                    start.await();
+                    codes[1] = f.send(agent, patch("/api/v1/work-packages/" + n), "{\"lockVersion\":" + lock + ",\"statusId\":\"" + ItsmIds.STATUS_CANCELLED + "\"}")
+                            .andReturn().getResponse().getStatus();
+                    return null;
+                });
+                start.countDown();
+                a.get();
+                b.get();
+            }
+            assertThat(codes[0]).as("round %d decision", round).isIn(200, 404, 409, 422);
+            assertThat(codes[1]).as("round %d cancel", round).isIn(200, 409, 422);
+            var row = rows(n).get(0).getDecision();
+            if (statusOf(n).equals(ItsmIds.STATUS_RECEIVED)) assertThat(row).isEqualTo("approved");
+            else {
+                assertThat(statusOf(n)).isEqualTo(ItsmIds.STATUS_CANCELLED);
+                assertThat(row).isEqualTo("skipped");
+            }
+        }
+    }
+
+    @Test void waitingForApprovalDoesNotUseUpTheResponseTarget() throws Exception {
+        var n = request(ONE_STEP);
+        var wp = wpId(n);
+        // the request has waited 90 minutes for approval (the first-response target is 60)
+        var start = OffsetDateTime.now().minusMinutes(90);
+        db.update(SERVICE_TICKETS).set(SERVICE_TICKETS.CREATED_AT, start).set(SERVICE_TICKETS.PAUSED_SINCE, start)
+                .where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wp)).execute();
+        f.send(alex, post("/api/v1/portal/approvals/" + inboxId(alex, n) + "/decision"), decision("approve", null)).andExpect(status().isOk());
+        var t = db.selectFrom(SERVICE_TICKETS).where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wp)).fetchOne();
+        assertThat(Duration.between(OffsetDateTime.now(), t.getFirstResponseDueAt()).toMinutes()).as("about the target after the approval").isBetween(58L, 61L);
+        jobs.run(Instant.now());
+        var after = db.selectFrom(SERVICE_TICKETS).where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wp)).fetchOne();
+        assertThat(after.getResponseBreached()).isFalse();
+    }
+
+    @Test void copyingATicketInApprovalStartsItReceived() throws Exception {
+        var n = request(TWO_STEPS);
+        var copy = f.body(f.send(agent, post("/api/v1/work-packages/" + n + "/copy"), "{}").andExpect(status().is2xxSuccessful()).andReturn()).get("number").asLong();
+        assertThat(statusOf(copy)).isEqualTo(ItsmIds.STATUS_RECEIVED);
+        assertThat(rows(copy)).isEmpty();
+        var t = db.selectFrom(SERVICE_TICKETS).where(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(wpId(copy))).fetchOne();
+        assertThat(t.getPausedSince()).isNull();
+        assertThat(statusOf(n)).isEqualTo(ItsmIds.STATUS_AWAITING_APPROVAL);
     }
 
     @Test void cancellingWhileWaitingSkipsTheRest() throws Exception {

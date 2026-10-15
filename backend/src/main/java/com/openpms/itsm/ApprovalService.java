@@ -15,6 +15,7 @@ import com.openpms.core.Snapshot;
 import com.openpms.customfield.CustomFields;
 import com.openpms.db.tables.records.AttachmentsRecord;
 import com.openpms.db.tables.records.TicketApprovalsRecord;
+import com.openpms.wp.ScheduleStore;
 import com.openpms.wp.WorkPackageService;
 import java.time.OffsetDateTime;
 import java.util.HashSet;
@@ -25,6 +26,7 @@ import org.jooq.DSLContext;
 import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.util.HtmlUtils;
 
 /**
  * The approver's side of a catalog request (docs/superpowers/specs/2026-10-14-itsm-phase2-catalog-design.md §3) and the
@@ -50,9 +52,11 @@ public class ApprovalService {
     private final PortalService portal;
     private final ServiceCatalog catalog;
     private final CustomFields customFields;
+    private final ScheduleStore schedules;
 
     public ApprovalService(DSLContext db, WorkPackageService workPackages, Approvals approvals, PortalService portal, ServiceCatalog catalog,
-                           CustomFields customFields) {
+                           CustomFields customFields, ScheduleStore schedules) {
+        this.schedules = schedules;
         this.db = db;
         this.workPackages = workPackages;
         this.approvals = approvals;
@@ -142,8 +146,10 @@ public class ApprovalService {
     }
 
     /**
-     * Approve or reject my pending row. The conditional update makes a decision count once; the request row is locked
-     * first so two approvers of one step (or an approver and a cancelling requester) take turns instead of deadlocking.
+     * Approve or reject my pending row. The conditional update makes a decision count once. Lock order is the same as every
+     * other writer of a work package: the schedule advisory lock first (the status change below goes through the scheduler),
+     * then the request row, so a decision, an approver change and a status save of one request wait for each other and
+     * never lock in opposite orders.
      */
     @Transactional
     public String decide(Ctx ctx, UUID approvalId, boolean approve, String comment) {
@@ -151,10 +157,12 @@ public class ApprovalService {
         // not mine, not my turn yet (waiting) or no longer mine to decide (skipped): the same 404
         if (row == null || row.getDecision().equals("waiting") || row.getDecision().equals("skipped")) throw ApiException.notFound(NOT_FOUND);
         if (found(ctx, row.getWorkPackageId()) == null) throw ApiException.notFound(NOT_FOUND);
-        if (!approve && Html.text(Html.sanitize(comment == null ? "" : comment)).isBlank()) throw ApiException.field("comment", "반려 사유를 입력하세요.");
+        var reason = comment == null ? "" : comment.trim();
+        if (!approve && reason.isEmpty()) throw ApiException.field("comment", "반려 사유를 입력하세요.");
+        schedules.lock();
         lock(row.getWorkPackageId());
         int won = db.update(TICKET_APPROVALS).set(TICKET_APPROVALS.DECISION, approve ? "approved" : "rejected")
-                .set(TICKET_APPROVALS.DECIDED_AT, OffsetDateTime.now()).set(TICKET_APPROVALS.COMMENT, approve && comment != null ? comment.trim() : "")
+                .set(TICKET_APPROVALS.DECIDED_AT, OffsetDateTime.now()).set(TICKET_APPROVALS.COMMENT, reason)
                 .where(TICKET_APPROVALS.ID.eq(approvalId), TICKET_APPROVALS.APPROVER_ID.eq(ctx.userId()), TICKET_APPROVALS.DECISION.eq("pending")).execute();
         if (won == 0) throw ApiException.conflict("이미 처리된 승인입니다.", "승인함을 새로 고치세요.", null);
         var f = found(ctx, row.getWorkPackageId());
@@ -162,7 +170,7 @@ public class ApprovalService {
         approvals.journal(ctx, f.wp(), approvalId, row.getStepNo() + "단계 " + name + (approve ? " 승인" : " 반려"));
         if (!approve) {
             approvals.skipRemaining(ctx, f.wp());
-            workPackages.commentForApproval(ctx, f, comment);
+            workPackages.commentForApproval(ctx, f, plainToHtml(reason));
             workPackages.statusForApproval(ctx, found(ctx, row.getWorkPackageId()), ItsmIds.STATUS_REJECTED);
             return "rejected";
         }
@@ -181,6 +189,13 @@ public class ApprovalService {
         }
         workPackages.statusForApproval(ctx, found(ctx, row.getWorkPackageId()), ItsmIds.STATUS_RECEIVED);
         return "approved";
+    }
+
+    /** The reject reason is plain text from a textarea: escaped, one paragraph per line. */
+    static String plainToHtml(String text) {
+        var sb = new StringBuilder();
+        for (var line : text.split("\\R")) if (!line.isBlank()) sb.append("<p>").append(HtmlUtils.htmlEscape(line.strip())).append("</p>");
+        return sb.toString();
     }
 
     /** Waits for (and holds until commit) the request row: deciders, approver changes and status saves of one request take turns. */

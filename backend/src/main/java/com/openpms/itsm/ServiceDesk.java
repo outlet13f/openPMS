@@ -2,6 +2,7 @@ package com.openpms.itsm;
 
 import static com.openpms.db.Tables.SERVICE_TICKETS;
 import static com.openpms.db.Tables.USER_GROUPS;
+import static com.openpms.db.Tables.WORK_PACKAGES;
 
 import com.openpms.common.ApiException;
 import com.openpms.common.In;
@@ -97,6 +98,13 @@ public class ServiceDesk {
      */
     public void copied(Ctx ctx, Snapshot.ProjectRow modulesOf, UUID originalId, WorkPackagesRecord copy) {
         if (!applies(modulesOf, copy.getTypeId())) return;
+        // a copy has no approval rows: 승인 대기 would be a paused ticket nobody can decide, so it starts as 접수
+        boolean wasAwaiting = ItsmIds.STATUS_AWAITING_APPROVAL.equals(copy.getStatusId());
+        if (wasAwaiting) {
+            db.update(WORK_PACKAGES).set(WORK_PACKAGES.STATUS_ID, ItsmIds.STATUS_RECEIVED).where(WORK_PACKAGES.ID.eq(copy.getId())).execute();
+            copy.setStatusId(ItsmIds.STATUS_RECEIVED);
+            copy.changed(WORK_PACKAGES.STATUS_ID, false);
+        }
         var original = tickets.of(originalId).orElse(null);
         var t = tickets.of(copy.getId()).orElse(null);
         if (t == null) {
@@ -108,6 +116,11 @@ public class ServiceDesk {
             t.setImpact(original.getImpact());
             t.setUrgency(original.getUrgency());
             t.setAssignmentGroupId(original.getAssignmentGroupId());
+        }
+        if (wasAwaiting && t.getPausedSince() != null) {
+            // the ticket was made while still in 승인 대기 (single copy): its clock starts running in 접수
+            t.setPausedSince(null);
+            recompute(ctx, t, copy, Instant.now());
         }
         t.setRequesterMailedAt(at(Instant.now()));
         t.setRequesterMailedStatusId(copy.getStatusId());
@@ -175,7 +188,11 @@ public class ServiceDesk {
         }
         var holidays = ctx.s().calendar().holidays();
         var start = t.getCreatedAt().toInstant();
-        var respond = at(SlaClock.add(start, policy.firstResponse(), policy.calendar(), holidays));
+        // Time paused before the first response (a request waiting for approval starts paused) does not count against the
+        // response target: it extends the deadline like it extends the resolve one. Once answered the deadline is final and
+        // later pauses (답변 대기) or policy changes leave it as it was, so a recompute never shrinks it back.
+        var respond = t.getFirstRespondedAt() != null && t.getFirstResponseDueAt() != null ? t.getFirstResponseDueAt()
+                : at(SlaClock.add(start, policy.firstResponse().plus(Duration.ofSeconds(t.getPausedTotalSeconds())), policy.calendar(), holidays));
         var resolve = at(SlaClock.add(start, policy.resolve().plus(Duration.ofSeconds(t.getPausedTotalSeconds())), policy.calendar(), holidays));
         if (!isSame(respond, t.getFirstResponseDueAt()) && respond.toInstant().isAfter(now)) t.setResponseWarned(false);
         if (!isSame(resolve, t.getResolveDueAt()) && resolve.toInstant().isAfter(now)) t.setResolveWarned(false);
