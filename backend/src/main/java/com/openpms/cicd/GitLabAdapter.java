@@ -133,22 +133,33 @@ public class GitLabAdapter implements CicdAdapter {
         return out;
     }
 
-    @Override public List<CicdEvent> poll(Remote remote, String repoExternalId, OffsetDateTime since) throws IOException {
+    @Override public Polled poll(Remote remote, String repoExternalId, OffsetDateTime since) throws IOException {
         var id = enc(repoExternalId);
         var out = new ArrayList<CicdEvent>();
+        boolean truncated = false;
         var commitsQuery = since == null ? "" : "since=" + enc(since.toInstant().toString()) + "&";
-        for (var c : getJson(remote, "/projects/" + id + "/repository/commits?" + commitsQuery + "per_page=100")) {
-            var sha = text(c.path("id"));
-            if (sha.isEmpty()) continue;
-            out.add(commit(repoExternalId, sha, text(c.path("title")), text(c.path("message")), text(c.path("author_name")),
-                    text(c.path("author_email")), time(text(c.path("committed_date"))), text(c.path("web_url"))));
+        for (int page = 1; ; page++) {
+            var items = getJson(remote, "/projects/" + id + "/repository/commits?" + commitsQuery + "per_page=" + PAGE_SIZE + "&page=" + page);
+            for (var c : items) {
+                var sha = text(c.path("id"));
+                if (sha.isEmpty()) continue;
+                out.add(commit(repoExternalId, sha, text(c.path("title")), text(c.path("message")), text(c.path("author_name")),
+                        text(c.path("author_email")), time(text(c.path("committed_date"))), text(c.path("web_url"))));
+            }
+            if (items.size() < PAGE_SIZE) break;
+            if (page == MAX_PAGES) { truncated = true; break; }
         }
         var mrQuery = since == null ? "" : "updated_after=" + enc(since.toInstant().toString()) + "&";
-        for (var m : getJson(remote, "/projects/" + id + "/merge_requests?" + mrQuery + "per_page=100")) {
-            if (number(m.path("iid")) == 0) continue;
-            out.add(mergeRequest(repoExternalId, m, text(m.path("author").path("name")), ""));
+        for (int page = 1; ; page++) {
+            var items = getJson(remote, "/projects/" + id + "/merge_requests?" + mrQuery + "per_page=" + PAGE_SIZE + "&page=" + page);
+            for (var m : items) {
+                if (number(m.path("iid")) == 0) continue;
+                out.add(mergeRequest(repoExternalId, m, text(m.path("author").path("name")), ""));
+            }
+            if (items.size() < PAGE_SIZE) break;
+            if (page == MAX_PAGES) { truncated = true; break; }
         }
-        return out;
+        return new Polled(out, truncated);
     }
 
     @Override public int check(Remote remote) throws IOException {

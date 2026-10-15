@@ -142,24 +142,36 @@ public class GitHubAdapter implements CicdAdapter {
         return out;
     }
 
-    @Override public List<CicdEvent> poll(Remote remote, String repoExternalId, OffsetDateTime since) throws IOException {
+    @Override public Polled poll(Remote remote, String repoExternalId, OffsetDateTime since) throws IOException {
         var id = enc(repoExternalId);
         var out = new ArrayList<CicdEvent>();
+        boolean truncated = false;
         var sinceQuery = since == null ? "" : "since=" + enc(since.toInstant().toString()) + "&";
-        for (var c : getJson(remote, "/repositories/" + id + "/commits?" + sinceQuery + "per_page=100")) {
-            var sha = text(c.path("sha"));
-            if (sha.isEmpty()) continue;
-            var meta = c.path("commit");
-            out.add(commit(repoExternalId, sha, text(meta.path("message")), text(meta.path("author").path("name")),
-                    text(meta.path("author").path("email")), time(text(meta.path("author").path("date"))), text(c.path("html_url"))));
+        for (int page = 1; ; page++) {
+            var items = getJson(remote, "/repositories/" + id + "/commits?" + sinceQuery + "per_page=" + PAGE_SIZE + "&page=" + page);
+            for (var c : items) {
+                var sha = text(c.path("sha"));
+                if (sha.isEmpty()) continue;
+                var meta = c.path("commit");
+                out.add(commit(repoExternalId, sha, text(meta.path("message")), text(meta.path("author").path("name")),
+                        text(meta.path("author").path("email")), time(text(meta.path("author").path("date"))), text(c.path("html_url"))));
+            }
+            if (items.size() < PAGE_SIZE) break;
+            if (page == MAX_PAGES) { truncated = true; break; }
         }
-        for (var p : getJson(remote, "/repositories/" + id + "/pulls?state=all&sort=updated&direction=desc&per_page=100")) {
-            var updated = time(text(p.path("updated_at")));
-            if (since != null && updated != null && updated.isBefore(since)) break; // newest first: the rest are older
-            if (number(p.path("number")) == 0) continue;
-            out.add(pull(repoExternalId, p));
+        pulls:
+        for (int page = 1; ; page++) {
+            var items = getJson(remote, "/repositories/" + id + "/pulls?state=all&sort=updated&direction=desc&per_page=" + PAGE_SIZE + "&page=" + page);
+            for (var p : items) {
+                var updated = time(text(p.path("updated_at")));
+                if (since != null && updated != null && updated.isBefore(since)) break pulls; // newest first: the rest are older
+                if (number(p.path("number")) == 0) continue;
+                out.add(pull(repoExternalId, p));
+            }
+            if (items.size() < PAGE_SIZE) break;
+            if (page == MAX_PAGES) { truncated = true; break; }
         }
-        return out;
+        return new Polled(out, truncated);
     }
 
     @Override public int check(Remote remote) throws IOException {

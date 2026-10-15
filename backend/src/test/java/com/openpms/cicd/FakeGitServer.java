@@ -56,6 +56,11 @@ public final class FakeGitServer implements AutoCloseable {
         answers.put(pathPrefix, new Answer(status, text));
     }
 
+    /** An answer for one page of a list: matches the prefix and a query with page=N (wins over the plain prefix). */
+    public void respondPage(String pathPrefix, int page, int status, String body) {
+        respond(pathPrefix + "?page=" + page, status, body);
+    }
+
     public List<Recorded> requests() {
         return new ArrayList<>(requests);
     }
@@ -71,11 +76,21 @@ public final class FakeGitServer implements AutoCloseable {
         requests.add(new Recorded(path, ex.getRequestURI().getRawQuery(), Collections.unmodifiableMap(headers)));
         Answer best = new Answer(404, "{}");
         int bestLength = -1;
-        for (var e : answers.entrySet())
+        var query = "&" + (ex.getRequestURI().getRawQuery() == null ? "" : ex.getRequestURI().getRawQuery()) + "&";
+        for (var e : answers.entrySet()) {
+            var key = e.getKey();
+            int q = key.indexOf("?page=");
+            if (q >= 0) {
+                if (!path.startsWith(key.substring(0, q)) || !query.contains("&page=" + key.substring(q + 6) + "&")) continue;
+                best = e.getValue();
+                bestLength = Integer.MAX_VALUE;
+                break;
+            }
             if (path.startsWith(e.getKey()) && e.getKey().length() > bestLength) {
                 best = e.getValue();
                 bestLength = e.getKey().length();
             }
+        }
         var bytes = best.body().getBytes(StandardCharsets.UTF_8);
         ex.getResponseHeaders().set("Content-Type", "application/json");
         ex.sendResponseHeaders(best.status(), bytes.length == 0 ? -1 : bytes.length);

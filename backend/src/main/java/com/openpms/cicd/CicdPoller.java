@@ -54,13 +54,18 @@ public class CicdPoller {
                 var cursor = r.get(CICD_REPOSITORIES.POLL_CURSOR);
                 var since = cursor != null ? cursor.minus(OVERLAP) : now.minus(FIRST_LOOK_BACK).atOffset(ZoneOffset.UTC);
                 var remote = new CicdAdapter.Remote(r.get(CICD_CONNECTIONS.BASE_URL), box.open(r.get(CICD_CONNECTIONS.API_TOKEN_ENC)));
-                var found = adapters.of(r.get(CICD_CONNECTIONS.KIND)).poll(remote, r.get(CICD_REPOSITORIES.EXTERNAL_ID), since);
+                var polled = adapters.of(r.get(CICD_CONNECTIONS.KIND)).poll(remote, r.get(CICD_REPOSITORIES.EXTERNAL_ID), since);
+                var found = polled.events();
+                if (polled.truncated()) log.warn("cicd-poll: poll window truncated: connection {} repository {}", connectionId, repoId);
                 stored += events.store(connectionId, found, "poll");
                 OffsetDateTime newest = cursor != null ? cursor : since;
                 for (var e : found) {
                     var t = e.commit() != null ? e.commit().committedAt() : e.mr() != null ? e.mr().updatedAt() : null;
                     if (t != null && t.toInstant().isAfter(newest.toInstant())) newest = t;
                 }
+                // a timestamp in the future (clock skew, bad data) must not push the cursor ahead of this poll
+                var ceiling = now.atOffset(ZoneOffset.UTC);
+                if (newest.toInstant().isAfter(ceiling.toInstant())) newest = ceiling;
                 db.update(CICD_REPOSITORIES).set(CICD_REPOSITORIES.POLL_CURSOR, newest)
                         .set(CICD_REPOSITORIES.LAST_POLLED_AT, now.atOffset(ZoneOffset.UTC))
                         .where(CICD_REPOSITORIES.ID.eq(repoId)).execute();

@@ -9,6 +9,8 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.jooq.DSLContext;
 import org.jooq.JSONB;
 import org.junit.jupiter.api.AfterEach;
@@ -34,6 +36,7 @@ class CicdPollerIT {
     @Autowired WebApplicationContext context;
     @Autowired DSLContext db;
     @Autowired CicdPoller poller;
+    @Autowired Adapters adapters;
     CicdFixture f;
     MockHttpSession admin;
     FakeGitServer git;
@@ -99,9 +102,10 @@ class CicdPollerIT {
         var c = connection("gitlab", "glpat-t2");
         var ext = repo(c);
         gitlabServes(ext);
-        assertThat(poller.poll(Instant.now())).isGreaterThanOrEqualTo(3);
+        poller.poll(Instant.now());
+        assertThat(eventsOf(c)).isEqualTo(3);
         var before = eventsOf(c);
-        assertThat(poller.poll(Instant.now())).isEqualTo(0);
+        poller.poll(Instant.now());
         assertThat(eventsOf(c)).isEqualTo(before);
     }
 
@@ -154,6 +158,76 @@ class CicdPollerIT {
         assertThat(db.fetchExists(CICD_EVENTS, CICD_EVENTS.ID.eq(old1))).isFalse();
         assertThat(db.fetchExists(CICD_EVENTS, CICD_EVENTS.ID.eq(old2))).isTrue();
         assertThat(db.fetchExists(CICD_EVENTS, CICD_EVENTS.ID.eq(recent))).isTrue();
+    }
+
+    /** from..to-1 as GitLab commit JSON with distinct shas. */
+    private static String commits(int from, int to, String date) {
+        return IntStream.range(from, to).mapToObj(i -> "{ \"id\": \"" + String.format("%040x", i + 0x1000000L) + "\", \"title\": \"c" + i
+                + "\", \"message\": \"c" + i + "\", \"author_name\": \"x\", \"author_email\": \"x@x.io\", \"committed_date\": \"" + date
+                + "\", \"web_url\": \"https://gitlab.example.com/c/" + i + "\" }").collect(Collectors.joining(",", "[", "]"));
+    }
+
+    @Test void paginatesPastTheFirstHundred() throws Exception {
+        var c = connection("gitlab", "glpat-t7");
+        var ext = repo(c);
+        git.respondPage("/api/v4/projects/" + ext + "/repository/commits", 1, 200, commits(0, 100, "2026-10-15T10:00:00Z"));
+        git.respondPage("/api/v4/projects/" + ext + "/repository/commits", 2, 200, commits(100, 103, "2026-10-15T10:00:00Z"));
+        git.respond("/api/v4/projects/" + ext + "/merge_requests", 200, "[]");
+        poller.poll(Instant.now());
+        assertThat(eventsOf(c)).isEqualTo(103);
+    }
+
+    @Test void tenFullPagesAreTruncatedButTheCursorStillAdvances() throws Exception {
+        var c = connection("gitlab", "glpat-t8");
+        var ext = repo(c);
+        git.respond("/api/v4/projects/" + ext + "/repository/commits", 200, commits(0, 100, "2026-10-15T10:00:00Z"));
+        git.respond("/api/v4/projects/" + ext + "/merge_requests", 200, "[]");
+        var polled = adapters.of("gitlab").poll(new CicdAdapter.Remote(git.baseUrl(), "glpat-t8"), ext, OffsetDateTime.parse("2026-10-01T00:00:00Z"));
+        assertThat(polled.truncated()).isTrue();
+        long before = git.requests().stream().filter(r -> r.path().endsWith("/repository/commits")).count();
+        poller.poll(Instant.now());
+        assertThat(git.requests().stream().filter(r -> r.path().endsWith("/repository/commits")).count() - before).isEqualTo(10);
+        assertThat(db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(c)).fetchOne().getPollCursor()).isNotNull();
+        assertThat(eventsOf(c)).isEqualTo(100);
+    }
+
+    @Test void aFutureDatedCommitDoesNotPushTheCursorAhead() throws Exception {
+        var c = connection("gitlab", "glpat-t9");
+        var ext = repo(c);
+        git.respond("/api/v4/projects/" + ext + "/repository/commits", 200, commits(0, 1, "2099-01-01T00:00:00Z"));
+        git.respond("/api/v4/projects/" + ext + "/merge_requests", 200, "[]");
+        var now = Instant.now();
+        poller.poll(now);
+        var cursor = db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(c)).fetchOne().getPollCursor();
+        assertThat(cursor.toInstant()).isBeforeOrEqualTo(now.plusMillis(1)); // the column keeps microseconds
+    }
+
+    @Test void aFailingRepositoryKeepsItsCursorAndLastPolledAt() throws Exception {
+        var c = connection("gitlab", "glpat-t10");
+        var ext = repo(c);
+        var cursor = OffsetDateTime.parse("2026-10-10T00:00:00Z");
+        var polledAt = OffsetDateTime.parse("2026-10-10T00:05:00Z");
+        db.update(CICD_REPOSITORIES).set(CICD_REPOSITORIES.POLL_CURSOR, cursor).set(CICD_REPOSITORIES.LAST_POLLED_AT, polledAt)
+                .where(CICD_REPOSITORIES.CONNECTION_ID.eq(c)).execute();
+        git.respond("/api/v4/projects/" + ext + "/", 500, "{}");
+        poller.poll(Instant.now());
+        var row = db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(c)).fetchOne();
+        assertThat(row.getPollCursor().toInstant()).isEqualTo(cursor.toInstant());
+        assertThat(row.getLastPolledAt().toInstant()).isEqualTo(polledAt.toInstant());
+    }
+
+    @Test void anUnopenableTokenSkipsThatRepositoryOnly() throws Exception {
+        var bad = connection("gitlab", "glpat-t11");
+        var good = connection("gitlab", "glpat-t12");
+        db.update(CICD_CONNECTIONS).set(CICD_CONNECTIONS.API_TOKEN_ENC, "garbage").where(CICD_CONNECTIONS.ID.eq(bad)).execute();
+        var a = repo(bad);
+        var b = repo(good);
+        gitlabServes(a);
+        gitlabServes(b);
+        poller.poll(Instant.now());
+        assertThat(eventsOf(bad)).isEqualTo(0);
+        assertThat(eventsOf(good)).isEqualTo(3);
+        assertThat(git.requests().stream().filter(r -> r.path().startsWith("/api/v4/projects/" + a + "/"))).isEmpty();
     }
 
     private UUID insertEvent(UUID connection, String status, Instant receivedAt) {
