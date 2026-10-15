@@ -6,7 +6,11 @@ import com.openpms.auth.RateLimiter;
 import com.openpms.common.ApiException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Collections;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.HashMap;
 import java.util.Map;
 import org.jooq.DSLContext;
@@ -35,6 +39,7 @@ public class CicdHookController {
     private final CicdEvents events;
     private final RateLimiter limiter;
     private final int maxBytes;
+    private final ConcurrentHashMap<UUID, Instant> warned = new ConcurrentHashMap<>();
 
     public CicdHookController(DSLContext db, SecretBox box, Adapters adapters, CicdEvents events, RateLimiter limiter,
                               @Value("${openpms.cicd.max-hook-bytes:1048576}") int maxBytes) {
@@ -58,7 +63,14 @@ public class CicdHookController {
         if (c == null) {
             adapters.of("github").verify(headers, body, DUMMY_SECRET); // result ignored: only keeps the timing alike
         } else if (c.getActive() && c.getWebhookSecretEnc() != null && box.ready()) {
-            ok = adapters.of(c.getKind()).verify(headers, body, box.open(c.getWebhookSecretEnc()));
+            String secret = null;
+            try {
+                secret = box.open(c.getWebhookSecretEnc());
+            } catch (IllegalStateException e) {
+                // rotated key or damaged value: same answer as any other refusal; the log gets the connection id only
+                warnUnopenable(c.getId());
+            }
+            if (secret != null) ok = adapters.of(c.getKind()).verify(headers, body, secret);
         }
         if (!ok) throw ApiException.notFound("찾을 수 없습니다.");
         // signed but unreadable or an event kind we do not use: nothing to store, accepted: 0
@@ -68,6 +80,20 @@ public class CicdHookController {
         log.debug("cicd hook {} delivery={} events={} new={}", c.getId(),
                 headers.getOrDefault("x-github-delivery", headers.get("x-gitlab-event-uuid")), parsed.size(), n);
         return ResponseEntity.accepted().body(Map.of("accepted", n));
+    }
+
+    /** At most one warning per connection per 10 minutes, so a flood of requests cannot flood the log. */
+    private void warnUnopenable(UUID id) {
+        var now = Instant.now();
+        boolean[] log10 = {false};
+        warned.compute(id, (k, last) -> {
+            if (last == null || last.isBefore(now.minus(Duration.ofMinutes(10)))) {
+                log10[0] = true;
+                return now;
+            }
+            return last;
+        });
+        if (log10[0]) log.warn("cicd connection {}: the stored webhook secret cannot be opened (encryption key changed?)", id);
     }
 
     private static Map<String, String> lowerCaseHeaders(HttpServletRequest req) {

@@ -3,6 +3,7 @@ package com.openpms.cicd;
 import static com.openpms.db.Tables.CICD_EVENTS;
 import static com.openpms.db.Tables.CICD_REPOSITORIES;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -33,6 +34,7 @@ import org.springframework.web.context.WebApplicationContext;
 class CicdHookIT {
     @Autowired WebApplicationContext context;
     @Autowired DSLContext db;
+    @Autowired CicdHookController hook;
     MockMvc mvc;
     CicdFixture f;
     MockHttpSession admin;
@@ -111,7 +113,48 @@ class CicdHookIT {
         var c = f.newConnection(admin, "github", "https://api.github.com", null);
         var body = resource("github-push.json");
         f.send(admin, patch("/api/v1/admin/cicd/connections/" + c[0]), "{\"active\":false}").andExpect(status().isOk());
-        mvc.perform(github(c[2], body, sign(body, c[1]))).andExpect(status().isNotFound());
+        var r = mvc.perform(github(c[2], body, sign(body, c[1]))).andExpect(status().isNotFound()).andReturn();
+        assertThat(r.getResponse().getContentAsString()).isNotEmpty().isEqualTo(unknownBody(body));
+    }
+
+    private String unknownBody(byte[] body) throws Exception {
+        return mvc.perform(github("nosuchkey", body, sign(body, "x"))).andExpect(status().isNotFound()).andReturn().getResponse().getContentAsString();
+    }
+
+    private void setSecret(String connectionId, String sealed) {
+        db.update(com.openpms.db.Tables.CICD_CONNECTIONS).set(com.openpms.db.Tables.CICD_CONNECTIONS.WEBHOOK_SECRET_ENC, sealed)
+                .where(com.openpms.db.Tables.CICD_CONNECTIONS.ID.eq(UUID.fromString(connectionId))).execute();
+    }
+
+    @Test void noSecretStoredIsNotFound() throws Exception {
+        var c = f.newConnection(admin, "github", "https://api.github.com", null);
+        var body = resource("github-push.json");
+        setSecret(c[0], null);
+        var r = mvc.perform(github(c[2], body, sign(body, c[1]))).andExpect(status().isNotFound()).andReturn();
+        assertThat(r.getResponse().getContentAsString()).isNotEmpty().isEqualTo(unknownBody(body));
+    }
+
+    @Test void unopenableSecretIsNotFoundNot500() throws Exception {
+        var c = f.newConnection(admin, "github", "https://api.github.com", null);
+        var body = resource("github-push.json");
+        setSecret(c[0], "v1:AAAA:AAAA");
+        for (int i = 0; i < 2; i++) {
+            var r = mvc.perform(github(c[2], body, sign(body, c[1]))).andExpect(status().isNotFound()).andReturn();
+            assertThat(r.getResponse().getContentAsString()).isNotEmpty().isEqualTo(unknownBody(body));
+        }
+    }
+
+    @Test void chunkedTooLargeIs413() throws Exception {
+        var c = f.newConnection(admin, "github", "https://api.github.com", null);
+        var body = new byte[1_048_576 + 1];
+        java.util.Arrays.fill(body, (byte) ' ');
+        // MockMvc cannot drop the length, so call the controller with a request that does not know its length (chunked)
+        var req = new org.springframework.mock.web.MockHttpServletRequest("POST", "/api/v1/hooks/cicd/" + c[2]) {
+            @Override public long getContentLengthLong() { return -1; }
+        };
+        req.setContent(body);
+        assertThatThrownBy(() -> hook.receive(c[2], req)).isInstanceOfSatisfying(com.openpms.common.ApiException.class,
+                e -> assertThat(e.status()).isEqualTo(413));
     }
 
     @Test void tooLargeIs413() throws Exception {
@@ -125,7 +168,12 @@ class CicdHookIT {
         var c = f.newConnection(admin, "github", "https://api.github.com", null);
         var body = resource("github-push.json");
         // no .with(csrf()) and no session
-        mvc.perform(github(c[2], body, sign(body, c[1]))).andExpect(status().isAccepted());
+        var ok = mvc.perform(github(c[2], body, sign(body, c[1]))).andExpect(status().isAccepted()).andReturn();
+        assertThat(ok.getResponse().getHeader("Set-Cookie")).isNull();
+        // MockMvc's test CSRF repository keeps its token in a session (the real one is a cookie), so a session may exist;
+        // what matters is that nothing signed anyone in
+        var session = ok.getRequest().getSession(false);
+        assertThat(session == null || session.getAttribute("SPRING_SECURITY_CONTEXT") == null).isTrue();
         // every other /api POST without a session or CSRF token is refused
         mvc.perform(post("/api/v1/projects").contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());
         // only POST on exactly one segment is open: GET and deeper paths are not
