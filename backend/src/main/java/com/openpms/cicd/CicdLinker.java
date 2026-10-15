@@ -27,6 +27,12 @@ public class CicdLinker {
                 + "select p.id from projects p join t on p.parent_id = t.id) select id from t", projectId).getValues(0, UUID.class);
     }
 
+    /** The project and all of its ancestors: the projects whose repositories cover a work package of this project. */
+    public List<UUID> projectAncestors(UUID projectId) {
+        return db.fetch("with recursive t as (select id, parent_id from projects where id = ? union "
+                + "select p.id, p.parent_id from projects p join t on p.id = t.parent_id) select id from t", projectId).getValues(0, UUID.class);
+    }
+
     /** Exactly one of commitId / mrId is set. Returns how many links are new. */
     public int link(UUID repositoryId, UUID projectId, List<RefParser.Ref> refs, UUID commitId, UUID mrId) {
         if (refs.isEmpty()) return 0;

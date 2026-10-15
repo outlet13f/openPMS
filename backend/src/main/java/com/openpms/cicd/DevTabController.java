@@ -34,7 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
  * The work package's "개발" tab: linked merge requests and commits, a manual link by MR/PR address, and dismissing a link.
  * The work package must be visible and the person needs cicd.view (module on), otherwise the answer is the same 404 as for
  * an invisible work package; changing needs cicd.link. A manual link only accepts merge requests that were already received
- * for a repository attached to the work package's project (or a sub-project); nothing is fetched remotely and the answer
+ * for a repository attached to the work package's project or one of its ancestors (a repository covers its project and the sub-projects); nothing is fetched remotely and the answer
  * for anything else is one message that tells nothing about other projects.
  */
 @RestController
@@ -107,7 +107,7 @@ public class DevTabController {
         var found = linkable(number);
         var wpId = found.wp().getId();
         var url = normalize(in == null ? null : in.url());
-        var mrId = url.isEmpty() ? null : findMergeRequest(linker.projectTree(found.project().id()), url);
+        var mrId = url.isEmpty() ? null : findMergeRequest(linker.projectAncestors(found.project().id()), url);
         if (mrId == null) throw ApiException.unprocessable("이 프로젝트에 붙은 저장소의 MR/PR 주소가 아니거나 아직 받지 않은 MR/PR입니다.", null);
         var me = current.ctx().userId();
         // a dismissed link is revived (source becomes 'manual': the person chose it); an active one stays as it is

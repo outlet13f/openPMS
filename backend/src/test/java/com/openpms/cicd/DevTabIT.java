@@ -235,4 +235,42 @@ class DevTabIT {
         f.send(junho, delete("/api/v1/work-packages/" + s.number + "/cicd/links/" + UUID.randomUUID()), "").andExpect(status().isNotFound());
         assertThat(f.body(f.send(junho, get("/api/v1/work-packages/" + s.number + "/cicd"), "").andReturn()).get("mergeRequests")).hasSize(1);
     }
+
+    private String subProject(String parent) throws Exception {
+        var identifier = "cd-" + UUID.randomUUID().toString().substring(0, 8);
+        f.send(admin, post("/api/v1/projects"), "{\"name\":\"하위 " + identifier + "\",\"identifier\":\"" + identifier + "\",\"parentId\":\""
+                + projectId(parent) + "\"}").andExpect(status().isCreated());
+        f.send(admin, patch("/api/v1/projects/" + identifier), "{\"enabledModules\":[\"work_packages\",\"cicd\"]}").andExpect(status().isOk());
+        f.addMember(admin, identifier, CicdFixture.JUNHO, CicdFixture.ROLE_MEMBER);
+        return identifier;
+    }
+
+    @Test void repositoryScopeRunsFromAncestorsDown() throws Exception {
+        var parent = f.newProject(admin, "work_packages", "cicd");
+        var child = subProject(parent);
+        long inParent = wp(parent), inChild = wp(child);
+        var childRepo = attach(child);
+        var parentRepo = attach(parent);
+        events.store(connection, List.of(mr(childRepo, 1, "자식 저장소의 비밀 MR"), mr(parentRepo, 2, "부모 저장소의 MR")), "webhook");
+        processor.run(Instant.now());
+        var junho = f.login(CicdFixture.JUNHO_EMAIL);
+        // a work package of the parent cannot take an MR of the child's repository
+        var denied = f.send(junho, post("/api/v1/work-packages/" + inParent + "/cicd/links"), "{\"url\":\"" + mrUrl(childRepo, 1) + "\"}")
+                .andExpect(status().isUnprocessableEntity()).andReturn().getResponse().getContentAsString();
+        assertThat(denied).contains(NO_MR).doesNotContain("비밀 MR");
+        assertThat(db.fetchCount(WORK_PACKAGE_CICD_LINKS, WORK_PACKAGE_CICD_LINKS.MERGE_REQUEST_ID.in(
+                db.select(CICD_MERGE_REQUESTS.ID).from(CICD_MERGE_REQUESTS).where(CICD_MERGE_REQUESTS.REPOSITORY_ID.eq(childRepo))))).isZero();
+        // a work package of the child can take an MR of the parent's repository
+        f.send(junho, post("/api/v1/work-packages/" + inChild + "/cicd/links"), "{\"url\":\"" + mrUrl(parentRepo, 2) + "\"}")
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.source").value("manual"));
+    }
+
+    @Test void nonMemberDeleteIsNotFound() throws Exception {
+        var s = setup();
+        var junho = f.login(CicdFixture.JUNHO_EMAIL);
+        var link = f.body(f.send(junho, get("/api/v1/work-packages/" + s.number + "/cicd"), "").andReturn()).get("mergeRequests").get(0).get("linkId").asString();
+        f.send(f.login("doyoon.han@openpms.local"), delete("/api/v1/work-packages/" + s.number + "/cicd/links/" + link), "")
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.title").value(NOT_FOUND));
+        assertThat(f.body(f.send(junho, get("/api/v1/work-packages/" + s.number + "/cicd"), "").andReturn()).get("mergeRequests")).hasSize(1);
+    }
 }
