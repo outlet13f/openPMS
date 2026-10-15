@@ -47,7 +47,9 @@ public class Jobs implements SmartLifecycle {
                 // webhooks: what is due, every 15 seconds
                 "webhook-delivery", Schedules.fixedDelay(Duration.ofSeconds(15)),
                 "sla-check", Schedules.fixedDelay(Duration.ofMinutes(1)),
-                "portal-mail", Schedules.fixedDelay(Duration.ofMinutes(1)));
+                "portal-mail", Schedules.fixedDelay(Duration.ofMinutes(1)),
+                // CI/CD events from the code hosts: what is pending, every 15 seconds
+                "cicd-process", Schedules.fixedDelay(Duration.ofSeconds(15)));
     }
 
     @Override
