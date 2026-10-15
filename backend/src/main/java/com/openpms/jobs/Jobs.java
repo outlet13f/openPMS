@@ -38,18 +38,21 @@ public class Jobs implements SmartLifecycle {
         this.dataSource = dataSource;
         this.jobs = catalog.all();
         // every hour (a person's "today" turns at their midnight), mentions every minute, digests every quarter hour
-        this.schedules = Map.of(
-                "date-alerts", Schedules.cron("0 5 * * * *", KST),
-                "mail-mention", Schedules.fixedDelay(Duration.ofMinutes(1)),
-                "mail-digest", Schedules.cron("0 */15 * * * *", KST),
-                "token-cleanup", Schedules.cron("0 30 3 * * *", KST),
-                "file-sweep", Schedules.cron("0 0 4 * * SUN", KST),
+        this.schedules = Map.ofEntries(
+                Map.entry("date-alerts", Schedules.cron("0 5 * * * *", KST)),
+                Map.entry("mail-mention", Schedules.fixedDelay(Duration.ofMinutes(1))),
+                Map.entry("mail-digest", Schedules.cron("0 */15 * * * *", KST)),
+                Map.entry("token-cleanup", Schedules.cron("0 30 3 * * *", KST)),
+                Map.entry("file-sweep", Schedules.cron("0 0 4 * * SUN", KST)),
                 // webhooks: what is due, every 15 seconds
-                "webhook-delivery", Schedules.fixedDelay(Duration.ofSeconds(15)),
-                "sla-check", Schedules.fixedDelay(Duration.ofMinutes(1)),
-                "portal-mail", Schedules.fixedDelay(Duration.ofMinutes(1)),
+                Map.entry("webhook-delivery", Schedules.fixedDelay(Duration.ofSeconds(15))),
+                Map.entry("sla-check", Schedules.fixedDelay(Duration.ofMinutes(1))),
+                Map.entry("portal-mail", Schedules.fixedDelay(Duration.ofMinutes(1))),
                 // CI/CD events from the code hosts: what is pending, every 15 seconds
-                "cicd-process", Schedules.fixedDelay(Duration.ofSeconds(15)));
+                Map.entry("cicd-process", Schedules.fixedDelay(Duration.ofSeconds(15))),
+                // CI/CD: fill what webhooks missed every 5 minutes, drop old events at night
+                Map.entry("cicd-poll", Schedules.fixedDelay(Duration.ofMinutes(5))),
+                Map.entry("cicd-cleanup", Schedules.cron("0 40 3 * * *", KST)));
     }
 
     @Override

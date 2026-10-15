@@ -17,7 +17,7 @@ public class JobCatalog {
 
     public JobCatalog(DateAlerts alerts, MailJobs mail, Housekeeping housekeeping, com.openpms.webhook.Webhooks webhooks,
                       com.openpms.itsm.SlaJobs slaJobs, com.openpms.itsm.PortalMail portalMail,
-                      com.openpms.cicd.CicdProcessor cicdProcessor) {
+                      com.openpms.cicd.CicdProcessor cicdProcessor, com.openpms.cicd.CicdPoller cicdPoller) {
         jobs.put("webhook-delivery", webhooks::deliver);
         jobs.put("date-alerts", alerts::run);
         jobs.put("mail-mention", mail::mentions);
@@ -27,6 +27,8 @@ public class JobCatalog {
         jobs.put("sla-check", slaJobs::run);
         jobs.put("portal-mail", portalMail::run);
         jobs.put("cicd-process", cicdProcessor::run);
+        jobs.put("cicd-poll", cicdPoller::poll);
+        jobs.put("cicd-cleanup", cicdPoller::cleanup);
     }
 
     public Map<String, Job> all() {

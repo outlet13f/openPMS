@@ -1,0 +1,166 @@
+package com.openpms.cicd;
+
+import static com.openpms.db.Tables.CICD_CONNECTIONS;
+import static com.openpms.db.Tables.CICD_EVENTS;
+import static com.openpms.db.Tables.CICD_REPOSITORIES;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.util.UUID;
+import org.jooq.DSLContext;
+import org.jooq.JSONB;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.mock.web.MockHttpSession;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
+
+@SpringBootTest(properties = "openpms.jobs.enabled=false")
+@ActiveProfiles("dev")
+class CicdPollerIT {
+    static final String COMMITS = "[ { \"id\": \"aaaaaaa1111111111111111111111111111111aa\", \"title\": \"하나\", \"message\": \"하나\","
+            + " \"author_name\": \"박준호\", \"author_email\": \"junho.park@openpms.local\", \"committed_date\": \"2026-10-15T10:00:00.000+09:00\","
+            + " \"web_url\": \"https://gitlab.example.com/g/p/-/commit/aaaaaaa\" },"
+            + " { \"id\": \"bbbbbbb2222222222222222222222222222222bb\", \"title\": \"둘\", \"message\": \"둘\","
+            + " \"author_name\": \"박준호\", \"author_email\": \"junho.park@openpms.local\", \"committed_date\": \"2026-10-15T10:30:00.000+09:00\","
+            + " \"web_url\": \"https://gitlab.example.com/g/p/-/commit/bbbbbbb\" } ]";
+
+    @Autowired WebApplicationContext context;
+    @Autowired DSLContext db;
+    @Autowired CicdPoller poller;
+    CicdFixture f;
+    MockHttpSession admin;
+    FakeGitServer git;
+    String project;
+    int seq = 7100 + Math.floorMod(System.nanoTime(), 800) * 10;
+
+    @BeforeEach void setUp() throws Exception {
+        f = new CicdFixture(MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build());
+        admin = f.login(CicdFixture.ADMIN);
+        git = new FakeGitServer();
+        project = f.newProject(admin, "work_packages", "cicd");
+    }
+
+    @AfterEach void tearDown() {
+        git.close();
+    }
+
+    private UUID connection(String kind, String token) throws Exception {
+        return UUID.fromString(f.newConnection(admin, kind, git.baseUrl(), token)[0]);
+    }
+
+    private String repo(UUID connection) {
+        var external = String.valueOf(seq++);
+        db.insertInto(CICD_REPOSITORIES).set(CICD_REPOSITORIES.CONNECTION_ID, connection).set(CICD_REPOSITORIES.EXTERNAL_ID, external)
+                .set(CICD_REPOSITORIES.FULL_PATH, "g/" + external).set(CICD_REPOSITORIES.WEB_URL, "https://gitlab.example.com/g/" + external)
+                .set(CICD_REPOSITORIES.PROJECT_ID, db.select(com.openpms.db.Tables.PROJECTS.ID).from(com.openpms.db.Tables.PROJECTS)
+                        .where(com.openpms.db.Tables.PROJECTS.IDENTIFIER.eq(project)).fetchOne().value1())
+                .execute();
+        return external;
+    }
+
+    private void gitlabServes(String external) {
+        git.respond("/api/v4/projects/" + external + "/repository/commits", 200, COMMITS);
+        git.respond("/api/v4/projects/" + external + "/merge_requests", 200, "cicd/gitlab-mrs.json");
+    }
+
+    private int eventsOf(UUID connection) {
+        return db.fetchCount(CICD_EVENTS, CICD_EVENTS.CONNECTION_ID.eq(connection));
+    }
+
+    @Test void pollsCommitsAndMergeRequestsSinceTheCursor() throws Exception {
+        var c = connection("gitlab", "glpat-secret-token-1");
+        var ext = repo(c);
+        gitlabServes(ext);
+        poller.poll(Instant.now());
+        assertThat(eventsOf(c)).isEqualTo(3);
+        var reqs = git.requests().stream().filter(r -> r.path().startsWith("/api/v4/projects/" + ext + "/")).toList();
+        assertThat(reqs).hasSize(2);
+        assertThat(reqs.get(0).query()).contains("since=");
+        assertThat(reqs.get(1).query()).contains("updated_after=");
+        assertThat(reqs.get(0).headers()).containsEntry("private-token", "glpat-secret-token-1");
+        var row = db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(c)).fetchOne();
+        assertThat(row.getLastPolledAt()).isNotNull();
+        // the cursor is the newest event time (the merge request, updated at 2026-10-15T01:30:00.123Z)
+        assertThat(row.getPollCursor().toInstant()).isEqualTo(OffsetDateTime.parse("2026-10-15T01:30:00.123Z").toInstant());
+        // the next request asks from ten minutes before the cursor
+        poller.poll(Instant.now());
+        var second = git.requests().stream().filter(r -> r.path().endsWith("/repository/commits")).toList().get(1);
+        assertThat(second.query()).contains("since=2026-10-15T01%3A20%3A00.123Z");
+    }
+
+    @Test void secondPollStoresNothingNew() throws Exception {
+        var c = connection("gitlab", "glpat-t2");
+        var ext = repo(c);
+        gitlabServes(ext);
+        assertThat(poller.poll(Instant.now())).isGreaterThanOrEqualTo(3);
+        var before = eventsOf(c);
+        assertThat(poller.poll(Instant.now())).isEqualTo(0);
+        assertThat(eventsOf(c)).isEqualTo(before);
+    }
+
+    @Test void githubEnterpriseUsesApiV3() throws Exception {
+        var c = connection("github", "ghp-t3");
+        db.insertInto(CICD_REPOSITORIES).set(CICD_REPOSITORIES.CONNECTION_ID, c).set(CICD_REPOSITORIES.EXTERNAL_ID, "9001")
+                .set(CICD_REPOSITORIES.FULL_PATH, "o/r").set(CICD_REPOSITORIES.WEB_URL, "https://ghe.example.com/o/r")
+                .set(CICD_REPOSITORIES.PROJECT_ID, db.select(com.openpms.db.Tables.PROJECTS.ID).from(com.openpms.db.Tables.PROJECTS)
+                        .where(com.openpms.db.Tables.PROJECTS.IDENTIFIER.eq(project)).fetchOne().value1())
+                .execute();
+        git.respond("/api/v3/repositories/9001/commits", 200, "cicd/github-commits.json");
+        git.respond("/api/v3/repositories/9001/pulls", 200, "cicd/github-pulls.json");
+        poller.poll(Instant.now());
+        assertThat(git.requests()).extracting(FakeGitServer.Recorded::path).contains("/api/v3/repositories/9001/commits");
+        assertThat(eventsOf(c)).isGreaterThanOrEqualTo(1);
+    }
+
+    @Test void oneFailingRepositoryDoesNotStopOthers() throws Exception {
+        var c = connection("gitlab", "glpat-t4");
+        var a = repo(c);
+        var b = repo(c);
+        git.respond("/api/v4/projects/" + a + "/", 500, "{}");
+        gitlabServes(b);
+        poller.poll(Instant.now());
+        assertThat(eventsOf(c)).isEqualTo(3);
+        var rowA = db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(c).and(CICD_REPOSITORIES.EXTERNAL_ID.eq(a))).fetchOne();
+        assertThat(rowA.getLastPolledAt()).isNull();
+        assertThat(rowA.getPollCursor()).isNull();
+    }
+
+    @Test void connectionsWithoutTokenOrInactiveAreSkipped() throws Exception {
+        var none = connection("gitlab", null);
+        var off = connection("gitlab", "glpat-t5");
+        db.update(CICD_CONNECTIONS).set(CICD_CONNECTIONS.ACTIVE, false).where(CICD_CONNECTIONS.ID.eq(off)).execute();
+        var a = repo(none);
+        var b = repo(off);
+        gitlabServes(a);
+        gitlabServes(b);
+        poller.poll(Instant.now());
+        assertThat(git.requests()).isEmpty();
+    }
+
+    @Test void cleanupKeepsPendingAndRecent() throws Exception {
+        var c = connection("gitlab", null);
+        var now = Instant.now();
+        var old1 = insertEvent(c, "done", now.minusSeconds(91L * 86400));
+        var old2 = insertEvent(c, "pending", now.minusSeconds(91L * 86400));
+        var recent = insertEvent(c, "done", now.minusSeconds(86400));
+        assertThat(poller.cleanup(now)).isGreaterThanOrEqualTo(1);
+        assertThat(db.fetchExists(CICD_EVENTS, CICD_EVENTS.ID.eq(old1))).isFalse();
+        assertThat(db.fetchExists(CICD_EVENTS, CICD_EVENTS.ID.eq(old2))).isTrue();
+        assertThat(db.fetchExists(CICD_EVENTS, CICD_EVENTS.ID.eq(recent))).isTrue();
+    }
+
+    private UUID insertEvent(UUID connection, String status, Instant receivedAt) {
+        var id = UUID.randomUUID();
+        db.insertInto(CICD_EVENTS).set(CICD_EVENTS.ID, id).set(CICD_EVENTS.CONNECTION_ID, connection).set(CICD_EVENTS.KIND, "commit")
+                .set(CICD_EVENTS.DELIVERY_KEY, "k-" + id).set(CICD_EVENTS.PAYLOAD, JSONB.valueOf("{}")).set(CICD_EVENTS.VIA, "poll")
+                .set(CICD_EVENTS.STATUS, status).set(CICD_EVENTS.RECEIVED_AT, receivedAt.atOffset(java.time.ZoneOffset.UTC)).execute();
+        return id;
+    }
+}
