@@ -95,6 +95,11 @@ openpms:
     dir: ${OPENPMS_BACKUP_DIR:/data/backups}
     # dumps of each kind (before-upgrade, manual) kept; older ones are removed
     keep: ${OPENPMS_BACKUP_KEEP:5}
+  # CI/CD 연동의 토큰·웹훅 비밀 암호화 키: 32바이트 Base64 (openssl rand -base64 32). 비우면 연동을 저장할 수 없다.
+  secret-key: ${OPENPMS_SECRET_KEY:}
+  cicd:
+    # 웹훅 본문 상한(바이트)
+    max-hook-bytes: 1048576
 
 ---
 # Development: dev data set (scripts/gen_dev_data.py), plain-http cookies.
@@ -109,6 +114,8 @@ spring:
 openpms:
   # the browser checks sign in many times a minute
   logins-per-minute: 500
+  # 개발 전용 키. 운영은 OPENPMS_SECRET_KEY를 반드시 따로 정한다.
+  secret-key: ${OPENPMS_SECRET_KEY:ZGV2LW9ubHktb3BlbnBtcy1zZWNyZXQta2V5LTMyYiE=}
   # development: no pg_dump in the build container, and the restore point is the backup (scripts/dev.sh snapshot-db)
   backup:
     before-upgrade: ${OPENPMS_BACKUP_BEFORE_UPGRADE:false}
