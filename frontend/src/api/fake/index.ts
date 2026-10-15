@@ -57,6 +57,7 @@ import {
   ticketDraft, ticketUpdated, type Acting,
 } from "./service-desk";
 import { ITSM } from "./service-desk-seed";
+import { cicdApi } from "./cicd";
 
 /* ---------- plumbing ---------- */
 
@@ -1852,6 +1853,7 @@ export const fakeApi: Api = {
   time: timeApi,
   serviceDesk: serviceDeskApi,
   portal: portalApi,
+  cicd: cicdApi,
   search: {
     suggest: (q) =>
       run(() => {

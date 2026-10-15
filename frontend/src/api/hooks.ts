@@ -374,6 +374,21 @@ export function useServiceTicketUpdate() {
   });
 }
 
+/* ---------- 개발 탭 (CI/CD) ---------- */
+
+/** Linked merge requests and commits of a work package; the caller shows the tab only with the module on and cicd.view. */
+export const useDevInfo = (number: number, enabled = true) =>
+  useQuery({ queryKey: ["cicd", "dev", number], queryFn: () => api.cicd.devInfo(number), enabled: enabled && Number.isInteger(number) && number > 0 });
+
+export function useDevLinkMutations(number: number) {
+  const qc = useQueryClient();
+  const done = () => qc.invalidateQueries({ queryKey: ["cicd", "dev", number] });
+  return {
+    link: useMutation({ mutationFn: (url: string) => api.cicd.linkByUrl(number, url), onSuccess: done }),
+    unlink: useMutation({ mutationFn: (linkId: Id) => api.cicd.unlink(number, linkId), onSuccess: done }),
+  };
+}
+
 /* the requester's portal */
 
 export const usePortalDesks = () => useQuery({ queryKey: ["portal", "desks"], queryFn: () => api.portal.desks() });

@@ -92,6 +92,14 @@ import type {
   ServiceDeskSettings,
   ServiceDeskSummary,
   ServiceTicketPatch,
+  CicdConnection,
+  CicdConnectionChoice,
+  CicdConnectionInput,
+  CicdConnectionPatch,
+  CicdRemoteRepo,
+  CicdRepository,
+  CicdMergeRequest,
+  DevInfo,
 } from "./types";
 
 /**
@@ -410,6 +418,53 @@ export interface Api {
     attach(number: number, file: File): Promise<PortalFile>;
     /** GET /portal/tickets/{n}/attachments/{id}/content */
     fileUrl(number: number, id: Id): string;
+  };
+
+  /**
+   * CI/CD 연동 (GitLab·GitHub). Connections: administrators or global.manage_cicd (else 403 "CI/CD 연동을 관리할 권한이 없습니다.").
+   * Repositories per project: cicd.view to list, cicd.manage to search, attach and detach (a project without the module or
+   * without cicd.view is a 404 "프로젝트를 찾을 수 없습니다."; no cicd.manage is 403 "저장소를 관리할 권한이 없습니다.").
+   * The development tab per work package (404 "작업을 찾을 수 없습니다." without the module or cicd.view).
+   * Secrets and tokens never come back: only the last four characters; the webhook secret only when made or rotated.
+   */
+  cicd: {
+    /** GET /admin/cicd/connections */
+    connections(): Promise<CicdConnection[]>;
+    /**
+     * POST /admin/cicd/connections — 201; the webhook secret is shown only here. 422 kind "지원하지 않는 도구입니다.",
+     * name "이름은 1자에서 100자 사이여야 합니다.", baseUrl "주소 형식이 올바르지 않습니다."; 409 "같은 이름의 연동이 있습니다."
+     */
+    createConnection(input: CicdConnectionInput): Promise<{ connection: CicdConnection; webhookSecret: string }>;
+    /** PATCH /admin/cicd/connections/{id} — a changed baseUrl clears the stored token unless apiToken comes along; apiToken "" clears it */
+    updateConnection(id: Id, patch: CicdConnectionPatch): Promise<CicdConnection>;
+    /** POST /admin/cicd/connections/{id}/secret — a new webhook secret, shown once */
+    rotateSecret(id: Id): Promise<{ webhookSecret: string }>;
+    /** POST /admin/cicd/connections/{id}/check — only ok and the HTTP status (0 = no token or no answer) */
+    checkConnection(id: Id): Promise<{ ok: boolean; status: number }>;
+    /** DELETE /admin/cicd/connections/{id} — 409 "저장소가 붙어 있는 연동은 지울 수 없습니다. 먼저 저장소를 떼세요." */
+    deleteConnection(id: Id): Promise<void>;
+    /** GET /projects/{p}/cicd/connections (cicd.manage) — the active connections to choose from */
+    projectConnections(project: string): Promise<CicdConnectionChoice[]>;
+    /**
+     * GET /projects/{p}/cicd/connections/{c}/search?q= (cicd.manage) — q at most 100 characters (422 "검색어가 너무 깁니다.");
+     * 422 without a token "이 연동에는 API 토큰이 없어 저장소를 찾을 수 없습니다."
+     */
+    searchRepositories(project: string, connectionId: Id, q: string): Promise<CicdRemoteRepo[]>;
+    /** GET /projects/{p}/cicd/repositories (cicd.view) */
+    repositories(project: string): Promise<CicdRepository[]>;
+    /** POST /projects/{p}/cicd/repositories (cicd.manage) — 201; 409 "이미 이 프로젝트에 붙은 저장소입니다." / "이미 다른 프로젝트에 붙은 저장소입니다." */
+    attachRepository(project: string, input: { connectionId: Id; externalId: string }): Promise<CicdRepository>;
+    /** DELETE /projects/{p}/cicd/repositories/{repoId} (cicd.manage) */
+    detachRepository(project: string, repoId: Id): Promise<void>;
+    /** GET /work-packages/{n}/cicd — linked merge requests and commits (at most 50 commits) */
+    devInfo(number: number): Promise<DevInfo>;
+    /**
+     * POST /work-packages/{n}/cicd/links (cicd.link) — 201; only a merge request already received for a repository of this project
+     * or an ancestor; else 422 "이 프로젝트에 붙은 저장소의 MR/PR 주소가 아니거나 아직 받지 않은 MR/PR입니다."
+     */
+    linkByUrl(number: number, url: string): Promise<CicdMergeRequest>;
+    /** DELETE /work-packages/{n}/cicd/links/{linkId} (cicd.link) — 403 "개발 연결을 고칠 권한이 없습니다.", 404 "연결을 찾을 수 없습니다." */
+    unlink(number: number, linkId: Id): Promise<void>;
   };
 
   search: {

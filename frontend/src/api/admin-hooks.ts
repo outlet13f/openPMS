@@ -1,7 +1,7 @@
 // Query hooks for administration (S27–S36) and project settings (S24–S26).
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { DisplaySettings, OidcProviderInput, AuthSettings, CalendarSettings, CustomFieldInput, Id, ProgressSettings, PriorityInput, RoleInput, StatusInput, Transition, TypeInput, UserInput, VersionInput, ServiceCalendar } from "./types";
+import type { DisplaySettings, OidcProviderInput, AuthSettings, CalendarSettings, CustomFieldInput, Id, ProgressSettings, PriorityInput, RoleInput, StatusInput, Transition, TypeInput, UserInput, VersionInput, ServiceCalendar, CicdConnectionInput, CicdConnectionPatch } from "./types";
 
 export const ak = {
   customFields: ["admin", "custom-fields"] as const,
@@ -248,3 +248,49 @@ export function useServiceCalendarMutations() {
     remove: useMutation({ mutationFn: (id: Id) => api.serviceDesk.deleteCalendar(id), onSuccess: done }),
   };
 }
+
+/* ---------- CI/CD 연동 ---------- */
+
+export const useCicdConnections = () => useQuery({ queryKey: ["cicd", "connections"], queryFn: () => api.cicd.connections() });
+
+/** create and rotateSecret answer with the webhook secret (shown once): the caller keeps it from the mutation result. */
+export function useCicdConnectionMutations() {
+  const qc = useQueryClient();
+  const done = () => qc.invalidateQueries({ queryKey: ["cicd", "connections"] });
+  return {
+    create: useMutation({ mutationFn: (input: CicdConnectionInput) => api.cicd.createConnection(input), onSuccess: done }),
+    update: useMutation({ mutationFn: (v: { id: Id; patch: CicdConnectionPatch }) => api.cicd.updateConnection(v.id, v.patch), onSuccess: done }),
+    rotateSecret: useMutation({ mutationFn: (id: Id) => api.cicd.rotateSecret(id), onSuccess: done }),
+    check: useMutation({ mutationFn: (id: Id) => api.cicd.checkConnection(id) }),
+    remove: useMutation({ mutationFn: (id: Id) => api.cicd.deleteConnection(id), onSuccess: done }),
+  };
+}
+
+/** The repositories attached to a project (cicd.view). */
+export const useProjectRepositories = (project: string, enabled = true) =>
+  useQuery({ queryKey: ["cicd", "project", project, "repositories"], queryFn: () => api.cicd.repositories(project), enabled });
+
+/** The active connections of the attach dialog (cicd.manage). */
+export const useProjectCicdConnections = (project: string, enabled = true) =>
+  useQuery({ queryKey: ["cicd", "project", project, "connections"], queryFn: () => api.cicd.projectConnections(project), enabled });
+
+export function useRepositoryMutations(project: string) {
+  const qc = useQueryClient();
+  // the connections list shows how many repositories each one has
+  const done = () => (qc.invalidateQueries({ queryKey: ["cicd", "project", project] }), qc.invalidateQueries({ queryKey: ["cicd", "connections"] }));
+  return {
+    attach: useMutation({ mutationFn: (input: { connectionId: Id; externalId: string }) => api.cicd.attachRepository(project, input), onSuccess: done }),
+    detach: useMutation({ mutationFn: (repoId: Id) => api.cicd.detachRepository(project, repoId), onSuccess: done }),
+  };
+}
+
+/** Search on the code host (a remote call: no refetch on focus, a short cache). */
+export const useRepositorySearch = (project: string, connectionId: Id | null, q: string) =>
+  useQuery({
+    queryKey: ["cicd", "search", project, connectionId, q],
+    queryFn: () => api.cicd.searchRepositories(project, connectionId!, q),
+    enabled: !!connectionId && q.length <= 100,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });

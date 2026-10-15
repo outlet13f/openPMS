@@ -246,7 +246,7 @@ function GeneralSection() {
 
 /* ---------- 모듈 ---------- */
 
-const MODULES: ModuleKey[] = ["work_packages", "gantt", "boards", "calendar", "team_planner", "time_tracking", "service_desk"];
+const MODULES: ModuleKey[] = ["work_packages", "gantt", "boards", "calendar", "team_planner", "time_tracking", "service_desk", "cicd"];
 
 function ModulesSection() {
   const { t } = useTranslation();

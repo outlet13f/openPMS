@@ -13,6 +13,9 @@ const MODULE_OF: Record<string, DbProject["enabledModules"][number]> = {
   "service.view": "service_desk",
   "service.handle": "service_desk",
   "service.manage": "service_desk",
+  "cicd.view": "cicd",
+  "cicd.link": "cicd",
+  "cicd.manage": "cicd",
 };
 
 const ALL_PROJECT_PERMS = Array.from(new Set(db.roles.filter((r) => r.scope === "project").flatMap((r) => r.permissions)));
@@ -76,7 +79,7 @@ export function can(user: DbUser, project: DbProject, perm: string, wp?: DbWp) {
 }
 
 export function globalPermissions(user: DbUser): string[] {
-  if (user.isAdmin) return ["global.create_projects", "global.manage_users"];
+  if (user.isAdmin) return ["global.create_projects", "global.manage_users", "global.manage_cicd"];
   return [...new Set(db.roles.filter((r) => r.scope === "global" && user.globalRoleIds?.includes(r.id)).flatMap((r) => r.permissions))];
 }
 

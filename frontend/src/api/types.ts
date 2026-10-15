@@ -111,7 +111,7 @@ export interface Role {
 /* ---------- projects ---------- */
 
 export type ProjectStatus = "on_track" | "at_risk" | "off_track";
-export type ModuleKey = "work_packages" | "gantt" | "boards" | "calendar" | "team_planner" | "time_tracking" | "service_desk";
+export type ModuleKey = "work_packages" | "gantt" | "boards" | "calendar" | "team_planner" | "time_tracking" | "service_desk" | "cicd";
 
 export interface ProjectRef {
   id: Id;
@@ -1452,4 +1452,89 @@ export interface PortalSubmit {
   impact: Level;
   urgency: Level;
   customValues: Record<string, unknown>;
+}
+
+/* ---------- CI/CD 연동 (GitLab·GitHub) ---------- */
+
+export type CicdKind = "gitlab" | "github";
+/** Never holds a secret: only the last four characters (tokenHint, secretHint). */
+export interface CicdConnection {
+  id: Id;
+  kind: CicdKind;
+  name: string;
+  baseUrl: string;
+  webhookUrl: string;
+  tokenHint: string | null;
+  secretHint: string | null;
+  active: boolean;
+  repositoryCount: number;
+  createdAt: IsoDateTime;
+}
+export interface CicdConnectionInput {
+  kind: CicdKind;
+  name: string;
+  baseUrl: string;
+  /** optional; without it only the webhook feeds the connection */
+  apiToken?: string;
+}
+/** apiToken "" clears the token; a changed baseUrl clears it too unless a new one is given */
+export interface CicdConnectionPatch {
+  name?: string;
+  baseUrl?: string;
+  apiToken?: string;
+  active?: boolean;
+}
+export interface CicdRepository {
+  id: Id;
+  connectionName: string;
+  kind: CicdKind;
+  fullPath: string;
+  webUrl: string;
+  lastPolledAt: IsoDateTime | null;
+}
+/** the project's choice list of active connections */
+export interface CicdConnectionChoice {
+  id: Id;
+  kind: CicdKind;
+  name: string;
+}
+/** attachedProject is present (true) only when the repository is already attached somewhere (never which project) */
+export interface CicdRemoteRepo {
+  externalId: string;
+  fullPath: string;
+  webUrl: string;
+  attachedProject?: boolean;
+}
+export type CicdLinkSource = "message" | "branch" | "title" | "manual";
+export interface CicdMergeRequest {
+  linkId: Id;
+  repository: string;
+  iid: number;
+  title: string;
+  state: "open" | "draft" | "merged" | "closed";
+  sourceBranch: string;
+  targetBranch: string;
+  author: string;
+  user: UserRef | null;
+  mergedAt: IsoDateTime | null;
+  updatedAt: IsoDateTime;
+  webUrl: string;
+  source: CicdLinkSource;
+}
+export interface CicdCommit {
+  linkId: Id;
+  repository: string;
+  shortSha: string;
+  title: string;
+  author: string;
+  user: UserRef | null;
+  committedAt: IsoDateTime;
+  webUrl: string;
+  source: CicdLinkSource;
+}
+/** the work package's 개발 tab; canLink = cicd.link */
+export interface DevInfo {
+  mergeRequests: CicdMergeRequest[];
+  commits: CicdCommit[];
+  canLink: boolean;
 }

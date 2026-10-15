@@ -960,7 +960,7 @@ const ko = {
     },
   },
   permissions: {
-    groups: { project: "프로젝트", wp: "작업", query: "보기", board: "보드", time: "시간 기록", service: "서비스 데스크", global: "전역" },
+    groups: { project: "프로젝트", wp: "작업", query: "보기", board: "보드", time: "시간 기록", service: "서비스 데스크", cicd: "CI/CD", global: "전역" },
     keys: {
       project_view: "프로젝트 보기",
       project_edit: "프로젝트 정보·상태 수정",
@@ -1001,8 +1001,12 @@ const ko = {
       service_view: "서비스 데스크 티켓·설정 보기",
       service_handle: "티켓 처리(요청자·영향도·긴급도·처리 그룹)",
       service_manage: "SLA 정책·우선순위 행렬 관리",
+      cicd_view: "개발 탭(MR·커밋)과 붙은 저장소 보기",
+      cicd_link: "작업의 개발 연결 붙이기·끊기",
+      cicd_manage: "프로젝트에 저장소 붙이기·떼기",
       global_create_projects: "프로젝트 만들기",
       global_manage_users: "사용자·그룹 관리",
+      global_manage_cicd: "CI/CD 연동 관리",
     },
   },
   settings: {
@@ -1029,7 +1033,7 @@ const ko = {
     archiveConfirm: "'{{name}}' 프로젝트를 보관할까요?",
     archived: "프로젝트를 보관했습니다",
     modulesHint: "끈 모듈은 메뉴에서 사라지고, 주소로 들어오면 꺼진 기능이라고 안내합니다. 데이터는 지워지지 않습니다.",
-    modules: { work_packages: "작업", gantt: "Gantt", boards: "보드", calendar: "캘린더", team_planner: "팀 플래너", time_tracking: "시간 기록", service_desk: "서비스 데스크" },
+    modules: { work_packages: "작업", gantt: "Gantt", boards: "보드", calendar: "캘린더", team_planner: "팀 플래너", time_tracking: "시간 기록", service_desk: "서비스 데스크", cicd: "CI/CD" },
     moduleHints: {
       work_packages: "프로젝트의 기본 기능이라 끌 수 없습니다.",
       gantt: "일정과 선후행 관계를 타임라인으로 봅니다.",
@@ -1038,6 +1042,7 @@ const ko = {
       team_planner: "사람별 주간 배정을 봅니다.",
       time_tracking: "작업에 쓴 시간을 기록하고 공수 보고서로 모아 봅니다.",
       service_desk: "장애 신고·서비스 요청을 받고 SLA를 관리합니다. 비공개 프로젝트에서만 켤 수 있습니다.",
+      cicd: "GitLab·GitHub 저장소를 붙이고 작업에 MR·커밋을 이어 보여 줍니다.",
     },
     types: {
       title: "사용할 유형",

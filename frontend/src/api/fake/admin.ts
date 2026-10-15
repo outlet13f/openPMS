@@ -121,7 +121,8 @@ const PERMISSIONS: { key: string; scope: "project" | "global"; group: string }[]
   ...["board.view", "board.manage"].map((key) => ({ key, scope: "project" as const, group: "board" })),
   ...["time.log", "time.view", "time.manage"].map((key) => ({ key, scope: "project" as const, group: "time" })),
   ...["service.view", "service.handle", "service.manage"].map((key) => ({ key, scope: "project" as const, group: "service" })),
-  ...["global.create_projects", "global.manage_users"].map((key) => ({ key, scope: "global" as const, group: "global" })),
+  ...["cicd.view", "cicd.link", "cicd.manage"].map((key) => ({ key, scope: "project" as const, group: "cicd" })),
+  ...["global.create_projects", "global.manage_users", "global.manage_cicd"].map((key) => ({ key, scope: "global" as const, group: "global" })),
 ];
 
 /* ---------- project settings ---------- */

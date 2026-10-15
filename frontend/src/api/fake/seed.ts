@@ -4,6 +4,7 @@
 import type { Db, DbJournal, DbWp } from "./db";
 import { seedTime } from "./time-seed";
 import { seedServiceDesk } from "./service-desk-seed";
+import { CICD, seedCicd } from "./cicd-seed";
 import type { CustomField, MyPageWidget, QuerySpec } from "../types";
 
 const P_MANAGER = [
@@ -16,14 +17,16 @@ const P_MANAGER = [
   "wp.manage_subtasks", "wp.assign_versions", "wp.view_watchers", "wp.add_watchers", "wp.delete_watchers", "wp.export",
   "query.save", "query.manage_public", "board.view", "board.manage", "time.log", "time.view", "time.manage",
   "service.view", "service.handle", "service.manage",
+  "cicd.view", "cicd.link", "cicd.manage",
 ];
 const P_MEMBER = [
   "project.view", "project.view_members",
   "wp.view", "wp.create", "wp.edit", "wp.move", "wp.attach", "wp.comment", "wp.edit_own_comments",
   "wp.manage_relations", "wp.manage_subtasks", "wp.assign_versions", "wp.view_watchers", "wp.add_watchers", "wp.export",
   "query.save", "board.view", "board.manage", "time.log", "time.view", "service.view", "service.handle",
+  "cicd.view", "cicd.link",
 ];
-const P_VIEWER = ["project.view", "project.view_members", "wp.view", "wp.comment", "wp.edit_own_comments", "wp.view_watchers", "wp.export", "query.save", "board.view"];
+const P_VIEWER = ["project.view", "project.view_members", "wp.view", "wp.comment", "wp.edit_own_comments", "wp.view_watchers", "wp.export", "query.save", "board.view", "cicd.view"];
 const P_NON_MEMBER = ["project.view", "wp.view", "board.view"];
 
 export const DEFAULT_COLUMNS: QuerySpec["columns"] = ["number", "subject", "type", "status", "assignee", "priority", "dueDate"];
@@ -49,6 +52,9 @@ export function buildSeed(schema: number): Db {
     { id: "r-member", name: "멤버", scope: "project" as const, builtin: null, permissions: P_MEMBER },
     { id: "r-viewer", name: "참관자", scope: "project" as const, builtin: null, permissions: P_VIEWER },
     { id: "r-nonmember", name: "비멤버", scope: "project" as const, builtin: "non_member" as const, permissions: P_NON_MEMBER },
+    // V26: 개발 리더 = 멤버 + cicd.manage; CI/CD 연동 관리자는 관리 › CI/CD 연동만
+    { id: CICD.devLeadRole, name: "개발 리더", scope: "project" as const, builtin: null, permissions: [...P_MEMBER, "cicd.manage"] },
+    { id: CICD.cicdAdminRole, name: "CI/CD 연동 관리자", scope: "global" as const, builtin: null, permissions: ["global.manage_cicd"] },
     { id: "r-creator", name: "프로젝트 생성자", scope: "global" as const, builtin: null, permissions: ["global.create_projects"] },
   ];
 
@@ -82,19 +88,20 @@ export function buildSeed(schema: number): Db {
   const wf = workflows.filter((w) => !(w.roleId === "r-member" && w.from === "s-cancel"));
 
   const allModules = ["work_packages", "gantt", "boards", "calendar", "team_planner", "time_tracking"] as const;
+  type SeedModule = typeof allModules[number] | "cicd";
   const defaultTypeIds = ["t-task", "t-milestone", "t-summary"];
   const projects = [
     {
       id: "p-web", identifier: "web-platform", name: "웹 플랫폼 개편",
       descriptionHtml: "<p>고객 포털과 사내 관리 화면을 새 디자인 시스템으로 옮기고 3분기 안에 출시합니다.</p>",
       status: "on_track" as const, statusExplanation: "API 연동이 일정대로 진행 중입니다. 접근성 점검은 다음 주에 시작합니다.",
-      isPublic: false, parentId: null, enabledModules: [...allModules], typeIds: ["t-task", "t-milestone", "t-summary", "t-feature", "t-bug"],
+      isPublic: false, parentId: null, enabledModules: [...allModules, "cicd"] as SeedModule[], typeIds: ["t-task", "t-milestone", "t-summary", "t-feature", "t-bug"],
     },
     {
       id: "p-mobile", identifier: "mobile-app", name: "모바일 앱 2.0",
       descriptionHtml: "<p>푸시 알림과 오프라인 보기를 넣은 2.0 베타를 10월 말에 배포합니다.</p>",
       status: "at_risk" as const, statusExplanation: "iOS 로그인 오류 때문에 베타 일정이 늦어질 수 있습니다.",
-      isPublic: false, parentId: null, enabledModules: ["work_packages", "gantt", "boards", "time_tracking"] as typeof allModules[number][], typeIds: ["t-task", "t-milestone", "t-summary", "t-bug"],
+      isPublic: false, parentId: null, enabledModules: ["work_packages", "gantt", "boards", "time_tracking", "cicd"] as SeedModule[], typeIds: ["t-task", "t-milestone", "t-summary", "t-bug"],
     },
     {
       id: "p-infra", identifier: "infra", name: "사내 인프라",
@@ -128,6 +135,9 @@ export function buildSeed(schema: number): Db {
     // group membership: everyone in 인프라 담당 can read the mobile project
     { id: `m-${++mid}`, projectId: "p-mobile", userId: null as string | null, groupId: "g-infra" as string | null, roleIds: ["r-viewer"], createdAt: t0 },
   ];
+
+  // V1010: 박준호는 웹 플랫폼에서 개발 리더 역할을 하나 더 가진다
+  members.find((x) => x.projectId === "p-web" && x.userId === "u-junho")!.roleIds.push(CICD.devLeadRole);
 
   const versions = [
     { id: "v-q3", projectId: "p-web", name: "2026 3분기", description: "고객 포털 1차 출시", status: "open" as const, startDate: "2026-07-01", endDate: "2026-10-30" },
@@ -286,6 +296,10 @@ export function buildSeed(schema: number): Db {
     slaPolicies: sd.slaPolicies,
     priorityMatrix: sd.priorityMatrix,
     serviceTickets: sd.serviceTickets,
+    ...(() => {
+      const c = seedCicd();
+      return { cicdConnections: c.connections, cicdRepositories: c.repositories, cicdCommits: c.commits, cicdMergeRequests: c.mergeRequests, cicdLinks: c.links };
+    })(),
     watchers: [
       { wpId: "wp-8", userId: "u-seoyeon" },
       { wpId: "wp-3", userId: "u-junho" },

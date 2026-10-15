@@ -3,6 +3,7 @@
 // State survives reloads through localStorage (per browser, per user) and can be reset from the login page.
 
 import type { DbTimeEntry } from "./time-seed";
+import type { DbCicdCommit, DbCicdConnection, DbCicdLink, DbCicdMergeRequest, DbCicdRepository } from "./cicd-seed";
 import type { DbMatrixCell, DbServiceCalendar, DbServiceTicket, DbSlaPolicy } from "./service-desk-seed";
 import type {
   TimeActivity,
@@ -176,6 +177,12 @@ export interface Db {
   slaPolicies: DbSlaPolicy[];
   priorityMatrix: DbMatrixCell[];
   serviceTickets: DbServiceTicket[];
+  /** CI/CD 연동 (webhooks do not exist here: only the seeded merge requests and commits) */
+  cicdConnections: DbCicdConnection[];
+  cicdRepositories: DbCicdRepository[];
+  cicdCommits: DbCicdCommit[];
+  cicdMergeRequests: DbCicdMergeRequest[];
+  cicdLinks: DbCicdLink[];
   queries: DbQuery[];
   queryFavorites: { userId: Id; queryId: Id }[];
   boards: DbBoard[];
@@ -200,7 +207,7 @@ export interface Db {
 }
 
 const KEY = "openpms.fakedb";
-const SCHEMA = 16;
+const SCHEMA = 17;
 
 function load(): Db {
   try {
