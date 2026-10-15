@@ -22,6 +22,7 @@ const BUDGET = {
   slowAgain: 1500,
   portal: 1000,
   serviceDeskList: 1000,
+  approvals: 1000,
 };
 const budget = (k: keyof typeof BUDGET) => (BUILT ? BUDGET[k] : BUDGET[k] * 2);
 
@@ -127,7 +128,7 @@ test.describe("성능 예산 · 작업 1,000건", () => {
       page.getByText("40번째 코멘트", { exact: false }).waitFor({ timeout: 30_000 })), budget("detail"));
   });
 
-  test("PERF-6 서비스 데스크: 요청자의 포털 홈, SLA 열을 켠 티켓 목록", async ({ page }) => {
+  test("PERF-6 서비스 데스크: 요청자의 포털 홈, SLA 열을 켠 티켓 목록, 내 승인함", async ({ page }) => {
     // 개발 데이터 V1004: 최민지의 진행 중인 요청 2건, service-desk 티켓 6건
     await page.context().clearCookies(); // the built app has no /src/api to call logout through
     await login(page, "minji.choi@openpms.local");
@@ -146,6 +147,10 @@ test.describe("성능 예산 · 작업 1,000건", () => {
       await count(page, "tbody tr", 6);
       await page.locator("tbody").getByText("위반", { exact: true }).first().waitFor({ timeout: 30_000 });
     }), budget("serviceDeskList"));
+    // 개발 데이터 V1005: alex.kim 차례의 승인 1건
+    await page.context().clearCookies();
+    await login(page, "alex.kim@openpms.local");
+    record("내 승인함", "승인 차례 1건", await timeOpen(page, "/portal/approvals", () => count(page, "tbody tr", 1)), budget("approvals"));
   });
 
   test("PERF-5 느린 망(10 Mbps, 왕복 40 ms): 처음 열기와 다시 열기, 주고받은 양", async ({ browser }) => {

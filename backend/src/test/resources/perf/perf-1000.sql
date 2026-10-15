@@ -4,6 +4,7 @@
 -- 만듦)라 개발 DB에도 새로 설치한 시험용 DB에도 들어갑니다. 몇 번 실행해도 같은 모양이 됩니다.
 --   JUnit: PerfBudgetIT가 읽어 실행   e2e: perf.spec.ts가 dev.sh perf-seed로 실행   부하 측정(scripts/perf_load.py) 전: 시험용 설치의 db에 psql로
 delete from projects where identifier in ('perf-1000', 'perf-sd');
+delete from custom_fields where id = 'c0000002-0000-4000-8000-000000000001';
 
 -- The six people the items are assigned to. The dev data has them already; on a fresh installation (a test one) they are
 -- made here without a password, so nobody can sign in as them — measure with your own administrator account, which sees
@@ -228,4 +229,34 @@ select w.id, v.v, case when v.v % 2 = 0 then 'c48ce4ad-3a64-55ab-a95c-2902395dbb
        w.created_at + v.v * interval '10 minutes', w.created_at + v.v * interval '10 minutes'
 from work_packages w join projects p on p.id = w.project_id and p.identifier = 'perf-sd' join perf_sd s on s.id = w.id
 cross join generate_series(2, 11) v(v) where s.n = 1;
+-- 카탈로그(ITSM 2단계): 항목 3개(승인 단계 있음 2·없음 1)와, 티켓 101~150번(50건)을 "노트북 신청"으로 만들어 승인자 Alex Kim의 승인함에 pending으로 둔다.
+-- 포털 카탈로그(GET /portal/desks)와 내 승인함(GET /portal/approvals) 예산용. 승인 행은 단계 1 하나씩이라 unique(작업, 단계, 종류)를 지킨다.
+insert into catalog_categories (project_id, name, position)
+select p.id, c.name, c.position from projects p cross join (values ('하드웨어', 1), ('계정·권한', 2)) c(name, position) where p.identifier = 'perf-sd';
+insert into catalog_items (id, project_id, category_id, name, description_html, description_text, type_id, default_priority_id, position)
+select i.id, p.id, (select c.id from catalog_categories c where c.project_id = p.id and c.name = i.category),
+       i.name, '<p>' || i.name || ' 신청</p>', i.name || ' 신청', 'a3af2ccf-05c6-5b1c-84bc-4d815791e4eb', 'e2513703-c41d-5575-aca0-fd084ec26e06', i.position
+from projects p cross join (values
+  ('c0000001-0000-4000-8000-000000000001'::uuid, '노트북 신청', '하드웨어', 1),
+  ('c0000001-0000-4000-8000-000000000002'::uuid, 'VPN 계정', '계정·권한', 2),
+  ('c0000001-0000-4000-8000-000000000003'::uuid, '공유 폴더 권한', '계정·권한', 3)) i(id, name, category, position)
+where p.identifier = 'perf-sd';
+-- 노트북 신청에는 양식 필드(리스트 하나)를 달아 항목 양식 경로(필드 조회·옵션)도 잰다. 필드는 perf-sd에만 켠다.
+insert into custom_fields (id, entity, name, format, is_for_all, is_filterable, position, portal_visible)
+values ('c0000002-0000-4000-8000-000000000001', 'work_package', '성능 시험 기종', 'list', false, true, 90, false);
+insert into custom_field_options (custom_field_id, value, position) values
+  ('c0000002-0000-4000-8000-000000000001', '14인치', 1), ('c0000002-0000-4000-8000-000000000001', '16인치', 2);
+insert into custom_field_types (custom_field_id, type_id) values ('c0000002-0000-4000-8000-000000000001', 'a3af2ccf-05c6-5b1c-84bc-4d815791e4eb');
+insert into project_custom_fields (project_id, custom_field_id)
+select id, 'c0000002-0000-4000-8000-000000000001' from projects where identifier = 'perf-sd';
+insert into catalog_item_fields (catalog_item_id, custom_field_id, position, is_required)
+values ('c0000001-0000-4000-8000-000000000001', 'c0000002-0000-4000-8000-000000000001', 1, true);
+insert into catalog_item_approval_steps (catalog_item_id, step_no, approver_kind) values
+  ('c0000001-0000-4000-8000-000000000001', 1, 'requester_manager'),
+  ('c0000001-0000-4000-8000-000000000001', 2, 'group_lead'),
+  ('c0000001-0000-4000-8000-000000000002', 1, 'requester_manager');
+update service_tickets t set catalog_item_id = 'c0000001-0000-4000-8000-000000000001'
+from perf_sd s where s.id = t.work_package_id and s.n between 101 and 150;
+insert into ticket_approvals (work_package_id, step_no, approver_kind, approver_id, decision, notified_at)
+select s.id, 1, 'requester_manager', '9c86b115-f372-542f-9d5d-25b2297d9558', 'pending', now() from perf_sd s where s.n between 101 and 150;
 drop table perf_sd;

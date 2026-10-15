@@ -43,14 +43,14 @@ public class ExportController {
     private static final List<String> PDF_TYPES = List.of("table", "report", "gantt");
     private static final List<String> BUILT_IN = List.of("number", "subject", "type", "status", "priority", "assignee", "responsible", "author", "version",
             "startDate", "dueDate", "duration", "work", "remainingWork", "doneRatio", "updatedAt", "project",
-            "requester", "assignmentGroup", "slaDue", "slaState");
+            "requester", "assignmentGroup", "catalogItem", "slaDue", "slaState");
     private static final Map<String, String> HEADERS = Map.ofEntries(
             Map.entry("number", "번호"), Map.entry("subject", "제목"), Map.entry("type", "유형"), Map.entry("status", "상태"), Map.entry("priority", "우선순위"),
             Map.entry("assignee", "담당자"), Map.entry("responsible", "책임자"), Map.entry("author", "작성자"), Map.entry("version", "버전"),
             Map.entry("startDate", "시작일"), Map.entry("dueDate", "완료일"), Map.entry("duration", "기간(일)"), Map.entry("work", "작업량(시간)"),
             Map.entry("remainingWork", "남은 작업(시간)"), Map.entry("doneRatio", "완료 %"),
             Map.entry("updatedAt", "최근 수정"), Map.entry("project", "프로젝트"),
-            Map.entry("requester", "요청자"), Map.entry("assignmentGroup", "처리 그룹"), Map.entry("slaDue", "해결 기한"), Map.entry("slaState", "SLA"));
+            Map.entry("requester", "요청자"), Map.entry("assignmentGroup", "처리 그룹"), Map.entry("catalogItem", "카탈로그 항목"), Map.entry("slaDue", "해결 기한"), Map.entry("slaState", "SLA"));
     private static final DateTimeFormatter LOCAL = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final Current current;
@@ -202,6 +202,7 @@ public class ExportController {
             case "project" -> w.project().name();
             case "requester" -> w.serviceTicket() == null ? null : w.serviceTicket().requester().name();
             case "assignmentGroup" -> w.serviceTicket() == null || w.serviceTicket().assignmentGroup() == null ? null : w.serviceTicket().assignmentGroup().name();
+            case "catalogItem" -> w.serviceTicket() == null || w.serviceTicket().catalogItem() == null ? null : w.serviceTicket().catalogItem().name();
             case "slaDue" -> w.serviceTicket() == null || w.serviceTicket().sla().resolveDueAt() == null ? null
                     : w.serviceTicket().sla().resolveDueAt().atZoneSameInstant(zone).format(LOCAL);
             case "slaState" -> slaState(w.serviceTicket());

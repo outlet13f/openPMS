@@ -245,6 +245,15 @@ export const httpApi: Api = {
     groups: (project) => get(`/projects/${encodeURIComponent(project)}/service-desk/groups`),
     updateTicket: (number, p) => patch(`/work-packages/${number}/service-ticket`, p),
     summary: (project) => get(`/projects/${encodeURIComponent(project)}/service-desk/summary`),
+    catalog: (project) => get(`/projects/${encodeURIComponent(project)}/service-desk/catalog`),
+    createCategory: (project, input) => create(`/projects/${encodeURIComponent(project)}/service-desk/catalog/categories`, input),
+    updateCategory: (project, id, p) => patch(`/projects/${encodeURIComponent(project)}/service-desk/catalog/categories/${id}`, p),
+    deleteCategory: (project, id) => del(`/projects/${encodeURIComponent(project)}/service-desk/catalog/categories/${id}`),
+    createItem: (project, input) => create(`/projects/${encodeURIComponent(project)}/service-desk/catalog/items`, input),
+    updateItem: (project, id, p) => patch(`/projects/${encodeURIComponent(project)}/service-desk/catalog/items/${id}`, p),
+    deleteItem: (project, id) => del(`/projects/${encodeURIComponent(project)}/service-desk/catalog/items/${id}`),
+    approvals: (number) => get(`/work-packages/${number}/approvals`),
+    replaceApprover: (number, approvalId, approverId) => patch(`/work-packages/${number}/approvals/${approvalId}`, { approverId }),
   },
   portal: {
     desks: () => get("/portal/desks"),
@@ -256,6 +265,11 @@ export const httpApi: Api = {
     setStatus: (number, statusId, lockVersion) => post(`/portal/tickets/${number}/status`, { statusId, lockVersion }),
     attach: (number, file) => upload(`/portal/tickets/${number}/attachments`, file),
     fileUrl: (number, id) => `${BASE}/portal/tickets/${number}/attachments/${id}/content`,
+    approvals: () => get("/portal/approvals"),
+    approval: (id) => get(`/portal/approvals/${id}`),
+    // answers 200 {decision}, not 201
+    decide: (id, decision, comment) => post(`/portal/approvals/${id}/decision`, { decision, comment: comment ?? "" }),
+    approvalFileUrl: (id, fileId) => `${BASE}/portal/approvals/${id}/attachments/${fileId}/content`,
   },
   search: {
     suggest: (q) => get("/search/suggest", { q }),
@@ -340,8 +354,9 @@ export const httpApi: Api = {
     },
     groups: {
       list: () => get("/admin/groups"),
-      create: (name) => post("/admin/groups", { name }),
+      create: (name, leadUserId) => post("/admin/groups", leadUserId === undefined ? { name } : { name, leadUserId }),
       rename: (id, name) => patch(`/admin/groups/${id}`, { name }),
+      update: (id, p) => patch(`/admin/groups/${id}`, p),
       remove: (id) => del(`/admin/groups/${id}`),
       setMembers: (id, userIds) => put(`/admin/groups/${id}/members`, { userIds }),
     },

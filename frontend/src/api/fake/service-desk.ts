@@ -1,12 +1,15 @@
 // 서비스 데스크 (ITSM 1단계) in the fake layer: the same rules and messages as the server's itsm/ServiceDesk (ticket rows and SLA
 // deadlines on save), ServiceDeskConfig(Controller) (calendars, policies, matrix), ServiceTicketController and the
 // requester's portal (PortalService, PortalController). SLA time comes from sla-clock.ts (Asia/Seoul only).
+// ITSM 2단계: the catalog (ServiceCatalog(Controller)), item requests on the portal and the approval routes; the approval
+// rules themselves are in approvals.ts.
 import type { Api } from "../api";
-import type { CustomValue, Id, IdName, Level, PortalField, PortalFile, PortalSummary, PortalTicket, ServiceCalendar, ServiceDeskSettings, WorkPackage, WorkPackageInput, WorkPackagePatch } from "../types";
+import type { CatalogCategory, CatalogItem, CatalogItemInput, CustomValue, Id, IdName, Level, PortalCategory, PortalField, PortalFile, PortalSummary, PortalTicket, ServiceCalendar, ServiceCatalog, ServiceDeskSettings, WorkPackage, WorkPackageInput, WorkPackagePatch } from "../types";
 import { NOT_ON_PORTAL } from "../types";
 import { ApiError } from "../errors";
 import { nowIso } from "@/lib/dates";
-import { db, newId, type DbJournal, type DbProject, type DbServiceCalendar, type DbServiceTicket, type DbSlaPolicy, type DbUser, type DbWp } from "./db";
+import { db, newId, type DbCatalogCategory, type DbCatalogItem, type DbJournal, type DbProject, type DbServiceCalendar, type DbServiceTicket, type DbSlaPolicy, type DbUser, type DbWp } from "./db";
+import * as approvals from "./approvals";
 import { allowedFor, can, findProject, findWp, requirePerm, sessionUser } from "./permissions";
 import { clone, statusRef, ticketOf, toWp, userRef } from "./dto";
 import { customValuesOf, enabledIn } from "./custom-fields";
@@ -16,10 +19,11 @@ import { fieldError, run } from "./util";
 
 /* ---------- the work package writes index.ts owns (connected there, so this module does not import it) ---------- */
 
-export type Acting = "member" | "portal";
+/** member: a project member; portal: a requester on their own ticket; approval: an approver deciding (승인 대기 → 접수 | 반려 only) */
+export type Acting = "member" | "portal" | "approval";
 interface Writers {
-  /** createWp without the permission check (the portal decided) */
-  insert(user: DbUser, project: DbProject, input: WorkPackageInput, acting: Acting): DbWp;
+  /** createWp without the permission check (the portal decided); waived: more fields whose required check is waived when empty */
+  insert(user: DbUser, project: DbProject, input: WorkPackageInput, acting: Acting, waived?: Set<Id>): DbWp;
   /** applyPatch without the permission check: the saved row */
   patch(user: DbUser, wp: DbWp, project: DbProject, patch: WorkPackagePatch, acting: Acting): DbWp;
   /** PATCH /work-packages/{n} as a member (wp.edit checked) */
@@ -35,6 +39,19 @@ const w = () => {
   if (!writers) throw new Error("service desk writers are not connected");
   return writers;
 };
+
+/** What the approval rules write through (approvals.ts does not import index.ts). */
+const approvalWriters = (): approvals.ApprovalWriters => ({
+  journal: (wp, actor, changes) => w().journal(wp, actor, changes),
+  fanOut: (wp, j, actor) => w().fanOut(wp, j, actor),
+  comment: (actor, wp, bodyHtml) => {
+    if (!plain(bodyHtml ?? "")) throw fieldError("comment", "코멘트를 입력하세요.");
+    const j = w().journal(wp, actor, {}, bodyHtml, null, false);
+    w().fanOut(wp, j, actor);
+    ticketCommented(actor, wp, false);
+  },
+  status: (actor, wp, project, statusId) => void w().patch(actor, wp, project, { lockVersion: wp.lockVersion, statusId }, "approval"),
+});
 
 /* ---------- SLA (ServiceDesk) ---------- */
 
@@ -175,7 +192,10 @@ export function ticketUpdated(user: DbUser, before: DbWp, after: DbWp) {
     if ((!to.slaPause || to.isClosed) && t.pausedSince) closePause(t, after, now);
     if (to.isClosed && !from.isClosed) t.resolvedAt = iso(now);
     if (!to.isClosed && from.isClosed) t.resolvedAt = null;
-    firstResponse(user, t, now);
+    // leaving 승인 대기 is the approvers' decision (or the end of the request), not an answer to the requester
+    if (from.id !== ITSM.awaitingApproval) firstResponse(user, t, now);
+    // out of 승인 대기 other than by the last approval (cancelled, an administrator's change): the open approvals are skipped
+    if (from.id === ITSM.awaitingApproval) approvals.skipRemaining(approvalWriters(), user, before);
     // the requester made this change themselves: the requester mail must not announce it back
     if (user.id === t.requesterId) t.requesterMailedStatusId = to.id;
   }
@@ -428,7 +448,188 @@ export const serviceDeskApi: Api["serviceDesk"] = {
       const avg = answered.length ? answered.reduce((s, r) => s + (Date.parse(r.t.firstRespondedAt!) - Date.parse(r.t.createdAt)) / MIN, 0) / answered.length : null;
       return { openByGroup, breachedToday, avgFirstResponseMinutes: avg === null ? null : Math.trunc(avg) };
     }),
+  catalog: (project) => run(() => catalogOf(deskFor(sessionUser(), project).id)),
+  createCategory: (project, input) => run(() => saveCategory(catalogDesk(project).id, null, input as Record<string, unknown>)),
+  updateCategory: (project, id, patch) => run(() => saveCategory(catalogDesk(project).id, id, patch as Record<string, unknown>)),
+  deleteCategory: (project, id) =>
+    run(() => {
+      const p = catalogDesk(project);
+      if (!db.catalogCategories.some((c) => c.id === id && c.projectId === p.id)) throw new ApiError(404, "분류를 찾을 수 없습니다.");
+      db.catalogCategories = db.catalogCategories.filter((c) => c.id !== id);
+      db.catalogItems.forEach((i) => i.categoryId === id && (i.categoryId = null)); // on delete set null
+    }),
+  createItem: (project, input) => run(() => saveItem(catalogDesk(project), null, input)),
+  updateItem: (project, id, patch) => run(() => saveItem(catalogDesk(project), id, patch)),
+  deleteItem: (project, id) =>
+    run(() => {
+      const p = catalogDesk(project);
+      if (!db.catalogItems.some((i) => i.id === id && i.projectId === p.id)) throw new ApiError(404, "항목을 찾을 수 없습니다.");
+      db.catalogItems = db.catalogItems.filter((i) => i.id !== id);
+      db.serviceTickets.forEach((t) => t.catalogItemId === id && (t.catalogItemId = null)); // on delete set null
+    }),
+  approvals: (number) => run(() => approvals.agentRows(agentFind(sessionUser(), number).wp.id)),
+  replaceApprover: (number, approvalId, approverId) =>
+    run(() => {
+      const user = sessionUser();
+      const { wp, project } = agentFind(user, number);
+      requirePerm(user, project, "service.handle", "티켓을 처리할 권한이 없습니다.");
+      return approvals.replace(approvalWriters(), user, wp, approvalId, approverId);
+    }),
 };
+
+/* ---------- the catalog (ServiceCatalog) ---------- */
+
+/** The agent's approval panel: a work package I can see in a desk I may see the service desk of. */
+function agentFind(user: DbUser, number: number) {
+  const found = findWp(user, number);
+  if (!can(user, found.project, "service.view")) throw new ApiError(404, "작업을 찾을 수 없습니다.");
+  return found;
+}
+
+/** A desk whose catalog I may change (service.manage), or the 404 / 403. */
+function catalogDesk(project: string): DbProject {
+  const user = sessionUser();
+  const p = deskFor(user, project);
+  requirePerm(user, p, "service.manage", "카탈로그를 고칠 권한이 없습니다.");
+  return p;
+}
+
+const byPositionName = <T extends { position: number; name: string }>(a: T, b: T) => a.position - b.position || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+
+const toCategory = (c: DbCatalogCategory): CatalogCategory => ({ id: c.id, name: c.name, position: c.position });
+const toItem = (i: DbCatalogItem): CatalogItem =>
+  clone({
+    id: i.id, categoryId: i.categoryId, name: i.name, descriptionHtml: i.descriptionHtml, typeId: i.typeId, defaultPriorityId: i.defaultPriorityId,
+    assignmentGroupId: i.assignmentGroupId, isActive: i.isActive, position: i.position,
+    fields: i.fields.slice().sort((a, b) => a.position - b.position), steps: approvals.sortSteps(i.steps),
+  });
+
+function catalogOf(projectId: Id): ServiceCatalog {
+  return {
+    categories: db.catalogCategories.filter((c) => c.projectId === projectId).sort(byPositionName).map(toCategory),
+    items: db.catalogItems.filter((i) => i.projectId === projectId).sort(byPositionName).map(toItem),
+  };
+}
+
+const has = (o: Record<string, unknown>, k: string) => Object.prototype.hasOwnProperty.call(o, k) && o[k] !== undefined;
+
+function catalogName(input: Record<string, unknown>): string {
+  const name = typeof input.name === "string" ? input.name.trim() : "";
+  if (!name || name.length > 100) throw fieldError("name", "이름은 1~100자로 입력하세요.");
+  return name;
+}
+
+function positionOf(v: unknown, field = "position"): number {
+  if (v === null) return 0;
+  const n = intOf(v);
+  if (n === null) throw fieldError(field, "숫자를 입력하세요.");
+  return n;
+}
+
+function saveCategory(projectId: Id, id: Id | null, input: Record<string, unknown>): CatalogCategory {
+  const existing = id === null ? null : db.catalogCategories.find((c) => c.id === id && c.projectId === projectId);
+  if (id !== null && !existing) throw new ApiError(404, "분류를 찾을 수 없습니다.");
+  const next: DbCatalogCategory = existing ? { ...existing } : { id: newId("cc"), projectId, name: "", position: 0 };
+  if (!existing || has(input, "name")) {
+    const name = catalogName(input);
+    if (db.catalogCategories.some((c) => c.projectId === projectId && c.name === name && c.id !== id)) throw fieldError("name", "같은 이름의 분류가 있습니다.");
+    next.name = name;
+  }
+  if (has(input, "position")) next.position = positionOf(input.position);
+  if (existing) Object.assign(existing, next);
+  else db.catalogCategories.push(next);
+  return toCategory(next);
+}
+
+const uuidOf = (v: unknown) => (v === null || v === undefined || v === "" ? null : String(v));
+
+/** A form field must be a work package custom field that is on for this project and for the item's type. */
+function checkFields(p: DbProject, typeId: Id, raw: unknown): DbCatalogItem["fields"] {
+  if (raw === null) return [];
+  if (!Array.isArray(raw) || !raw.every((x) => x && typeof x === "object")) throw fieldError("fields", "목록이어야 합니다.");
+  const seen = new Set<Id>();
+  return (raw as Record<string, unknown>[]).map((f, i) => {
+    const at = `fields[${i}]`;
+    const cfId = uuidOf(f.customFieldId);
+    const cf = cfId ? db.customFields.find((x) => x.id === cfId) : undefined;
+    if (!cf) throw fieldError(`${at}.customFieldId`, "알 수 없는 사용자 정의 필드입니다.");
+    if (!cf.isForAll && !db.projectCustomFields.some((x) => x.projectId === p.id && x.customFieldId === cf.id)) throw fieldError(`${at}.customFieldId`, "이 프로젝트에서 켠 필드만 고를 수 있습니다.");
+    if (!cf.typeIds.includes(typeId)) throw fieldError(`${at}.customFieldId`, "이 항목의 유형에 쓰는 필드만 고를 수 있습니다.");
+    if (seen.has(cf.id)) throw fieldError(`${at}.customFieldId`, "같은 필드가 두 번 있습니다.");
+    seen.add(cf.id);
+    const position = has(f, "position") ? positionOf(f.position, `${at}.position`) : i;
+    return { customFieldId: cf.id, position, isRequired: f.isRequired === true };
+  });
+}
+
+function checkSteps(raw: unknown): DbCatalogItem["steps"] {
+  if (raw === null) return [];
+  if (!Array.isArray(raw) || !raw.every((x) => x && typeof x === "object")) throw fieldError("steps", "목록이어야 합니다.");
+  const seen = new Set<string>();
+  return (raw as Record<string, unknown>[]).map((s, i) => {
+    const at = `steps[${i}]`;
+    const stepNo = intOf(s.stepNo);
+    if (stepNo === null || stepNo < 1 || stepNo > 9) throw fieldError(`${at}.stepNo`, "단계는 1~9입니다.");
+    const kind = s.kind;
+    if (kind !== "requester_manager" && kind !== "group_lead") throw fieldError(`${at}.kind`, "승인자 종류는 요청자의 관리자 또는 그룹 리더입니다.");
+    if (seen.has(`${stepNo}/${kind}`)) throw fieldError(`${at}.kind`, "같은 단계에 같은 승인자 종류가 두 번 있습니다.");
+    seen.add(`${stepNo}/${kind}`);
+    return { stepNo, kind };
+  });
+}
+
+/** Creates (id null) or updates an item. Only the keys sent change; sending fields or steps replaces the whole list. */
+function saveItem(p: DbProject, id: Id | null, patch: CatalogItemInput): CatalogItem {
+  const input = (patch ?? {}) as Record<string, unknown>;
+  const existing = id === null ? null : db.catalogItems.find((i) => i.id === id && i.projectId === p.id);
+  if (id !== null && !existing) throw new ApiError(404, "항목을 찾을 수 없습니다.");
+  const next: DbCatalogItem = existing
+    ? { ...existing }
+    : { id: newId("ci"), projectId: p.id, categoryId: null, name: "", descriptionHtml: "", typeId: ITSM.serviceRequest, defaultPriorityId: null, assignmentGroupId: null, isActive: true, position: 0, fields: [], steps: [] };
+  if (!existing || has(input, "name")) {
+    const name = catalogName(input);
+    if (db.catalogItems.some((i) => i.projectId === p.id && i.name === name && i.id !== id)) throw fieldError("name", "같은 이름의 항목이 있습니다.");
+    next.name = name;
+  }
+  if (has(input, "typeId")) {
+    const typeId = uuidOf(input.typeId);
+    if (!typeId || !TICKET_TYPES.includes(typeId) || !p.typeIds.includes(typeId)) throw fieldError("typeId", "이 프로젝트에서 켠 장애·서비스 요청 유형만 고를 수 있습니다.");
+    next.typeId = typeId;
+  } else if (!existing && !p.typeIds.includes(next.typeId)) {
+    throw fieldError("typeId", "이 프로젝트에서 서비스 요청 유형이 꺼져 있습니다.");
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "categoryId")) {
+    const categoryId = uuidOf(input.categoryId);
+    if (categoryId && !db.catalogCategories.some((c) => c.id === categoryId && c.projectId === p.id)) throw fieldError("categoryId", "이 프로젝트의 분류가 아닙니다.");
+    next.categoryId = categoryId;
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "defaultPriorityId")) {
+    const priorityId = uuidOf(input.defaultPriorityId);
+    if (priorityId && !db.priorities.some((x) => x.id === priorityId)) throw fieldError("defaultPriorityId", "알 수 없는 우선순위입니다.");
+    next.defaultPriorityId = priorityId;
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "assignmentGroupId")) {
+    const groupId = uuidOf(input.assignmentGroupId);
+    if (groupId && !db.groups.some((g) => g.id === groupId)) throw fieldError("assignmentGroupId", "알 수 없는 그룹입니다.");
+    next.assignmentGroupId = groupId;
+  }
+  if (has(input, "descriptionHtml")) next.descriptionHtml = typeof input.descriptionHtml === "string" ? input.descriptionHtml : "";
+  if (Object.prototype.hasOwnProperty.call(input, "isActive")) next.isActive = input.isActive === null || input.isActive === undefined ? true : input.isActive === true;
+  if (has(input, "position")) next.position = positionOf(input.position);
+  if (Object.prototype.hasOwnProperty.call(input, "fields")) next.fields = checkFields(p, next.typeId, input.fields ?? null);
+  else if (existing && has(input, "typeId")) {
+    // the type changed: the form that is kept must still fit it
+    try {
+      checkFields(p, next.typeId, existing.fields.map((f) => ({ customFieldId: f.customFieldId })));
+    } catch {
+      throw fieldError("typeId", "항목 양식의 필드가 새 유형에 맞지 않습니다. 양식을 먼저 고치세요.");
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "steps")) next.steps = checkSteps(input.steps ?? null);
+  if (existing) Object.assign(existing, next);
+  else db.catalogItems.push(next);
+  return toItem(next);
+}
 
 /* ---------- the requester's portal (PortalService, PortalController) ---------- */
 
@@ -476,11 +677,40 @@ function hasNews(t: DbServiceTicket): boolean {
 
 const statusName = (id: unknown) => (typeof id === "string" ? (db.statuses.find((s) => s.id === id)?.name ?? null) : null);
 
+/** A desk's active, requestable items by category; items without a (known) category sit under a made-up 기타 with no id. */
+function portalCatalog(p: DbProject): PortalCategory[] {
+  const items = db.catalogItems.filter((i) => i.projectId === p.id && approvals.requestable(p, i)).sort(byPositionName);
+  const kindsOf = (i: DbCatalogItem) => {
+    const byStep = new Map<number, string[]>();
+    for (const s of approvals.sortSteps(i.steps)) byStep.set(s.stepNo, [...(byStep.get(s.stepNo) ?? []), s.kind]);
+    return [...byStep.values()].map((ks) => ks.join(","));
+  };
+  const toPortal = (i: DbCatalogItem) => ({ id: i.id, name: i.name, descriptionHtml: i.descriptionHtml, typeId: i.typeId, fields: approvals.itemFields(p, i), approvalKinds: kindsOf(i) });
+  const categories = db.catalogCategories.filter((c) => c.projectId === p.id).sort(byPositionName);
+  const known = new Set(categories.map((c) => c.id));
+  const out: PortalCategory[] = categories
+    .map((c) => ({ id: c.id as Id | null, name: c.name, items: items.filter((i) => i.categoryId === c.id).map(toPortal) }))
+    .filter((c) => c.items.length > 0);
+  const loose = items.filter((i) => !i.categoryId || !known.has(i.categoryId)).map(toPortal);
+  if (loose.length) out.push({ id: null, name: "기타", items: loose });
+  return clone(out);
+}
+
+const ticketItem = (wp: DbWp, project: DbProject): DbCatalogItem | null => {
+  const t = db.serviceTickets.find((x) => x.workPackageId === wp.id);
+  return (t?.catalogItemId && db.catalogItems.find((i) => i.id === t.catalogItemId && i.projectId === project.id)) || null;
+};
+
+const blank = (v: unknown) => v === null || v === undefined || (typeof v === "string" && !v.trim()) || (Array.isArray(v) && v.length === 0);
+
 function toTicket(user: DbUser, wp: DbWp, project: DbProject, withActivity: boolean): PortalTicket {
   const status = db.statuses.find((s) => s.id === wp.statusId)!;
   const type = db.types.find((x) => x.id === wp.typeId)!;
   const allowed = allowedFor([ITSM.requesterRole], user.id, wp, user.id).map((id) => db.statuses.find((s) => s.id === id)!).map((s) => ({ id: s.id, name: s.name }));
   const visible = new Set(portalFields(project).map((f) => f.id));
+  // the item's form is shown with the request even where the fields are not marked for the portal
+  const item = ticketItem(wp, project);
+  if (item) approvals.itemFields(project, item).forEach((f) => visible.add(f.id));
   const fields = Object.entries(customValuesOf(wp))
     .filter(([id]) => visible.has(id))
     .map(([id, v]) => ({ name: db.customFields.find((f) => f.id === id)?.name ?? "", value: v.text }));
@@ -503,7 +733,7 @@ function toTicket(user: DbUser, wp: DbWp, project: DbProject, withActivity: bool
   return clone({
     number: wp.number, subject: wp.subject, descriptionHtml: wp.descriptionHtml, desk: project.name, type: { id: type.id, name: type.name },
     status: statusRef(status.id), closed: status.isClosed, createdAt: wp.createdAt, updatedAt: wp.updatedAt, lockVersion: wp.lockVersion,
-    allowedStatuses: allowed, fields, activity, files,
+    allowedStatuses: allowed, fields, activity, files, item: item ? { id: item.id, name: item.name } : null, approvals: approvals.portalApprovals(wp.id),
   });
 }
 
@@ -526,22 +756,38 @@ export const portalApi: Api["portal"] = {
         descriptionText: plain(p.descriptionHtml),
         types: p.typeIds.filter((t) => TICKET_TYPES.includes(t)).map((t) => db.types.find((x) => x.id === t)!).map((t) => ({ id: t.id, name: t.name })),
         fields: portalFields(p),
+        catalog: portalCatalog(p),
       }));
     }),
   submit: (identifier, input) =>
     run(() => {
       const user = sessionUser();
       const p = deskByIdentifier(identifier);
-      const typeId = input?.typeId;
+      // a catalog item decides the type, the form, the priority, the group and the approvals
+      const itemId = input?.catalogItemId;
+      const item = itemId ? db.catalogItems.find((i) => i.id === itemId && i.projectId === p.id && approvals.requestable(p, i)) : null;
+      if (itemId && !item) throw fieldError("catalogItem", "요청할 수 없는 항목입니다.");
+      const typeId = item ? item.typeId : input?.typeId;
       if (!typeId || !TICKET_TYPES.includes(typeId) || !p.typeIds.includes(typeId)) throw fieldError("type", "장애 신고나 서비스 요청을 고르세요.");
       // only what the portal offers goes on: no assignee, status, priority, dates or hidden fields
-      const allowedFields = new Set(portalFields(p).filter((f) => f.typeIds.includes(typeId)).map((f) => f.id));
+      const form = item ? approvals.itemFields(p, item) : portalFields(p).filter((f) => f.typeIds.includes(typeId));
+      const allowedFields = new Set(form.map((f) => f.id));
       const customValues: Record<Id, CustomValue> = {};
       for (const [k, v] of Object.entries(input.customValues ?? {})) if (allowedFields.has(k)) customValues[k] = v as CustomValue;
+      // the item's form says what is required, whatever the fields' own flags (those are waived for an item request)
+      if (item) for (const f of form) if (f.required && blank(customValues[f.id])) throw fieldError(`cf:${f.id}`, `${f.name}: 값을 입력하세요.`);
       const safe: WorkPackageInput = { typeId, subject: input.subject, descriptionHtml: input.descriptionHtml, customValues };
       if (input.impact !== undefined) safe.impact = input.impact;
       if (input.urgency !== undefined) safe.urgency = input.urgency;
-      const wp = w().insert(user, p, safe, "portal");
+      if (!item) return toTicket(user, w().insert(user, p, safe, "portal"), p, false);
+      const planned = approvals.planFor(item, user.id);
+      // 승인 대기 is an SLA pause: the ticket starts paused
+      safe.statusId = approvals.needsApproval(planned) ? ITSM.awaitingApproval : ITSM.received;
+      if (item.defaultPriorityId && db.priorities.some((x) => x.id === item.defaultPriorityId)) safe.priorityId = item.defaultPriorityId;
+      const wp = w().insert(user, p, safe, "portal", new Set(db.customFields.map((f) => f.id)));
+      const t = db.serviceTickets.find((x) => x.workPackageId === wp.id)!;
+      Object.assign(t, { catalogItemId: item.id, assignmentGroupId: item.assignmentGroupId });
+      approvals.store(approvalWriters(), user, wp, planned);
       return toTicket(user, wp, p, false);
     }),
   tickets: (state) =>
@@ -609,6 +855,25 @@ export const portalApi: Api["portal"] = {
     try {
       const { wp } = find(sessionUser(), number);
       return db.attachments.find((a) => a.id === id && a.wpId === wp.id)?.dataUrl ?? "#";
+    } catch {
+      return "#";
+    }
+  },
+  approvals: () => run(() => approvals.inbox(sessionUser())),
+  approval: (id) => run(() => approvals.detail(sessionUser(), id)),
+  decide: (id, decision, comment) =>
+    run(() => {
+      const user = sessionUser();
+      if (decision !== "approve" && decision !== "reject") {
+        approvals.check(user, id); // someone else's row is the 404 whatever the body says
+        throw fieldError("decision", "승인 또는 반려를 고르세요.");
+      }
+      return { decision: approvals.decide(approvalWriters(), user, id, decision === "approve", comment) };
+    }),
+  // the stored data URL, only for a file of the request my pending row belongs to
+  approvalFileUrl: (id, fileId) => {
+    try {
+      return approvals.fileUrl(sessionUser(), id, fileId);
     } catch {
       return "#";
     }

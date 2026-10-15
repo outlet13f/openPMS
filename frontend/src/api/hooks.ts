@@ -1,8 +1,8 @@
 // TanStack Query bindings. Screens use these hooks, never `api` directly, so caching and invalidation
 // rules live in one place.
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { api } from "./index";
-import type { TimeFilter, TimeGroupBy, TimeWeekCell, ApiTokenInput, QueryFilter, BoardKind, Id, NotificationFilter, NotificationSetting, Preferences, ProfileInput, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch, ServiceDeskSettings, ServiceTicketPatch, PortalSubmit } from "./types";
+import { api, isApiError } from "./index";
+import type { TimeFilter, TimeGroupBy, TimeWeekCell, ApiTokenInput, QueryFilter, BoardKind, Id, NotificationFilter, NotificationSetting, Preferences, ProfileInput, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch, ServiceDeskSettings, ServiceTicketPatch, PortalSubmit, CatalogCategoryInput, CatalogItemInput } from "./types";
 
 export const qk = {
   me: ["me"] as const,
@@ -38,6 +38,8 @@ export function invalidateWorkPackages(qc: QueryClient, number?: number) {
   qc.invalidateQueries({ queryKey: ["board"] });
   qc.invalidateQueries({ queryKey: ["notifications"] });
   qc.invalidateQueries({ queryKey: ["project"] });
+  // a status change out of 승인 대기 closes the open approval rows of the agent's panel
+  qc.invalidateQueries({ queryKey: ["serviceDesk", "approvals"] });
   if (number !== undefined) qc.invalidateQueries({ queryKey: ["wp", number] });
   else qc.invalidateQueries({ queryKey: ["wp"] });
 }
@@ -395,4 +397,63 @@ export function usePortalMutations() {
     }),
     attach: useMutation({ mutationFn: (v: { number: number; file: File }) => api.portal.attach(v.number, v.file), onSuccess: done }),
   };
+}
+
+/* ---------- 서비스 카탈로그와 승인 (ITSM 2단계) ---------- */
+
+export const useServiceCatalog = (project: string) =>
+  useQuery({ queryKey: ["serviceDesk", project, "catalog"], queryFn: () => api.serviceDesk.catalog(project), enabled: !!project });
+
+/** Catalog edits refresh the desk's catalog and the portal's desks (the items the requesters see). */
+export function useCatalogMutations(project: string) {
+  const qc = useQueryClient();
+  const done = () => (qc.invalidateQueries({ queryKey: ["serviceDesk", project, "catalog"] }), qc.invalidateQueries({ queryKey: ["portal", "desks"] }));
+  return {
+    createCategory: useMutation({ mutationFn: (input: CatalogCategoryInput) => api.serviceDesk.createCategory(project, input), onSuccess: done }),
+    updateCategory: useMutation({ mutationFn: (v: { id: Id; patch: CatalogCategoryInput }) => api.serviceDesk.updateCategory(project, v.id, v.patch), onSuccess: done }),
+    deleteCategory: useMutation({ mutationFn: (id: Id) => api.serviceDesk.deleteCategory(project, id), onSuccess: done }),
+    createItem: useMutation({ mutationFn: (input: CatalogItemInput) => api.serviceDesk.createItem(project, input), onSuccess: done }),
+    updateItem: useMutation({ mutationFn: (v: { id: Id; patch: CatalogItemInput }) => api.serviceDesk.updateItem(project, v.id, v.patch), onSuccess: done }),
+    deleteItem: useMutation({ mutationFn: (id: Id) => api.serviceDesk.deleteItem(project, id), onSuccess: done }),
+  };
+}
+
+/** The agent's approval panel of one request. */
+export const useTicketApprovals = (number: number, enabled = true) =>
+  useQuery({ queryKey: ["serviceDesk", "approvals", number], queryFn: () => api.serviceDesk.approvals(number), enabled: enabled && Number.isInteger(number) && number > 0 });
+
+/** An agent hands an undecided row to someone else (journaled, so the activity refreshes too). */
+export function useReplaceApprover(number: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { approvalId: Id; approverId: Id }) => api.serviceDesk.replaceApprover(number, v.approvalId, v.approverId),
+    onSuccess: (rows) => {
+      qc.setQueryData(["serviceDesk", "approvals", number], rows);
+      invalidateWorkPackages(qc, number);
+    },
+  });
+}
+
+/** 내 승인함 (also the badge in the global menu). */
+/** `poll`: the nav badge asks again every minute (new requests reach an approver without a reload). */
+export const usePortalApprovals = (poll = false) =>
+  useQuery({ queryKey: ["portal", "approvals"], queryFn: () => api.portal.approvals(), refetchInterval: poll ? 60_000 : false });
+export const usePortalApproval = (id: Id) =>
+  useQuery({ queryKey: ["portal", "approval", id], queryFn: () => api.portal.approval(id), enabled: !!id, retry: false });
+
+/** Approve or reject: the inbox, the request (its status may change) and any open work package views refresh. */
+export function useApprovalDecision() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: Id; decision: "approve" | "reject"; comment?: string }) => api.portal.decide(v.id, v.decision, v.comment),
+    onSettled: (_data, error, v) => {
+      // a decided row's page answers 404 from now on (after a decision, or when it was already decided or is no longer mine):
+      // drop it instead of refetching it (no 404 flash, no error toast). Other failures (422, 5xx) keep the page as it is.
+      if (!error || (isApiError(error) && (error.status === 404 || error.status === 409))) qc.removeQueries({ queryKey: ["portal", "approval", v.id] });
+      qc.invalidateQueries({ queryKey: ["portal"], predicate: (q) => q.queryKey[1] !== "approval" });
+      qc.invalidateQueries({ queryKey: ["serviceDesk"] });
+      qc.invalidateQueries({ queryKey: ["wp-query"] });
+      qc.invalidateQueries({ queryKey: ["wp"] });
+    },
+  });
 }

@@ -86,6 +86,7 @@ export function toServiceTicket(t: DbServiceTicket): ServiceTicket {
     impact: t.impact,
     urgency: t.urgency,
     assignmentGroup: g ? { id: g.id, name: g.name } : null,
+    catalogItem: ((i) => (i ? { id: i.id, name: i.name } : null))(t.catalogItemId ? db.catalogItems.find((x) => x.id === t.catalogItemId) : undefined),
     sla: {
       firstResponseDueAt: t.firstResponseDueAt,
       firstRespondedAt: t.firstRespondedAt,
@@ -216,6 +217,7 @@ const FIELD_LABEL: Record<string, string> = {
   impact: "영향도",
   urgency: "긴급도",
   assignmentGroupId: "처리 그룹",
+  approval: "승인",
 };
 
 export function display(field: string, v: unknown): string | null {

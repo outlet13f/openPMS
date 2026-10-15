@@ -260,7 +260,7 @@ export function buildSeed(schema: number): Db {
     ...seedTime(),
     seq: { wp: rows.length + sd.workPackages.length, id: 1000 },
     sessionUserId: null,
-    users,
+    users: users.map((u) => ({ ...u, managerId: sd.managerOf[u.id] ?? null })),
     roles: [...roles, ...sd.roles],
     projects: [...projects, sd.project],
     members: [...members, ...sd.members],
@@ -286,6 +286,9 @@ export function buildSeed(schema: number): Db {
     slaPolicies: sd.slaPolicies,
     priorityMatrix: sd.priorityMatrix,
     serviceTickets: sd.serviceTickets,
+    catalogCategories: sd.catalogCategories,
+    catalogItems: sd.catalogItems,
+    ticketApprovals: sd.ticketApprovals,
     watchers: [
       { wpId: "wp-8", userId: "u-seoyeon" },
       { wpId: "wp-3", userId: "u-junho" },
@@ -316,10 +319,11 @@ export function buildSeed(schema: number): Db {
     tokens: [],
     outbox: [],
     notificationSettings: [],
-    customFields,
+    customFields: [...customFields, ...sd.customFields],
     projectCustomFields: [
       { projectId: "p-web", customFieldId: "cf-client" },
       { projectId: "p-web", customFieldId: "cf-points" },
+      ...sd.projectCustomFields,
     ],
     nonWorkingDays: [
       { id: "nwd-1", date: "2026-10-03", name: "개천절" },

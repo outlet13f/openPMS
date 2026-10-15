@@ -20,6 +20,7 @@ import com.openpms.core.Snapshot.ProjectRow;
 import com.openpms.db.tables.records.JournalsRecord;
 import com.openpms.db.tables.records.WorkPackageSharesRecord;
 import com.openpms.db.tables.records.WorkPackagesRecord;
+import com.openpms.itsm.ItsmIds;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -162,8 +163,11 @@ public class WorkPackageService {
 
     /* ---------- create ---------- */
 
-    /** Who acts: a project member (permissions checked by the caller) or a requester at the portal (PortalService decided). */
-    public enum Acting { MEMBER, PORTAL }
+    /**
+     * Who acts: a project member (permissions checked by the caller), a requester at the portal (PortalService decided) or
+     * an approver deciding a catalog request (the approval service checked the approver).
+     */
+    public enum Acting { MEMBER, PORTAL, APPROVAL }
 
     @Transactional
     public Dto.WorkPackage create(Ctx ctx, String projectId, Map<String, Object> in) {
@@ -175,10 +179,23 @@ public class WorkPackageService {
     /** A requester's ticket from the portal: PortalService decided who may and passes only portal fields. */
     @Transactional
     public WorkPackagesRecord createForPortal(Ctx ctx, Snapshot.ProjectRow p, Map<String, Object> in) {
-        return insert(ctx, p, in, Acting.PORTAL);
+        return insert(ctx, p, in, Acting.PORTAL, Set.of());
+    }
+
+    /**
+     * Same, with more fields whose required check is waived when left empty: a catalog item's form decides what is
+     * required (PortalService checks it), so the item request waives the fields' own flags.
+     */
+    @Transactional
+    public WorkPackagesRecord createForPortal(Ctx ctx, Snapshot.ProjectRow p, Map<String, Object> in, Set<UUID> waived) {
+        return insert(ctx, p, in, Acting.PORTAL, waived);
     }
 
     private WorkPackagesRecord insert(Ctx ctx, Snapshot.ProjectRow p, Map<String, Object> in, Acting acting) {
+        return insert(ctx, p, in, acting, Set.of());
+    }
+
+    private WorkPackagesRecord insert(Ctx ctx, Snapshot.ProjectRow p, Map<String, Object> in, Acting acting, Set<UUID> waived) {
         var s = ctx.s();
         var subject = In.str(in, "subject") == null ? "" : In.str(in, "subject").trim();
         if (subject.isEmpty()) throw ApiException.field("subject", "제목을 입력하세요.");
@@ -225,7 +242,8 @@ public class WorkPackageService {
         var hidden = acting == Acting.PORTAL
                 ? new java.util.HashSet<>(db.select(CUSTOM_FIELDS.ID).from(CUSTOM_FIELDS)
                         .where(CUSTOM_FIELDS.PORTAL_VISIBLE.isFalse().or(CUSTOM_FIELDS.FORMAT.in("user", "version"))).fetch(CUSTOM_FIELDS.ID))
-                : java.util.Set.<UUID>of();
+                : new java.util.HashSet<UUID>();
+        hidden.addAll(waived);
         var custom = customFields.initial(s, p.id(), typeId, customInput(in), hidden);
 
         schedules.lock();
@@ -318,14 +336,26 @@ public class WorkPackageService {
         return apply(ctx, f, patch, Acting.PORTAL);
     }
 
-    /** The saved record (f.wp() when nothing changed). A portal conflict carries no body: a requester never gets the assembled work package. */
+    /** An approver's decision moves the request out of 승인 대기 (ApprovalService checked the approver). */
+    @Transactional
+    public WorkPackagesRecord statusForApproval(Ctx ctx, Found f, UUID statusId) {
+        var patch = new java.util.HashMap<String, Object>();
+        patch.put("lockVersion", f.wp().getLockVersion());
+        patch.put("statusId", statusId.toString());
+        return apply(ctx, f, patch, Acting.APPROVAL);
+    }
+
+    /**
+     * The saved record (f.wp() when nothing changed). Only a member's conflict carries the work package: a requester or an
+     * approver never gets the assembled work package.
+     */
     private WorkPackagesRecord apply(Ctx ctx, Found f, Map<String, Object> patch, Acting acting) {
         var s = ctx.s();
         var wp = f.wp();
         var project = f.project();
         var lockVersion = In.integer(patch, "lockVersion", "lockVersion");
         if (lockVersion == null || lockVersion != wp.getLockVersion()) {
-            throw ApiException.conflict("다른 사람이 먼저 수정했습니다.", "최신 내용을 불러온 뒤 다시 저장하세요.", acting == Acting.PORTAL ? null : assembler.one(ctx, wp));
+            throw ApiException.conflict("다른 사람이 먼저 수정했습니다.", "최신 내용을 불러온 뒤 다시 저장하세요.", acting == Acting.MEMBER ? assembler.one(ctx, wp) : null);
         }
         var status = s.status(wp.getStatusId()).orElseThrow();
         var given = patch.keySet().stream().filter(k -> !k.equals("lockVersion") && !k.equals("touched")).toList();
@@ -347,10 +377,15 @@ public class WorkPackageService {
         if (In.has(patch, "statusId")) {
             var next = In.uuid(patch, "statusId", "status");
             if (next != null && !next.equals(wp.getStatusId())) {
-                var allowed = acting == Acting.PORTAL
-                        ? Assembler.allowedFor(ctx.s(), java.util.Set.of(com.openpms.itsm.ItsmIds.ROLE_REQUESTER), ctx.userId(), wp.getTypeId(), wp.getStatusId(),
-                                ctx.userId(), Assignees.ids(team))
-                        : Assembler.allowedStatusIds(ctx, wp.getTypeId(), wp.getStatusId(), wp.getProjectId(), wp.getAuthorId(), Assignees.ids(team));
+                var allowed = switch (acting) {
+                    case PORTAL -> Assembler.allowedFor(ctx.s(), Set.of(ItsmIds.ROLE_REQUESTER), ctx.userId(), wp.getTypeId(), wp.getStatusId(),
+                            ctx.userId(), Assignees.ids(team));
+                    // an approver's decision: only out of 승인 대기, only to 접수 (last approval) or 반려 (rejection)
+                    case APPROVAL -> wp.getStatusId().equals(ItsmIds.STATUS_AWAITING_APPROVAL)
+                            && (next.equals(ItsmIds.STATUS_RECEIVED) || next.equals(ItsmIds.STATUS_REJECTED))
+                            ? List.of(next) : List.<UUID>of();
+                    case MEMBER -> Assembler.allowedStatusIds(ctx, wp.getTypeId(), wp.getStatusId(), wp.getProjectId(), wp.getAuthorId(), Assignees.ids(team));
+                };
                 if (!allowed.contains(next)) {
                     var to = s.status(next).map(Snapshot.StatusRow::name).orElse("?");
                     throw ApiException.unprocessable("허용되지 않는 상태 전환입니다.", "내 역할로는 '" + status.name() + "'에서 '" + to + "'(으)로 바꿀 수 없습니다.");
@@ -463,7 +498,7 @@ public class WorkPackageService {
         wp.setUpdatedAt(OffsetDateTime.now());
         int n = db.executeUpdate(wp, WORK_PACKAGES.ID.eq(wp.getId()).and(WORK_PACKAGES.LOCK_VERSION.eq(before.getLockVersion())));
         if (n == 0) {
-            throw ApiException.conflict("다른 사람이 먼저 수정했습니다.", "최신 내용을 불러온 뒤 다시 저장하세요.", acting == Acting.PORTAL ? null : assembler.one(ctx, reload(wp.getId())));
+            throw ApiException.conflict("다른 사람이 먼저 수정했습니다.", "최신 내용을 불러온 뒤 다시 저장하세요.", acting == Acting.MEMBER ? assembler.one(ctx, reload(wp.getId())) : null);
         }
         if (nextTeam != null) assignees.write(wp.getId(), nextTeam);
         var saved = reload(wp.getId());
@@ -587,6 +622,12 @@ public class WorkPackageService {
     /** A requester's public comment on their own ticket. */
     @Transactional
     public JournalsRecord commentForPortal(Ctx ctx, Found f, String bodyHtml) {
+        return addComment(ctx, f, bodyHtml, false);
+    }
+
+    /** A rejection reason, public, written by the approver. */
+    @Transactional
+    public JournalsRecord commentForApproval(Ctx ctx, Found f, String bodyHtml) {
         return addComment(ctx, f, bodyHtml, false);
     }
 

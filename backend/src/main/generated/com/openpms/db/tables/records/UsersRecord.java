@@ -231,6 +231,21 @@ public class UsersRecord extends UpdatableRecordImpl<UsersRecord> {
         return (OffsetDateTime) get(13);
     }
 
+    /**
+     * Setter for <code>public.users.manager_id</code>.
+     */
+    public UsersRecord setManagerId(UUID value) {
+        set(14, value);
+        return this;
+    }
+
+    /**
+     * Getter for <code>public.users.manager_id</code>.
+     */
+    public UUID getManagerId() {
+        return (UUID) get(14);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -254,7 +269,7 @@ public class UsersRecord extends UpdatableRecordImpl<UsersRecord> {
     /**
      * Create a detached, initialised UsersRecord
      */
-    public UsersRecord(UUID id, String email, String name, String passwordHash, String status, Boolean isAdmin, String locale, String timeZone, String theme, Integer failedLoginCount, OffsetDateTime lockedUntil, OffsetDateTime lastLoginAt, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
+    public UsersRecord(UUID id, String email, String name, String passwordHash, String status, Boolean isAdmin, String locale, String timeZone, String theme, Integer failedLoginCount, OffsetDateTime lockedUntil, OffsetDateTime lastLoginAt, OffsetDateTime createdAt, OffsetDateTime updatedAt, UUID managerId) {
         super(Users.USERS);
 
         setId(id);
@@ -271,6 +286,7 @@ public class UsersRecord extends UpdatableRecordImpl<UsersRecord> {
         setLastLoginAt(lastLoginAt);
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
+        setManagerId(managerId);
         resetTouchedOnNotNull();
     }
 }

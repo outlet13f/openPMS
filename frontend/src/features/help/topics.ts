@@ -37,6 +37,8 @@ const TOPICS: [RegExp, ManualId, string][] = [
   [/^\/my\/timesheet/, "user", "15.1"],
   [/^\/search/, "user", "9"],
   [/^\/help\/api/, "user", "14.4"],
+  [/^\/portal\/approvals/, "user", "18.2"],
+  [/^\/portal\/items\//, "user", "18.1"],
   [/^\/portal/, "user", "16"],
   [/^\/?$/, "user", "3.1"],
   // administration: the operator manual's chapter 9

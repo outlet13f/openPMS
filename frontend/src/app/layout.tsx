@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useMatch, useNavigate, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { applyTheme } from "@/lib/theme";
-import { ArrowLeft, Bell, BookOpen, CalendarDays, CalendarRange, ChevronDown, Clock, Code2, FolderKanban, GanttChart, Home, KanbanSquare, Keyboard, LayoutDashboard, LifeBuoy, ListTodo, Palette, PanelLeftOpen, Settings, Shield, Star, UserRound, Users } from "lucide-react";
+import { ArrowLeft, Bell, BookOpen, CalendarDays, CalendarRange, ChevronDown, ClipboardCheck, Clock, Code2, FolderKanban, GanttChart, Home, KanbanSquare, Keyboard, LayoutDashboard, LifeBuoy, ListTodo, Palette, PanelLeftOpen, Settings, Shield, Star, UserRound, Users } from "lucide-react";
 import type { Me, Project } from "@/api";
 import { API_MODE } from "@/api";
 import { resetFakeDb } from "@/api/fake";
 import { queryClient } from "./providers";
-import { useProject, useProjects, useSavedQueries, useUnreadCount } from "@/api/hooks";
+import { usePortalApprovals, useProject, useProjects, useSavedQueries, useUnreadCount } from "@/api/hooks";
 import { AppHeader, Sidebar, SidebarDrawer, type SidebarSection } from "@/components/shell/app-shell";
 import { Menu, Tooltip, type MenuEntry } from "@/components/ui/overlay";
 import { Input } from "@/components/ui/field";
@@ -24,6 +24,8 @@ import { topicFor, type Topic } from "@/features/help/topics";
 
 function GlobalSidebar({ me, onNavigate, unread, onCollapse }: { me: Me; onNavigate?: () => void; unread: number; onCollapse?: () => void }) {
   const { t } = useTranslation();
+  // 내 승인함: the badge counts the approvals waiting for me and is hidden at 0 (the text carries the count for screen readers)
+  const approvals = usePortalApprovals(true).data?.length ?? 0;
   const sections: SidebarSection[] = [
     {
       items: [
@@ -34,7 +36,18 @@ function GlobalSidebar({ me, onNavigate, unread, onCollapse }: { me: Me; onNavig
         { label: t("nav.workPackages"), to: "/work-packages", icon: <ListTodo /> },
         { label: t("nav.gantt"), to: "/gantt", icon: <GanttChart /> },
         { label: t("nav.notifications"), to: "/notifications", icon: <Bell />, badge: unread ? <Counter tone="accent">{unread}</Counter> : undefined },
-        { label: t("portal.title"), to: "/portal", icon: <LifeBuoy /> },
+        { label: t("portal.title"), to: "/portal", icon: <LifeBuoy />, isActive: (p) => (p === "/portal" || p.startsWith("/portal/")) && p !== "/portal/approvals" && !p.startsWith("/portal/approvals/") },
+        {
+          label: t("portal.inbox.title"),
+          to: "/portal/approvals",
+          icon: <ClipboardCheck />,
+          badge: approvals ? (
+            <Counter tone="accent">
+              <span aria-hidden="true">{approvals}</span>
+              <span className="sr-only">{t("portal.inbox.navCount", { count: approvals })}</span>
+            </Counter>
+          ) : undefined,
+        },
       ],
     },
   ];
@@ -229,6 +242,7 @@ export function AppLayout({ me }: { me: Me }) {
     { label: t("nav.gantt"), icon: <GanttChart />, onSelect: () => navigate("/gantt") },
     { label: t("nav.notifications"), icon: <Bell />, onSelect: () => navigate("/notifications") },
     { label: t("portal.title"), icon: <LifeBuoy />, onSelect: () => navigate("/portal") },
+    { label: t("portal.inbox.title"), icon: <ClipboardCheck />, onSelect: () => navigate("/portal/approvals") },
     ...(me.isAdmin ? [{ kind: "separator" as const }, { label: t("nav.admin"), icon: <Shield />, onSelect: () => navigate("/admin") }] : []),
   ];
 

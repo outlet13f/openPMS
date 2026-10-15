@@ -135,7 +135,7 @@ export function useRoleMutations() {
 
 /* ---------- users / groups ---------- */
 
-export const useAdminUsers = (params: { q?: string; status?: "invited" | "active" | "locked" | "deleted" }) =>
+export const useAdminUsers = (params: { q?: string; status?: "invited" | "active" | "locked" | "deleted"; noManager?: boolean }) =>
   useQuery({ queryKey: ak.users(params), queryFn: () => api.admin.users.list(params) });
 export function useUserMutations() {
   return {
@@ -154,6 +154,8 @@ export function useGroupMutations() {
   return {
     create: useMut((name: string) => api.admin.groups.create(name)),
     rename: useMut(({ id, name }: { id: Id; name: string }) => api.admin.groups.rename(id, name)),
+    /** name and/or 그룹 책임자 (administrators only) */
+    update: useMut(({ id, patch }: { id: Id; patch: { name?: string; leadUserId?: Id | null } }) => api.admin.groups.update(id, patch)),
     remove: useMut((id: Id) => api.admin.groups.remove(id)),
     setMembers: useMut(({ id, userIds }: { id: Id; userIds: Id[] }) => api.admin.groups.setMembers(id, userIds)),
   };

@@ -68,7 +68,7 @@ export function RadioGroupField<T extends string | number>({
 }
 
 /** One portal field's input by its format; a list shows the option values and sends the option ids. */
-function PortalFieldInput({ field, value, onChange, ...aria }: { field: PortalField; value: CustomValue; onChange: (v: CustomValue) => void; id?: string; "aria-invalid"?: boolean; "aria-describedby"?: string }) {
+export function PortalFieldInput({ field, value, onChange, ...aria }: { field: PortalField; value: CustomValue; onChange: (v: CustomValue) => void; id?: string; "aria-invalid"?: boolean; "aria-describedby"?: string }) {
   const { t } = useTranslation();
   const text = (v: string) => onChange(v === "" ? null : v);
   switch (field.format) {
@@ -109,7 +109,7 @@ function PortalFieldInput({ field, value, onChange, ...aria }: { field: PortalFi
   }
 }
 
-const emptyValue = (v: CustomValue | undefined) => v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
+export const emptyValue = (v: CustomValue | undefined) => v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
 
 function NewTicketForm({ desk, initialType }: { desk: PortalDesk; initialType: IdName }) {
   const { t } = useTranslation();

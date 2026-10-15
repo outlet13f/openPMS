@@ -25,7 +25,7 @@ import { SLA_TONE } from "@/features/service-desk/sla-panel";
 const WIDTH: Partial<Record<ColumnKey, string>> = {
   number: "w-16", type: "w-24", status: "w-32", assignee: "w-40", responsible: "w-40", author: "w-36", priority: "w-24",
   startDate: "w-28", dueDate: "w-28", updatedAt: "w-28", version: "w-32", project: "w-40", duration: "w-20", doneRatio: "w-20", work: "w-24", remainingWork: "w-24",
-  requester: "w-36", assignmentGroup: "w-32", slaDue: "w-32", slaState: "w-28",
+  requester: "w-36", assignmentGroup: "w-32", catalogItem: "w-36", slaDue: "w-32", slaState: "w-28",
 };
 const SORTABLE: ColumnKey[] = ["number", "subject", "type", "status", "priority", "assignee", "responsible", "author", "version", "startDate", "dueDate", "work", "remainingWork", "updatedAt", "project", "slaDue"];
 
@@ -135,6 +135,8 @@ function Cell({ wp, column, options, inline }: { wp: WorkPackage; column: Column
       return wp.serviceTicket ? <Principal id={wp.serviceTicket.requester.id} name={wp.serviceTicket.requester.name} size="xs" /> : null;
     case "assignmentGroup":
       return <>{wp.serviceTicket?.assignmentGroup?.name ?? ""}</>;
+    case "catalogItem":
+      return <>{wp.serviceTicket?.catalogItem?.name ?? ""}</>;
     case "slaDue": {
       const due = wp.serviceTicket?.sla.resolveDueAt;
       if (!due) return null;

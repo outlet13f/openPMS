@@ -2,6 +2,7 @@ package com.openpms.itsm;
 
 import static com.openpms.db.Tables.SERVICE_TICKETS;
 import static com.openpms.db.Tables.USER_GROUPS;
+import static com.openpms.db.Tables.WORK_PACKAGES;
 
 import com.openpms.common.ApiException;
 import com.openpms.common.In;
@@ -31,11 +32,13 @@ public class ServiceDesk {
     private final DSLContext db;
     private final ServiceDeskConfig config;
     private final ServiceTickets tickets;
+    private final Approvals approvals;
 
-    public ServiceDesk(DSLContext db, ServiceDeskConfig config, ServiceTickets tickets) {
+    public ServiceDesk(DSLContext db, ServiceDeskConfig config, ServiceTickets tickets, Approvals approvals) {
         this.db = db;
         this.config = config;
         this.tickets = tickets;
+        this.approvals = approvals;
     }
 
     public boolean applies(Snapshot.ProjectRow p, UUID typeId) {
@@ -95,6 +98,13 @@ public class ServiceDesk {
      */
     public void copied(Ctx ctx, Snapshot.ProjectRow modulesOf, UUID originalId, WorkPackagesRecord copy) {
         if (!applies(modulesOf, copy.getTypeId())) return;
+        // a copy has no approval rows: 승인 대기 would be a paused ticket nobody can decide, so it starts as 접수
+        boolean wasAwaiting = ItsmIds.STATUS_AWAITING_APPROVAL.equals(copy.getStatusId());
+        if (wasAwaiting) {
+            db.update(WORK_PACKAGES).set(WORK_PACKAGES.STATUS_ID, ItsmIds.STATUS_RECEIVED).where(WORK_PACKAGES.ID.eq(copy.getId())).execute();
+            copy.setStatusId(ItsmIds.STATUS_RECEIVED);
+            copy.changed(WORK_PACKAGES.STATUS_ID, false);
+        }
         var original = tickets.of(originalId).orElse(null);
         var t = tickets.of(copy.getId()).orElse(null);
         if (t == null) {
@@ -106,6 +116,11 @@ public class ServiceDesk {
             t.setImpact(original.getImpact());
             t.setUrgency(original.getUrgency());
             t.setAssignmentGroupId(original.getAssignmentGroupId());
+        }
+        if (wasAwaiting && t.getPausedSince() != null) {
+            // the ticket was made while still in 승인 대기 (single copy): its clock starts running in 접수
+            t.setPausedSince(null);
+            recompute(ctx, t, copy, Instant.now());
         }
         t.setRequesterMailedAt(at(Instant.now()));
         t.setRequesterMailedStatusId(copy.getStatusId());
@@ -129,7 +144,10 @@ public class ServiceDesk {
             if ((!to.slaPause() || to.isClosed()) && t.getPausedSince() != null) closePause(ctx, t, after, now);
             if (to.isClosed() && !from.isClosed()) t.setResolvedAt(at(now));
             if (!to.isClosed() && from.isClosed()) t.setResolvedAt(null);
-            firstResponse(ctx, t, now);
+            // leaving 승인 대기 is the approvers' decision (or the end of the request), not an answer to the requester
+            if (!from.id().equals(ItsmIds.STATUS_AWAITING_APPROVAL)) firstResponse(ctx, t, now);
+            // out of 승인 대기 other than by the last approval (cancelled, an administrator's change): the open approvals are skipped
+            if (from.id().equals(ItsmIds.STATUS_AWAITING_APPROVAL)) approvals.skipRemaining(ctx, after);
             // the requester made this change themselves, so portal-mail must not announce it back (or mistake it for "already told")
             if (ctx.userId().equals(t.getRequesterId())) t.setRequesterMailedStatusId(to.id());
         }
@@ -170,7 +188,11 @@ public class ServiceDesk {
         }
         var holidays = ctx.s().calendar().holidays();
         var start = t.getCreatedAt().toInstant();
-        var respond = at(SlaClock.add(start, policy.firstResponse(), policy.calendar(), holidays));
+        // Time paused before the first response (a request waiting for approval starts paused) does not count against the
+        // response target: it extends the deadline like it extends the resolve one. Once answered the deadline is final and
+        // later pauses (답변 대기) or policy changes leave it as it was, so a recompute never shrinks it back.
+        var respond = t.getFirstRespondedAt() != null && t.getFirstResponseDueAt() != null ? t.getFirstResponseDueAt()
+                : at(SlaClock.add(start, policy.firstResponse().plus(Duration.ofSeconds(t.getPausedTotalSeconds())), policy.calendar(), holidays));
         var resolve = at(SlaClock.add(start, policy.resolve().plus(Duration.ofSeconds(t.getPausedTotalSeconds())), policy.calendar(), holidays));
         if (!isSame(respond, t.getFirstResponseDueAt()) && respond.toInstant().isAfter(now)) t.setResponseWarned(false);
         if (!isSame(resolve, t.getResolveDueAt()) && resolve.toInstant().isAfter(now)) t.setResolveWarned(false);

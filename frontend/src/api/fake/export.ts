@@ -11,7 +11,7 @@ const HEADERS: Record<string, string> = {
   number: "번호", subject: "제목", type: "유형", status: "상태", priority: "우선순위", assignee: "담당자", responsible: "책임자",
   author: "작성자", version: "버전", startDate: "시작일", dueDate: "완료일", duration: "기간(일)", work: "작업량(시간)", remainingWork: "남은 작업(시간)", doneRatio: "완료 %", updatedAt: "최근 수정",
   project: "프로젝트",
-  requester: "요청자", assignmentGroup: "처리 그룹", slaDue: "해결 기한", slaState: "SLA",
+  requester: "요청자", assignmentGroup: "처리 그룹", catalogItem: "카탈로그 항목", slaDue: "해결 기한", slaState: "SLA",
 };
 
 export function header(column: ColumnKey): string {
@@ -50,6 +50,7 @@ export function cell(wp: WorkPackage, column: ColumnKey, zone: string): string |
     case "project": return wp.project.name;
     case "requester": return wp.serviceTicket?.requester.name ?? null;
     case "assignmentGroup": return wp.serviceTicket?.assignmentGroup?.name ?? null;
+    case "catalogItem": return wp.serviceTicket?.catalogItem?.name ?? null;
     case "slaDue": return wp.serviceTicket?.sla.resolveDueAt ? localDateTime(wp.serviceTicket.sla.resolveDueAt, zone) : null;
     case "slaState": return slaState(wp);
     default: {

@@ -3,7 +3,7 @@
 // State survives reloads through localStorage (per browser, per user) and can be reset from the login page.
 
 import type { DbTimeEntry } from "./time-seed";
-import type { DbMatrixCell, DbServiceCalendar, DbServiceTicket, DbSlaPolicy } from "./service-desk-seed";
+import type { DbCatalogCategory, DbCatalogItem, DbMatrixCell, DbServiceCalendar, DbServiceTicket, DbSlaPolicy, DbTicketApproval } from "./service-desk-seed";
 import type {
   TimeActivity,
   OverviewWidget,
@@ -26,6 +26,8 @@ export interface DbUser {
   lastLoginAt: IsoDateTime | null;
   /** S31 global roles */
   globalRoleIds?: Id[];
+  /** ITSM 2단계: 관리자(상사), who approves this person's catalog requests (absent = none) */
+  managerId?: Id | null;
 }
 /** builtin requester: 요청자 (ITSM), only its workflow is used, on the portal */
 export interface DbRole { id: Id; name: string; scope: "project" | "global"; builtin: "non_member" | "requester" | null; permissions: string[] }
@@ -58,7 +60,8 @@ export interface DbPriority { id: Id; name: string; color: string; position: num
 export interface DbWorkflow { typeId: Id; roleId: Id; from: Id; to: Id; appliesTo?: "always" | "author" | "assignee" }
 export interface DbVersion { id: Id; projectId: Id; name: string; description: string; status: "open" | "locked" | "closed"; startDate: IsoDate | null; endDate: IsoDate | null }
 export interface DbCategory { id: Id; projectId: Id; name: string; defaultAssigneeId: Id | null }
-export interface DbGroup { id: Id; name: string; memberIds: Id[] }
+/** leadUserId: 그룹 책임자 (ITSM 2단계; absent = none) */
+export interface DbGroup { id: Id; name: string; memberIds: Id[]; leadUserId?: Id | null }
 export interface DbWp {
   id: Id;
   number: number;
@@ -137,7 +140,7 @@ export interface DbApiToken { id: Id; userId: Id; name: string; scope: "read" | 
 /** portalVisible (absent = false): shown on the portal's form and ticket page */
 export type DbCustomField = CustomField & { portalVisible?: boolean };
 
-export type { DbMatrixCell, DbServiceCalendar, DbServiceTicket, DbSlaPolicy };
+export type { DbCatalogCategory, DbCatalogItem, DbMatrixCell, DbServiceCalendar, DbServiceTicket, DbSlaPolicy, DbTicketApproval };
 
 export interface Db {
   schema: number;
@@ -176,6 +179,10 @@ export interface Db {
   slaPolicies: DbSlaPolicy[];
   priorityMatrix: DbMatrixCell[];
   serviceTickets: DbServiceTicket[];
+  /** 서비스 카탈로그와 승인 (ITSM 2단계) */
+  catalogCategories: DbCatalogCategory[];
+  catalogItems: DbCatalogItem[];
+  ticketApprovals: DbTicketApproval[];
   queries: DbQuery[];
   queryFavorites: { userId: Id; queryId: Id }[];
   boards: DbBoard[];
@@ -200,7 +207,7 @@ export interface Db {
 }
 
 const KEY = "openpms.fakedb";
-const SCHEMA = 16;
+const SCHEMA = 17;
 
 function load(): Db {
   try {

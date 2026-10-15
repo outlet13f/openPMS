@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Link, NavLink } from "react-router";
+import { Link, NavLink, useLocation } from "react-router";
 import { Dialog as D } from "radix-ui";
 import { Bell, ChevronDown, CircleHelp, LayoutGrid, Menu as MenuIcon, PanelLeftClose, Plus, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -126,6 +126,8 @@ export interface SidebarItem {
   end?: boolean;
   /** Force the active state (e.g. the selected saved view, which lives in the query string). */
   active?: boolean;
+  /** Decide the active state from the path (e.g. a prefix match that leaves out a sibling entry's subtree). */
+  isActive?: (pathname: string) => boolean;
 }
 export interface SidebarSection {
   title?: string;
@@ -157,6 +159,7 @@ export function Sidebar({
   className?: string;
 }) {
   const { t } = useTranslation();
+  const { pathname } = useLocation();
   return (
     <nav aria-label={label} className={cn("flex w-sidebar shrink-0 flex-col border-r border-border-muted bg-bg", className)}>
       {header && <div className="border-b border-border-muted p-3">{header}</div>}
@@ -165,21 +168,24 @@ export function Sidebar({
           <div key={i} className={cn(i > 0 && "mt-4")}>
             {s.title && <h2 className="px-2.5 pb-1 text-xs font-semibold text-fg-muted">{s.title}</h2>}
             <ul className="flex flex-col gap-0.5">
-              {s.items.map((it) => (
-                <li key={it.to + it.label}>
-                  <NavLink
-                    to={it.to}
-                    end={it.end}
-                    onClick={onNavigate}
-                    className={({ isActive }) => itemCls(it.active ?? isActive)}
-                    aria-current={it.active ? "page" : undefined}
-                  >
-                    {it.icon}
-                    <span className="min-w-0 flex-1 truncate">{it.label}</span>
-                    {it.badge}
-                  </NavLink>
-                </li>
-              ))}
+              {s.items.map((it) => {
+                const forced = it.active ?? it.isActive?.(pathname);
+                return (
+                  <li key={it.to + it.label}>
+                    <NavLink
+                      to={it.to}
+                      end={it.end}
+                      onClick={onNavigate}
+                      className={({ isActive }) => itemCls(forced ?? isActive)}
+                      aria-current={forced === undefined ? undefined : forced ? "page" : "false"}
+                    >
+                      {it.icon}
+                      <span className="min-w-0 flex-1 truncate">{it.label}</span>
+                      {it.badge}
+                    </NavLink>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         ))}

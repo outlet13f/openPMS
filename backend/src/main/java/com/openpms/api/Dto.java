@@ -101,7 +101,7 @@ public final class Dto {
     public record Sla(OffsetDateTime firstResponseDueAt, OffsetDateTime firstRespondedAt, OffsetDateTime resolveDueAt, OffsetDateTime resolvedAt,
                       boolean paused, long pausedSeconds, boolean responseBreached, boolean resolveBreached) {}
 
-    public record ServiceTicket(UserRef requester, String channel, int impact, int urgency, IdName assignmentGroup, Sla sla) {}
+    public record ServiceTicket(UserRef requester, String channel, int impact, int urgency, IdName assignmentGroup, IdName catalogItem, Sla sla) {}
 
     /** 공동 담당자: one of the people who have an item (the first is the main assignee) and their own estimate in hours */
     public record Assignee(UserRef user, Double workHours) {}

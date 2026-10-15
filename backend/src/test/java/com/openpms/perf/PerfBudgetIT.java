@@ -1,6 +1,7 @@
 package com.openpms.perf;
 
 import static com.openpms.db.Tables.BOARDS;
+import static com.openpms.db.Tables.CUSTOM_FIELDS;
 import static com.openpms.db.Tables.PROJECTS;
 import static com.openpms.db.Tables.WORK_PACKAGES;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -74,6 +75,7 @@ class PerfBudgetIT {
     MockMvc mvc;
     MockHttpSession admin;
     MockHttpSession requester;
+    MockHttpSession approver;
     UUID projectId;
     UUID deskId;
     long requesterTicket;
@@ -101,7 +103,6 @@ class PerfBudgetIT {
         requesterTicket = db.select(WORK_PACKAGES.NUMBER).from(WORK_PACKAGES)
                 .where(WORK_PACKAGES.PROJECT_ID.eq(deskId), WORK_PACKAGES.SUBJECT.like("% (1)")).fetchSingle().value1();
         assertThat(db.fetchCount(WORK_PACKAGES, WORK_PACKAGES.PROJECT_ID.eq(deskId))).isEqualTo(200);
-
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         admin = new MockHttpSession();
         mvc.perform(post("/api/v1/auth/login").session(admin).with(csrf()).contentType(MediaType.APPLICATION_JSON)
@@ -111,6 +112,11 @@ class PerfBudgetIT {
         requester = new MockHttpSession();
         mvc.perform(post("/api/v1/auth/login").session(requester).with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"email\":\"minji.choi@openpms.local\",\"password\":\"openpms!\"}")).andExpect(status().isOk());
+
+        // the approver of the 50 pending catalog requests (not a member either)
+        approver = new MockHttpSession();
+        mvc.perform(post("/api/v1/auth/login").session(approver).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"alex.kim@openpms.local\",\"password\":\"openpms!\"}")).andExpect(status().isOk());
 
         // count statements without touching the application's own listeners
         before = db.configuration().executeListenerProviders();
@@ -129,6 +135,7 @@ class PerfBudgetIT {
     void cleanUp() throws Exception {
         if (before != null) db.configuration().set(before);
         db.deleteFrom(PROJECTS).where(PROJECTS.IDENTIFIER.in("perf-1000", "perf-sd")).execute();
+        db.deleteFrom(CUSTOM_FIELDS).where(CUSTOM_FIELDS.ID.eq(UUID.fromString("c0000002-0000-4000-8000-000000000001"))).execute();
         report();
     }
 
@@ -211,7 +218,10 @@ class PerfBudgetIT {
                 // ordinary list plus the ticket join, the portal list and detail are separate endpoints with their own lookups
                 measure(new Budget("서비스 데스크 목록", "티켓 20건 · SLA 열", 250, 22, 60), List.of(serviceDeskQuery(20))),
                 measure(new Budget("포털 내 요청", "요청자 티켓 200건", 200, 8, 80), List.of(get("/api/v1/portal/tickets")), requester),
-                measure(new Budget("포털 요청 상세", "공개 이력 · 첨부", 150, 18, 8), List.of(get("/api/v1/portal/tickets/" + requesterTicket)), requester));
+                measure(new Budget("포털 요청 상세", "공개 이력 · 첨부", 150, 18, 8), List.of(get("/api/v1/portal/tickets/" + requesterTicket)), requester),
+                // the catalog (one desk, three items; measured 13 SQL, whatever the number of desks; the size varies from 2 to 29 KB with the desks other tests leave behind, so its budget is 64 KB) and the approval inbox (50 pending rows; measured 4 SQL): measured + 2 SQL like the portal budgets above
+                measure(new Budget("포털 카탈로그", "서비스 데스크 · 항목 3개", 150, 15, 64), List.of(get("/api/v1/portal/desks")), requester),
+                measure(new Budget("내 승인함", "승인 대기 50건", 150, 6, 20), List.of(get("/api/v1/portal/approvals")), approver));
         var soft = new SoftAssertions();
         for (var m : measured) {
             var b = m.budget();
@@ -223,6 +233,34 @@ class PerfBudgetIT {
                     .isLessThanOrEqualTo(b.maxKb());
         }
         soft.assertAll();
+    }
+
+    /** SQL statements one request runs. */
+    int statementsOf(MockHttpServletRequestBuilder r, MockHttpSession session) throws Exception {
+        mvc.perform(r.session(session).with(csrf())).andReturn(); // warm up
+        STATEMENTS.get()[0] = 0;
+        var res = mvc.perform(r.session(session).with(csrf())).andReturn().getResponse();
+        assertThat(res.getStatus()).isEqualTo(200);
+        return STATEMENTS.get()[0];
+    }
+
+    /** The portal catalog reads every desk with one query per kind (categories, items, fields, steps): more desks must not cost more SQL. */
+    @Test
+    void portalCatalogSqlDoesNotGrowWithTheNumberOfDesks() throws Exception {
+        int before = statementsOf(get("/api/v1/portal/desks"), requester);
+        var extra = new ArrayList<UUID>();
+        try {
+            for (int i = 0; i < 6; i++) {
+                var id = db.fetchOne("insert into projects (identifier, name, is_public, enabled_modules) values (?, ?, false, array['work_packages', 'service_desk']::text[]) returning id",
+                        "perf-extra-" + i, "성능 측정 추가 데스크 " + i).get("id", UUID.class);
+                extra.add(id);
+                db.execute("insert into project_types (project_id, type_id) values (?::uuid, 'a3af2ccf-05c6-5b1c-84bc-4d815791e4eb'::uuid)", id);
+                db.execute("insert into catalog_items (project_id, name, type_id) values (?::uuid, '항목', 'a3af2ccf-05c6-5b1c-84bc-4d815791e4eb'::uuid)", id);
+            }
+            assertThat(statementsOf(get("/api/v1/portal/desks"), requester)).as("SQL with 7 more desks").isEqualTo(before);
+        } finally {
+            if (!extra.isEmpty()) db.deleteFrom(PROJECTS).where(PROJECTS.ID.in(extra)).execute();
+        }
     }
 
     /**
@@ -237,7 +275,8 @@ class PerfBudgetIT {
         var n = "/api/v1/work-packages/" + detail;
         var requests = List.of(query(20, OPEN), query(100, GROUPED), query(200, GANTT), get("/api/v1/boards/" + boardId),
                 get("/api/v1/work-packages/filters").param("projectId", projectId.toString()), get(n), get(n + "/activities"), get(n + "/relations"), serviceDeskQuery(20));
-        var portal = List.of(get("/api/v1/portal/tickets"), get("/api/v1/portal/tickets/" + requesterTicket));
+        var portal = List.of(get("/api/v1/portal/tickets"), get("/api/v1/portal/tickets/" + requesterTicket), get("/api/v1/portal/desks"));
+        var approvals = List.of(get("/api/v1/portal/approvals"));
         var pinned = new CopyOnWriteArrayList<RecordedEvent>();
         try (var rs = new RecordingStream()) {
             rs.enable("jdk.VirtualThreadPinned").withThreshold(java.time.Duration.ZERO).withStackTrace();
@@ -252,6 +291,10 @@ class PerfBudgetIT {
                         }
                         for (var r : portal) {
                             var res = mvc.perform(r.session(requester).with(csrf())).andReturn().getResponse();
+                            assertThat(res.getStatus()).isBetween(200, 299);
+                        }
+                        for (var r : approvals) {
+                            var res = mvc.perform(r.session(approver).with(csrf())).andReturn().getResponse();
                             assertThat(res.getStatus()).isBetween(200, 299);
                         }
                         return null;

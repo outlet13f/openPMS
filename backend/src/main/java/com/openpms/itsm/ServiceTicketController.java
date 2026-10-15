@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -28,9 +29,11 @@ public class ServiceTicketController {
     private final ServiceDesk serviceDesk;
     private final ServiceDeskConfig config;
     private final Journals journals;
+    private final ApprovalService approvals;
 
     public ServiceTicketController(Current current, WorkPackageService workPackages, ServiceTickets tickets, ServiceDesk serviceDesk,
-                                   ServiceDeskConfig config, Journals journals) {
+                                   ServiceDeskConfig config, Journals journals, ApprovalService approvals) {
+        this.approvals = approvals;
         this.current = current;
         this.workPackages = workPackages;
         this.tickets = tickets;
@@ -44,7 +47,7 @@ public class ServiceTicketController {
         var ctx = current.ctx();
         var f = workPackages.find(ctx, number);
         if (!ctx.can(f.project(), "service.view")) throw ApiException.notFound("작업을 찾을 수 없습니다.");
-        return ServiceTickets.dto(ctx.s(), tickets.of(f.wp().getId()).orElseThrow(() -> ApiException.notFound("서비스 데스크 티켓이 아닙니다.")));
+        return tickets.dto(ctx.s(), tickets.of(f.wp().getId()).orElseThrow(() -> ApiException.notFound("서비스 데스크 티켓이 아닙니다.")));
     }
 
     /** requesterId, impact, urgency, assignmentGroupId; applyMatrix also sets the priority from the matrix. */
@@ -96,5 +99,17 @@ public class ServiceTicketController {
             }
         }
         return workPackages.get(ctx, number);
+    }
+
+    /** The approval panel: every row of a catalog request (service.view). */
+    @GetMapping("/work-packages/{number}/approvals")
+    public List<ApprovalService.AgentApproval> approvals(@PathVariable long number) {
+        return approvals.forAgent(current.ctx(), number);
+    }
+
+    /** {approverId}: hands an undecided row to someone else (service.handle). */
+    @PatchMapping("/work-packages/{number}/approvals/{id}")
+    public List<ApprovalService.AgentApproval> replaceApprover(@PathVariable long number, @PathVariable UUID id, @RequestBody Map<String, Object> in) {
+        return approvals.replace(current.ctx(), number, id, In.uuid(in, "approverId", "approver"));
     }
 }

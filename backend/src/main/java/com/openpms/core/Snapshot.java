@@ -51,13 +51,13 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class Snapshot {
     public record UserRow(UUID id, String email, String name, String status, boolean isAdmin, String locale, String timeZone, String theme,
-                          OffsetDateTime lastLoginAt, OffsetDateTime createdAt) {
+                          OffsetDateTime lastLoginAt, OffsetDateTime createdAt, UUID managerId) {
         public String displayName() {
             return "deleted".equals(status) ? "삭제된 사용자" : name;
         }
     }
 
-    public record GroupRow(UUID id, String name, Set<UUID> memberIds) {}
+    public record GroupRow(UUID id, String name, Set<UUID> memberIds, UUID leadUserId) {}
 
     public record RoleRow(UUID id, String name, String scope, String builtin, List<String> permissions, int position) {}
 
@@ -126,14 +126,14 @@ public final class Snapshot {
 
     private final Supplier<Map<UUID, UserRow>> users = lazy(() -> this.db.selectFrom(USERS).fetch().stream()
             .map(r -> new UserRow(r.getId(), r.getEmail(), r.getName(), r.getStatus(), r.getIsAdmin(), r.getLocale(), r.getTimeZone(), r.getTheme(),
-                    r.getLastLoginAt(), r.getCreatedAt()))
+                    r.getLastLoginAt(), r.getCreatedAt(), r.getManagerId()))
             .collect(Collectors.toMap(UserRow::id, u -> u, (a, b) -> a, LinkedHashMap::new)));
 
     private final Supplier<Map<UUID, GroupRow>> groups = lazy(() -> {
         var members = new HashMap<UUID, Set<UUID>>();
         this.db.selectFrom(USER_GROUP_MEMBERS).fetch().forEach(r -> members.computeIfAbsent(r.getGroupId(), k -> new HashSet<>()).add(r.getUserId()));
         return this.db.selectFrom(USER_GROUPS).orderBy(USER_GROUPS.NAME).fetch().stream()
-                .map(r -> new GroupRow(r.getId(), r.getName(), members.getOrDefault(r.getId(), Set.of())))
+                .map(r -> new GroupRow(r.getId(), r.getName(), members.getOrDefault(r.getId(), Set.of()), r.getLeadUserId()))
                 .collect(Collectors.toMap(GroupRow::id, g -> g, (a, b) -> a, LinkedHashMap::new));
     });
 

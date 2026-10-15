@@ -9,6 +9,10 @@ import com.openpms.db.tables.Attachments;
 import com.openpms.db.tables.BoardCards;
 import com.openpms.db.tables.BoardColumns;
 import com.openpms.db.tables.Boards;
+import com.openpms.db.tables.CatalogCategories;
+import com.openpms.db.tables.CatalogItemApprovalSteps;
+import com.openpms.db.tables.CatalogItemFields;
+import com.openpms.db.tables.CatalogItems;
 import com.openpms.db.tables.Categories;
 import com.openpms.db.tables.CustomFieldOptions;
 import com.openpms.db.tables.CustomFieldTypes;
@@ -38,6 +42,7 @@ import com.openpms.db.tables.Settings;
 import com.openpms.db.tables.SlaPolicies;
 import com.openpms.db.tables.Statuses;
 import com.openpms.db.tables.TemporaryPasswords;
+import com.openpms.db.tables.TicketApprovals;
 import com.openpms.db.tables.TimeActivities;
 import com.openpms.db.tables.TimeEntries;
 import com.openpms.db.tables.Types;
@@ -103,6 +108,26 @@ public class Public extends SchemaImpl {
      * The table <code>public.boards</code>.
      */
     public final Boards BOARDS = Boards.BOARDS;
+
+    /**
+     * The table <code>public.catalog_categories</code>.
+     */
+    public final CatalogCategories CATALOG_CATEGORIES = CatalogCategories.CATALOG_CATEGORIES;
+
+    /**
+     * The table <code>public.catalog_item_approval_steps</code>.
+     */
+    public final CatalogItemApprovalSteps CATALOG_ITEM_APPROVAL_STEPS = CatalogItemApprovalSteps.CATALOG_ITEM_APPROVAL_STEPS;
+
+    /**
+     * The table <code>public.catalog_item_fields</code>.
+     */
+    public final CatalogItemFields CATALOG_ITEM_FIELDS = CatalogItemFields.CATALOG_ITEM_FIELDS;
+
+    /**
+     * The table <code>public.catalog_items</code>.
+     */
+    public final CatalogItems CATALOG_ITEMS = CatalogItems.CATALOG_ITEMS;
 
     /**
      * The table <code>public.categories</code>.
@@ -250,6 +275,11 @@ public class Public extends SchemaImpl {
     public final TemporaryPasswords TEMPORARY_PASSWORDS = TemporaryPasswords.TEMPORARY_PASSWORDS;
 
     /**
+     * The table <code>public.ticket_approvals</code>.
+     */
+    public final TicketApprovals TICKET_APPROVALS = TicketApprovals.TICKET_APPROVALS;
+
+    /**
      * The table <code>public.time_activities</code>.
      */
     public final TimeActivities TIME_ACTIVITIES = TimeActivities.TIME_ACTIVITIES;
@@ -362,6 +392,10 @@ public class Public extends SchemaImpl {
             BoardCards.BOARD_CARDS,
             BoardColumns.BOARD_COLUMNS,
             Boards.BOARDS,
+            CatalogCategories.CATALOG_CATEGORIES,
+            CatalogItemApprovalSteps.CATALOG_ITEM_APPROVAL_STEPS,
+            CatalogItemFields.CATALOG_ITEM_FIELDS,
+            CatalogItems.CATALOG_ITEMS,
             Categories.CATEGORIES,
             CustomFieldOptions.CUSTOM_FIELD_OPTIONS,
             CustomFieldTypes.CUSTOM_FIELD_TYPES,
@@ -391,6 +425,7 @@ public class Public extends SchemaImpl {
             SlaPolicies.SLA_POLICIES,
             Statuses.STATUSES,
             TemporaryPasswords.TEMPORARY_PASSWORDS,
+            TicketApprovals.TICKET_APPROVALS,
             TimeActivities.TIME_ACTIVITIES,
             TimeEntries.TIME_ENTRIES,
             Types.TYPES,

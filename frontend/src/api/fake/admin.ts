@@ -39,6 +39,18 @@ function temporaryTarget(id: string) {
   return u;
 }
 
+/** Who approves whom follows from managers and group leads: only administrators set them (a user manager could route approvals to themselves). */
+function requireAdminFor(user: DbUser, input: object, field: string) {
+  if ((input as Record<string, unknown>)[field] !== undefined && !user.isAdmin) throw new ApiError(403, "관리자만 관리자(상사)·그룹 책임자를 정할 수 있습니다.");
+}
+/** A person named by a body field (관리자(상사), 그룹 책임자): active; null clears. self may not name itself. */
+function activeUser(id: unknown, field: string, self: string | null): string | null {
+  if (id === null || id === undefined || id === "") return null;
+  if (id === self) throw fieldError(field, "자기 자신을 관리자로 지정할 수 없습니다.");
+  if (!db.users.some((u) => u.id === id && u.status === "active")) throw fieldError(field, "활성 사용자만 지정할 수 있습니다.");
+  return id as string;
+}
+
 /** A new account (users.create and createWithTemporaryPassword share the checks). */
 function addUser(input: UserInput, status: DbUser["status"]) {
   const me = sessionUser();
@@ -48,9 +60,12 @@ function addUser(input: UserInput, status: DbUser["status"]) {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw fieldError("email", "이메일 형식이 아닙니다.");
   if (db.users.some((u) => u.email.toLowerCase() === email)) throw fieldError("email", "이미 등록된 이메일입니다.");
   if (input.isAdmin && !me.isAdmin) throw new ApiError(403, "관리자만 관리자를 지정할 수 있습니다.");
+  requireAdminFor(me, input, "managerId");
+  const managerId = activeUser(input.managerId, "managerId", null);
   const u: DbUser = {
     id: newId("u"), email, name: input.name.trim(), password: "", status, isAdmin: input.isAdmin, locale: "ko", timeZone: "Asia/Seoul",
     prefs: { commentsNewestFirst: false, warnOnUnsaved: true, keyboardShortcuts: true, immediateOnMention: true, digestEnabled: true, digestTimes: ["08:00"], remindersPausedUntil: null, myPageWidgets: ["assigned", "created"] }, createdAt: nowIso(), lastLoginAt: null,
+    managerId,
   };
   db.users.push(u);
   return u;
@@ -99,8 +114,10 @@ const toUser = (u: DbUser): AdminUser =>
     temporaryPasswordUntil: u.status === "deleted" ? null : (temporaryPasswordOf(u.id)?.expiresAt ?? null),
     globalRoles: db.roles.filter((r) => r.scope === "global" && u.globalRoleIds?.includes(r.id)).map((r) => ({ id: r.id, name: r.name })).sort((a, b) => a.name.localeCompare(b.name, "ko")),
     projectCount: db.projects.filter((p) => memberRoleIds(u.id, p.id).length > 0).length,
+    manager: u.status === "deleted" ? null : userRef(u.managerId),
   });
-const toGroup = (g: (typeof db.groups)[number]): AdminGroup => clone({ id: g.id, name: g.name, members: g.memberIds.map((id) => userRef(id)!).filter(Boolean) });
+const toGroup = (g: (typeof db.groups)[number]): AdminGroup =>
+  clone({ id: g.id, name: g.name, members: g.memberIds.map((id) => userRef(id)!).filter(Boolean), lead: userRef(g.leadUserId) });
 const toCategory = (c: (typeof db.categories)[number]): Category =>
   clone({ id: c.id, name: c.name, defaultAssignee: userRef(c.defaultAssigneeId), workPackageCount: db.workPackages.filter((w) => w.categoryId === c.id).length });
 const toVersion = (v: (typeof db.versions)[number]): Version => {
@@ -281,6 +298,7 @@ export const customFieldsAdmin: Api["admin"]["customFields"] = {
       if (!db.customFields.some((x) => x.id === id)) throw notFound("사용자 정의 필드");
       db.customFields = db.customFields.filter((x) => x.id !== id);
       db.projectCustomFields = db.projectCustomFields.filter((x) => x.customFieldId !== id);
+      db.catalogItems.forEach((i) => (i.fields = i.fields.filter((f) => f.customFieldId !== id)));
       for (const w of db.workPackages) if (w.customValues && id in w.customValues) delete w.customValues[id];
       forgetInQueries(id);
       db.customFields.sort((a, b) => a.position - b.position).forEach((x, i) => (x.position = i + 1));
@@ -361,6 +379,9 @@ export const projectExtras: Pick<Api["projects"], "setTypes" | "archive" | "unar
       db.shares = db.shares.filter((x) => !wps.has(x.wpId));
       db.notifications = db.notifications.filter((x) => !wps.has(x.wpId));
       db.serviceTickets = db.serviceTickets.filter((x) => !wps.has(x.workPackageId));
+      db.ticketApprovals = db.ticketApprovals.filter((x) => !wps.has(x.wpId));
+      db.catalogItems = db.catalogItems.filter((x) => x.projectId !== p.id);
+      db.catalogCategories = db.catalogCategories.filter((x) => x.projectId !== p.id);
       db.slaPolicies = db.slaPolicies.filter((x) => x.projectId !== p.id);
       db.priorityMatrix = db.priorityMatrix.filter((x) => x.projectId !== p.id);
       const versions = new Set(db.versions.filter((v) => v.projectId === p.id).map((v) => v.id));
@@ -721,6 +742,7 @@ export const adminApi: Api["admin"] = {
         db.priorities = db.priorities.filter((x) => x.id !== id);
         db.slaPolicies = db.slaPolicies.filter((x) => x.priorityId !== id);
         db.priorityMatrix = db.priorityMatrix.filter((x) => x.priorityId !== id);
+        db.catalogItems.forEach((i) => i.defaultPriorityId === id && (i.defaultPriorityId = null));
         db.priorities.sort((a, b) => a.position - b.position).forEach((x, i) => (x.position = i + 1));
       }),
     reorder: (ids) => run(() => (requireAdmin(sessionUser()), reorderBy(db.priorities, ids))),
@@ -886,6 +908,7 @@ export const adminApi: Api["admin"] = {
         return db.users
           .filter((u) => u.status !== "deleted" || params.status === "deleted")
           .filter((u) => !params.status || u.status === params.status)
+          .filter((u) => !params.noManager || (u.status === "active" && !u.managerId))
           .filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
           .sort((a, b) => a.name.localeCompare(b.name, "ko"))
           .map(toUser);
@@ -926,7 +949,10 @@ export const adminApi: Api["admin"] = {
         const u = db.users.find((x) => x.id === id && x.status !== "deleted");
         if (!u) throw notFound("사용자");
         if (u.isAdmin && !me.isAdmin) throw new ApiError(403, "관리자 계정은 관리자만 다룰 수 있습니다.");
+        requireAdminFor(me, patch, "managerId");
         checkName(patch.name);
+        // checked before anything changes
+        const managerId = patch.managerId !== undefined ? activeUser(patch.managerId, "managerId", u.id) : undefined;
         if (patch.isAdmin !== undefined) {
           requireAdmin(me);
           if (!patch.isAdmin && u.id === me.id) throw new ApiError(422, "내 관리자 권한은 내가 해제할 수 없습니다.");
@@ -939,6 +965,7 @@ export const adminApi: Api["admin"] = {
           u.status = patch.status;
         }
         if (patch.name !== undefined) u.name = patch.name.trim();
+        if (managerId !== undefined) u.managerId = managerId;
         return toUser(u);
       }),
     remove: (id) =>
@@ -988,13 +1015,33 @@ export const adminApi: Api["admin"] = {
 
   groups: {
     list: () => run(() => (requireUserManager(sessionUser()), db.groups.slice().sort((a, b) => a.name.localeCompare(b.name, "ko")).map(toGroup))),
-    create: (name) =>
+    create: (name, leadUserId) =>
       run(() => {
-        requireUserManager(sessionUser());
+        const me = sessionUser();
+        requireUserManager(me);
         checkName(name);
         unique(db.groups, name);
-        const g = { id: newId("g"), name: name.trim(), memberIds: [] as string[] };
+        requireAdminFor(me, { leadUserId }, "leadUserId");
+        const lead = activeUser(leadUserId, "leadUserId", null);
+        const g = { id: newId("g"), name: name.trim(), memberIds: [] as string[], leadUserId: lead };
         db.groups.push(g);
+        return toGroup(g);
+      }),
+    update: (id, patch) =>
+      run(() => {
+        const me = sessionUser();
+        requireUserManager(me);
+        const g = db.groups.find((x) => x.id === id);
+        if (!g) throw notFound("그룹");
+        requireAdminFor(me, patch, "leadUserId");
+        // the name may be left out when only the lead changes
+        if (patch.name !== undefined || patch.leadUserId === undefined) {
+          checkName(patch.name ?? "");
+          unique(db.groups, patch.name, id);
+        }
+        const lead = patch.leadUserId !== undefined ? activeUser(patch.leadUserId, "leadUserId", null) : undefined;
+        if (patch.name !== undefined) g.name = patch.name.trim();
+        if (lead !== undefined) g.leadUserId = lead;
         return toGroup(g);
       }),
     rename: (id, name) =>
@@ -1013,6 +1060,7 @@ export const adminApi: Api["admin"] = {
         db.groups = db.groups.filter((x) => x.id !== id);
         db.members = db.members.filter((m) => m.groupId !== id);
         db.serviceTickets.forEach((t) => t.assignmentGroupId === id && (t.assignmentGroupId = null));
+        db.catalogItems.forEach((i) => i.assignmentGroupId === id && (i.assignmentGroupId = null));
       }),
     setMembers: (id, userIds) =>
       run(() => {
