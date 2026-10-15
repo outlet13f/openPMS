@@ -353,6 +353,21 @@ public class ServiceTicketsRecord extends UpdatableRecordImpl<ServiceTicketsReco
         return (OffsetDateTime) get(21);
     }
 
+    /**
+     * Setter for <code>public.service_tickets.catalog_item_id</code>.
+     */
+    public ServiceTicketsRecord setCatalogItemId(UUID value) {
+        set(22, value);
+        return this;
+    }
+
+    /**
+     * Getter for <code>public.service_tickets.catalog_item_id</code>.
+     */
+    public UUID getCatalogItemId() {
+        return (UUID) get(22);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -376,7 +391,7 @@ public class ServiceTicketsRecord extends UpdatableRecordImpl<ServiceTicketsReco
     /**
      * Create a detached, initialised ServiceTicketsRecord
      */
-    public ServiceTicketsRecord(UUID workPackageId, UUID requesterId, String channel, Short impact, Short urgency, UUID assignmentGroupId, UUID slaPolicyId, OffsetDateTime firstResponseDueAt, OffsetDateTime firstRespondedAt, OffsetDateTime resolveDueAt, OffsetDateTime resolvedAt, OffsetDateTime pausedSince, Long pausedTotalSeconds, Boolean responseBreached, Boolean resolveBreached, Boolean responseWarned, Boolean resolveWarned, OffsetDateTime requesterSeenAt, OffsetDateTime requesterMailedAt, UUID requesterMailedStatusId, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
+    public ServiceTicketsRecord(UUID workPackageId, UUID requesterId, String channel, Short impact, Short urgency, UUID assignmentGroupId, UUID slaPolicyId, OffsetDateTime firstResponseDueAt, OffsetDateTime firstRespondedAt, OffsetDateTime resolveDueAt, OffsetDateTime resolvedAt, OffsetDateTime pausedSince, Long pausedTotalSeconds, Boolean responseBreached, Boolean resolveBreached, Boolean responseWarned, Boolean resolveWarned, OffsetDateTime requesterSeenAt, OffsetDateTime requesterMailedAt, UUID requesterMailedStatusId, OffsetDateTime createdAt, OffsetDateTime updatedAt, UUID catalogItemId) {
         super(ServiceTickets.SERVICE_TICKETS);
 
         setWorkPackageId(workPackageId);
@@ -401,6 +416,7 @@ public class ServiceTicketsRecord extends UpdatableRecordImpl<ServiceTicketsReco
         setRequesterMailedStatusId(requesterMailedStatusId);
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
+        setCatalogItemId(catalogItemId);
         resetTouchedOnNotNull();
     }
 }

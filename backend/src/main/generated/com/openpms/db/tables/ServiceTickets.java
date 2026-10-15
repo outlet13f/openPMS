@@ -7,6 +7,7 @@ package com.openpms.db.tables;
 import com.openpms.db.Indexes;
 import com.openpms.db.Keys;
 import com.openpms.db.Public;
+import com.openpms.db.tables.CatalogItems.CatalogItemsPath;
 import com.openpms.db.tables.SlaPolicies.SlaPoliciesPath;
 import com.openpms.db.tables.Statuses.StatusesPath;
 import com.openpms.db.tables.UserGroups.UserGroupsPath;
@@ -177,6 +178,11 @@ public class ServiceTickets extends TableImpl<ServiceTicketsRecord> {
      */
     public final TableField<ServiceTicketsRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
 
+    /**
+     * The column <code>public.service_tickets.catalog_item_id</code>.
+     */
+    public final TableField<ServiceTicketsRecord, UUID> CATALOG_ITEM_ID = createField(DSL.name("catalog_item_id"), SQLDataType.UUID, this, "");
+
     private ServiceTickets(Name alias, Table<ServiceTicketsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -246,7 +252,7 @@ public class ServiceTickets extends TableImpl<ServiceTicketsRecord> {
 
     @Override
     public List<Index> getIndexes() {
-        return Arrays.asList(Indexes.SERVICE_TICKETS_GROUP_IDX, Indexes.SERVICE_TICKETS_MAILED_STATUS_IDX, Indexes.SERVICE_TICKETS_OPEN_RESOLVE_DUE_IDX, Indexes.SERVICE_TICKETS_OPEN_RESPONSE_DUE_IDX, Indexes.SERVICE_TICKETS_POLICY_IDX, Indexes.SERVICE_TICKETS_REQUESTER_IDX);
+        return Arrays.asList(Indexes.SERVICE_TICKETS_CATALOG_ITEM_IDX, Indexes.SERVICE_TICKETS_GROUP_IDX, Indexes.SERVICE_TICKETS_MAILED_STATUS_IDX, Indexes.SERVICE_TICKETS_OPEN_RESOLVE_DUE_IDX, Indexes.SERVICE_TICKETS_OPEN_RESPONSE_DUE_IDX, Indexes.SERVICE_TICKETS_POLICY_IDX, Indexes.SERVICE_TICKETS_REQUESTER_IDX);
     }
 
     @Override
@@ -256,7 +262,7 @@ public class ServiceTickets extends TableImpl<ServiceTicketsRecord> {
 
     @Override
     public List<ForeignKey<ServiceTicketsRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.SERVICE_TICKETS__SERVICE_TICKETS_ASSIGNMENT_GROUP_ID_FKEY, Keys.SERVICE_TICKETS__SERVICE_TICKETS_REQUESTER_ID_FKEY, Keys.SERVICE_TICKETS__SERVICE_TICKETS_REQUESTER_MAILED_STATUS_ID_FKEY, Keys.SERVICE_TICKETS__SERVICE_TICKETS_SLA_POLICY_ID_FKEY, Keys.SERVICE_TICKETS__SERVICE_TICKETS_WORK_PACKAGE_ID_FKEY);
+        return Arrays.asList(Keys.SERVICE_TICKETS__SERVICE_TICKETS_ASSIGNMENT_GROUP_ID_FKEY, Keys.SERVICE_TICKETS__SERVICE_TICKETS_CATALOG_ITEM_ID_FKEY, Keys.SERVICE_TICKETS__SERVICE_TICKETS_REQUESTER_ID_FKEY, Keys.SERVICE_TICKETS__SERVICE_TICKETS_REQUESTER_MAILED_STATUS_ID_FKEY, Keys.SERVICE_TICKETS__SERVICE_TICKETS_SLA_POLICY_ID_FKEY, Keys.SERVICE_TICKETS__SERVICE_TICKETS_WORK_PACKAGE_ID_FKEY);
     }
 
     private transient UserGroupsPath _userGroups;
@@ -269,6 +275,19 @@ public class ServiceTickets extends TableImpl<ServiceTicketsRecord> {
             _userGroups = new UserGroupsPath(this, Keys.SERVICE_TICKETS__SERVICE_TICKETS_ASSIGNMENT_GROUP_ID_FKEY, null);
 
         return _userGroups;
+    }
+
+    private transient CatalogItemsPath _catalogItems;
+
+    /**
+     * Get the implicit join path to the <code>public.catalog_items</code>
+     * table.
+     */
+    public CatalogItemsPath catalogItems() {
+        if (_catalogItems == null)
+            _catalogItems = new CatalogItemsPath(this, Keys.SERVICE_TICKETS__SERVICE_TICKETS_CATALOG_ITEM_ID_FKEY, null);
+
+        return _catalogItems;
     }
 
     private transient UsersPath _users;

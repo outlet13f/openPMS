@@ -19,6 +19,7 @@ import com.openpms.db.tables.Projects.ProjectsPath;
 import com.openpms.db.tables.Relations.RelationsPath;
 import com.openpms.db.tables.ServiceTickets.ServiceTicketsPath;
 import com.openpms.db.tables.Statuses.StatusesPath;
+import com.openpms.db.tables.TicketApprovals.TicketApprovalsPath;
 import com.openpms.db.tables.TimeEntries.TimeEntriesPath;
 import com.openpms.db.tables.Types.TypesPath;
 import com.openpms.db.tables.Users.UsersPath;
@@ -552,6 +553,19 @@ public class WorkPackages extends TableImpl<WorkPackagesRecord> {
             _serviceTickets = new ServiceTicketsPath(this, null, Keys.SERVICE_TICKETS__SERVICE_TICKETS_WORK_PACKAGE_ID_FKEY.getInverseKey());
 
         return _serviceTickets;
+    }
+
+    private transient TicketApprovalsPath _ticketApprovals;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.ticket_approvals</code> table
+     */
+    public TicketApprovalsPath ticketApprovals() {
+        if (_ticketApprovals == null)
+            _ticketApprovals = new TicketApprovalsPath(this, null, Keys.TICKET_APPROVALS__TICKET_APPROVALS_WORK_PACKAGE_ID_FKEY.getInverseKey());
+
+        return _ticketApprovals;
     }
 
     private transient TimeEntriesPath _timeEntries;

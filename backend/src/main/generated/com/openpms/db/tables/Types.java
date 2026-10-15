@@ -6,6 +6,7 @@ package com.openpms.db.tables;
 
 import com.openpms.db.Keys;
 import com.openpms.db.Public;
+import com.openpms.db.tables.CatalogItems.CatalogItemsPath;
 import com.openpms.db.tables.CustomFieldTypes.CustomFieldTypesPath;
 import com.openpms.db.tables.CustomFields.CustomFieldsPath;
 import com.openpms.db.tables.ProjectTypes.ProjectTypesPath;
@@ -197,6 +198,19 @@ public class Types extends TableImpl<TypesRecord> {
     @Override
     public List<UniqueKey<TypesRecord>> getUniqueKeys() {
         return Arrays.asList(Keys.TYPES_NAME_KEY);
+    }
+
+    private transient CatalogItemsPath _catalogItems;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.catalog_items</code> table
+     */
+    public CatalogItemsPath catalogItems() {
+        if (_catalogItems == null)
+            _catalogItems = new CatalogItemsPath(this, null, Keys.CATALOG_ITEMS__CATALOG_ITEMS_TYPE_ID_FKEY.getInverseKey());
+
+        return _catalogItems;
     }
 
     private transient CustomFieldTypesPath _customFieldTypes;

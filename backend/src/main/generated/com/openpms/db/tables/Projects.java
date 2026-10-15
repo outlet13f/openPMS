@@ -9,6 +9,8 @@ import com.openpms.db.Keys;
 import com.openpms.db.Public;
 import com.openpms.db.tables.BoardColumns.BoardColumnsPath;
 import com.openpms.db.tables.Boards.BoardsPath;
+import com.openpms.db.tables.CatalogCategories.CatalogCategoriesPath;
+import com.openpms.db.tables.CatalogItems.CatalogItemsPath;
 import com.openpms.db.tables.Categories.CategoriesPath;
 import com.openpms.db.tables.CustomFields.CustomFieldsPath;
 import com.openpms.db.tables.Members.MembersPath;
@@ -305,6 +307,32 @@ public class Projects extends TableImpl<ProjectsRecord> {
             _boards = new BoardsPath(this, null, Keys.BOARDS__BOARDS_PROJECT_ID_FKEY.getInverseKey());
 
         return _boards;
+    }
+
+    private transient CatalogCategoriesPath _catalogCategories;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.catalog_categories</code> table
+     */
+    public CatalogCategoriesPath catalogCategories() {
+        if (_catalogCategories == null)
+            _catalogCategories = new CatalogCategoriesPath(this, null, Keys.CATALOG_CATEGORIES__CATALOG_CATEGORIES_PROJECT_ID_FKEY.getInverseKey());
+
+        return _catalogCategories;
+    }
+
+    private transient CatalogItemsPath _catalogItems;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.catalog_items</code> table
+     */
+    public CatalogItemsPath catalogItems() {
+        if (_catalogItems == null)
+            _catalogItems = new CatalogItemsPath(this, null, Keys.CATALOG_ITEMS__CATALOG_ITEMS_PROJECT_ID_FKEY.getInverseKey());
+
+        return _catalogItems;
     }
 
     private transient CategoriesPath _categories;

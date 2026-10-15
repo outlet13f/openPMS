@@ -16,6 +16,10 @@ public final class ItsmIds {
     public static final UUID STATUS_CLOSED = UUID.fromString("69baa129-0283-56e0-be38-b73ce5db2b64");
     public static final UUID STATUS_CANCELLED = UUID.fromString("8ab8a2d1-0d29-5b49-a263-6284c74a7680");
 
+    /** Seeded by V21__service_catalog.sql. */
+    public static final UUID STATUS_AWAITING_APPROVAL = UUID.fromString("3705cad8-6d55-5d45-b841-37385b44f605");
+    public static final UUID STATUS_REJECTED = UUID.fromString("4be1e617-0250-552c-9d28-4bde834daa49");
+
     public static final UUID ROLE_REQUESTER = UUID.fromString("a9137727-cb80-51db-98d8-8a9a04f84802");
 
     public static final String MODULE = "service_desk";
