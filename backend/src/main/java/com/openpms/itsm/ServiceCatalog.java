@@ -44,22 +44,34 @@ public class ServiceCatalog {
     /* ---------- reading ---------- */
 
     public Catalog catalog(UUID projectId) {
-        var categories = db.selectFrom(CATALOG_CATEGORIES).where(CATALOG_CATEGORIES.PROJECT_ID.eq(projectId))
-                .orderBy(CATALOG_CATEGORIES.POSITION, CATALOG_CATEGORIES.NAME).fetch(r -> new Category(r.getId(), r.getName(), r.getPosition()));
-        var rows = db.selectFrom(CATALOG_ITEMS).where(CATALOG_ITEMS.PROJECT_ID.eq(projectId)).orderBy(CATALOG_ITEMS.POSITION, CATALOG_ITEMS.NAME).fetch();
+        return catalogs(List.of(projectId)).get(projectId);
+    }
+
+    /** The catalogs of several projects with one query each for categories, items, item fields and steps (every id gets an entry). */
+    public Map<UUID, Catalog> catalogs(java.util.Collection<UUID> projectIds) {
+        var out = new java.util.HashMap<UUID, Catalog>();
+        if (projectIds.isEmpty()) return out;
+        var categories = db.selectFrom(CATALOG_CATEGORIES).where(CATALOG_CATEGORIES.PROJECT_ID.in(projectIds))
+                .orderBy(CATALOG_CATEGORIES.POSITION, CATALOG_CATEGORIES.NAME).fetch().intoGroups(CATALOG_CATEGORIES.PROJECT_ID);
+        var rows = db.selectFrom(CATALOG_ITEMS).where(CATALOG_ITEMS.PROJECT_ID.in(projectIds)).orderBy(CATALOG_ITEMS.POSITION, CATALOG_ITEMS.NAME).fetch();
         var ids = rows.map(CatalogItemsRecord::getId);
         var fields = db.selectFrom(CATALOG_ITEM_FIELDS).where(CATALOG_ITEM_FIELDS.CATALOG_ITEM_ID.in(ids)).orderBy(CATALOG_ITEM_FIELDS.POSITION).fetch()
                 .intoGroups(CATALOG_ITEM_FIELDS.CATALOG_ITEM_ID);
         var steps = db.selectFrom(CATALOG_ITEM_APPROVAL_STEPS).where(CATALOG_ITEM_APPROVAL_STEPS.CATALOG_ITEM_ID.in(ids))
                 .orderBy(CATALOG_ITEM_APPROVAL_STEPS.STEP_NO).fetch().intoGroups(CATALOG_ITEM_APPROVAL_STEPS.CATALOG_ITEM_ID);
-        var items = new ArrayList<Item>();
+        var items = new java.util.HashMap<UUID, List<Item>>();
         for (var r : rows) {
             var f = fields.get(r.getId());
             var st = steps.get(r.getId());
-            items.add(toItem(r, f == null ? List.of() : f.stream().map(x -> new ItemField(x.getCustomFieldId(), x.getPosition(), x.getIsRequired())).toList(),
+            items.computeIfAbsent(r.getProjectId(), k -> new ArrayList<>()).add(toItem(r,
+                    f == null ? List.of() : f.stream().map(x -> new ItemField(x.getCustomFieldId(), x.getPosition(), x.getIsRequired())).toList(),
                     st == null ? List.of() : sorted(st.stream().map(x -> new Approvals.StepRule(x.getStepNo(), x.getApproverKind())).toList())));
         }
-        return new Catalog(categories, items);
+        for (var id : projectIds) {
+            var cats = java.util.Optional.ofNullable(categories.get(id)).map(java.util.Collection::stream).orElseGet(java.util.stream.Stream::empty).map(r -> new Category(r.getId(), r.getName(), r.getPosition())).toList();
+            out.put(id, new Catalog(cats, items.getOrDefault(id, List.of())));
+        }
+        return out;
     }
 
     public Optional<Item> item(UUID projectId, UUID itemId) {

@@ -311,6 +311,7 @@ public class QueryEngine {
             case "approvalState" -> {
                 // pending: a decision is awaited; delayed: that approver was already reminded; rejected; none: the request never had approval rows
                 var A = TICKET_APPROVALS;
+                if (vals.size() != 1) throw ApiException.unprocessable("필터를 확인하세요.", "승인 상태는 하나만 고를 수 있습니다.");
                 var mine = A.WORK_PACKAGE_ID.eq(t.ID);
                 yield switch (needle) {
                     case "pending" -> exists(selectOne().from(A).where(mine, A.DECISION.eq("pending")));

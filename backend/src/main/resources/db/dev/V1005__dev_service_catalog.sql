@@ -41,21 +41,24 @@ insert into catalog_item_approval_steps (catalog_item_id, step_no, approver_kind
   ('874a1376-8244-5df2-8b8a-b8da1ce0ad4e', 1, 'requester_manager');
 
 -- 승인 대기 요청 1건: 최민지의 노트북 신청. 1단계는 alex.kim(요청자 관리자)이 결정할 차례, 2단계는 박준호(그룹 책임자)가 기다림.
--- 요청자 메일은 이미 나간 것으로 둔다(V1004처럼) — portal-mail이 시작하자마자 보내지 않게. approval-mail은 notified_at이 있어 처음 메일을 다시 보내지 않는다.
+-- 요청자 메일은 이미 나간 것으로 둔다(V1004처럼) — portal-mail이 시작하자마자 보내지 않게. approval-mail도 notified_at·reminded_at이 모두 있어
+-- 개발 서버가 처음 메일도, 오래된 복원 지점에서 되살린 뒤 3근무일이 지났다고 보내는 독촉 메일도 보내지 않는다(그래서 승인 지연 필터에는 잡힌다).
 insert into work_packages (id, project_id, type_id, status_id, priority_id, subject, description_html, author_id, custom_values, created_at, updated_at, done_ratio)
 select '26a16197-e272-5e6f-ab22-5b8b7897ac27', 'a02eb82b-c707-5a81-b0ce-71ea6d523f21', 'a3af2ccf-05c6-5b1c-84bc-4d815791e4eb',
        '3705cad8-6d55-5d45-b841-37385b44f605', 'e2513703-c41d-5575-aca0-fd084ec26e06', '노트북 신청', '<p>개발용 노트북이 필요합니다.</p>', u.id,
        '{"3dc367d6-ee91-5c96-b553-b5e3c0d04ac6": "cad4fbf4-575b-5c38-8eaa-41369bf82edb"}'::jsonb, now() - interval '2 hours', now() - interval '2 hours', 0
 from users u where u.email = 'minji.choi@openpms.local';
+-- 기한은 V1004처럼 만든 때 기준의 대략값(정책: 첫 응답 240분, 해결 2400분). 승인 대기는 SLA를 멈춘 상태라 기한이 더 흐르지 않는다.
 insert into service_tickets (work_package_id, requester_id, channel, catalog_item_id, assignment_group_id, sla_policy_id, paused_since,
-                             requester_mailed_at, requester_mailed_status_id, created_at, updated_at)
+                             first_response_due_at, resolve_due_at, requester_mailed_at, requester_mailed_status_id, created_at, updated_at)
 select '26a16197-e272-5e6f-ab22-5b8b7897ac27', u.id, 'portal', 'e41eb481-8206-5d78-964b-d4ebb11ca8fd', '25629a29-9f0b-50a1-a812-f04018678b83',
        (select p.id from sla_policies p where p.project_id = 'a02eb82b-c707-5a81-b0ce-71ea6d523f21' and p.type_id = 'a3af2ccf-05c6-5b1c-84bc-4d815791e4eb'
           and p.priority_id = 'e2513703-c41d-5575-aca0-fd084ec26e06'),
-       now() - interval '2 hours', now(), '3705cad8-6d55-5d45-b841-37385b44f605', now() - interval '2 hours', now() - interval '2 hours'
+       now() - interval '2 hours', now() + interval '2 hours', now() + interval '38 hours', now(), '3705cad8-6d55-5d45-b841-37385b44f605',
+       now() - interval '2 hours', now() - interval '2 hours'
 from users u where u.email = 'minji.choi@openpms.local';
-insert into ticket_approvals (work_package_id, step_no, approver_kind, approver_id, decision, notified_at)
-select '26a16197-e272-5e6f-ab22-5b8b7897ac27', 1, 'requester_manager', id, 'pending', now() from users where email = 'alex.kim@openpms.local';
+insert into ticket_approvals (work_package_id, step_no, approver_kind, approver_id, decision, notified_at, reminded_at)
+select '26a16197-e272-5e6f-ab22-5b8b7897ac27', 1, 'requester_manager', id, 'pending', now(), now() from users where email = 'alex.kim@openpms.local';
 insert into ticket_approvals (work_package_id, step_no, approver_kind, approver_id, decision)
 select '26a16197-e272-5e6f-ab22-5b8b7897ac27', 2, 'group_lead', id, 'waiting' from users where email = 'junho.park@openpms.local';
 insert into journals (work_package_id, version, user_id, changes, created_at, updated_at)

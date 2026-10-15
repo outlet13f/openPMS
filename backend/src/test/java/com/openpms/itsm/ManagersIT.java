@@ -40,7 +40,10 @@ class ManagersIT {
     ItsmFixture f;
     MockHttpSession admin;
 
+    UUID managerBefore;
+
     @BeforeEach void setUp() throws Exception {
+        managerBefore = db.select(USERS.MANAGER_ID).from(USERS).where(USERS.ID.eq(ItsmFixture.MINJI)).fetchOne(USERS.MANAGER_ID);
         f = new ItsmFixture(MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build());
         admin = f.login(ItsmFixture.ADMIN);
     }
@@ -53,8 +56,9 @@ class ManagersIT {
         return db.select(USERS.MANAGER_ID).from(USERS).where(USERS.ID.eq(user)).fetchOne(USERS.MANAGER_ID);
     }
 
+    /** Puts the manager back to what the dev data (V1005) gave 최민지, so later ITs still find it. */
     private void clearManager(UUID user) {
-        db.update(USERS).setNull(USERS.MANAGER_ID).where(USERS.ID.eq(user)).execute();
+        db.update(USERS).set(USERS.MANAGER_ID, managerBefore).where(USERS.ID.eq(user)).execute();
     }
 
     @Test void adminSetsAndClearsAManager() throws Exception {
@@ -156,7 +160,7 @@ class ManagersIT {
             f.send(manager, post("/api/v1/admin/groups"), "{\"name\":\"안 됨\",\"leadUserId\":\"" + doyoon + "\"}").andExpect(status().isForbidden());
             f.send(manager, post("/api/v1/admin/users"), "{\"name\":\"안 됨\",\"email\":\"no-" + UUID.randomUUID().toString().substring(0, 6)
                     + "@openpms.local\",\"managerId\":\"" + doyoon + "\"}").andExpect(status().isForbidden());
-            assertThat(managerOf(ItsmFixture.MINJI)).isNull();
+            assertThat(managerOf(ItsmFixture.MINJI)).isEqualTo(managerBefore);
             // other edits stay open to a user manager
             f.send(manager, patch("/api/v1/admin/groups/" + group), "{\"name\":\"책임자 권한 이름\"}").andExpect(status().isOk());
         } finally {

@@ -3,7 +3,6 @@ package com.openpms.itsm;
 import static com.openpms.db.Tables.ATTACHMENTS;
 import static com.openpms.db.Tables.CUSTOM_FIELDS;
 import static com.openpms.db.Tables.JOURNALS;
-import static com.openpms.db.Tables.PROJECT_CUSTOM_FIELDS;
 import static com.openpms.db.Tables.SERVICE_TICKETS;
 import static com.openpms.db.Tables.WORK_PACKAGES;
 
@@ -101,9 +100,13 @@ public class PortalService {
 
     public List<PortalDesk> desks(Ctx ctx) {
         var s = ctx.s();
-        return desks(s).stream().map(p -> new PortalDesk(p.identifier(), p.name(), com.openpms.common.Html.text(p.descriptionHtml()),
+        var list = desks(s);
+        // one read each for the portal-visible fields and for every desk's catalog, so the cost does not grow with the number of desks
+        var visible = portalVisibleFields();
+        var catalogs = catalog.catalogs(list.stream().map(Snapshot.ProjectRow::id).toList());
+        return list.stream().map(p -> new PortalDesk(p.identifier(), p.name(), com.openpms.common.Html.text(p.descriptionHtml()),
                 p.typeIds().stream().filter(ItsmIds.TICKET_TYPES::contains).map(t -> s.type(t).map(x -> new Dto.IdName(x.id(), x.name())).orElseThrow()).toList(),
-                fields(s, p), catalog(s, p))).toList();
+                fields(s, p, visible), catalog(s, p, catalogs.get(p.id())))).toList();
     }
 
     /** An item can be asked for while it is active and its type is a ticket type the desk still uses. */
@@ -111,8 +114,7 @@ public class PortalService {
         return item.isActive() && ItsmIds.TICKET_TYPES.contains(item.typeId()) && p.typeIds().contains(item.typeId());
     }
 
-    private List<PortalCategory> catalog(Snapshot s, Snapshot.ProjectRow p) {
-        var c = catalog.catalog(p.id());
+    private List<PortalCategory> catalog(Snapshot s, Snapshot.ProjectRow p, ServiceCatalog.Catalog c) {
         var items = c.items().stream().filter(i -> requestable(p, i)).toList();
         var out = new ArrayList<PortalCategory>();
         var known = new HashSet<UUID>();
@@ -147,12 +149,17 @@ public class PortalService {
         return out;
     }
 
+    private Set<UUID> portalVisibleFields() {
+        return new HashSet<>(db.select(CUSTOM_FIELDS.ID).from(CUSTOM_FIELDS).where(CUSTOM_FIELDS.PORTAL_VISIBLE).fetch(CUSTOM_FIELDS.ID));
+    }
+
     private List<PortalField> fields(Snapshot s, Snapshot.ProjectRow p) {
-        var visible = new HashSet<>(db.select(CUSTOM_FIELDS.ID).from(CUSTOM_FIELDS).where(CUSTOM_FIELDS.PORTAL_VISIBLE).fetch(CUSTOM_FIELDS.ID));
-        var enabled = new HashSet<>(db.select(PROJECT_CUSTOM_FIELDS.CUSTOM_FIELD_ID).from(PROJECT_CUSTOM_FIELDS).where(PROJECT_CUSTOM_FIELDS.PROJECT_ID.eq(p.id()))
-                .fetch(PROJECT_CUSTOM_FIELDS.CUSTOM_FIELD_ID));
+        return fields(s, p, portalVisibleFields());
+    }
+
+    private List<PortalField> fields(Snapshot s, Snapshot.ProjectRow p, Set<UUID> visible) {
         return s.customFields().stream()
-                .filter(cf -> visible.contains(cf.id()) && !NOT_ON_PORTAL.contains(cf.format()) && (cf.isForAll() || enabled.contains(cf.id()))
+                .filter(cf -> visible.contains(cf.id()) && !NOT_ON_PORTAL.contains(cf.format()) && s.customFieldEnabledIn(cf, p.id())
                         && cf.typeIds().stream().anyMatch(ItsmIds.TICKET_TYPES::contains))
                 .map(cf -> new PortalField(cf.id(), cf.name(), cf.format(), cf.isRequired(), cf.isMultiValue(),
                         cf.options().stream().map(o -> new PortalOption(o.id(), o.value())).toList(),
