@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -137,6 +138,29 @@ class ApprovalMailIT {
         notifiedDaysAgo(n, 1);
         mail.run(Instant.now());
         assertThat(mails(n)).as("one day is never three working days").isEmpty();
+    }
+
+    private OffsetDateTime column(long n, boolean reminded) {
+        var field = reminded ? TICKET_APPROVALS.REMINDED_AT : TICKET_APPROVALS.NOTIFIED_AT;
+        return db.select(field).from(TICKET_APPROVALS).where(TICKET_APPROVALS.WORK_PACKAGE_ID.eq(wpId(n))).fetchOne(field);
+    }
+
+    @Test void aDeskThatIsOffOrArchivedIsSkippedWithoutMarking() throws Exception {
+        var n = request();
+        f.send(admin, patch("/api/v1/projects/" + desk), "{\"enabledModules\":[\"work_packages\"]}").andExpect(status().isOk());
+        mail.run(Instant.now());
+        assertThat(mails(n)).isEmpty();
+        assertThat(column(n, false)).isNull();
+        f.send(admin, patch("/api/v1/projects/" + desk), "{\"enabledModules\":[\"work_packages\",\"service_desk\"]}").andExpect(status().isOk());
+        mail.run(Instant.now());
+        assertThat(mails(n)).hasSize(1);
+        Mockito.clearInvocations(mailer);
+        var id = f.body(f.send(admin, get("/api/v1/projects/" + desk), "").andReturn()).get("id").asString();
+        f.send(admin, post("/api/v1/projects/" + id + "/archive"), "").andExpect(status().is2xxSuccessful());
+        notifiedDaysAgo(n, 10);
+        mail.run(Instant.now());
+        assertThat(mails(n)).isEmpty();
+        assertThat(column(n, true)).isNull();
     }
 
     @Test void inactiveApproverIsMarkedButNotMailed() throws Exception {
