@@ -13,7 +13,7 @@
 - 커밋은 경로를 지정해서 합니다(`git add -A` 금지).
 
 ## 일하는 방식
-- 산출물(`docs/deliverables/`)과 문서 갱신은 **백그라운드 서브에이전트**에게 맡기고, 결과를 검토한 뒤 커밋합니다. 판 번호는 README의 개정 이력을 따릅니다(지금 2.5).
+- 산출물(`docs/deliverables/`)과 문서 갱신은 **백그라운드 서브에이전트**에게 맡기고, 결과를 검토한 뒤 커밋합니다. 판 번호는 README의 개정 이력을 따릅니다(지금 2.6).
 - 큰 수정은 스크래치 폴더에 Python 스크립트를 써서 적용합니다. **bash heredoc은 따옴표·백슬래시를 망가뜨리므로** 코드 패치에 쓰지 않습니다.
 - **prettier를 돌리지 않습니다**(저장소의 포매터가 아니어서 파일 전체가 바뀜).
 - 문서 줄바꿈을 그대로 둡니다: `docs/deliverables`의 03·04·05·10과 `replica/` 문서는 CRLF, 01·02·06·07·08·09와 README는 LF.
@@ -28,20 +28,13 @@
 - `work_package_assignees`에 `ON CONFLICT`를 쓸 때는 `(work_package_id, user_id)`를 꼭 적습니다(지연 unique 제약 때문에).
 - 요청은 가상 스레드에서 돕니다(Java 21). **`synchronized`나 `ConcurrentHashMap.computeIfAbsent` 안에서 DB를 기다리지 않습니다**. 캐리어 스레드를 붙잡아 서버 전체가 멈춥니다(BUG-012). `NoPinningTest`와 `PerfBudgetIT`의 JFR 검사가 막습니다.
 - 앱 도움말(`frontend/src/features/help/topics.ts`)은 화면을 매뉴얼 **절 번호**로 잇습니다. `07-사용자매뉴얼.md`·`10-운영자매뉴얼.md`의 기존 번호 붙은 제목은 **번호를 바꾸거나 지우지 말고**, 새 내용은 새 번호로 덧붙입니다(e2e f17-H3가 확인).
-- 서비스 데스크 프로젝트는 **비공개만**입니다(공개면 비멤버가 모든 티켓을 봄). 앱이 422로 막고, 모듈 `service_desk`와 `isPublic = true`를 함께 두지 않습니다.
-- 요청자는 멤버가 아닙니다: 포털 코드(`itsm/PortalService`)는 항상 `service_tickets.requester_id`로 좁히고, 작업 패키지 API 응답(409의 `current` 포함)을 포털에 돌려주지 않습니다. 남의 티켓은 403이 아니라 404입니다(`PortalSecurityIT`).
-- 요청자의 상태 전환은 내장 역할 "요청자"(`roles.builtin = 'requester'`)의 워크플로로 정합니다(V20은 `applies_to = 'always'`로 넣고 포털이 작성자 = 요청자로 검사하므로, 관리 › 워크플로에서 고칠 수 있음). 서비스 데스크의 `service.*` 권한은 `Ctx.MODULE_OF`가 모듈에 묶습니다.
-- 승인자도 멤버가 아닙니다: 승인 API(`itsm/ApprovalService`·`ApprovalController`, `/portal/approvals`)는 항상 `ticket_approvals.approver_id = 호출자`이고 `decision = 'pending'`인 행으로만 좁히고, 남의 것·`waiting`·이미 결정한 행은 403이 아니라 404입니다(`PortalApprovalSecurityIT`). 승인 응답에 작업 패키지 API 응답을 돌려주지 않습니다.
-- 승인으로 바뀌는 상태는 `WorkPackageService`의 `Acting.APPROVAL`이 맡습니다(승인 대기 → 접수·반려만, 저널 작성자는 결정한 승인자). 처리자는 워크플로상 승인 대기를 건너뛰지 못하고 취소로만 나갑니다(나가면 남은 승인 행은 `skipped`). 같은 단계의 두 승인자가 동시에 결정해도 한쪽만 이기도록 `work_packages` 행을 먼저 잠급니다.
-- `Approvals`(승인 행·저널)는 `WorkPackageService`에 기대지 않습니다(빈 순환: `WorkPackageService` → `ServiceDesk` → `Approvals`). 결정에 따른 상태 이동은 `ApprovalService`가 합니다.
-- `users.manager_id`·`user_groups.lead_user_id`는 관리자만 씁니다(사용자 관리자는 403: 자기 쪽으로 승인을 돌릴 수 있어서). 승인자는 알림 센터가 없을 수 있어 메일 작업 `approval-mail`(1분)로 알립니다.
 - 가짜 데이터 계층(`frontend/src/api/fake`)도 실제 API와 같은 규칙으로 맞춥니다. 시드 모양을 바꾸면 `db.ts`의 `SCHEMA`를 올립니다. `seed.ts`가 db를 import하는 모듈을 import하면 TDZ 순환이 생깁니다(시간 기록 시드는 `fake/time-seed.ts`).
 - 측정 예산: 서버는 `PerfBudgetIT`(p95·SQL 수·응답 크기), 화면은 `e2e/perf.spec.ts`(`E2E_BASE=http://localhost:8090`이면 빌드된 화면), 부하는 `backend/scripts/perf_load.py`(시험용 설치에서만, 비밀번호는 `OPENPMS_PERF_PASSWORD`). 부하 측정은 CPU를 제한한 컨테이너로 합니다(8코어 PC에서는 BUG-012가 안 보였음). `podman stats`의 CPU %는 시작 이후 평균이므로 `CPUNano` 차이를 씁니다.
 - 운영 이미지 확인은 스크래치 폴더에 compose를 복사해 별도 프로젝트 이름·포트로 띄웁니다(개발 컨테이너와 겹치지 않게).
 
-## 지금까지 (2026-10-15 기준)
-- 범위: 작업 패키지 핵심 + 계획 화면(Gantt, 보드, 캘린더, 팀 플래너), 사내 도구, ITSM 1단계(서비스 데스크·SLA·요청자 포털)·2단계(서비스 카탈로그·승인). 기준 원본은 사용자의 자체 설치 OpenProject 17.9.1 Community(로컬 8080, 사용자 본인 계정).
-- 원본 기능 패리티 100(필수 64/64). 스키마 V1–V21, 개발 데이터 V1000–V1005.
+## 지금까지 (2026-10-16 기준)
+- 범위: 작업 패키지 핵심 + 계획 화면(Gantt, 보드, 캘린더, 팀 플래너), 사내 도구. 기준 원본은 사용자의 자체 설치 OpenProject 17.9.1 Community(로컬 8080, 사용자 본인 계정).
+- 원본 기능 패리티 100(필수 64/64). 스키마 V1–V19, 개발 데이터 V1000–V1003.
 - `/replica-entrepreneur`의 개선 계획 `replica/fixes.md`:
   - 1 주간 공수 입력표(시간 기록)
   - 2 템플릿 새 시작일
@@ -52,14 +45,11 @@
   - — 모두 완료. **7 반복 작업은 사용자 결정으로 보류.**
 - 브랜드(`/replica-brand`, 2026-10-12, `replica/brand.md`): 이름은 openPMS 그대로(사용자 결정, 사내 전용. 밖에 내놓으면 다시 정함). 강조색 자주 #8b2f8f, 헤더 먹색 #1e1c22. 원본의 파랑·초록 계열을 다시 쓰지 않고, 앱 쪽은 `sweep.py frontend`·`sweep.py backend`(`--config replica/brand.json`)가 깨끗해야 합니다(내부 문서의 출처 표기는 일부러 남김).
 - 사내 개선(`fixes.md` 밖): 임시 비밀번호(REQ-AUTH-005, `temporary_passwords`·V19) — 관리자가 메일 없이 사용자를 만들거나 다시 발급하고, 첫 로그인에서 새 비밀번호를 정하게 함. 평문이 바뀔 때까지 DB에 남으므로 `org.jooq` 로그를 DEBUG로 올리지 않음. SSO e2e는 5173 개발 서버도 필요.
-- ITSM 1단계(2026-10-14, 설계 `docs/superpowers/specs/2026-10-14-itsm-design.md`, 계획 `docs/superpowers/plans/2026-10-14-itsm-phase1.md`, REQ-ITSM-001–013): 장애·서비스 요청 티켓(작업 패키지 + 1:1 `service_tickets`), SLA 정책·서비스 달력(`itsm/SlaClock` 순수 함수), 요청자 포털 `/portal`(별도 컨트롤러, 요청자 본인 티켓만), 예약 작업 `sla-check`·`portal-mail`(1분), 알림 `sla_warning`·`sla_breached`와 웹훅 `service_ticket.sla_breached`. 설계서의 2~6단계(카탈로그·문제·CMDB·변경·지식 베이스)는 설계서만 있고 구현하지 않음. 마이그레이션은 V20.
-- ITSM 2단계(2026-10-15, 설계 `docs/superpowers/specs/2026-10-14-itsm-phase2-catalog-design.md`, 계획 `docs/superpowers/plans/2026-10-15-itsm-phase2.md`, REQ-ITSM-014–022, 브랜치 `feat/itsm-phase2`, 코드 기준 23ab483, 최종 리뷰 수정 포함): 서비스 카탈로그(분류·항목·양식 필드·승인 단계, 프로젝트 설정 · 서비스 데스크의 카탈로그 절)와 승인(요청자의 관리자 → 그룹 책임자, 단계 순서, 요청마다 `ticket_approvals` 행, 상태 승인 대기·반려, 포털 항목 요청·내 승인함 `/portal/approvals`, 처리자 승인 패널), 사용자 관리자(`users.manager_id`)·그룹 책임자(`user_groups.lead_user_id`, SSO 클레임 `OPENPMS_OIDC_MANAGER_CLAIM`), 승인 메일 작업 `approval-mail`(차례가 온 승인자에게, 3근무일 뒤 한 번 더). 마이그레이션 V21, 개발 데이터 V1005. 설계서의 3~6단계(문제·CMDB·변경·지식 베이스)는 구현하지 않음. 다음은 로드맵대로 3단계(문제 관리). 동료 세션의 CI/CD 계획(`docs/superpowers/plans/2026-10-15-cicd-phase1.md`, 메인 체크아웃에 있음)이 V26·V1010을 미리 잡아 둠(ITSM 3~6단계가 V22–V25·V1006–V1009를 씀).
-- 테스트: JUnit 253(ITSM 2단계 최종 리뷰 수정 뒤, 그 앞 249(f7d37b2), 그 앞 199), e2e 156건(23ab483 전체 1회: 151 통과 + 5 건너뜀(PERF-5와 SSO 4건, IdP 없이) + 0 실패, 9.6분. 그 앞 f7d37b2도 같은 151 + 5. 새 F21-T1–T6, 접근성 3, PERF-6에 승인함 예산 1000 ms. 23ab483의 개발 서버 중앙값/최댓값: 포털 홈 1053/1193 ms, 서비스 데스크 목록 665/822 ms, 내 승인함 876/919 ms). `PerfBudgetIT`의 포털 카탈로그(SQL 15, 측정 13, 데스크 수에 비례하지 않음)와 내 승인함(SQL 6, 측정 4). 그 앞의 기록: JUnit 199(ITSM 1단계 최종 리뷰 수정 뒤, 그 앞 191). e2e는 최종 리뷰 수정 뒤(777e7bf)에도 147건 중 142 통과·5 건너뜀(IdP 없이), ITSM 1단계 뒤 전체(2026-10-14, 76723c6)에서 IdP 없이 147건 중 142 통과 + 5 건너뜀(PERF-5와 SSO 4건), IdP를 띄우면 146 통과 + 1 건너뜀이 기대 결과(측정하지 않음). 그 앞 2.3 보안 수정 뒤 전체(2026-10-13, b34418b)에서 132 통과 + 5 건너뜀(PERF-5와, IdP 포트 18081을 colima의 redpanda가 쓰고 있어 건너뛴 SSO 4건). colima를 끄고 IdP를 띄워 SSO 4건도 통과해, 모두 136 통과 + 1 건너뜀. e2e의 `axe()`는 검사 전에 마우스를 치우고 CSS 전환이 끝나기를 기다림(전환 중간 색이 대비 실패로 잡히던 F03-G7).
-- 산출물 2.5(2026-10-15)에 반영한 것: ITSM 2단계(6d1a54c–23ab483)의 REQ-ITSM-014–022(요구사항 172개), 범위 밖 REQ-OOS-026–030, NFR-SEC-021·NFR-PERF-011, 새 화면 X19–X21, 경로 223개, V21·V1005, 07 사용자 매뉴얼 17.8·17.9와 18장, 10 운영자 매뉴얼 6.13·9.21–9.24(도움말은 `/portal/items/` → 07 18.1, `/portal/approvals` → 07 18.2, 프로젝트 설정 서비스 데스크(카탈로그 절 포함)는 같은 주소라 17.6 그대로). JUnit 199→253, e2e 147→156건. 최종 리뷰 수정(035cbcc·23ab483: 승인 결정의 일정 잠금 먼저, 첫 응답 전의 승인 대기 시간만큼 첫 응답 기한 연장, 승인 대기 티켓의 복사본은 접수, 반려 사유 일반 텍스트, 승인 패널·배지 갱신)도 반영. 이미지 배포 스모크는 하지 않음(V20 → V21).
-- 산출물 2.4(2026-10-14)에 반영한 것: ITSM 1단계(f3e8999–76723c6)의 새 영역 REQ-ITSM(요구사항 163개), 범위 밖 REQ-OOS-021–025, NFR-SEC-020·NFR-PERF-010, 새 화면 X14–X18, 경로 210개, V20, 07 사용자 매뉴얼 16·17장·10 운영자 매뉴얼 6.12·9.18–9.20(도움말은 `/portal` → 07 16장, 서비스 탭 → 17.3, 프로젝트 설정 서비스 데스크 → 17.6, `/admin/service-calendars` → 10 9.19에 연결). JUnit 121→191, e2e 137→147건. 이미지 배포 스모크는 하지 않음(V19 → V20).
+- ITSM 제거(2.6, 2026-10-16): 사용자 결정으로 ITSM 전체 제거(코드는 3cb9acd로 되돌림, V20·V21·V1004–V1006과 설계 문서 삭제). 매뉴얼 16–18장 등 ITSM 절은 이때 지움. 다음 빈 번호는 V20 / V1004(동료 세션의 CI/CD 계획이 쓸 수 있음).
+- 테스트: JUnit 121. e2e 137건 중 132 통과 + 5 건너뜀(PERF-5와 IdP 없이 건너뛴 SSO 4건, 2026-10-16, ITSM 제거 뒤 전체). 그 앞 2.3 보안 수정 뒤 전체(2026-10-13, b34418b)에서 132 통과 + 5 건너뜀(PERF-5와, IdP 포트 18081을 colima의 redpanda가 쓰고 있어 건너뛴 SSO 4건). colima를 끄고 IdP를 띄워 SSO 4건도 통과해, 모두 136 통과 + 1 건너뜀. e2e의 `axe()`는 검사 전에 마우스를 치우고 CSS 전환이 끝나기를 기다림(전환 중간 색이 대비 실패로 잡히던 F03-G7).
 - 산출물 2.3(2026-10-13)에 반영한 것: BUG-015(API 토큰 필터의 퍼센트 인코딩 우회, 69c2760), BUG-016(사용자 관리자가 관리자 계정을 잠그거나 삭제, 0e229d6), BUG-017(로그인 응답 시간으로 계정 유무가 드러남, cdee894), 임시 비밀번호 보강(변경 토큰은 로그인이 검사한 해시일 때만·만료 처리의 잠금 순서·비밀번호가 든 레코드의 toString 가림·no-store 정확히 확인, 4889f8b). JUnit 116→121.
 - 남은 일:
-  - 손으로 할 것(사내 SMTP·SSO·웹훅·프록시, 임시 비밀번호를 실제 메신저로 전달, NVDA, 회사 서버 부하 측정, 원본 캡처로 레이아웃 비교, 포털 요청자 메일을 실제 SMTP로·SSO 계정 요청자의 접수, IdP를 띄운 전체 e2e와 V19 → V21 이미지 업그레이드 스모크, 승인 메일을 실제 SMTP로·SSO 관리자 클레임을 실제 IdP로 확인)
-  - 정할 것(워크플로 '담당자일 때만' 조건을 화면에서 만들지, 템플릿 복사의 비공개 보기, 내보내기 시각 형식, ITSM 3단계(문제 관리)를 이어서 할지)
+  - 손으로 할 것(사내 SMTP·SSO·웹훅·프록시, 임시 비밀번호를 실제 메신저로 전달, NVDA, 회사 서버 부하 측정, 원본 캡처로 레이아웃 비교)
+  - 정할 것(워크플로 '담당자일 때만' 조건을 화면에서 만들지, 템플릿 복사의 비공개 보기, 내보내기 시각 형식)
   - 테스트 빈틈(`replica/test-plan.md`의 "확인할 것")
 - 이전 PC의 세션 스크래치 폴더에만 있던 브라우저 점검 스크립트 27묶음과 이미지 스모크 스크립트는 저장소에 없습니다. e2e로 옮기는 것이 다음 후보입니다.
