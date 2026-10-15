@@ -173,7 +173,10 @@ class CatalogFormIT {
                 .andExpect(jsonPath("$[?(@.identifier == '" + desk + "')].catalog[*].items[*].id", Matchers.hasItem(itemId)))
                 // the item has no category: it sits under the made-up 기타 with no id
                 .andExpect(jsonPath("$[?(@.identifier == '" + desk + "')].catalog[*].name", Matchers.hasItem("기타")))
-                .andExpect(jsonPath("$[?(@.identifier == '" + desk + "')].catalog[*].items[*].fields[*].required", Matchers.hasItem(true)));
+                .andExpect(jsonPath("$[?(@.identifier == '" + desk + "')].catalog[*].items[*].fields[*].required", Matchers.hasItem(true)))
+                // one entry per step in step order: kinds only (no names, no ids)
+                .andExpect(jsonPath("$[?(@.identifier == '" + desk + "')].catalog[*].items[?(@.id == '" + itemId + "')].approvalKinds[0]", Matchers.contains("requester_manager")))
+                .andExpect(jsonPath("$[?(@.identifier == '" + desk + "')].catalog[*].items[?(@.id == '" + itemId + "')].approvalKinds[1]", Matchers.contains("group_lead")));
         f.send(admin, patch("/api/v1/projects/" + desk + "/service-desk/catalog/items/" + itemId), "{\"isActive\":false}").andExpect(status().isOk());
         f.send(requester, post("/api/v1/portal/desks/" + desk + "/tickets"), request(itemId, withOption()))
                 .andExpect(status().isUnprocessableContent())

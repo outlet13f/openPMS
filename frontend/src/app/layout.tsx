@@ -36,7 +36,7 @@ function GlobalSidebar({ me, onNavigate, unread, onCollapse }: { me: Me; onNavig
         { label: t("nav.workPackages"), to: "/work-packages", icon: <ListTodo /> },
         { label: t("nav.gantt"), to: "/gantt", icon: <GanttChart /> },
         { label: t("nav.notifications"), to: "/notifications", icon: <Bell />, badge: unread ? <Counter tone="accent">{unread}</Counter> : undefined },
-        { label: t("portal.title"), to: "/portal", icon: <LifeBuoy />, end: true },
+        { label: t("portal.title"), to: "/portal", icon: <LifeBuoy />, isActive: (p) => (p === "/portal" || p.startsWith("/portal/")) && p !== "/portal/approvals" && !p.startsWith("/portal/approvals/") },
         {
           label: t("portal.inbox.title"),
           to: "/portal/approvals",

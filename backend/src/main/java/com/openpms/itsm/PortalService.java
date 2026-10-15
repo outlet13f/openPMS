@@ -45,8 +45,14 @@ public class PortalService {
     /** user and version values point at people and plans the requester cannot see, so those fields stay off the portal. */
     private static final Set<String> NOT_ON_PORTAL = Set.of("user", "version");
 
-    /** A catalog item the requester can ask for: its form is the item's fields (required = the item's flag). */
-    public record PortalItem(UUID id, String name, String descriptionHtml, UUID typeId, List<PortalField> fields) {}
+    /**
+     * A catalog item the requester can ask for: its form is the item's fields (required = the item's flag).
+     * approvalKinds has one entry per configured step in step order: "requester_manager", "group_lead" or both comma-joined
+     * ("requester_manager,group_lead", either one may decide). Kinds only, never names or ids: the portal cannot tell who
+     * the approvers are before the request exists. Steps that turn out to be skipped for this requester still appear
+     * (the plan needs one query per item; the configured steps are already read for every desk at once).
+     */
+    public record PortalItem(UUID id, String name, String descriptionHtml, UUID typeId, List<PortalField> fields, List<String> approvalKinds) {}
 
     /** A catalog category with its active items; items without a category sit under a made-up 기타 with no id. */
     public record PortalCategory(UUID id, String name, List<PortalItem> items) {}
@@ -129,7 +135,10 @@ public class PortalService {
     }
 
     private PortalItem portalItem(Snapshot s, Snapshot.ProjectRow p, ServiceCatalog.Item item) {
-        return new PortalItem(item.id(), item.name(), item.descriptionHtml(), item.typeId(), itemFields(s, p, item));
+        var byStep = new java.util.TreeMap<Integer, List<String>>();
+        for (var st : item.steps()) byStep.computeIfAbsent(st.stepNo(), k -> new ArrayList<>()).add(st.kind());
+        var kinds = byStep.values().stream().map(ks -> ks.stream().sorted(Comparator.comparingInt(k -> "requester_manager".equals(k) ? 0 : 1)).collect(java.util.stream.Collectors.joining(","))).toList();
+        return new PortalItem(item.id(), item.name(), item.descriptionHtml(), item.typeId(), itemFields(s, p, item), kinds);
     }
 
     /**

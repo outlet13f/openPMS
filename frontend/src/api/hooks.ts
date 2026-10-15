@@ -1,7 +1,7 @@
 // TanStack Query bindings. Screens use these hooks, never `api` directly, so caching and invalidation
 // rules live in one place.
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { api } from "./index";
+import { api, isApiError } from "./index";
 import type { TimeFilter, TimeGroupBy, TimeWeekCell, ApiTokenInput, QueryFilter, BoardKind, Id, NotificationFilter, NotificationSetting, Preferences, ProfileInput, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch, ServiceDeskSettings, ServiceTicketPatch, PortalSubmit, CatalogCategoryInput, CatalogItemInput } from "./types";
 
 export const qk = {
@@ -442,9 +442,10 @@ export function useApprovalDecision() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { id: Id; decision: "approve" | "reject"; comment?: string }) => api.portal.decide(v.id, v.decision, v.comment),
-    onSettled: (_data, _error, v) => {
-      // a decided row's page answers 404 from now on: drop it instead of refetching it (no 404 flash, no error toast)
-      qc.removeQueries({ queryKey: ["portal", "approval", v.id] });
+    onSettled: (_data, error, v) => {
+      // a decided row's page answers 404 from now on (after a decision, or when it was already decided or is no longer mine):
+      // drop it instead of refetching it (no 404 flash, no error toast). Other failures (422, 5xx) keep the page as it is.
+      if (!error || (isApiError(error) && (error.status === 404 || error.status === 409))) qc.removeQueries({ queryKey: ["portal", "approval", v.id] });
       qc.invalidateQueries({ queryKey: ["portal"], predicate: (q) => q.queryKey[1] !== "approval" });
       qc.invalidateQueries({ queryKey: ["serviceDesk"] });
       qc.invalidateQueries({ queryKey: ["wp-query"] });

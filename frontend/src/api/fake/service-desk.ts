@@ -680,7 +680,12 @@ const statusName = (id: unknown) => (typeof id === "string" ? (db.statuses.find(
 /** A desk's active, requestable items by category; items without a (known) category sit under a made-up 기타 with no id. */
 function portalCatalog(p: DbProject): PortalCategory[] {
   const items = db.catalogItems.filter((i) => i.projectId === p.id && approvals.requestable(p, i)).sort(byPositionName);
-  const toPortal = (i: DbCatalogItem) => ({ id: i.id, name: i.name, descriptionHtml: i.descriptionHtml, typeId: i.typeId, fields: approvals.itemFields(p, i) });
+  const kindsOf = (i: DbCatalogItem) => {
+    const byStep = new Map<number, string[]>();
+    for (const s of approvals.sortSteps(i.steps)) byStep.set(s.stepNo, [...(byStep.get(s.stepNo) ?? []), s.kind]);
+    return [...byStep.values()].map((ks) => ks.join(","));
+  };
+  const toPortal = (i: DbCatalogItem) => ({ id: i.id, name: i.name, descriptionHtml: i.descriptionHtml, typeId: i.typeId, fields: approvals.itemFields(p, i), approvalKinds: kindsOf(i) });
   const categories = db.catalogCategories.filter((c) => c.projectId === p.id).sort(byPositionName);
   const known = new Set(categories.map((c) => c.id));
   const out: PortalCategory[] = categories

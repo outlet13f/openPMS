@@ -1542,6 +1542,8 @@ export interface PortalItem {
   descriptionHtml: string;
   typeId: Id;
   fields: PortalField[];
+  /** one entry per approval step in order: "requester_manager", "group_lead" or both comma-joined (either may decide); kinds only */
+  approvalKinds: string[];
 }
 export interface PortalCategory {
   /** null: the made-up 기타 for items without a category */

@@ -71,6 +71,7 @@ function Decide({ detail }: { detail: ApprovalDetail }) {
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const [reasonError, setReasonError] = useState<string | null>(null);
+  const [commentError, setCommentError] = useState<string | null>(null);
   const [pending, setPending] = useState<"approve" | "reject" | null>(null);
 
   const decide = async (decision: "approve" | "reject") => {
@@ -88,7 +89,9 @@ function Decide({ detail }: { detail: ApprovalDetail }) {
         toast({ tone: "danger", title: e.title });
         navigate("/portal/approvals");
       } else if (isApiError(e) && fieldErrorOf(e, "comment")) {
-        setReasonError(fieldErrorOf(e, "comment") ?? null);
+        // a rejection's reason sits in the dialog, an approval's 의견 under its own field
+        if (decision === "reject") setReasonError(fieldErrorOf(e, "comment") ?? null);
+        else setCommentError(fieldErrorOf(e, "comment") ?? null);
         setPending(null);
       } else {
         toast({ tone: "danger", title: isApiError(e) ? e.title : t("app.errorTitle"), description: isApiError(e) && e.message !== e.title ? e.message : undefined });
@@ -102,8 +105,8 @@ function Decide({ detail }: { detail: ApprovalDetail }) {
       <h2 id="portal-review-actions" className="text-base font-semibold text-fg">
         {t("portal.review.actions")}
       </h2>
-      <Field label={t("portal.review.comment")} hint={t("portal.review.commentHint")}>
-        <Textarea rows={3} maxLength={2000} value={comment} onChange={(e) => setComment(e.target.value)} />
+      <Field label={t("portal.review.comment")} hint={t("portal.review.commentHint")} error={commentError ?? undefined}>
+        <Textarea rows={3} maxLength={2000} value={comment} onChange={(e) => (setComment(e.target.value), commentError && setCommentError(null))} />
       </Field>
       <div className="flex flex-wrap gap-2">
         <Button variant="primary" icon={<Check />} loading={pending === "approve"} disabled={pending !== null && pending !== "approve"} onClick={() => void decide("approve")}>

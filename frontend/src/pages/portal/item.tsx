@@ -33,6 +33,10 @@ function ItemForm({ desk, item }: { desk: PortalDesk; item: PortalItem }) {
   const [busy, setBusy] = useState(false);
   const fileInputId = useId();
   const title = t("portal.itemTitle", { name: item.name });
+  // 관리자 → 그룹 책임자: the steps in order; two kinds of one step (either may decide) are joined with "·"
+  const steps = item.approvalKinds
+    .map((s) => s.split(",").map((k) => t(`portal.approvalKinds.${k}`, { defaultValue: k })).join(t("portal.approvalEither")))
+    .join(t("portal.approvalThen"));
   useUnsavedWarning(!busy && (!!subject || !!description || files.length > 0));
   useDocumentTitle(title);
 
@@ -79,6 +83,7 @@ function ItemForm({ desk, item }: { desk: PortalDesk; item: PortalItem }) {
       <PageHeader title={title} breadcrumbs={[{ label: t("portal.title"), href: "/portal" }, { label: desk.name }, { label: item.name }]} />
       {item.descriptionHtml && <RichText html={item.descriptionHtml} className="mb-5 max-w-3xl text-sm text-fg-muted" />}
       <form onSubmit={(e) => void submit(e)} noValidate className="flex max-w-3xl flex-col gap-5">
+        {item.approvalKinds.length > 0 && <Banner tone="info" title={t("portal.approvalNotice", { steps })} />}
         {formError && (
           <Banner tone="danger" title={formError.title}>
             {formError.message !== formError.title ? formError.message : catalogError ?? null}

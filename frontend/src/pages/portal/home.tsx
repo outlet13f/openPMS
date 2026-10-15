@@ -47,6 +47,7 @@ function Desks() {
             <h3 className="text-base font-semibold text-fg">{d.name}</h3>
             {d.descriptionText && <p className="mt-1 line-clamp-3 text-sm text-fg-muted">{d.descriptionText}</p>}
           </div>
+          {d.types.length > 0 && (
           <div role="group" aria-label={`${d.name}: ${t("portal.other")}`} className="mt-auto flex flex-col gap-2">
             <p className="text-xs font-medium text-fg-muted" aria-hidden="true">
               {t("portal.other")}
@@ -66,6 +67,7 @@ function Desks() {
             ))}
             </div>
           </div>
+          )}
         </li>
       ))}
     </ul>
@@ -93,20 +95,23 @@ function Catalog() {
             {d.catalog
               .filter((c) => c.items.length)
               .map((c) => (
-                <section key={c.id ?? "other"} aria-label={`${d.name} ${t("portal.categoryItems", { name: c.name })}`}>
-                  <h4 className="mb-2 text-sm font-semibold text-fg-muted">{c.name}</h4>
+                <section key={c.id ?? "other"} aria-labelledby={`portal-cat-${d.identifier}-${c.id ?? "other"}`}>
+                  <h4 id={`portal-cat-${d.identifier}-${c.id ?? "other"}`} className="mb-2 text-sm font-semibold text-fg-muted">{c.name}</h4>
                   <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {c.items.map((i) => (
+                    {c.items.map((i) => {
+                      const line = oneLine(i.descriptionHtml);
+                      return (
                       <li key={i.id}>
                         <Link
                           to={`/portal/items/${encodeURIComponent(i.id)}`}
                           className="flex h-full flex-col gap-1 rounded-lg border border-border bg-bg p-4 hover:border-accent hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
                         >
                           <span className="text-sm font-semibold text-fg">{i.name}</span>
-                          {oneLine(i.descriptionHtml) && <span className="line-clamp-1 text-xs text-fg-muted">{oneLine(i.descriptionHtml)}</span>}
+                          {line && <span className="line-clamp-1 text-xs text-fg-muted">{line}</span>}
                         </Link>
                       </li>
-                    ))}
+                      );
+                    })}
                   </ul>
                 </section>
               ))}

@@ -109,7 +109,7 @@ export function PortalFieldInput({ field, value, onChange, ...aria }: { field: P
   }
 }
 
-export const emptyValue =(v: CustomValue | undefined) => v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
+export const emptyValue = (v: CustomValue | undefined) => v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
 
 function NewTicketForm({ desk, initialType }: { desk: PortalDesk; initialType: IdName }) {
   const { t } = useTranslation();
