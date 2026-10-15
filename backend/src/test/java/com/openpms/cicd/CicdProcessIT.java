@@ -191,15 +191,75 @@ class CicdProcessIT {
         assertThat(row.getTitle()).isEqualTo("끝");
     }
 
-    @Test void unknownRepositoryIsIgnored() throws Exception {
+    private UUID attachExternal(String project, String externalId) {
+        var id = UUID.randomUUID();
+        db.insertInto(CICD_REPOSITORIES).set(CICD_REPOSITORIES.ID, id).set(CICD_REPOSITORIES.CONNECTION_ID, connection)
+                .set(CICD_REPOSITORIES.EXTERNAL_ID, externalId).set(CICD_REPOSITORIES.FULL_PATH, "g/" + id)
+                .set(CICD_REPOSITORIES.WEB_URL, "https://gitlab.example.com/g/" + id).set(CICD_REPOSITORIES.PROJECT_ID, projectId(project)).execute();
+        return id;
+    }
+
+    private CicdEvent forExternal(CicdEvent e, String prefix, String externalId) {
+        return new CicdEvent(e.kind(), prefix + e.commit().sha(), externalId, e.commit(), null);
+    }
+
+    @Test void unknownRepositoryEventIsDroppedAndComesBackAfterAttach() throws Exception {
         var p = newProject();
-        var repo = attach(p);
-        var e = commit(repo, sha(), "#1 모름", "x@example.com");
-        var stray = new CicdEvent(e.kind(), "commit:stray:" + e.commit().sha(), "not-attached", e.commit(), null);
+        long a = wp(p);
+        var ext = "late-" + UUID.randomUUID();
+        var stray = forExternal(commit(attach(p), sha(), "#" + a + " 모름", "x@example.com"), "commit:late:", ext);
         events.store(connection, List.of(stray), "webhook");
         processor.run(Instant.now());
-        assertThat(eventStatus(stray.deliveryKey())).isEqualTo("done");
-        assertThat(db.fetchCount(CICD_COMMITS, CICD_COMMITS.SHA.eq(e.commit().sha()))).isZero();
+        assertThat(db.fetchCount(CICD_EVENTS, CICD_EVENTS.CONNECTION_ID.eq(connection), CICD_EVENTS.DELIVERY_KEY.eq(stray.deliveryKey()))).isZero();
+        assertThat(db.fetchCount(CICD_COMMITS, CICD_COMMITS.SHA.eq(stray.commit().sha()))).isZero();
+        // attached later: the same fact from the poll is accepted again
+        var late = attachExternal(p, ext);
+        assertThat(events.store(connection, List.of(stray), "poll")).isEqualTo(1);
+        processor.run(Instant.now());
+        assertThat(db.fetchCount(CICD_COMMITS, CICD_COMMITS.REPOSITORY_ID.eq(late))).isEqualTo(1);
+        assertThat(linksOf(late)).isEqualTo(1);
+    }
+
+    @Test void repositoryAttachedBeforeProcessingIsFoundByExternalId() throws Exception {
+        var p = newProject();
+        long a = wp(p);
+        var ext = "early-" + UUID.randomUUID();
+        var e = forExternal(commit(attach(p), sha(), "#" + a, "x@example.com"), "commit:early:", ext);
+        events.store(connection, List.of(e), "webhook");   // repository_id is null here
+        var repo = attachExternal(p, ext);
+        processor.run(Instant.now());
+        assertThat(eventStatus(e.deliveryKey())).isEqualTo("done");
+        assertThat(db.fetchCount(CICD_COMMITS, CICD_COMMITS.REPOSITORY_ID.eq(repo))).isEqualTo(1);
+        assertThat(linksOf(repo)).isEqualTo(1);
+    }
+
+    @Test void sameShaUnderTwoDeliveryKeysIsStoredOnce() throws Exception {
+        var p = newProject();
+        long a = wp(p);
+        var repo = attach(p);
+        var e = commit(repo, sha(), "#" + a, "x@example.com");
+        events.store(connection, List.of(e), "webhook");
+        events.store(connection, List.of(new CicdEvent(e.kind(), "other-key-" + e.commit().sha(), e.repoExternalId(), e.commit(), null)), "poll");
+        processor.run(Instant.now());
+        assertThat(db.fetchCount(CICD_COMMITS, CICD_COMMITS.REPOSITORY_ID.eq(repo))).isEqualTo(1);
+        assertThat(linksOf(repo)).isEqualTo(1);
+        assertThat(db.fetchCount(CICD_EVENTS, CICD_EVENTS.REPOSITORY_ID.eq(repo), CICD_EVENTS.STATUS.eq("done"))).isEqualTo(2);
+    }
+
+    @Test void lockedOrDeletedUsersAreNotMatched() throws Exception {
+        var repo = attach(newProject());
+        var suffix = UUID.randomUUID().toString().substring(0, 8);
+        for (var status : List.of("locked", "deleted")) {
+            var email = status + "-" + suffix + "@example.com";
+            db.insertInto(com.openpms.db.Tables.USERS).set(com.openpms.db.Tables.USERS.EMAIL, email)
+                    .set(com.openpms.db.Tables.USERS.NAME, status).set(com.openpms.db.Tables.USERS.STATUS, status).execute();
+            var sha = sha();
+            events.store(connection, List.of(commit(repo, sha, "x", email)), "poll");
+            processor.run(Instant.now());
+            var row = db.selectFrom(CICD_COMMITS).where(CICD_COMMITS.REPOSITORY_ID.eq(repo), CICD_COMMITS.SHA.eq(sha)).fetchOne();
+            assertThat(row).isNotNull();
+            assertThat(row.getUserId()).isNull();
+        }
     }
 
     @Test void oneBadEventDoesNotStopTheRest() throws Exception {

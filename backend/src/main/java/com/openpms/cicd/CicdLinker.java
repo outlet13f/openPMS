@@ -23,7 +23,7 @@ public class CicdLinker {
 
     /** The project and all of its sub-projects. */
     public List<UUID> projectTree(UUID projectId) {
-        return db.fetch("with recursive t as (select id from projects where id = ? union all "
+        return db.fetch("with recursive t as (select id from projects where id = ? union "
                 + "select p.id from projects p join t on p.parent_id = t.id) select id from t", projectId).getValues(0, UUID.class);
     }
 

@@ -59,6 +59,13 @@ public class CicdProcessor {
         return handled;
     }
 
+    /** The processor's own failure with a fixed message that is safe to store. */
+    private static final class BadEvent extends RuntimeException {
+        BadEvent(String message) {
+            super(message);
+        }
+    }
+
     private enum Outcome { DONE, FAILED, SKIPPED }
 
     private Outcome one(UUID id) {
@@ -68,7 +75,11 @@ public class CicdProcessor {
                         .forUpdate().skipLocked().fetchOne();
                 if (row == null) return false;   // someone else has it or it is done
                 var event = parse(row.getKind(), row.getPayload());
-                process(row.getConnectionId(), row.getRepositoryId(), row.getKind(), event);
+                if (!process(row.getConnectionId(), row.getRepositoryId(), row.getKind(), event)) {
+                    // not attached: forget the event, so the gap-filling poll can store the same fact once the repository is attached
+                    db.deleteFrom(CICD_EVENTS).where(CICD_EVENTS.ID.eq(id)).execute();
+                    return true;
+                }
                 db.update(CICD_EVENTS).set(CICD_EVENTS.STATUS, "done").set(CICD_EVENTS.PROCESSED_AT, OffsetDateTime.now(ZoneOffset.UTC))
                         .where(CICD_EVENTS.ID.eq(id)).execute();
                 return true;
@@ -88,7 +99,7 @@ public class CicdProcessor {
         var name = e.getClass().getSimpleName();
         String msg;
         if (e instanceof JacksonException) msg = "unreadable payload";
-        else if (e instanceof IllegalArgumentException) msg = firstLine(e.getMessage());
+        else if (e instanceof BadEvent) msg = firstLine(e.getMessage());
         else msg = "";
         var out = msg.isEmpty() ? name : name + ": " + msg;
         return out.length() > 500 ? out.substring(0, 500) : out;
@@ -102,25 +113,26 @@ public class CicdProcessor {
 
     private CicdEvent parse(String kind, JSONB payload) {
         var e = json.readValue(payload.data(), CicdEvent.class);
-        if (e == null) throw new IllegalArgumentException("empty event");
+        if (e == null) throw new BadEvent("empty event");
         if (kind.equals("commit")) {
             var c = e.commit();
-            if (c == null || c.sha() == null || c.committedAt() == null) throw new IllegalArgumentException("incomplete commit event");
+            if (c == null || c.sha() == null || c.committedAt() == null) throw new BadEvent("incomplete commit event");
         } else {
             var m = e.mr();
-            if (m == null || m.title() == null || m.updatedAt() == null || m.state() == null) throw new IllegalArgumentException("incomplete merge request event");
+            if (m == null || m.title() == null || m.updatedAt() == null || m.state() == null) throw new BadEvent("incomplete merge request event");
         }
         return e;
     }
 
-    private void process(UUID connectionId, UUID repositoryId, String kind, CicdEvent event) {
+    private boolean process(UUID connectionId, UUID repositoryId, String kind, CicdEvent event) {
         var repo = repositoryId == null ? null : db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.ID.eq(repositoryId)).fetchOne();
         if (repo == null && event.repoExternalId() != null)   // the webhook came before the repository was attached
             repo = db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(connectionId),
                     CICD_REPOSITORIES.EXTERNAL_ID.eq(event.repoExternalId())).fetchOne();
-        if (repo == null) return;   // not attached: ignored
+        if (repo == null) return false;
         if (kind.equals("commit")) commit(repo.getId(), repo.getProjectId(), event.commit());
         else mergeRequest(repo.getId(), repo.getProjectId(), event.mr());
+        return true;
     }
 
     private UUID userByEmail(String email) {
@@ -150,7 +162,7 @@ public class CicdProcessor {
             case "draft" -> "draft";
             case "merged" -> "merged";
             case "closed", "locked" -> "closed";
-            default -> throw new IllegalArgumentException("unknown merge request state");
+            default -> throw new BadEvent("unknown merge request state");
         };
     }
 
