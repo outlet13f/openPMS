@@ -15,7 +15,7 @@ import { can, useCurrentProject } from "@/app/project";
 import { AdminTable, fieldErrorOf, tbodyRow, th, theadRow, useRunWithToast } from "@/features/admin/common";
 
 /** 장애 and 서비스 요청, the only types a policy may name (server ItsmIds; the fake data layer uses readable ids). */
-const TICKET_TYPE_IDS = new Set(["2dcd4691-d4a9-5bf0-8908-e4740b42616e", "a3af2ccf-05c6-5b1c-84bc-4d815791e4eb", "t-incident", "t-service-request"]);
+export const TICKET_TYPE_IDS = new Set(["2dcd4691-d4a9-5bf0-8908-e4740b42616e", "a3af2ccf-05c6-5b1c-84bc-4d815791e4eb", "t-incident", "t-service-request"]);
 const LEVELS: Level[] = [1, 2, 3];
 
 type Row = { key: number; typeId: string; priorityId: string; calendarId: string; firstResponseMinutes: string; resolveMinutes: string };

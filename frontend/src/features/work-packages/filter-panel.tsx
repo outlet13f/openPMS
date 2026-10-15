@@ -10,12 +10,11 @@ import { Input } from "@/components/ui/field";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { useLatestSent } from "@/lib/use-latest-sent";
+import { useServiceCatalog } from "@/api/hooks";
 import { can, useOptionalProject } from "@/app/project";
 
 /** 서비스 데스크 filters: only in a project with the module on (no ticket matches anywhere else). */
 const SERVICE_FILTERS: FilterField[] = ["requester", "assignmentGroup", "channel", "slaBreached", "catalogItem", "approvalState"];
-/** Not offered yet: the catalog item filter needs the desk's items as options (the catalog screens come next). */
-const NOT_OFFERED: FilterField[] = ["catalogItem"];
 
 /** What the value part of a filter row looks like for an operator. */
 /** one: a single value picked from a list (starts empty, unlike bool) */
@@ -23,7 +22,8 @@ type ValueKind = "multi" | "text" | "number" | "days" | "date" | "range" | "bool
 type OpDef = { op: FilterOp; label: string; input?: ValueKind };
 type Def = { label: string; ops: OpDef[]; values?: (o: FilterOptions) => SelectOption[] };
 
-function useDefs(options?: FilterOptions): Record<FilterField, Def> {
+/** catalogItems: the desk's catalog items (service desk projects only), the catalog item filter's choices */
+function useDefs(options?: FilterOptions, catalogItems: { id: string; name: string }[] = []): Record<FilterField, Def> {
   const { t } = useTranslation();
   const f = (k: string) => t(`filters.${k}` as "filters.is");
   const col = (k: string) => t(`filters.fields.${k}` as "filters.fields.status");
@@ -107,7 +107,7 @@ function useDefs(options?: FilterOptions): Record<FilterField, Def> {
     assignmentGroup: { label: col("assignmentGroup"), ops: [is, isNot], values: (o) => o.groups.map((g) => ({ value: g.id, label: g.name })) },
     channel: { label: col("channel"), ops: [is], values: () => (["portal", "agent", "api"] as const).map((c) => ({ value: c, label: f(`channels.${c}`) })) },
     slaBreached: { label: col("slaBreached"), ops: bool, values: yesNo },
-    catalogItem: { label: col("catalogItem"), ops: [is, isNot], values: () => [] },
+    catalogItem: { label: col("catalogItem"), ops: [is, isNot], values: () => catalogItems.map((i) => ({ value: i.id, label: i.name })) },
     // exactly one value (the server answers 422 for more)
     approvalState: {
       label: col("approvalState"),
@@ -196,7 +196,8 @@ export function FilterPanel({ spec, onSpec, options }: { spec: QuerySpec; onSpec
   const { t } = useTranslation();
   const project = useOptionalProject();
   const serviceOn = !!project && project.enabledModules.includes("service_desk") && can(project, "service.view");
-  const allDefs = useDefs(options);
+  const catalog = useServiceCatalog(serviceOn ? project.identifier : "");
+  const allDefs = useDefs(options, serviceOn ? (catalog.data?.items ?? []) : []);
   const defs = serviceOn ? allDefs : (Object.fromEntries(Object.entries(allDefs).filter(([k]) => !SERVICE_FILTERS.includes(k as FilterField))) as typeof allDefs);
   // The spec as last sent, ahead of its round trip through the URL: two quick edits (removing two filters,
   // say) must build on each other, not on the same stale props.
@@ -219,7 +220,7 @@ export function FilterPanel({ spec, onSpec, options }: { spec: QuerySpec; onSpec
   const editable = cur.filters.filter(shownHere);
   const others = cur.filters.filter((f) => !shownHere(f));
   const unused = (Object.keys(defs) as FilterField[])
-    .filter((k) => !editable.some((f) => f.field === k) && !NOT_OFFERED.includes(k))
+    .filter((k) => !editable.some((f) => f.field === k))
     .sort((a, b) => defs[a].label.localeCompare(defs[b].label, "ko"));
   /** Rewrites the shown filters from the latest spec; `change` gets them and returns the new list. */
   const setFilters = (change: (shown: QueryFilter[]) => QueryFilter[]) => {

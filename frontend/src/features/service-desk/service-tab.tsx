@@ -15,12 +15,30 @@ import { Select } from "@/components/ui/select";
 import { can } from "@/app/project";
 import { fieldErrorOf, useRunWithToast } from "@/features/admin/common";
 import { SlaPanel } from "./sla-panel";
+import { ApprovalPanel } from "./approval-panel";
 
 const LEVELS: Level[] = [1, 2, 3];
 const NO_GROUP = "none";
 
-/** People to pick as requester: anyone active (requesters are usually not members), found by name or mail. */
-function RequesterPicker({ value, current, onChange, disabled, error }: { value: string; current: { id: string; name: string }; onChange: (id: string) => void; disabled: boolean; error?: string }) {
+/**
+ * People to pick as requester (or approver): anyone active (requesters and approvers are usually not members), found by
+ * name or mail. `labels` renames the two fields for another use.
+ */
+export function RequesterPicker({
+  value,
+  current,
+  onChange,
+  disabled,
+  error,
+  labels,
+}: {
+  value: string;
+  current: { id: string; name: string } | null;
+  onChange: (id: string) => void;
+  disabled: boolean;
+  error?: string;
+  labels?: { search: string; pick: string };
+}) {
   const { t } = useTranslation();
   const [q, setQ] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -32,15 +50,15 @@ function RequesterPicker({ value, current, onChange, disabled, error }: { value:
   const [picked, setPicked] = useState<{ id: string; name: string }[]>([]);
   const found = (people.data ?? []).filter((p) => p.kind === "user").map((p) => ({ id: p.id, name: p.name }));
   // the current requester and the one just picked stay choosable while the search moves on
-  const options = [current, ...picked, ...found].filter((p, i, all) => all.findIndex((x) => x.id === p.id) === i);
+  const options = [...(current ? [current] : []), ...picked, ...found].filter((p, i, all) => all.findIndex((x) => x.id === p.id) === i);
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
       {!disabled && (
-        <Field label={t("serviceDesk.requesterSearch")}>
+        <Field label={labels?.search ?? t("serviceDesk.requesterSearch")}>
           <Input type="search" placeholder={t("serviceDesk.requesterSearchPlaceholder")} value={q} onChange={(e) => setQ(e.target.value)} />
         </Field>
       )}
-      <Field label={t("serviceDesk.fields.requester")} error={error}>
+      <Field label={labels?.pick ?? t("serviceDesk.fields.requester")} error={error}>
         <Select
           value={value}
           disabled={disabled}
@@ -141,6 +159,7 @@ export function ServiceTab({ wp }: { wp: WorkPackage }) {
   return (
     <div className="flex flex-col gap-5">
       <SlaPanel sla={wp.serviceTicket.sla} createdAt={wp.createdAt} />
+      {editable && <ApprovalPanel number={wp.number} />}
       {/* my save, or someone else's change, starts the form again from the ticket */}
       <TicketForm key={`${wp.lockVersion}-${wp.updatedAt}-${saves}`} wp={wp} editable={editable} onSaved={() => setSaves((n) => n + 1)} />
     </div>

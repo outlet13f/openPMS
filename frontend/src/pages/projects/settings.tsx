@@ -22,6 +22,7 @@ import { ErrorState, PageBody, PageHeader, useDocumentTitle } from "@/app/page";
 import { can, useCurrentProject } from "@/app/project";
 import { AdminTable, ConfirmDialog, fieldErrorOf, tbodyRow, th, theadRow, useRunWithToast } from "@/features/admin/common";
 import { ServiceDeskSection } from "@/features/service-desk/settings-section";
+import { CatalogSection } from "@/features/service-desk/catalog-section";
 
 /** 서비스 데스크 settings: the module on and service.view. */
 const serviceOn = (p: Project) => p.enabledModules.includes("service_desk") && can(p, "service.view");
@@ -669,7 +670,12 @@ export function ProjectSettingsPage() {
       {section === "modules" && <ModulesSection key={project.updatedAt} />}
       {section === "work-packages" && <WorkPackagesSection />}
       {section === "versions" && <VersionsSection />}
-      {section === "service-desk" && <ServiceDeskSection />}
+      {section === "service-desk" && (
+        <div className="flex flex-col gap-10">
+          <ServiceDeskSection />
+          <CatalogSection />
+        </div>
+      )}
     </PageBody>
   );
 }
