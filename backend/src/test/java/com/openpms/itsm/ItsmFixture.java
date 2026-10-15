@@ -86,4 +86,16 @@ final class ItsmFixture {
                 + "],\"matrix\":[" + matrix + "]}").andExpect(status().isOk());
         return identifier;
     }
+
+    /** A catalog item (service request type) on the desk with the given approval steps (a JSON array); no assignment group. Returns its id. */
+    String newItem(MockHttpSession admin, String desk, String name, String stepsJson) throws Exception {
+        return newItem(admin, desk, name, stepsJson, null);
+    }
+
+    /** Same, routed to the given user group (null for none). */
+    String newItem(MockHttpSession admin, String desk, String name, String stepsJson, UUID groupId) throws Exception {
+        var group = groupId == null ? "" : ",\"assignmentGroupId\":\"" + groupId + "\"";
+        return body(send(admin, post("/api/v1/projects/" + desk + "/service-desk/catalog/items"),
+                "{\"name\":\"" + name + "\"" + group + ",\"steps\":" + stepsJson + "}").andExpect(status().isCreated()).andReturn()).get("id").asString();
+    }
 }
