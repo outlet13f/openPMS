@@ -262,21 +262,6 @@ public class CustomFieldsRecord extends UpdatableRecordImpl<CustomFieldsRecord> 
         return (OffsetDateTime) get(15);
     }
 
-    /**
-     * Setter for <code>public.custom_fields.portal_visible</code>.
-     */
-    public CustomFieldsRecord setPortalVisible(Boolean value) {
-        set(16, value);
-        return this;
-    }
-
-    /**
-     * Getter for <code>public.custom_fields.portal_visible</code>.
-     */
-    public Boolean getPortalVisible() {
-        return (Boolean) get(16);
-    }
-
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -300,7 +285,7 @@ public class CustomFieldsRecord extends UpdatableRecordImpl<CustomFieldsRecord> 
     /**
      * Create a detached, initialised CustomFieldsRecord
      */
-    public CustomFieldsRecord(UUID id, String entity, String name, String format, Boolean isRequired, Boolean isForAll, Boolean isFilterable, Boolean isSearchable, Boolean isMultiValue, JSONB defaultValue, Integer minLength, Integer maxLength, String regexp, Integer position, OffsetDateTime createdAt, OffsetDateTime updatedAt, Boolean portalVisible) {
+    public CustomFieldsRecord(UUID id, String entity, String name, String format, Boolean isRequired, Boolean isForAll, Boolean isFilterable, Boolean isSearchable, Boolean isMultiValue, JSONB defaultValue, Integer minLength, Integer maxLength, String regexp, Integer position, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
         super(CustomFields.CUSTOM_FIELDS);
 
         setId(id);
@@ -319,7 +304,6 @@ public class CustomFieldsRecord extends UpdatableRecordImpl<CustomFieldsRecord> 
         setPosition(position);
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
-        setPortalVisible(portalVisible);
         resetTouchedOnNotNull();
     }
 }

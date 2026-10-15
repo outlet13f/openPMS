@@ -25,10 +25,8 @@ import com.openpms.db.tables.Queries.QueriesPath;
 import com.openpms.db.tables.QueryFavorites.QueryFavoritesPath;
 import com.openpms.db.tables.Relations.RelationsPath;
 import com.openpms.db.tables.Roles.RolesPath;
-import com.openpms.db.tables.ServiceTickets.ServiceTicketsPath;
 import com.openpms.db.tables.Settings.SettingsPath;
 import com.openpms.db.tables.TemporaryPasswords.TemporaryPasswordsPath;
-import com.openpms.db.tables.TicketApprovals.TicketApprovalsPath;
 import com.openpms.db.tables.TimeEntries.TimeEntriesPath;
 import com.openpms.db.tables.UserGroupMembers.UserGroupMembersPath;
 import com.openpms.db.tables.UserGroups.UserGroupsPath;
@@ -164,11 +162,6 @@ public class Users extends TableImpl<UsersRecord> {
      */
     public final TableField<UsersRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
 
-    /**
-     * The column <code>public.users.manager_id</code>.
-     */
-    public final TableField<UsersRecord, UUID> MANAGER_ID = createField(DSL.name("manager_id"), SQLDataType.UUID, this, "");
-
     private Users(Name alias, Table<UsersRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -238,7 +231,7 @@ public class Users extends TableImpl<UsersRecord> {
 
     @Override
     public List<Index> getIndexes() {
-        return Arrays.asList(Indexes.USERS_MANAGER_IDX, Indexes.USERS_NAME_TRGM, Indexes.USERS_STATUS_IDX);
+        return Arrays.asList(Indexes.USERS_NAME_TRGM, Indexes.USERS_STATUS_IDX);
     }
 
     @Override
@@ -249,23 +242,6 @@ public class Users extends TableImpl<UsersRecord> {
     @Override
     public List<UniqueKey<UsersRecord>> getUniqueKeys() {
         return Arrays.asList(Keys.USERS_EMAIL_KEY);
-    }
-
-    @Override
-    public List<ForeignKey<UsersRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.USERS__USERS_MANAGER_ID_FKEY);
-    }
-
-    private transient UsersPath _users;
-
-    /**
-     * Get the implicit join path to the <code>public.users</code> table.
-     */
-    public UsersPath users() {
-        if (_users == null)
-            _users = new UsersPath(this, Keys.USERS__USERS_MANAGER_ID_FKEY, null);
-
-        return _users;
     }
 
     private transient ApiTokensPath _apiTokens;
@@ -491,19 +467,6 @@ public class Users extends TableImpl<UsersRecord> {
         return _relations;
     }
 
-    private transient ServiceTicketsPath _serviceTickets;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.service_tickets</code> table
-     */
-    public ServiceTicketsPath serviceTickets() {
-        if (_serviceTickets == null)
-            _serviceTickets = new ServiceTicketsPath(this, null, Keys.SERVICE_TICKETS__SERVICE_TICKETS_REQUESTER_ID_FKEY.getInverseKey());
-
-        return _serviceTickets;
-    }
-
     private transient SettingsPath _settings;
 
     /**
@@ -545,19 +508,6 @@ public class Users extends TableImpl<UsersRecord> {
         return _temporaryPasswordsUserIdFkey;
     }
 
-    private transient TicketApprovalsPath _ticketApprovals;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.ticket_approvals</code> table
-     */
-    public TicketApprovalsPath ticketApprovals() {
-        if (_ticketApprovals == null)
-            _ticketApprovals = new TicketApprovalsPath(this, null, Keys.TICKET_APPROVALS__TICKET_APPROVALS_APPROVER_ID_FKEY.getInverseKey());
-
-        return _ticketApprovals;
-    }
-
     private transient TimeEntriesPath _timeEntries;
 
     /**
@@ -582,19 +532,6 @@ public class Users extends TableImpl<UsersRecord> {
             _userGroupMembers = new UserGroupMembersPath(this, null, Keys.USER_GROUP_MEMBERS__USER_GROUP_MEMBERS_USER_ID_FKEY.getInverseKey());
 
         return _userGroupMembers;
-    }
-
-    private transient UserGroupsPath _userGroups;
-
-    /**
-     * Get the implicit to-many join path to the <code>public.user_groups</code>
-     * table
-     */
-    public UserGroupsPath userGroups() {
-        if (_userGroups == null)
-            _userGroups = new UserGroupsPath(this, null, Keys.USER_GROUPS__USER_GROUPS_LEAD_USER_ID_FKEY.getInverseKey());
-
-        return _userGroups;
     }
 
     private transient UserIdentitiesPath _userIdentities;
@@ -786,6 +723,14 @@ public class Users extends TableImpl<UsersRecord> {
 
     /**
      * Get the implicit many-to-many join path to the
+     * <code>public.user_groups</code> table
+     */
+    public UserGroupsPath userGroups() {
+        return userGroupMembers().userGroups();
+    }
+
+    /**
+     * Get the implicit many-to-many join path to the
      * <code>public.oidc_providers</code> table
      */
     public OidcProvidersPath oidcProviders() {
@@ -825,7 +770,6 @@ public class Users extends TableImpl<UsersRecord> {
             Internal.createCheck(this, DSL.name("users_deleted_has_no_password"), "(((status <> 'deleted'::text) OR (password_hash IS NULL)))", true),
             Internal.createCheck(this, DSL.name("users_failed_login_count_check"), "((failed_login_count >= 0))", true),
             Internal.createCheck(this, DSL.name("users_locale_check"), "((locale = ANY (ARRAY['ko'::text, 'en'::text])))", true),
-            Internal.createCheck(this, DSL.name("users_manager_not_self"), "(((manager_id IS NULL) OR (manager_id <> id)))", true),
             Internal.createCheck(this, DSL.name("users_name_check"), "(((length(name) >= 1) AND (length(name) <= 100)))", true),
             Internal.createCheck(this, DSL.name("users_status_check"), "((status = ANY (ARRAY['invited'::text, 'active'::text, 'locked'::text, 'deleted'::text])))", true),
             Internal.createCheck(this, DSL.name("users_theme_check"), "((theme = ANY (ARRAY['system'::text, 'light'::text, 'dark'::text, 'high_contrast'::text])))", true)

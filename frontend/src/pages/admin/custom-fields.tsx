@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowUp, ListPlus, MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { AdminCustomField, CustomField, CustomFieldFormat, CustomFieldInput } from "@/api";
-import { NOT_ON_PORTAL } from "@/api";
 import { useAdminCustomFields, useAdminTypes, useCustomFieldMutations } from "@/api/admin-hooks";
 import { Badge, TypeLabel } from "@/components/ui/badges";
 import { Button } from "@/components/ui/button";
@@ -23,13 +22,13 @@ const FORMATS: CustomFieldFormat[] = ["string", "text", "integer", "float", "lis
 
 const EMPTY: CustomFieldInput = {
   name: "", format: "string", isRequired: false, isForAll: true, isFilterable: true, isMultiValue: false, defaultValue: null,
-  minLength: null, maxLength: null, regexp: null, options: [], typeIds: [], portalVisible: false,
+  minLength: null, maxLength: null, regexp: null, options: [], typeIds: [],
 };
 
 const toInput = (f: AdminCustomField): CustomFieldInput => ({
   name: f.name, format: f.format, isRequired: f.isRequired, isForAll: f.isForAll, isFilterable: f.isFilterable, isMultiValue: f.isMultiValue,
   defaultValue: f.defaultValue, minLength: f.minLength, maxLength: f.maxLength, regexp: f.regexp, options: f.options.map((o) => ({ id: o.id, value: o.value })),
-  typeIds: f.typeIds, portalVisible: f.portalVisible,
+  typeIds: f.typeIds,
 });
 
 const intOrNull = (v: string) => (v.trim() === "" ? null : Number(v));
@@ -108,10 +107,6 @@ function FieldDialog({ editing, onClose }: { editing: AdminCustomField | null; o
           <Checkbox label={t("customFields.form.isForAll")} description={t("customFields.form.isForAllHint")} checked={v.isForAll} onCheckedChange={(c) => set("isForAll", c === true)} />
           <Checkbox label={t("customFields.form.isRequired")} description={t("customFields.form.isRequiredHint")} checked={v.isRequired} onCheckedChange={(c) => set("isRequired", c === true)} />
           <Checkbox label={t("customFields.form.isFilterable")} checked={v.isFilterable} onCheckedChange={(c) => set("isFilterable", c === true)} />
-          {/* user and version fields never go on the portal (the server stores them unmarked) */}
-          {!NOT_ON_PORTAL.includes(v.format) && (
-            <Checkbox label={t("customFields.form.portalVisible")} description={t("customFields.form.portalVisibleHint")} checked={!!v.portalVisible} onCheckedChange={(c) => set("portalVisible", c === true)} />
-          )}
           {refs && <Checkbox label={t("customFields.form.isMultiValue")} checked={v.isMultiValue} onCheckedChange={(c) => setV((x) => ({ ...x, isMultiValue: c === true, defaultValue: null }))} />}
         </div>
 

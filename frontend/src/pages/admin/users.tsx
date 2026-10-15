@@ -1,7 +1,7 @@
 // S35 관리: 사용자, 그룹
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { BadgeCheck, ClipboardCopy, Copy, Eye, KeyRound, Lock, LockOpen, Mail, MoreHorizontal, Pencil, Plus, Search, Shield, ShieldOff, Trash2, UserCog, UserPlus, Users } from "lucide-react";
+import { BadgeCheck, ClipboardCopy, Copy, Eye, KeyRound, Lock, LockOpen, Mail, MoreHorizontal, Pencil, Plus, Search, Shield, ShieldOff, Trash2, UserPlus, Users } from "lucide-react";
 import { api, type AdminGroup, type AdminUser, type TemporaryPassword } from "@/api";
 import { useAdminGroups, useAdminRoles, useAdminUsers, useGroupMutations, useUserMutations } from "@/api/admin-hooks";
 import { useMe } from "@/api/hooks";
@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badges";
 import { Button } from "@/components/ui/button";
 import { Checkbox, RadioCards } from "@/components/ui/choice";
 import { Field, Input } from "@/components/ui/field";
-import { Select } from "@/components/ui/select";
 import { EmptyState, useToast } from "@/components/ui/feedback";
 import { Dialog, Menu, type MenuEntry } from "@/components/ui/overlay";
 import { Skeleton } from "@/components/ui/spinner";
@@ -182,100 +181,6 @@ function GlobalRolesDialog({ user, onClose }: { user: AdminUser; onClose: () => 
   );
 }
 
-const NO_ONE = "none";
-
-/**
- * One person picked among the active users, or none: a user's 관리자(상사) or a group's 책임자 (catalog approvers).
- * Only administrators set these (the server answers 403 to user managers), so only they get here.
- */
-function ApproverDialog({
-  title,
-  hint,
-  label,
-  current,
-  exclude,
-  error,
-  pending,
-  onSave,
-  onClose,
-}: {
-  title: string;
-  hint: string;
-  label: string;
-  current: { id: string; name: string } | null;
-  exclude?: string;
-  error?: string;
-  pending: boolean;
-  onSave: (id: string | null) => Promise<unknown>;
-  onClose: () => void;
-}) {
-  const { t } = useTranslation();
-  const users = useAdminUsers({ status: "active" });
-  const [picked, setPicked] = useState(current?.id ?? NO_ONE);
-  // the current person stays choosable even when no longer active
-  const people = [...(current ? [current] : []), ...(users.data ?? [])].filter((u, i, all) => u.id !== exclude && all.findIndex((x) => x.id === u.id) === i);
-  return (
-    <Dialog
-      open
-      onOpenChange={(o) => !o && onClose()}
-      size="sm"
-      title={title}
-      description={hint}
-      footer={
-        <>
-          <Button onClick={onClose}>{t("app.cancel")}</Button>
-          <Button variant="primary" loading={pending} disabled={picked === (current?.id ?? NO_ONE)} onClick={() => void onSave(picked === NO_ONE ? null : picked)}>
-            {t("app.save")}
-          </Button>
-        </>
-      }
-    >
-      {users.isPending ? (
-        <Skeleton className="h-10 w-full" />
-      ) : (
-        <Field label={label} error={error}>
-          <Select
-            value={picked}
-            onValueChange={setPicked}
-            options={[
-              { value: NO_ONE, label: t("app.none") },
-              ...people.map((u) => ({
-                value: u.id,
-                textValue: u.name,
-                label: (
-                  <span className="inline-flex items-center gap-2">
-                    <Avatar id={u.id} name={u.name} size="xs" />
-                    {u.name}
-                  </span>
-                ),
-              })),
-            ]}
-          />
-        </Field>
-      )}
-    </Dialog>
-  );
-}
-
-function ManagerDialog({ user, onClose }: { user: AdminUser; onClose: () => void }) {
-  const { t } = useTranslation();
-  const m = useUserMutations();
-  const runToast = useRunWithToast();
-  return (
-    <ApproverDialog
-      title={t("admin.users.managerTitle", { name: user.name })}
-      hint={t("admin.users.managerHint")}
-      label={t("admin.users.manager")}
-      current={user.manager}
-      exclude={user.id}
-      error={fieldErrorOf(m.update.error, "managerId") ?? fieldErrorOf(m.update.error, "manager")}
-      pending={m.update.isPending}
-      onSave={async (managerId) => (await runToast(m.update.mutateAsync({ id: user.id, patch: { managerId } }), t("app.saved"))) && onClose()}
-      onClose={onClose}
-    />
-  );
-}
-
 export function AdminUsersPage() {
   const { t } = useTranslation();
   useDocumentTitle(t("admin.sections.users"));
@@ -287,14 +192,12 @@ export function AdminUsersPage() {
     const id = setTimeout(() => setQuery(q), 250);
     return () => clearTimeout(id);
   }, [q]);
-  const [noManager, setNoManager] = useState(false);
-  const users = useAdminUsers({ q: query || undefined, status: filter === "all" ? undefined : filter, noManager: noManager || undefined });
+  const users = useAdminUsers({ q: query || undefined, status: filter === "all" ? undefined : filter });
   const m = useUserMutations();
   const runToast = useRunWithToast();
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<AdminUser | null>(null);
   const [granting, setGranting] = useState<AdminUser | null>(null);
-  const [managing, setManaging] = useState<AdminUser | null>(null);
   const [issuing, setIssuing] = useState<AdminUser | null>(null);
   const [shown, setShown] = useState<Shown | null>(null);
   const live = (until: string | null) => !!until && Date.parse(until) > Date.now();
@@ -315,8 +218,6 @@ export function AdminUsersPage() {
     if (u.status === "active" && !self && mine) items.push({ label: t("admin.users.lock"), icon: <Lock />, onSelect: () => void runToast(m.update.mutateAsync({ id: u.id, patch: { status: "locked" } }), t("admin.users.locked", { name: u.name })) });
     if ((u.status === "locked" || u.lockedUntil) && mine) items.push({ label: t("admin.users.unlock"), icon: <LockOpen />, onSelect: () => void runToast(m.update.mutateAsync({ id: u.id, patch: { status: "active" } }), t("admin.users.unlocked", { name: u.name })) });
     if (me?.isAdmin && u.status !== "deleted") items.push({ label: t("admin.users.globalRoles"), icon: <BadgeCheck />, onSelect: () => setGranting(u) });
-    // 관리자(상사): administrators only (403 for user managers)
-    if (me?.isAdmin && u.status !== "deleted") items.push({ label: t("admin.users.manager"), icon: <UserCog />, onSelect: () => setManaging(u) });
     if (me?.isAdmin && !self)
       items.push(
         u.isAdmin
@@ -353,14 +254,6 @@ export function AdminUsersPage() {
               </button>
             ))}
           </div>
-          <button
-            type="button"
-            aria-pressed={noManager}
-            onClick={() => setNoManager((v) => !v)}
-            className={cn("h-8 rounded-md border border-border bg-surface px-3 text-sm text-fg-muted hover:text-fg", noManager && "bg-bg font-medium text-fg shadow-card")}
-          >
-            {t("admin.users.noManager")}
-          </button>
           <label className="relative ml-auto w-full sm:w-64">
             <span className="sr-only">{t("admin.users.search")}</span>
             <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-fg-muted" />
@@ -376,14 +269,13 @@ export function AdminUsersPage() {
             <EmptyState icon={<Users />} title={t("admin.users.empty")} />
           </div>
         ) : (
-          <AdminTable minWidth={1000}>
+          <AdminTable minWidth={880}>
             <thead>
               <tr className={theadRow}>
                 <th scope="col" className={th}>{t("admin.users.name")}</th>
                 <th scope="col" className={th}>{t("admin.users.email")}</th>
                 <th scope="col" className={th}>{t("admin.users.status")}</th>
                 <th scope="col" className={th}>{t("admin.users.globalRoles")}</th>
-                <th scope="col" className={th}>{t("admin.users.manager")}</th>
                 <th scope="col" className={`${th} text-right`}>{t("admin.projects")}</th>
                 <th scope="col" className={th}>{t("admin.users.lastLogin")}</th>
                 <th scope="col" className={`${th} w-12`}><span className="sr-only">{t("app.more")}</span></th>
@@ -431,7 +323,6 @@ export function AdminUsersPage() {
                         <span className="text-fg-muted">-</span>
                       )}
                     </td>
-                    <td className="px-3">{u.manager ? <Principal id={u.manager.id} name={u.manager.name} size="xs" /> : <span className="text-fg-muted">-</span>}</td>
                     <td className="px-3 text-right tabular-nums">{u.projectCount}</td>
                     <td className="px-3 text-fg-muted">{u.lastLoginAt ? relativeTime(u.lastLoginAt) : "-"}</td>
                     <td className="px-2">
@@ -447,7 +338,6 @@ export function AdminUsersPage() {
       {adding && <AddUserDialog onClose={() => setAdding(false)} onMade={(s) => (setAdding(false), setShown(s))} />}
       {shown && <TemporaryPasswordDialog shown={shown} onClose={() => setShown(null)} />}
       {granting && <GlobalRolesDialog user={granting} onClose={() => setGranting(null)} />}
-      {managing && <ManagerDialog user={managing} onClose={() => setManaging(null)} />}
       <ConfirmDialog
         open={!!issuing}
         onOpenChange={(o) => !o && setIssuing(null)}
@@ -565,34 +455,14 @@ function GroupNameDialog({ group, onClose }: { group: AdminGroup | null; onClose
   );
 }
 
-function LeadDialog({ group, onClose }: { group: AdminGroup; onClose: () => void }) {
-  const { t } = useTranslation();
-  const { update } = useGroupMutations();
-  const runToast = useRunWithToast();
-  return (
-    <ApproverDialog
-      title={t("admin.groups.leadTitle", { name: group.name })}
-      hint={t("admin.groups.leadHint")}
-      label={t("admin.groups.lead")}
-      current={group.lead}
-      error={fieldErrorOf(update.error, "leadUserId") ?? fieldErrorOf(update.error, "lead")}
-      pending={update.isPending}
-      onSave={async (leadUserId) => (await runToast(update.mutateAsync({ id: group.id, patch: { leadUserId } }), t("app.saved"))) && onClose()}
-      onClose={onClose}
-    />
-  );
-}
-
 export function AdminGroupsPage() {
   const { t } = useTranslation();
   useDocumentTitle(t("admin.sections.groups"));
   const groups = useAdminGroups();
   const { remove } = useGroupMutations();
-  const me = useMe().data;
   const runToast = useRunWithToast();
   const [naming, setNaming] = useState<{ group: AdminGroup | null } | null>(null);
   const [members, setMembers] = useState<AdminGroup | null>(null);
-  const [leading, setLeading] = useState<AdminGroup | null>(null);
   const [removing, setRemoving] = useState<AdminGroup | null>(null);
   return (
     <PageBody>
@@ -617,12 +487,11 @@ export function AdminGroupsPage() {
             </EmptyState>
           </div>
         ) : (
-          <AdminTable minWidth={640}>
+          <AdminTable minWidth={520}>
             <thead>
               <tr className={theadRow}>
                 <th scope="col" className={th}>{t("admin.name")}</th>
                 <th scope="col" className={th}>{t("admin.groups.memberList")}</th>
-                <th scope="col" className={th}>{t("admin.groups.lead")}</th>
                 <th scope="col" className={`${th} w-12`}><span className="sr-only">{t("app.more")}</span></th>
               </tr>
             </thead>
@@ -642,7 +511,6 @@ export function AdminGroupsPage() {
                       </span>
                     )}
                   </td>
-                  <td className="px-3">{g.lead ? <Principal id={g.lead.id} name={g.lead.name} size="xs" /> : <span className="text-fg-muted">-</span>}</td>
                   <td className="px-2">
                     <Menu
                       align="end"
@@ -650,8 +518,6 @@ export function AdminGroupsPage() {
                       items={[
                         { label: t("admin.groups.manageMembers"), icon: <Users />, onSelect: () => setMembers(g) },
                         { label: t("admin.groups.rename"), icon: <Pencil />, onSelect: () => setNaming({ group: g }) },
-                        // 책임자: administrators only (403 for user managers)
-                        ...(me?.isAdmin ? [{ label: t("admin.groups.lead"), icon: <UserCog />, onSelect: () => setLeading(g) }] : []),
                         { kind: "separator" },
                         { label: t("app.delete"), icon: <Trash2 />, danger: true, onSelect: () => setRemoving(g) },
                       ]}
@@ -665,7 +531,6 @@ export function AdminGroupsPage() {
       </AdminGuard>
       {naming && <GroupNameDialog group={naming.group} onClose={() => setNaming(null)} />}
       {members && <GroupMembersDialog group={members} onClose={() => setMembers(null)} />}
-      {leading && <LeadDialog group={leading} onClose={() => setLeading(null)} />}
       <ConfirmDialog
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}

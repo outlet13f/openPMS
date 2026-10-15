@@ -81,21 +81,6 @@ public class UserGroupsRecord extends UpdatableRecordImpl<UserGroupsRecord> {
         return (OffsetDateTime) get(3);
     }
 
-    /**
-     * Setter for <code>public.user_groups.lead_user_id</code>.
-     */
-    public UserGroupsRecord setLeadUserId(UUID value) {
-        set(4, value);
-        return this;
-    }
-
-    /**
-     * Getter for <code>public.user_groups.lead_user_id</code>.
-     */
-    public UUID getLeadUserId() {
-        return (UUID) get(4);
-    }
-
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -119,14 +104,13 @@ public class UserGroupsRecord extends UpdatableRecordImpl<UserGroupsRecord> {
     /**
      * Create a detached, initialised UserGroupsRecord
      */
-    public UserGroupsRecord(UUID id, String name, OffsetDateTime createdAt, OffsetDateTime updatedAt, UUID leadUserId) {
+    public UserGroupsRecord(UUID id, String name, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
         super(UserGroups.USER_GROUPS);
 
         setId(id);
         setName(name);
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
-        setLeadUserId(leadUserId);
         resetTouchedOnNotNull();
     }
 }

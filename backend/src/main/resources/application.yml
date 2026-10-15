@@ -83,9 +83,6 @@ openpms:
   admin-email: ${OPENPMS_ADMIN_EMAIL:}
   mail-from: ${OPENPMS_MAIL_FROM:openPMS <no-reply@example.com>}
   files-dir: ${OPENPMS_FILES_DIR:/data/files}
-  oidc:
-    # SSO claim holding the person's manager's e-mail address; empty: the manager is not taken from the provider (승인자 지정)
-    manager-claim: ${OPENPMS_OIDC_MANAGER_CLAIM:}
   jobs:
     # date alerts, notification mail, cleanup (jobs/Jobs.java); false for a web-only instance
     enabled: ${OPENPMS_JOBS_ENABLED:true}

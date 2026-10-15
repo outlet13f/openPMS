@@ -103,15 +103,14 @@ export interface Role {
   id: Id;
   name: string;
   scope: "project" | "global";
-  /** requester: 요청자 (ITSM), checked on the portal only and never given to members */
-  builtin: "non_member" | "requester" | null;
+  builtin: "non_member" | null;
   permissions: string[];
 }
 
 /* ---------- projects ---------- */
 
 export type ProjectStatus = "on_track" | "at_risk" | "off_track";
-export type ModuleKey = "work_packages" | "gantt" | "boards" | "calendar" | "team_planner" | "time_tracking" | "service_desk";
+export type ModuleKey = "work_packages" | "gantt" | "boards" | "calendar" | "team_planner" | "time_tracking";
 
 export interface ProjectRef {
   id: Id;
@@ -170,7 +169,7 @@ export interface AdminApiToken extends ApiToken {
 }
 
 /** 웹훅 (관리 · API와 웹훅) */
-export const WEBHOOK_EVENTS = ["work_package.created", "work_package.updated", "work_package.deleted", "work_package.commented", "service_ticket.sla_breached"] as const;
+export const WEBHOOK_EVENTS = ["work_package.created", "work_package.updated", "work_package.deleted", "work_package.commented"] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 /** 관리 · 시스템 정보 */
 export interface BackupFile {
@@ -431,8 +430,6 @@ export interface WorkPackage {
   lockVersion: number;
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
-  /** 서비스 데스크 티켓 (ITSM): set for 장애·서비스 요청 in a project with the service_desk module */
-  serviceTicket: ServiceTicket | null;
   _meta: {
     allowedActions: {
       edit: boolean;
@@ -489,14 +486,9 @@ export interface WorkPackageInput {
   dueDate?: IsoDate | null;
   /** Only the fields to set; null clears one. */
   customValues?: Record<Id, CustomValue>;
-  /** 서비스 데스크 티켓 only: who asked (default: me), 1 높음 · 2 보통 · 3 낮음 (default 2), the group that handles it */
-  requesterId?: Id;
-  impact?: Level;
-  urgency?: Level;
-  assignmentGroupId?: Id | null;
 }
 
-export interface WorkPackagePatch extends Partial<Omit<WorkPackageInput, "typeId" | "requesterId" | "impact" | "urgency" | "assignmentGroupId">> {
+export interface WorkPackagePatch extends Partial<Omit<WorkPackageInput, "typeId">> {
   lockVersion: number;
   typeId?: Id;
   duration?: number | null;
@@ -673,18 +665,6 @@ export type FilterField =
   | "blocked"
   /** The work package's whole date range; used by the calendar and team planner for the visible window. */
   | "dates"
-  /** 서비스 데스크: the ticket's requester (eq/neq, user id or "me") */
-  | "requester"
-  /** 서비스 데스크: the ticket's assignment group (eq/neq) */
-  | "assignmentGroup"
-  /** 서비스 데스크: portal | agent | api (eq) */
-  | "channel"
-  /** 서비스 데스크: "true" = a response or resolve deadline was missed (eq) */
-  | "slaBreached"
-  /** 서비스 데스크: the catalog item the request came from (eq/neq, item id) */
-  | "catalogItem"
-  /** 서비스 데스크: exactly one of pending | delayed (the approver was reminded) | rejected | none (eq); more values are a 422 */
-  | "approvalState"
   /** a custom field, by id */
   | `cf:${string}`;
 
@@ -712,13 +692,6 @@ export type ColumnKey =
   | "project"
   | "work"
   | "remainingWork"
-  /** 서비스 데스크 티켓: requester, assignment group, resolve deadline, SLA state (위반 / 멈춤 / 정상) */
-  | "requester"
-  | "assignmentGroup"
-  /** 서비스 데스크 티켓: the catalog item's name (ITSM 2단계) */
-  | "catalogItem"
-  | "slaDue"
-  | "slaState"
   | `cf:${string}`;
 
 /** Columns a list can be grouped by (and list, user and yes/no custom fields). */
@@ -954,10 +927,7 @@ export type NotificationReason =
   | "dates_changed"
   | "date_alert_start"
   | "date_alert_due"
-  | "date_alert_overdue"
-  /** 서비스 데스크: an SLA deadline is close (20 % left) / has passed */
-  | "sla_warning"
-  | "sla_breached";
+  | "date_alert_overdue";
 
 export interface NotificationItem {
   id: Id;
@@ -1026,8 +996,6 @@ export interface SearchResults {
 /* ---------- custom fields (S34 관리, S25 프로젝트 설정) ---------- */
 
 export type CustomFieldFormat = "string" | "text" | "integer" | "float" | "list" | "date" | "bool" | "user" | "link";
-/** Formats never on the portal (backend PortalService.NOT_ON_PORTAL): people and versions are internal values. The database also knows "version". */
-export const NOT_ON_PORTAL: readonly string[] = ["user", "version"];
 
 /** As stored: list → option id(s), user → user id(s), date → ISO date, integer/float → number, bool, text. */
 export type CustomValue = string | number | boolean | string[] | null;
@@ -1061,8 +1029,6 @@ export interface CustomField {
 export interface AdminCustomField extends CustomField {
   /** projects that turned it on (not counting isForAll) */
   projectCount: number;
-  /** 포털에 공개: shown on the service desk portal's form and ticket page */
-  portalVisible: boolean;
 }
 
 /** Options without an id are new; existing ones keep theirs; missing ones are removed (and cleared from items). */
@@ -1079,8 +1045,6 @@ export interface CustomFieldInput {
   regexp: string | null;
   options: { id?: Id; value: string }[];
   typeIds: Id[];
-  /** default false */
-  portalVisible?: boolean;
 }
 
 export interface ProjectCustomFields {
@@ -1192,8 +1156,6 @@ export interface TypeForm {
 
 export interface AdminStatus extends Status {
   excludedFromTotals: boolean;
-  /** SLA 멈춤: the resolve clock of service desk tickets stops while they are in this status */
-  slaPause: boolean;
   workPackageCount: number;
 }
 export interface StatusInput {
@@ -1204,8 +1166,6 @@ export interface StatusInput {
   isReadonly: boolean;
   defaultDoneRatio: number;
   excludedFromTotals: boolean;
-  /** default false */
-  slaPause?: boolean;
 }
 
 export interface AdminPriority extends Priority {
@@ -1241,8 +1201,6 @@ export interface AdminUser extends User {
   globalRoles: { id: Id; name: string }[];
   /** 임시 비밀번호: until when it runs (past = ran out, shown until the nightly cleanup); the password only via temporaryPassword(id) */
   temporaryPasswordUntil: IsoDateTime | null;
-  /** 관리자(상사): approves the person's catalog requests (null for deleted users); only administrators set it */
-  manager: UserRef | null;
 }
 /** 임시 비밀번호 as an administrator sees it: made, issued again, or looked up (issuedBy/issuedAt only when looked up). */
 export interface TemporaryPassword {
@@ -1255,16 +1213,12 @@ export interface UserInput {
   name: string;
   email: string;
   isAdmin: boolean;
-  /** 관리자(상사), an active user; administrators only (403 otherwise) */
-  managerId?: Id | null;
 }
 
 export interface AdminGroup {
   id: Id;
   name: string;
   members: UserRef[];
-  /** 그룹 책임자: approves catalog requests whose item sends work to this group */
-  lead: UserRef | null;
 }
 
 /**
@@ -1319,282 +1273,4 @@ export interface VersionInput {
   status?: Version["status"];
   startDate?: IsoDate | null;
   endDate?: IsoDate | null;
-}
-
-/* ---------- 서비스 데스크 (ITSM 1단계) ---------- */
-
-export interface IdName {
-  id: Id;
-  name: string;
-}
-
-/** Deadlines of a ticket; times are null when no SLA policy matches its type and priority. */
-export interface Sla {
-  firstResponseDueAt: IsoDateTime | null;
-  firstRespondedAt: IsoDateTime | null;
-  resolveDueAt: IsoDateTime | null;
-  resolvedAt: IsoDateTime | null;
-  /** in a status that stops the resolve clock (답변 대기) */
-  paused: boolean;
-  pausedSeconds: number;
-  responseBreached: boolean;
-  resolveBreached: boolean;
-}
-
-/** 1 높음 · 2 보통 · 3 낮음 (ITIL) */
-export type Level = 1 | 2 | 3;
-
-export interface ServiceTicket {
-  requester: UserRef;
-  channel: "portal" | "agent" | "api";
-  impact: Level;
-  urgency: Level;
-  assignmentGroup: IdName | null;
-  /** the catalog item the request came from (ITSM 2단계) */
-  catalogItem: IdName | null;
-  sla: Sla;
-}
-
-/** 서비스 달력: every minute (24x7) or weekly windows outside the non-working days (ISO day 1 = Monday) */
-export interface ServiceCalendar {
-  id: Id;
-  name: string;
-  mode: "24x7" | "business";
-  timeZone: string;
-  hours: { day: number; start: string; end: string }[];
-}
-export interface SlaPolicy {
-  id?: Id;
-  typeId: Id;
-  priorityId: Id;
-  calendarId: Id;
-  firstResponseMinutes: number;
-  resolveMinutes: number;
-}
-export interface MatrixCell {
-  impact: Level;
-  urgency: Level;
-  priorityId: Id;
-}
-export interface ServiceDeskSettings {
-  policies: SlaPolicy[];
-  matrix: MatrixCell[];
-}
-/** Only the fields to change; applyMatrix also sets the priority from the matrix */
-export interface ServiceTicketPatch {
-  requesterId?: Id;
-  impact?: Level;
-  urgency?: Level;
-  assignmentGroupId?: Id | null;
-  applyMatrix?: boolean;
-}
-/** 개요 카드: open tickets by group (null = no group), deadlines of today missed, average first response of the last 30 days */
-export interface ServiceDeskSummary {
-  openByGroup: { group: IdName | null; count: number }[];
-  breachedToday: number;
-  avgFirstResponseMinutes: number | null;
-}
-
-/* the requester's portal: their own tickets only */
-
-export interface PortalField {
-  id: Id;
-  name: string;
-  format: string;
-  required: boolean;
-  multi: boolean;
-  /** list options: the id goes in customValues, the value is what the requester reads */
-  options: { id: Id; value: string }[];
-  /** the ticket types the field applies to */
-  typeIds: Id[];
-}
-export interface PortalDesk {
-  identifier: string;
-  name: string;
-  descriptionText: string;
-  types: IdName[];
-  fields: PortalField[];
-  /** the desk's catalog: categories with their requestable items (items without a category under 기타, id null) */
-  catalog: PortalCategory[];
-}
-export interface PortalSummary {
-  number: number;
-  subject: string;
-  desk: string;
-  type: string;
-  status: StatusRef;
-  createdAt: IsoDateTime;
-  updatedAt: IsoDateTime;
-  /** a public comment or status change by someone else since I last opened it */
-  hasNews: boolean;
-}
-export interface PortalEntry {
-  id: Id;
-  author: string;
-  fromMe: boolean;
-  notesHtml: string;
-  statusFrom: string | null;
-  statusTo: string | null;
-  at: IsoDateTime;
-}
-export interface PortalFile {
-  id: Id;
-  fileName: string;
-  byteSize: number;
-  createdAt: IsoDateTime;
-}
-export interface PortalTicket {
-  number: number;
-  subject: string;
-  descriptionHtml: string;
-  desk: string;
-  type: IdName;
-  status: StatusRef;
-  closed: boolean;
-  createdAt: IsoDateTime;
-  updatedAt: IsoDateTime;
-  lockVersion: number;
-  /** where the requester may move it (the 요청자 role's workflow) */
-  allowedStatuses: IdName[];
-  fields: { name: string; value: string }[];
-  /** public comments and status changes, oldest first (empty right after submitting) */
-  activity: PortalEntry[];
-  files: PortalFile[];
-  /** the catalog item it was requested from */
-  item: IdName | null;
-  /** the approval steps, in order (empty when the request needed none) */
-  approvals: PortalApproval[];
-}
-export interface PortalSubmit {
-  /** a catalog item decides the type, the form, the priority, the group and the approvals (typeId is then ignored) */
-  catalogItemId?: Id;
-  typeId: Id;
-  subject: string;
-  descriptionHtml: string;
-  impact: Level;
-  urgency: Level;
-  customValues: Record<string, unknown>;
-}
-
-/* ---------- 서비스 카탈로그와 승인 (ITSM 2단계) ---------- */
-
-/** requester_manager: the requester's 관리자(상사); group_lead: the 책임자 of the item's group */
-export type ApprovalKind = "requester_manager" | "group_lead";
-/** waiting: a later step; pending: this step's turn; skipped: no approver, the requester, the same person twice, decided by another, or the request left 승인 대기 */
-export type ApprovalDecision = "waiting" | "pending" | "approved" | "rejected" | "skipped";
-export type ApprovalSkipReason = "no_approver" | "requester" | "duplicate" | "step_done" | "left_approval";
-
-export interface CatalogCategory {
-  id: Id;
-  name: string;
-  position: number;
-}
-/** A field of an item's request form: shown whether or not the field is marked for the portal; isRequired is the item's own */
-export interface CatalogItemField {
-  customFieldId: Id;
-  position: number;
-  isRequired: boolean;
-}
-/** One approver kind of one step; a step with both kinds is decided by whichever approves first */
-export interface CatalogStep {
-  stepNo: number;
-  kind: ApprovalKind;
-}
-export interface CatalogItem {
-  id: Id;
-  categoryId: Id | null;
-  name: string;
-  descriptionHtml: string;
-  typeId: Id;
-  defaultPriorityId: Id | null;
-  assignmentGroupId: Id | null;
-  isActive: boolean;
-  position: number;
-  fields: CatalogItemField[];
-  steps: CatalogStep[];
-}
-export interface ServiceCatalog {
-  categories: CatalogCategory[];
-  items: CatalogItem[];
-}
-export interface CatalogCategoryInput {
-  name?: string;
-  position?: number;
-}
-/** Only the keys sent change; fields or steps sent replace the whole list. A new item is a 서비스 요청 unless typeId says otherwise. */
-export interface CatalogItemInput {
-  name?: string;
-  categoryId?: Id | null;
-  descriptionHtml?: string;
-  typeId?: Id;
-  defaultPriorityId?: Id | null;
-  assignmentGroupId?: Id | null;
-  isActive?: boolean;
-  position?: number;
-  fields?: { customFieldId: Id; position?: number; isRequired?: boolean }[];
-  steps?: CatalogStep[];
-}
-
-/** A catalog item on the portal: its form is the item's fields (required = the item's flag) */
-export interface PortalItem {
-  id: Id;
-  name: string;
-  descriptionHtml: string;
-  typeId: Id;
-  fields: PortalField[];
-  /** one entry per approval step in order: "requester_manager", "group_lead" or both comma-joined (either may decide); kinds only */
-  approvalKinds: string[];
-}
-export interface PortalCategory {
-  /** null: the made-up 기타 for items without a category */
-  id: Id | null;
-  name: string;
-  items: PortalItem[];
-}
-/** An approval step as the requester (and an approver) sees it: who and how far, never comments or skip reasons */
-export interface PortalApproval {
-  stepNo: number;
-  /** null when skipped or there was no approver */
-  approverName: string | null;
-  decision: ApprovalDecision;
-  decidedAt: IsoDateTime | null;
-}
-/** 내 승인함: one of my rows whose turn has come */
-export interface ApprovalSummary {
-  /** the approval row's id (the address of the approval page) */
-  id: Id;
-  number: number;
-  subject: string;
-  requester: string;
-  /** null when the item was deleted since */
-  item: string | null;
-  desk: string;
-  stepNo: number;
-  requestedAt: IsoDateTime;
-}
-/** What the approver reads: the request, the item's form values only, its files and the steps (no comments) */
-export interface ApprovalDetail {
-  id: Id;
-  number: number;
-  subject: string;
-  descriptionHtml: string;
-  requester: string;
-  item: string | null;
-  desk: string;
-  stepNo: number;
-  fields: { name: string; value: string }[];
-  files: PortalFile[];
-  steps: PortalApproval[];
-}
-/** The agent's approval panel: every row with why it was skipped and the approver's note */
-export interface AgentApproval {
-  id: Id;
-  stepNo: number;
-  kind: ApprovalKind;
-  approver: UserRef | null;
-  decision: ApprovalDecision;
-  skipReason: ApprovalSkipReason | null;
-  decidedAt: IsoDateTime | null;
-  /** the approver's note when approving (a rejection's reason is a public comment instead) */
-  comment: string;
 }

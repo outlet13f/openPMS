@@ -21,7 +21,6 @@ import { encodeSpec } from "@/features/work-packages/view-state";
 import { ErrorState, PageBody, PageHeader, useDocumentTitle } from "@/app/page";
 import { can, useCurrentProject } from "@/app/project";
 import { RichText } from "@/components/domain/rich-text";
-import { SummaryCard } from "@/features/service-desk/summary-card";
 
 /** Wide widgets take two of the three columns on large screens. */
 const WIDE: OverviewWidget[] = ["description", "workSummary", "versions", "dueSoon", "recent", "assignedToMe"];
@@ -313,7 +312,6 @@ export function ProjectOverviewPage() {
         </p>
       )}
       {editing && <Editor shown={shown} onChange={save} saving={pending > 0} />}
-      {project.enabledModules.includes("service_desk") && can(project, "service.view") && <SummaryCard project={project} />}
       {shown.length === 0 ? (
         <EmptyState icon={<LayoutGrid />} title={t("overview.noWidgets")}>
           {canEdit ? t("overview.noWidgetsBody") : null}
