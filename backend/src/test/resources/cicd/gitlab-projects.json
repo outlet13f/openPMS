@@ -1,0 +1,2 @@
+[ { "id": 4201, "path_with_namespace": "openpms-test/web", "web_url": "https://gitlab.example.com/openpms-test/web" },
+  { "id": 4202, "path_with_namespace": "openpms-test/api", "web_url": "https://gitlab.example.com/openpms-test/api" } ]

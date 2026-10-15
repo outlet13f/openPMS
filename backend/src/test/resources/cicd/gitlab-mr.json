@@ -1,0 +1,11 @@
+{
+  "object_kind": "merge_request",
+  "user": { "name": "박준호", "email": "junho.park@openpms.local" },
+  "project": { "id": 4201, "web_url": "https://gitlab.example.com/openpms-test/web" },
+  "object_attributes": {
+    "iid": 7, "title": "로그인 오류 고침 #12", "description": "세션 만료 처리. 작업 #12", "state": "opened", "draft": false,
+    "source_branch": "feature/12-login", "target_branch": "main",
+    "updated_at": "2026-10-15 10:30:00 +0900", "merged_at": null,
+    "url": "https://gitlab.example.com/openpms-test/web/-/merge_requests/7"
+  }
+}

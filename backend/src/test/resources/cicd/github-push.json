@@ -1,0 +1,9 @@
+{
+  "ref": "refs/heads/feature/12-login",
+  "repository": { "id": 9001, "full_name": "openpms-test/web", "html_url": "https://github.com/openpms-test/web" },
+  "commits": [
+    { "id": "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d", "message": "로그인 오류 고침 #12\n\n세션 만료 처리",
+      "timestamp": "2026-10-15T10:00:00+09:00", "url": "https://github.com/openpms-test/web/commit/1a2b3c4d",
+      "author": { "name": "박준호", "email": "junho.park@openpms.local" } }
+  ]
+}

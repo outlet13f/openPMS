@@ -1,0 +1,3 @@
+[ { "id": "9f8e7d6c5b4a39281706f5e4d3c2b1a098765432", "title": "로그인 오류 고침 #12", "message": "로그인 오류 고침 #12\n\n세션 만료 처리\n",
+    "author_name": "박준호", "author_email": "junho.park@openpms.local", "committed_date": "2026-10-15T10:00:00.000+09:00",
+    "web_url": "https://gitlab.example.com/openpms-test/web/-/commit/9f8e7d6c" } ]

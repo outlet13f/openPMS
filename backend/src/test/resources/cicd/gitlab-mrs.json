@@ -1,0 +1,5 @@
+[ { "iid": 7, "title": "로그인 오류 고침 #12", "description": "세션 만료 처리. 작업 #12", "state": "merged", "draft": false,
+    "source_branch": "feature/12-login", "target_branch": "main",
+    "author": { "name": "박준호", "username": "junho" },
+    "updated_at": "2026-10-15T11:00:00.000+09:00", "merged_at": "2026-10-15T11:00:00.000+09:00",
+    "web_url": "https://gitlab.example.com/openpms-test/web/-/merge_requests/7" } ]
