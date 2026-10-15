@@ -115,6 +115,21 @@ public class GitHubAdapter implements CicdAdapter {
         }
     }
 
+    @Override public RemoteRepo repository(Remote remote, String externalId) throws IOException {
+        var res = http.get(api(remote) + "/repositories/" + enc(externalId), auth(remote));
+        if (res.status() == 404) return null;
+        if (res.status() / 100 != 2) throw new IOException("unexpected status " + res.status());
+        JsonNode p;
+        try {
+            p = json.readTree(res.body());
+        } catch (JacksonException e) {
+            throw new IOException("unreadable response");
+        }
+        var id = text(p.path("id"));
+        if (id.isEmpty()) return null;
+        return new RemoteRepo(id, text(p.path("full_name")), text(p.path("html_url")));
+    }
+
     @Override public List<RemoteRepo> listRepositories(Remote remote, String query) throws IOException {
         var q = query == null ? "" : query.strip().toLowerCase();
         var out = new ArrayList<RemoteRepo>();

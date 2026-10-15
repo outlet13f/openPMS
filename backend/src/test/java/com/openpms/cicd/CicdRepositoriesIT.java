@@ -39,6 +39,8 @@ class CicdRepositoriesIT {
         doyoon = f.login("doyoon.han@openpms.local");
         git = new FakeGitServer();
         git.respond("/api/v4/projects", 200, "cicd/gitlab-projects.json");
+        git.respond("/api/v4/projects/4201", 200,
+                "{\"id\":4201,\"path_with_namespace\":\"openpms-test/web\",\"web_url\":\"https://gitlab.example.com/openpms-test/web\"}");
     }
 
     @AfterEach void tearDown() {
@@ -152,9 +154,69 @@ class CicdRepositoriesIT {
         // an id the remote does not know, and a remote that fails
         f.send(junho, post("/api/v1/projects/" + project + "/cicd/repositories"), "{\"connectionId\":\"" + c[0] + "\",\"externalId\":\"999999\"}")
                 .andExpect(status().isUnprocessableEntity());
+        git.respond("/api/v4/projects/4202", 500, "secret remote trouble");
+        var failed = f.send(junho, post("/api/v1/projects/" + project + "/cicd/repositories"), "{\"connectionId\":\"" + c[0] + "\",\"externalId\":\"4202\"}")
+                .andExpect(status().isBadGateway()).andReturn().getResponse().getContentAsString();
+        assertThat(failed).contains("연동한 도구에 연결하지 못했습니다.").doesNotContain("secret remote trouble");
         git.respond("/api/v4/projects", 500, "secret remote trouble");
         var res = f.send(junho, get("/api/v1/projects/" + project + "/cicd/connections/" + c[0] + "/search?q=web"), "")
                 .andExpect(status().isBadGateway()).andReturn().getResponse().getContentAsString();
         assertThat(res).contains("연동한 도구에 연결하지 못했습니다.").doesNotContain("secret remote trouble");
+    }
+
+    @Test void aRepositoryOutsideTheSearchListAttachesById() throws Exception {
+        var project = leaderProject("cicd");
+        var c = f.newConnection(admin, "gitlab", git.baseUrl(), "glpat-token-1234");
+        // 4333 is not among the search results, only the single-repository endpoint knows it
+        git.respond("/api/v4/projects/4333", 200, "cicd/gitlab-project.json");
+        f.send(junho, post("/api/v1/projects/" + project + "/cicd/repositories"), "{\"connectionId\":\"" + c[0] + "\",\"externalId\":\"4333\"}")
+                .andExpect(status().isCreated());
+        var row = db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(UUID.fromString(c[0]))).fetchOne();
+        assertThat(row.getFullPath()).isEqualTo("openpms-test/deep/tools");
+        assertThat(git.requests()).anyMatch(r -> r.path().equals("/api/v4/projects/4333") && "glpat-token-1234".equals(r.headers().get("private-token")));
+    }
+
+    @Test void githubAttachesByIdToo() throws Exception {
+        var project = leaderProject("cicd");
+        var c = f.newConnection(admin, "github", git.baseUrl(), "ghp-token-1234");
+        git.respond("/api/v3/repositories/9333", 200, "cicd/github-repo.json");
+        f.send(junho, post("/api/v1/projects/" + project + "/cicd/repositories"), "{\"connectionId\":\"" + c[0] + "\",\"externalId\":\"9333\"}")
+                .andExpect(status().isCreated());
+        var row = db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(UUID.fromString(c[0]))).fetchOne();
+        assertThat(row.getFullPath()).isEqualTo("openpms-test/tools");
+    }
+
+    @Test void adapterRepositoryFoundAndMissing() throws Exception {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        var http = new CicdHttp();
+        git.respond("/api/v4/projects/4333", 200, "cicd/gitlab-project.json");
+        git.respond("/api/v3/repositories/9333", 200, "cicd/github-repo.json");
+        git.respond("/api/v3/repositories/500", 500, "boom");
+        var remote = new CicdAdapter.Remote(git.baseUrl(), "tok");
+        var gl = new GitLabAdapter(http, mapper);
+        var gh = new GitHubAdapter(http, mapper);
+        assertThat(gl.repository(remote, "4333").fullPath()).isEqualTo("openpms-test/deep/tools");
+        assertThat(gl.repository(remote, "1")).isNull();
+        assertThat(gh.repository(remote, "9333").webUrl()).isEqualTo("https://github.com/openpms-test/tools");
+        assertThat(gh.repository(remote, "1")).isNull();
+        org.junit.jupiter.api.Assertions.assertThrows(java.io.IOException.class, () -> gh.repository(remote, "500"));
+        assertThat(git.requests()).anyMatch(r -> r.path().equals("/api/v3/repositories/9333") && "Bearer tok".equals(r.headers().get("authorization")));
+    }
+
+    @Test void detachOnlyWorksThroughTheOwningProject() throws Exception {
+        var a = leaderProject("cicd");
+        var b = leaderProject("cicd");
+        var c = f.newConnection(admin, "gitlab", git.baseUrl(), "glpat-token-1234");
+        var repoB = attach(junho, b, c[0], "4201");
+        f.send(junho, delete("/api/v1/projects/" + a + "/cicd/repositories/" + repoB), "").andExpect(status().isNotFound());
+        assertThat(db.fetchExists(CICD_REPOSITORIES, CICD_REPOSITORIES.ID.eq(UUID.fromString(repoB)))).isTrue();
+    }
+
+    @Test void overlongSearchTermIsRejected() throws Exception {
+        var project = leaderProject("cicd");
+        var c = f.newConnection(admin, "gitlab", git.baseUrl(), "glpat-token-1234");
+        f.send(junho, get("/api/v1/projects/" + project + "/cicd/connections/" + c[0] + "/search?q=" + "x".repeat(101)), "")
+                .andExpect(status().isUnprocessableEntity());
+        assertThat(git.requests()).isEmpty();
     }
 }

@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class CicdRepositories {
+    private static final Logger LOG = LoggerFactory.getLogger(CicdRepositories.class);
     private static final Logger AUDIT = LoggerFactory.getLogger("openpms.audit");
 
     public record ConnectionChoice(UUID id, String kind, String name) {}
@@ -70,6 +71,7 @@ public class CicdRepositories {
 
     /** attachedProject appears (true) only for repositories already attached somewhere; never which project. */
     public List<Map<String, Object>> search(UUID connectionId, String query) {
+        if (query != null && query.length() > 100) throw ApiException.field("q", "검색어가 너무 깁니다.");
         var c = activeConnection(connectionId);
         var found = remote(c, query);
         var out = new java.util.ArrayList<Map<String, Object>>();
@@ -93,10 +95,8 @@ public class CicdRepositories {
         var existing = db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(c.getId()))
                 .and(CICD_REPOSITORIES.EXTERNAL_ID.eq(externalId)).fetchOne();
         if (existing != null) throw taken(existing.getProjectId(), p);
-        // the client's fullPath, if any, only narrows the search; what we store is what the host says
-        var hint = In.str(in, "fullPath");
-        var repo = find(c, externalId, hint);
-        if (repo == null) repo = find(c, externalId, null);
+        // what we store is what the host says; anything else in the body (fullPath, webUrl) is ignored
+        var repo = lookup(c, externalId);
         if (repo == null) throw ApiException.unprocessable("연동한 도구에서 저장소를 찾을 수 없습니다.", null);
         var r = db.newRecord(CICD_REPOSITORIES);
         r.setConnectionId(c.getId());
@@ -108,7 +108,10 @@ public class CicdRepositories {
         try {
             r.insert();
         } catch (DataIntegrityViolationException e) {
-            throw new ApiException(409, "이미 다른 프로젝트에 붙은 저장소입니다.");
+            var owner = db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(c.getId()))
+                    .and(CICD_REPOSITORIES.EXTERNAL_ID.eq(repo.externalId())).fetchOne();
+            if (owner == null) throw e;
+            throw taken(owner.getProjectId(), p);
         }
         AUDIT.info("cicd.repository.attached by={} project={} connection={} repository={}", ctx.userId(), p.id(), c.getId(), r.getId());
         return list(p).stream().filter(d -> d.id().equals(r.getId())).findFirst().orElseThrow();
@@ -131,14 +134,19 @@ public class CicdRepositories {
         return c;
     }
 
-    private CicdAdapter.RemoteRepo find(com.openpms.db.tables.records.CicdConnectionsRecord c, String externalId, String hint) {
-        String query = null;
-        if (hint != null && !hint.isBlank()) {
-            var h = hint.strip();
-            query = h.substring(h.lastIndexOf('/') + 1);
+    private CicdAdapter.RemoteRepo lookup(com.openpms.db.tables.records.CicdConnectionsRecord c, String externalId) {
+        try {
+            return adapters.of(c.getKind()).repository(new CicdAdapter.Remote(c.getBaseUrl(), box.open(c.getApiTokenEnc())), externalId);
+        } catch (IOException | RuntimeException e) {
+            throw remoteFailed(c, e);
         }
-        for (var r : remote(c, query)) if (r.externalId().equals(externalId)) return r;
-        return null;
+    }
+
+    private static ApiException remoteFailed(com.openpms.db.tables.records.CicdConnectionsRecord c, Exception e) {
+        if (e instanceof ApiException a) return a;
+        // class name only: the message may carry the address or the other side's text
+        LOG.warn("cicd remote call failed connection={} error={}", c.getId(), e.getClass().getSimpleName());
+        return new ApiException(502, "연동한 도구에 연결하지 못했습니다.");
     }
 
     private List<CicdAdapter.RemoteRepo> remote(com.openpms.db.tables.records.CicdConnectionsRecord c, String query) {
@@ -146,8 +154,7 @@ public class CicdRepositories {
             var remote = new CicdAdapter.Remote(c.getBaseUrl(), box.open(c.getApiTokenEnc()));
             return adapters.of(c.getKind()).listRepositories(remote, query);
         } catch (IOException | RuntimeException e) {
-            if (e instanceof ApiException a) throw a;
-            throw new ApiException(502, "연동한 도구에 연결하지 못했습니다.");
+            throw remoteFailed(c, e);
         }
     }
 

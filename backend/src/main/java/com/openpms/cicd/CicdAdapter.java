@@ -18,6 +18,9 @@ public interface CicdAdapter {
 
     List<RemoteRepo> listRepositories(Remote remote, String query) throws IOException;
 
+    /** One repository by its external id; null when the host says it does not exist (or is not visible to the token). */
+    RemoteRepo repository(Remote remote, String externalId) throws IOException;
+
     /** Commits and merge requests changed since the given time (all recent ones when null). */
     List<CicdEvent> poll(Remote remote, String repoExternalId, OffsetDateTime since) throws IOException;
 
