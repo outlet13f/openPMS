@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>설계: CI/CD 연동 — 로드맵과 1단계 연동 기반·추적성 | openPMS</title>
+<style>
+  :root {
+    --accent: #8b2f8f;
+    --accent-soft: #f5ecf6;
+    --ink: #1e1c22;
+    --text: #2b2930;
+    --muted: #625e69;
+    --line: #e2dfe6;
+    --bg: #faf9fb;
+    --warn: #9a5b00;
+    --warn-soft: #fff4e0;
+    --bad: #a3242a;
+    --bad-soft: #fdecec;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.65;
+    font-size: 15px;
+  }
+  header.top {
+    background: var(--ink);
+    color: #fff;
+    padding: 28px 32px 24px;
+  }
+  header.top .brand { font-size: 13px; letter-spacing: .04em; opacity: .75; }
+  header.top h1 { margin: 6px 0 10px; font-size: 26px; line-height: 1.3; }
+  header.top .meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px; }
+  .chip {
+    display: inline-block; padding: 2px 10px; border-radius: 999px;
+    background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
+  }
+  .layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); max-width: 1180px; margin: 0 auto; }
+  nav.toc {
+    position: sticky; top: 0; align-self: start; max-height: 100vh; overflow: auto;
+    padding: 24px 16px 24px 24px; font-size: 14px;
+  }
+  nav.toc strong { display: block; margin-bottom: 8px; color: var(--muted); font-size: 12px; letter-spacing: .05em; }
+  nav.toc a { display: block; padding: 4px 8px; border-radius: 6px; color: var(--text); text-decoration: none; }
+  nav.toc a:hover, nav.toc a:focus-visible { background: var(--accent-soft); color: var(--accent); outline: none; }
+  main { padding: 24px 32px 64px; min-width: 0; }
+  section { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 22px 26px; margin-bottom: 20px; }
+  h2 { margin: 0 0 14px; font-size: 20px; color: var(--ink); display: flex; align-items: baseline; gap: 10px; }
+  h2 .no { color: var(--accent); font-weight: 700; }
+  h3 { margin: 22px 0 8px; font-size: 16px; color: var(--ink); }
+  p { margin: 8px 0; }
+  ul { margin: 8px 0; padding-left: 22px; }
+  li { margin: 3px 0; }
+  code { font-family: "D2Coding", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; background: #f1eff3; padding: 1px 5px; border-radius: 4px; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f2f6; color: var(--ink); font-weight: 600; }
+  tr.current td { background: var(--accent-soft); }
+  .callout { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; }
+  .callout.warn { border-color: var(--warn); background: var(--warn-soft); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .card h4 { margin: 0 0 6px; font-size: 14px; color: var(--accent); font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .card ul { font-size: 13.5px; padding-left: 18px; }
+  .roadmap { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin: 14px 0 6px; }
+  .step { border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-size: 13px; background: #fff; }
+  .step b { display: block; font-size: 12px; color: var(--muted); }
+  .step span { font-weight: 600; color: var(--ink); }
+  .step.now { border-color: var(--accent); background: var(--accent-soft); }
+  .step.now b { color: var(--accent); }
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 12px 0; }
+  .state { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: #fff; font-size: 13.5px; font-weight: 600; }
+  .state.pause { background: var(--warn-soft); border-color: #e7c48a; color: var(--warn); }
+  .state.closed { background: #efedf1; color: var(--muted); }
+  .arrow { color: var(--muted); }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .tag.bad { background: var(--bad-soft); color: var(--bad); }
+  .tag.warn { background: var(--warn-soft); color: var(--warn); }
+  svg text { font-family: inherit; }
+  footer { color: var(--muted); font-size: 13px; text-align: center; padding: 20px; }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.toc { position: static; max-height: none; padding-bottom: 0; }
+    .roadmap { grid-template-columns: repeat(2, 1fr); }
+    main { padding: 16px; }
+  }
+  @media print {
+    nav.toc { display: none; }
+    .layout { display: block; }
+    section { break-inside: avoid; }
+  }
+/* extras */
+  .phasebar { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 0; }
+  .phasebar a { font-size: 12.5px; padding: 3px 10px; border-radius: 999px; color: #fff; text-decoration: none;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); }
+  .phasebar a[aria-current] { background: var(--accent); border-color: var(--accent); font-weight: 600; }
+  .phasebar a:hover, .phasebar a:focus-visible { background: rgba(255,255,255,.2); outline: none; }
+  .overview h3 { margin-top: 4px; }
+  a.step { text-decoration: none; color: inherit; display: block; }
+  a.step:hover, a.step:focus-visible { border-color: var(--accent); outline: none; }
+  .state.reject { background: var(--bad-soft); border-color: #eab3b5; color: var(--bad); }
+  .pager { display: flex; justify-content: space-between; gap: 12px; }
+  .pager a { color: var(--accent); text-decoration: none; font-weight: 600; }
+
+  svg.rm { display: block; max-width: 870px; margin: 8px auto 0; }
+  svg.rm a:hover rect, svg.rm a:focus rect { stroke: #8b2f8f; stroke-width: 2; }
+  .rm-legend { text-align: center; color: var(--muted); font-size: 12.5px; margin: 4px 0 12px; }
+  table.handoff td:first-child { font-weight: 700; color: var(--accent); }
+  .card p { margin: 0; font-size: 13.5px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">openPMS · 설계서</div>
+  <h1>CI/CD 연동 — 로드맵과 1단계 연동 기반·추적성</h1>
+  <div class="meta">
+    <span class="chip">날짜 2026-10-15</span>
+    <span class="chip">상태: 설계 합의(구현 계획 전)</span>
+    <span class="chip">요구사항 REQ-CICD-001 ~</span>
+    <span class="chip">원문 2026-10-15-cicd-design.md</span>
+  </div>
+</header>
+
+<div class="layout">
+<nav class="toc" aria-label="목차">
+  <strong>목차</strong>
+  <a href="#s1">1. 목적과 합의</a>
+  <a href="#s2">2. 로드맵</a>
+  <a href="#s3">3. 데이터 (V26)</a>
+  <a href="#s4">4. 권한과 보안</a>
+  <a href="#s5">5. 동작</a>
+  <a href="#s6">6. 화면</a>
+  <a href="#s7">7. 테스트</a>
+  <a href="#s8">8. 문서</a>
+  <a href="#s9">9. 위험과 대응</a>
+</nav>
+<main>
+
+<section id="s1">
+  <h2><span class="no">1</span>목적과 합의</h2>
+  <p>작업 패키지와 개발 도구(코드 저장소·CI·배포)를 이어서, <b>"이 일이 어느 MR/PR과 커밋으로 처리됐고, 빌드가 통과했고, 어느 환경까지 배포됐는지"</b>를 openPMS 안에서 본다. 이어서 릴리스 관리, 이벤트에 따른 자동화, ITSM 변경 관리와의 연결까지 단계로 넓힌다. 범위 밖이던 REQ-OOS-011(GitHub·GitLab 연동과 리포지토리)을 일부 들여온다.</p>
+
+  <h3>합의한 것</h3>
+  <table>
+    <thead><tr><th style="width:22%">항목</th><th>결정</th></tr></thead>
+    <tbody>
+      <tr><td>뜻</td><td>제품 기능(openPMS의 새 영역). 이 저장소 자체의 CI 파이프라인은 다루지 않음</td></tr>
+      <tr><td>연동 도구</td><td>GitLab(자체 설치), GitHub(Enterprise·Cloud), Jenkins, Argo CD 등 배포 도구</td></tr>
+      <tr><td>목표</td><td>추적성, 릴리스·배포 관리, 자동화, ITSM 변경 관리 연결을 모두 담음(단계로 나눔)</td></tr>
+      <tr><td>받는 방식</td><td>웹훅으로 바로 반영 + 주기 폴링으로 놓친 이벤트 보완. 밖에서 들어올 수 없는 도구는 폴링만</td></tr>
+      <tr><td>자동화</td><td>프로젝트별 규칙, <b>기본 꺼짐</b>. 워크플로를 지키고 연동 이름으로 기록</td></tr>
+      <tr><td>구조</td><td>공통 이벤트 수집 계층 + 도구별 어댑터(접근안 A)</td></tr>
+      <tr><td>권한</td><td>일반 사용자(멤버)는 보기·연결 고치기, 개발 리더는 저장소·규칙 관리, 도구 연동 등록은 전역 권한으로 위임 가능</td></tr>
+      <tr><td>자격 증명</td><td><code>OPENPMS_SECRET_KEY</code>로 AES-GCM 암호화해 저장</td></tr>
+    </tbody>
+  </table>
+
+  <h3>고른 접근: 공통 이벤트 수집 계층 + 어댑터</h3>
+  <div class="flow" aria-label="이벤트 흐름">
+    <span class="state">GitLab · GitHub · Jenkins · Argo CD</span><span class="arrow">→</span>
+    <span class="state">웹훅 / 폴링</span><span class="arrow">→</span>
+    <span class="state">어댑터<br><small>검증 · 파싱</small></span><span class="arrow">→</span>
+    <span class="state pause">cicd_events<br><small>정규화 · 중복 제거</small></span><span class="arrow">→</span>
+    <span class="state">연결 · 릴리스 · 자동화 · 변경 관리</span>
+  </div>
+  <p>웹훅과 폴링 결과를 모두 정규화한 이벤트(<code>commit</code>·<code>merge_request</code>·<code>pipeline</code>·<code>deployment</code>)로 바꿔 <code>cicd_events</code>에 쌓는다. 새 도구는 어댑터 하나만 더한다. 같은 이벤트가 두 번 와도 <code>(연동, delivery_key)</code> 유일 키로 한 번만 반영한다.</p>
+  <p style="color:var(--muted)">버린 안: 도구별 독립 모듈(도구 4 × 목표 4로 중복), 외부 스크립트에만 맡김(서명 검증·복구가 각 팀 몫). 정형 웹훅이 약한 도구를 위해 2단계에 범용 API 어댑터를 둔다.</p>
+
+  <div class="callout warn"><b>이름 주의.</b> ITSM 4단계(CMDB)의 CI는 구성 항목(<code>work_package_cis</code>)이다. 이 영역의 식별자는 <code>cicd_</code>·<code>pipeline</code>·<code>deployment</code>, 화면 문구는 "CI/CD"·"빌드·배포"를 쓴다.</div>
+
+  <h3>범위 밖 (1단계)</h3>
+  <ul>
+    <li>파이프라인·배포 상태, Jenkins·Argo CD(2단계)</li>
+    <li>릴리스 화면(3단계), 상태 자동 전환(4단계), 변경 관리 연결(5단계)</li>
+    <li>openPMS에서 MR/PR을 만들거나 병합하는 쓰기 동작(전 단계 범위 밖)</li>
+    <li>저장소 파일 보기·코드 검색(범위 밖 유지)</li>
+  </ul>
+</section>
+
+<section id="s2">
+  <h2><span class="no">2</span>로드맵</h2>
+  <div class="roadmap" style="grid-template-columns:repeat(5,1fr)">
+    <div class="step now"><b>1단계 · V26</b><span>연동 기반 + 추적성</span></div>
+    <div class="step"><b>2단계 · V27</b><span>빌드·배포 상태</span></div>
+    <div class="step"><b>3단계 · V28</b><span>릴리스 관리</span></div>
+    <div class="step"><b>4단계 · V29</b><span>자동화 규칙</span></div>
+    <div class="step"><b>5단계 · V30</b><span>변경 관리 연결</span></div>
+  </div>
+  <table>
+    <thead><tr><th style="width:16%">단계</th><th>범위</th><th style="width:16%">기반</th><th style="width:12%">마이그레이션</th></tr></thead>
+    <tbody>
+      <tr class="current"><td>1 연동 기반 + 추적성</td><td>도구 연동 등록, 들어오는 웹훅, 보완 폴링, 이벤트 정규화, <code>#123</code> 참조로 작업 연결, 작업 "개발" 탭. GitLab·GitHub 어댑터</td><td>새 모듈 <code>cicd</code></td><td>V26, V1010</td></tr>
+      <tr><td>2 빌드·배포 상태</td><td>파이프라인·배포 이벤트, Jenkins·Argo CD·범용 API 어댑터, 환경(개발·스테이징·운영) 정의, 작업별 "어느 환경까지 갔나"</td><td>1</td><td>V27, V1011</td></tr>
+      <tr><td>3 릴리스 관리</td><td>기존 <code>versions</code>를 릴리스로 넓힘: 포함 작업·MR·배포 이력, 환경별 현황 화면, 릴리스 노트 내보내기</td><td>1·2</td><td>V28, V1012</td></tr>
+      <tr><td>4 자동화 규칙</td><td>프로젝트별 규칙(기본 꺼짐): 이벤트 → 상태 전환(워크플로 준수)·알림, <code>closes #123</code> 같은 명령. 연동 이름으로 <code>journals.cause</code>에 기록</td><td>1·2</td><td>V29, V1013</td></tr>
+      <tr><td>5 변경 관리 연결</td><td>운영 배포 ↔ ITSM 변경 요청, 승인 없는 운영 배포 감지·경고, 실행 계획서 2~4절에 빌드·배포 증거 자동 첨부</td><td>2·3 + <span class="tag warn">ITSM 5단계(V24)</span></td><td>V30, V1014</td></tr>
+    </tbody>
+  </table>
+  <p>ITSM 2~6단계가 V21–V25·V1005–V1009를 잡아 두었으므로 V26·V1010부터 쓴다(시작할 때 비어 있는지 확인). 1~4단계는 ITSM과 따로 진행할 수 있고, 5단계만 ITSM 5단계 뒤에 한다.</p>
+
+  <h3>단계 사이에 오가는 것</h3>
+  <table class="handoff">
+    <thead><tr><th style="width:10%">단계</th><th>받는 것</th><th>넘겨주는 것</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>작업 패키지, 프로젝트, 역할, 예약 작업</td><td>연동·저장소, <code>cicd_events</code>, 커밋·MR 표, 작업 연결, 어댑터 인터페이스</td></tr>
+      <tr><td>2</td><td>어댑터 인터페이스, 이벤트 수집</td><td>파이프라인·배포 표, 환경 정의</td></tr>
+      <tr><td>3</td><td><code>versions</code>, MR·배포</td><td>릴리스 범위·이력</td></tr>
+      <tr><td>4</td><td>정규화 이벤트, 워크플로</td><td>규칙 엔진, 자동 전환 기록</td></tr>
+      <tr><td>5</td><td>배포·릴리스, ITSM 변경 요청·실행 계획서</td><td>변경 ↔ 배포 연결, 무승인 배포 경고·웹훅 이벤트</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="s3">
+  <h2><span class="no">3</span>데이터 <small style="font-weight:400;color:var(--muted);font-size:14px">마이그레이션 V26 <code>cicd.sql</code>, 개발 데이터 V1010</small></h2>
+  <table>
+    <thead><tr><th style="width:24%">표</th><th>핵심 열</th><th style="width:30%">비고</th></tr></thead>
+    <tbody>
+      <tr><td><code>cicd_connections</code></td><td>kind(<code>gitlab</code>·<code>github</code>), name, base_url, <code>api_token_enc</code>, <code>webhook_secret_enc</code>, <code>hook_key</code>(경로용 난수), active, created_by, created_at, updated_at</td><td>연동 등록 권한자만 다룸</td></tr>
+      <tr><td><code>cicd_repositories</code></td><td>connection_id, external_id, full_path, web_url, project_id, poll_cursor, last_polled_at</td><td>저장소 하나는 프로젝트 하나에 붙음. <code>(connection_id, external_id)</code> 유일</td></tr>
+      <tr><td><code>cicd_events</code></td><td>connection_id, repository_id, kind, delivery_key, payload(jsonb, 필요한 필드만), via(<code>webhook</code>·<code>poll</code>), status(<code>pending</code>·<code>done</code>·<code>failed</code>), error, received_at, processed_at</td><td><code>(connection_id, delivery_key)</code> 유일. 90일 지나면 지움</td></tr>
+      <tr><td><code>cicd_commits</code></td><td>repository_id, sha, title, author_name, author_email, user_id, committed_at, web_url</td><td><code>(repository_id, sha)</code> 유일</td></tr>
+      <tr><td><code>cicd_merge_requests</code></td><td>repository_id, iid, title, state(<code>open</code>·<code>draft</code>·<code>merged</code>·<code>closed</code>), source_branch, target_branch, author_name, user_id, merged_at, updated_at, web_url</td><td><code>(repository_id, iid)</code> 유일</td></tr>
+      <tr><td><code>work_package_cicd_links</code></td><td>work_package_id, commit_id 또는 merge_request_id(둘 중 하나), source(<code>message</code>·<code>branch</code>·<code>title</code>·<code>manual</code>), created_by, dismissed_by, dismissed_at</td><td>끊은 연결은 행을 남기고 표시만 함(다시 생기지 않게)</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>모듈 <code>cicd</code>를 넣고 <code>projects_known_modules</code> check 제약을 넓힌다.</li>
+    <li>개발 데이터 V1010: 연동 1개(가짜 GitLab), 저장소 2개, 커밋·MR 몇 개와 연결.</li>
+    <li>jOOQ 생성 코드를 다시 만들어 커밋한다.</li>
+  </ul>
+</section>
+
+<section id="s4">
+  <h2><span class="no">4</span>권한과 보안</h2>
+  <h3>권한</h3>
+  <table>
+    <thead><tr><th style="width:22%">권한</th><th>할 수 있는 일</th><th style="width:32%">기본 역할</th></tr></thead>
+    <tbody>
+      <tr><td><code>cicd.view</code></td><td>개발 탭 보기(MR/PR·커밋)</td><td>멤버·참관자·개발 리더·프로젝트 관리자</td></tr>
+      <tr><td><code>cicd.link</code></td><td>MR/PR 주소를 붙여 손으로 연결, 잘못 붙은 연결 끊기</td><td>멤버·개발 리더·프로젝트 관리자</td></tr>
+      <tr><td><code>cicd.manage</code></td><td>프로젝트에 저장소 붙이기·떼기(뒤 단계: 환경·릴리스·자동화 규칙)</td><td><b>개발 리더</b>·프로젝트 관리자</td></tr>
+      <tr><td><code>global.manage_cicd</code> <span class="tag">전역</span></td><td>관리 › CI/CD 연동에서 도구 연동 등록·수정</td><td>새 전역 역할 <b>"CI/CD 연동 관리자"</b>(시스템 관리자가 아니어도 줄 수 있음)</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>새 프로젝트 역할 <b>"개발 리더"</b>를 V26이 운영 데이터로 넣는다(V20의 요청자 역할과 같은 방식). 내장 역할이 아니어서 관리 › 역할에서 고칠 수 있다. 권한은 멤버 + <code>cicd.manage</code>.</li>
+    <li>이미 설치된 곳: 작업 보기 권한이 있는 프로젝트 역할에 <code>cicd.view</code>, 작업 편집 권한이 있는 역할에 <code>cicd.link</code>를 더한다.</li>
+    <li>비멤버(공개 프로젝트)에는 주지 않는다(커밋 제목은 사내 정보). 요청자에게는 어떤 <code>cicd.*</code>도 주지 않고, 포털에 개발 정보를 내보내지 않는다.</li>
+    <li><code>cicd.*</code>는 <code>Ctx.MODULE_OF</code>로 모듈 <code>cicd</code>에 묶는다. 모듈이 꺼진 프로젝트에서는 탭이 숨고 API는 404. <code>GLOBAL_PERMISSIONS</code>에 <code>global.manage_cicd</code>를 더한다.</li>
+  </ul>
+
+  <h3>들어오는 웹훅</h3>
+  <div class="callout"><code>POST /hooks/cicd/{hookKey}</code> — <code>/api/**</code> 밖의 <b>이 경로만</b> 세션·CSRF 없이 연다.</div>
+  <div class="grid2">
+    <div class="card"><h4>검증</h4><ul>
+      <li>GitHub: <code>X-Hub-Signature-256</code>(HMAC-SHA256)</li>
+      <li>GitLab: <code>X-Gitlab-Token</code> 상수 시간 비교</li>
+      <li>없는 키·서명 실패는 <span class="tag bad">같은 404</span></li>
+    </ul></div>
+    <div class="card"><h4>처리</h4><ul>
+      <li>본문 1 MiB까지(넘으면 413)</li>
+      <li>저장만 하고 202로 바로 답함, 처리는 <code>cicd-process</code>(15초)</li>
+      <li>delivery id(<code>X-GitHub-Delivery</code>·<code>X-Gitlab-Event-UUID</code>)로 한 번만 반영</li>
+    </ul></div>
+  </div>
+
+  <h3>프로젝트 경계</h3>
+  <p><code>#123</code>은 그 저장소가 붙은 프로젝트(와 하위 프로젝트)의 작업일 때만 연결한다. 다른 프로젝트의 작업 번호를 커밋에 적어도 연결되지 않고, 그 작업이 있는지도 드러나지 않는다. 손으로 연결할 때도 같은 검사를 한다.</p>
+
+  <h3>자격 증명</h3>
+  <ul>
+    <li>도구 API 토큰과 웹훅 비밀은 환경 변수 <code>OPENPMS_SECRET_KEY</code>로 AES-GCM 암호화해 저장한다. 키가 없으면 연동 저장을 막는다(422).</li>
+    <li>API는 끝 4자리만 돌려준다. 웹훅 비밀은 만들 때 한 번만 보여 주고, 이후에는 다시 발급만 한다.</li>
+    <li>토큰은 읽기 전용 범위(GitLab <code>read_api</code>, GitHub contents·pull requests read)를 쓰도록 화면에서 안내한다.</li>
+    <li>키 보관·백업은 운영자 매뉴얼에 적는다(키를 잃으면 연동 토큰을 다시 넣어야 함).</li>
+  </ul>
+
+  <h3>밖으로 나가는 호출과 위임</h3>
+  <ul>
+    <li>폴링은 등록된 base_url로만 보낸다. 리다이렉트를 따르지 않고 시간 제한을 둔다. 사내 GitLab에 닿아야 하므로 사설 주소는 허용한다.</li>
+    <li><code>global.manage_cicd</code>는 사내 주소로 나가는 호출을 만들 수 있으므로: 토큰 평문은 등록자에게도 다시 보여 주지 않고, 연동 만들기·바꾸기는 감사 로그에 남기고, "연결 확인"은 상대 본문 없이 성공/실패와 HTTP 코드만 돌려준다.</li>
+    <li>HTTP·DB를 기다리는 동안 <code>synchronized</code>·<code>computeIfAbsent</code> 안에 있지 않는다(BUG-012).</li>
+  </ul>
+</section>
+
+<section id="s5">
+  <h2><span class="no">5</span>동작</h2>
+  <ul>
+    <li><b>참조 찾기</b>: 커밋 메시지, MR 제목·설명, 브랜치 이름(<code>feature/123-login</code>처럼 <code>숫자-</code>)에서 <code>#123</code>을 찾는다.</li>
+    <li><b>사람 맞추기</b>: 커밋·MR 작성자 메일이 openPMS 사용자 메일과 같으면 그 사용자로, 아니면 이름 글자만 보여 준다.</li>
+    <li><b>보완 폴링</b> <code>cicd-poll</code>(5분): 저장소마다 cursor 뒤의 커밋과 갱신된 MR을 읽는다. 웹훅으로 이미 받은 것은 유일 키로 건너뛴다.</li>
+    <li><b>활동 기록 없음</b>: 연결이 생겨도 작업 활동(journal)에 남기지 않는다(커밋이 많으면 활동이 묻힘). 활동 기록은 4단계 자동 전환 때만.</li>
+    <li><b>정리</b> <code>cicd-cleanup</code>(매일): 90일 지난 <code>cicd_events</code>를 지운다.</li>
+    <li><b>어댑터 인터페이스</b>: <code>verify(request)</code>, <code>parse(event)</code> → 정규화 이벤트, <code>poll(repository, cursor)</code>, <code>listRepositories(query)</code>, <code>check()</code>. 2단계 어댑터가 같은 인터페이스를 쓴다.</li>
+  </ul>
+</section>
+
+<section id="s6">
+  <h2><span class="no">6</span>화면</h2>
+  <div class="grid2">
+    <div class="card"><h4>/admin/cicd</h4><p>관리 › CI/CD 연동: 목록, 만들기·편집, 웹훅 URL·비밀(만들 때 한 번), 비밀 다시 발급, 연결 확인. <code>global.manage_cicd</code> 또는 시스템 관리자.</p></div>
+    <div class="card"><h4>프로젝트 설정 › 저장소</h4><p>연동을 고르고 저장소를 검색해 붙이기·떼기. <code>cicd.manage</code>.</p></div>
+    <div class="card"><h4>작업 패키지 › 개발 탭</h4><p>MR/PR(상태 배지, 대상 브랜치), 커밋 목록, 원래 도구 링크. <code>cicd.link</code>가 있으면 "MR/PR 주소로 연결"과 "연결 끊기".</p></div>
+  </div>
+  <ul>
+    <li>가짜 데이터 계층(<code>frontend/src/api/fake</code>)도 같은 규칙으로 맞추고 <code>db.ts</code>의 <code>SCHEMA</code>를 올린다.</li>
+    <li>도움말: 07 사용자 매뉴얼 새 18장, 10 운영자 매뉴얼에 새 절(기존 번호는 바꾸지 않음)을 <code>topics.ts</code>에 잇는다.</li>
+  </ul>
+</section>
+
+<section id="s7">
+  <h2><span class="no">7</span>테스트</h2>
+  <h3>JUnit</h3>
+  <ul>
+    <li>서명 검증: GitHub HMAC·GitLab 토큰 통과, 틀린 서명·없는 키는 같은 404, 1 MiB 넘으면 413</li>
+    <li>같은 이벤트가 웹훅·폴링으로 두 번 와도 한 번만 반영</li>
+    <li>참조 파서(메시지·제목·브랜치, 경계 사례)</li>
+    <li>프로젝트 경계: 다른 프로젝트 작업은 연결되지 않음(자동·손 모두)</li>
+    <li>끊은 연결이 다시 생기지 않음</li>
+    <li>토큰 암호화, 끝 4자리 가림, 키 없으면 422</li>
+    <li>권한: 멤버는 보기·연결, 참관자는 보기만, 비멤버·요청자는 404, <code>global.manage_cicd</code> 위임</li>
+    <li>JDK <code>HttpServer</code>로 만든 가짜 GitLab·GitHub로 폴링·연결 확인</li>
+    <li><code>NoPinningTest</code>·<code>PerfBudgetIT</code>에 개발 탭 API를 더함</li>
+  </ul>
+  <h3>e2e</h3>
+  <div class="flow">
+    <span class="state">연동 만들기</span><span class="arrow">→</span>
+    <span class="state">저장소 붙이기</span><span class="arrow">→</span>
+    <span class="state">서명한 웹훅</span><span class="arrow">→</span>
+    <span class="state">개발 탭 표시</span><span class="arrow">→</span>
+    <span class="state closed">연결 끊기</span>
+  </div>
+  <ul>
+    <li>새 화면 3개(연동 관리, 저장소 설정, 개발 탭)에 axe</li>
+    <li>웹훅 본문 예시는 GitLab·GitHub 공개 문서를 보고 직접 쓴다(두 도구는 OpenProject가 아니므로 클린룸과 무관).</li>
+  </ul>
+</section>
+
+<section id="s8">
+  <h2><span class="no">8</span>문서 <small style="font-weight:400;color:var(--muted);font-size:14px">다음 판, 백그라운드 서브에이전트</small></h2>
+  <ul>
+    <li>01: 새 영역 3.25 CI/CD 연동(REQ-CICD), REQ-OOS-011을 "일부 들여옴"으로 바꿈. 02 추적</li>
+    <li>03 아키텍처(이벤트 수집 계층·어댑터), 04 인터페이스(들어오는 웹훅·연동 API), 05 데이터베이스(V26), 06 화면, 08·09 시험</li>
+    <li>07 사용자 매뉴얼·10 운영자 매뉴얼: <b>새 절 번호</b>로 덧붙인다. <code>OPENPMS_SECRET_KEY</code> 보관·백업과 도구별 웹훅 등록 방법을 10에 적는다.</li>
+    <li>판 번호는 구현 시점 README 개정 이력을 따른다(ITSM 2단계가 2.5를 잡고 있음). 줄바꿈 규칙(03·04·05·10은 CRLF)을 지킨다.</li>
+  </ul>
+</section>
+
+<section id="s9">
+  <h2><span class="no">9</span>위험과 대응</h2>
+  <table>
+    <thead><tr><th style="width:40%">위험</th><th>대응</th></tr></thead>
+    <tbody>
+      <tr><td>인증 없이 열리는 첫 경로</td><td>경로 하나만 열고, 서명 검증·같은 404·크기 제한·저장 후 비동기 처리. 보안 IT로 고정</td></tr>
+      <tr><td>커밋에 적은 번호로 남의 프로젝트 작업에 연결</td><td>저장소가 붙은 프로젝트 범위로만 연결, 테스트로 고정</td></tr>
+      <tr><td>위임 받은 사람이 사내 주소로 호출을 만듦</td><td>토큰 비노출, 감사 로그, 연결 확인 응답에 상대 본문 없음</td></tr>
+      <tr><td>암호화 키 분실</td><td>운영자 매뉴얼에 보관·백업, 키가 없으면 저장을 막고 토큰 재입력 안내</td></tr>
+      <tr><td>웹훅 폭주로 서버가 느려짐</td><td>요청에서는 저장만, 처리는 예약 작업이 묶어서. <code>PerfBudgetIT</code></td></tr>
+      <tr><td>CMDB의 CI와 이름 혼동</td><td>식별자 <code>cicd_</code>, 화면 문구 "CI/CD"</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</main>
+</div>
+<footer>openPMS 개발팀 · 사내 전용 · 원문 <code>docs/superpowers/specs/2026-10-15-cicd-design.md</code></footer>
+</body>
+</html>
