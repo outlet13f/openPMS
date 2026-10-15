@@ -28,6 +28,8 @@ const SCREENS: [string, string, RegExp | string][] = [
   ["서비스 요청 홈", "/portal", "무엇을 도와드릴까요?"],
   ["서비스 요청 접수", "/portal/new/service-desk", "장애 신고 · IT 서비스 데스크"],
   ["관리 서비스 달력", "/admin/service-calendars", /평일 근무 시간/],
+  ["포털 항목 요청", "/portal/items/e41eb481-8206-5d78-964b-d4ebb11ca8fd", "노트북 신청 요청"],
+  ["서비스 데스크 카탈로그 설정", "/projects/service-desk/settings/service-desk", "카탈로그"],
 ];
 
 test.describe("axe on every screen", () => {
@@ -40,6 +42,17 @@ test.describe("axe on every screen", () => {
       await axe(page, name);
     });
   }
+});
+
+// 승인자는 요청자·멤버가 아니라 자기 승인함만 본다(개발 데이터 V1005: alex.kim 차례의 노트북 신청 1건)
+test.describe("axe on the approval inbox", () => {
+  test.beforeEach(async ({ page }) => login(page, "alex.kim@openpms.local"));
+  test("a11y 내 승인함", async ({ page }) => {
+    await page.goto("/portal/approvals");
+    await expect(page.getByRole("table", { name: "승인할 요청" })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    await axe(page, "내 승인함");
+  });
 });
 
 test.describe("axe on the planning views", () => {
