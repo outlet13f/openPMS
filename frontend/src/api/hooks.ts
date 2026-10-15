@@ -442,8 +442,10 @@ export function useApprovalDecision() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { id: Id; decision: "approve" | "reject"; comment?: string }) => api.portal.decide(v.id, v.decision, v.comment),
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["portal"] });
+    onSettled: (_data, _error, v) => {
+      // a decided row's page answers 404 from now on: drop it instead of refetching it (no 404 flash, no error toast)
+      qc.removeQueries({ queryKey: ["portal", "approval", v.id] });
+      qc.invalidateQueries({ queryKey: ["portal"], predicate: (q) => q.queryKey[1] !== "approval" });
       qc.invalidateQueries({ queryKey: ["serviceDesk"] });
       qc.invalidateQueries({ queryKey: ["wp-query"] });
       qc.invalidateQueries({ queryKey: ["wp"] });

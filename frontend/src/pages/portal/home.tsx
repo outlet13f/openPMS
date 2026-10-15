@@ -47,7 +47,11 @@ function Desks() {
             <h3 className="text-base font-semibold text-fg">{d.name}</h3>
             {d.descriptionText && <p className="mt-1 line-clamp-3 text-sm text-fg-muted">{d.descriptionText}</p>}
           </div>
-          <div className="mt-auto flex flex-wrap gap-2">
+          <div role="group" aria-label={`${d.name}: ${t("portal.other")}`} className="mt-auto flex flex-col gap-2">
+            <p className="text-xs font-medium text-fg-muted" aria-hidden="true">
+              {t("portal.other")}
+            </p>
+            <div className="flex flex-wrap gap-2">
             {d.types.map((type) => (
               <Button
                 key={type.id}
@@ -60,10 +64,56 @@ function Desks() {
                 </Link>
               </Button>
             ))}
+            </div>
           </div>
         </li>
       ))}
     </ul>
+  );
+}
+
+/** A catalog item's description on one line (the description is HTML: only its text is used). */
+const oneLine = (html: string) => new DOMParser().parseFromString(html, "text/html").body.textContent?.trim() ?? "";
+
+/** The desks' catalogs: items by category, each a card that opens its request form. */
+function Catalog() {
+  const { t } = useTranslation();
+  const desks = usePortalDesks();
+  const shown = (desks.data ?? []).filter((d) => d.catalog.some((c) => c.items.length));
+  if (!shown.length) return null;
+  return (
+    <section aria-labelledby="portal-catalog" className="mb-8">
+      <h2 id="portal-catalog" className="mb-3 text-lg font-semibold text-fg">
+        {t("portal.catalog")}
+      </h2>
+      <div className="flex flex-col gap-6">
+        {shown.map((d) => (
+          <div key={d.identifier} className="flex flex-col gap-4">
+            <h3 className="text-base font-semibold text-fg">{d.name}</h3>
+            {d.catalog
+              .filter((c) => c.items.length)
+              .map((c) => (
+                <section key={c.id ?? "other"} aria-label={`${d.name} ${t("portal.categoryItems", { name: c.name })}`}>
+                  <h4 className="mb-2 text-sm font-semibold text-fg-muted">{c.name}</h4>
+                  <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {c.items.map((i) => (
+                      <li key={i.id}>
+                        <Link
+                          to={`/portal/items/${encodeURIComponent(i.id)}`}
+                          className="flex h-full flex-col gap-1 rounded-lg border border-border bg-bg p-4 hover:border-accent hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+                        >
+                          <span className="text-sm font-semibold text-fg">{i.name}</span>
+                          {oneLine(i.descriptionHtml) && <span className="line-clamp-1 text-xs text-fg-muted">{oneLine(i.descriptionHtml)}</span>}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -164,6 +214,7 @@ export function PortalHomePage() {
         <p className="mt-1 mb-4 max-w-2xl text-sm text-fg-muted">{t("portal.welcomeHint")}</p>
         <Desks />
       </section>
+      <Catalog />
       <section aria-labelledby="portal-mine">
         <h2 id="portal-mine" className="mb-2 text-lg font-semibold text-fg">
           {t("portal.mine")}

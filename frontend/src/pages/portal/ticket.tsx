@@ -21,6 +21,7 @@ import { ErrorState, NotFound, PageBody, PageHeader, useDocumentTitle } from "@/
 import { useRunWithToast } from "@/features/admin/common";
 import { useUnsavedWarning } from "@/lib/use-unsaved-warning";
 import { formatDateTime, relativeTime } from "@/lib/dates";
+import { ApprovalSteps } from "./approval";
 
 // fixed status ids (real API, demo) with the name as a fallback
 const CLOSED = new Set(["69baa129-0283-56e0-be38-b73ce5db2b64", "s-sd-closed"]);
@@ -170,6 +171,7 @@ function TicketView({ ticket, onRefetch }: { ticket: PortalTicket; onRefetch: ()
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-fg-muted">
           <StatusPill name={ticket.status.name} color={ticket.status.color} />
           <span>{ticket.type.name}</span>
+          {ticket.item && <span>{ticket.item.name}</span>}
           <span>{ticket.desk}</span>
           <span>
             {t("portal.submittedAt")} <time dateTime={ticket.createdAt}>{formatDateTime(ticket.createdAt)}</time>
@@ -194,6 +196,11 @@ function TicketView({ ticket, onRefetch }: { ticket: PortalTicket; onRefetch: ()
               </ol>
             )}
           </section>
+          {ticket.approvals.length > 0 && (
+            <div className="mt-6">
+              <ApprovalSteps steps={ticket.approvals} />
+            </div>
+          )}
           {ticket.closed ? <p className="mt-6 text-sm text-fg-muted">{t("portal.closedHint")}</p> : <ReplyBox ticket={ticket} />}
         </div>
         <aside className="flex flex-col gap-6">
