@@ -249,7 +249,7 @@ public class CicdConnections {
         var hidden = new HashMap<UUID, Integer>();
         var admin = ctx.isAdmin();
         db.select(CICD_CONNECTION_PROJECTS.CONNECTION_ID, PROJECTS.ID, PROJECTS.NAME).from(CICD_CONNECTION_PROJECTS)
-                .join(PROJECTS).on(PROJECTS.ID.eq(CICD_CONNECTION_PROJECTS.PROJECT_ID)).where(where).orderBy(PROJECTS.NAME, PROJECTS.ID)
+                .join(PROJECTS).on(PROJECTS.ID.eq(CICD_CONNECTION_PROJECTS.PROJECT_ID)).where(where)
                 .forEach(row -> {
                     var connection = row.get(CICD_CONNECTION_PROJECTS.CONNECTION_ID);
                     var p = ctx.s().projects().get(row.get(PROJECTS.ID));
@@ -258,7 +258,12 @@ public class CicdConnections {
                     else hidden.merge(connection, 1, Integer::sum);
                 });
         var out = new HashMap<UUID, Allowed>();
-        names.forEach((k, v) -> out.put(k, new Allowed(List.copyOf(v), hidden.getOrDefault(k, 0))));
+        // in Korean order (the database's en_US collation does not sort Hangul that way), as the screens sort
+        var korean = java.text.Collator.getInstance(java.util.Locale.KOREAN);
+        names.forEach((k, v) -> {
+            v.sort(java.util.Comparator.comparing(ProjectRef::name, korean).thenComparing(ProjectRef::id));
+            out.put(k, new Allowed(List.copyOf(v), hidden.getOrDefault(k, 0)));
+        });
         hidden.forEach((k, v) -> out.putIfAbsent(k, new Allowed(List.of(), v)));
         return out;
     }

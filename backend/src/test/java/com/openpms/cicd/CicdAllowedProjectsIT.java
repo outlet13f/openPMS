@@ -209,7 +209,10 @@ class CicdAllowedProjectsIT {
         assertThat(db.fetchCount(db.selectFrom("cicd_connection_projects").where("connection_id = ?::uuid", c[0]))).isZero();
     }
 
-    @Test void devDataAllowsTheProjectsWithRepositories() {
+    @Test void devDataAllowsTheProjectsWithRepositories() throws Exception {
+        // by name, in Korean order
+        var listed = connectionAs(admin, DEV_CONNECTION).get("projects");
+        assertThat(listed).extracting(n -> n.get("name").asString()).containsExactly("모바일 앱 2.0", "웹 플랫폼 개편");
         // V27 fills the list from the attached repositories; on a fresh dev database V1011 does it for V1010's repositories
         var allowed = db.fetch("select project_id::text from cicd_connection_projects where connection_id = ?::uuid", DEV_CONNECTION)
                 .getValues(0, String.class);
