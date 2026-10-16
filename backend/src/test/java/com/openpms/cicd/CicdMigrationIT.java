@@ -23,9 +23,11 @@ class CicdMigrationIT {
         assertThat(perms("0329397e-d933-5ac1-b27c-95889ba1a893")).contains("cicd.view", "cicd.link", "cicd.manage");
         assertThat(perms("6d4333fb-e975-5213-8ebc-552cca26e1d4")).contains("cicd.view", "cicd.link").doesNotContain("cicd.manage");
         assertThat(perms("f957f36a-72ca-5379-b8b9-c0e7dabe2d1e")).contains("cicd.view").doesNotContain("cicd.link", "cicd.manage");
-        // 비멤버 · 요청자: 없음
+        // 비멤버(내장 역할): 없음
         assertThat(perms("21f83874-5c75-520e-aa32-76a829a19e30")).noneMatch(p -> p.startsWith("cicd."));
-        assertThat(perms("a9137727-cb80-51db-98d8-8a9a04f84802")).noneMatch(p -> p.startsWith("cicd."));
+        // no built-in role gets a cicd.* permission
+        assertThat(db.fetchCount(db.selectFrom("roles").where("builtin is not null and exists (select 1 from unnest(permissions) p where p like 'cicd.%')")))
+                .isZero();
     }
 
     @Test void devLeadIsMemberPlusManage() {

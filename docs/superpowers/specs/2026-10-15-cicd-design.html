@@ -121,6 +121,7 @@
   <div class="meta">
     <span class="chip">날짜 2026-10-15</span>
     <span class="chip">상태: 설계 합의(구현 계획 전)</span>
+    <span class="chip">고침 2026-10-16: ITSM 제거로 5단계 보류</span>
     <span class="chip">요구사항 REQ-CICD-001 ~</span>
     <span class="chip">원문 2026-10-15-cicd-design.md</span>
   </div>
@@ -143,7 +144,7 @@
 
 <section id="s1">
   <h2><span class="no">1</span>목적과 합의</h2>
-  <p>작업 패키지와 개발 도구(코드 저장소·CI·배포)를 이어서, <b>"이 일이 어느 MR/PR과 커밋으로 처리됐고, 빌드가 통과했고, 어느 환경까지 배포됐는지"</b>를 openPMS 안에서 본다. 이어서 릴리스 관리, 이벤트에 따른 자동화, ITSM 변경 관리와의 연결까지 단계로 넓힌다. 범위 밖이던 REQ-OOS-011(GitHub·GitLab 연동과 리포지토리)을 일부 들여온다.</p>
+  <p>작업 패키지와 개발 도구(코드 저장소·CI·배포)를 이어서, <b>"이 일이 어느 MR/PR과 커밋으로 처리됐고, 빌드가 통과했고, 어느 환경까지 배포됐는지"</b>를 openPMS 안에서 본다. 이어서 릴리스 관리, 이벤트에 따른 자동화까지 단계로 넓힌다(변경 관리 연결은 보류 — ITSM 제거(2026-10-16)로 기반 없음, 다시 정함). 범위 밖이던 REQ-OOS-011(GitHub·GitLab 연동과 리포지토리)을 일부 들여온다.</p>
 
   <h3>합의한 것</h3>
   <table>
@@ -151,7 +152,7 @@
     <tbody>
       <tr><td>뜻</td><td>제품 기능(openPMS의 새 영역). 이 저장소 자체의 CI 파이프라인은 다루지 않음</td></tr>
       <tr><td>연동 도구</td><td>GitLab(자체 설치), GitHub(Enterprise·Cloud), Jenkins, Argo CD 등 배포 도구</td></tr>
-      <tr><td>목표</td><td>추적성, 릴리스·배포 관리, 자동화, ITSM 변경 관리 연결을 모두 담음(단계로 나눔)</td></tr>
+      <tr><td>목표</td><td>추적성, 릴리스·배포 관리, 자동화를 담음(단계로 나눔). 처음 합의한 ITSM 변경 관리 연결은 ITSM 제거(2026-10-16)로 보류</td></tr>
       <tr><td>받는 방식</td><td>웹훅으로 바로 반영 + 주기 폴링으로 놓친 이벤트 보완. 밖에서 들어올 수 없는 도구는 폴링만</td></tr>
       <tr><td>자동화</td><td>프로젝트별 규칙, <b>기본 꺼짐</b>. 워크플로를 지키고 연동 이름으로 기록</td></tr>
       <tr><td>구조</td><td>공통 이벤트 수집 계층 + 도구별 어댑터(접근안 A)</td></tr>
@@ -166,17 +167,17 @@
     <span class="state">웹훅 / 폴링</span><span class="arrow">→</span>
     <span class="state">어댑터<br><small>검증 · 파싱</small></span><span class="arrow">→</span>
     <span class="state pause">cicd_events<br><small>정규화 · 중복 제거</small></span><span class="arrow">→</span>
-    <span class="state">연결 · 릴리스 · 자동화 · 변경 관리</span>
+    <span class="state">연결 · 릴리스 · 자동화</span>
   </div>
   <p>웹훅과 폴링 결과를 모두 정규화한 이벤트(<code>commit</code>·<code>merge_request</code>·<code>pipeline</code>·<code>deployment</code>)로 바꿔 <code>cicd_events</code>에 쌓는다. 새 도구는 어댑터 하나만 더한다. 같은 이벤트가 두 번 와도 <code>(연동, delivery_key)</code> 유일 키로 한 번만 반영한다.</p>
   <p style="color:var(--muted)">버린 안: 도구별 독립 모듈(도구 4 × 목표 4로 중복), 외부 스크립트에만 맡김(서명 검증·복구가 각 팀 몫). 정형 웹훅이 약한 도구를 위해 2단계에 범용 API 어댑터를 둔다.</p>
 
-  <div class="callout warn"><b>이름 주의.</b> ITSM 4단계(CMDB)의 CI는 구성 항목(<code>work_package_cis</code>)이다. 이 영역의 식별자는 <code>cicd_</code>·<code>pipeline</code>·<code>deployment</code>, 화면 문구는 "CI/CD"·"빌드·배포"를 쓴다.</div>
+  <div class="callout warn"><b>이름 주의.</b> CI는 구성 항목(configuration item)으로도 읽힌다(처음에는 ITSM의 CMDB를 염두에 둔 규칙이었고, ITSM 제거 뒤에도 그대로 둔다). 이 영역의 식별자는 <code>cicd_</code>·<code>pipeline</code>·<code>deployment</code>, 화면 문구는 "CI/CD"·"빌드·배포"를 쓴다.</div>
 
   <h3>범위 밖 (1단계)</h3>
   <ul>
     <li>파이프라인·배포 상태, Jenkins·Argo CD(2단계)</li>
-    <li>릴리스 화면(3단계), 상태 자동 전환(4단계), 변경 관리 연결(5단계)</li>
+    <li>릴리스 화면(3단계), 상태 자동 전환(4단계), 변경 관리 연결(5단계, 보류)</li>
     <li>openPMS에서 MR/PR을 만들거나 병합하는 쓰기 동작(전 단계 범위 밖)</li>
     <li>저장소 파일 보기·코드 검색(범위 밖 유지)</li>
   </ul>
@@ -189,7 +190,7 @@
     <div class="step"><b>2단계 · V27</b><span>빌드·배포 상태</span></div>
     <div class="step"><b>3단계 · V28</b><span>릴리스 관리</span></div>
     <div class="step"><b>4단계 · V29</b><span>자동화 규칙</span></div>
-    <div class="step"><b>5단계 · V30</b><span>변경 관리 연결</span></div>
+    <div class="step"><b>5단계 · 보류</b><span>변경 관리 연결</span></div>
   </div>
   <table>
     <thead><tr><th style="width:16%">단계</th><th>범위</th><th style="width:16%">기반</th><th style="width:12%">마이그레이션</th></tr></thead>
@@ -198,10 +199,10 @@
       <tr><td>2 빌드·배포 상태</td><td>파이프라인·배포 이벤트, Jenkins·Argo CD·범용 API 어댑터, 환경(개발·스테이징·운영) 정의, 작업별 "어느 환경까지 갔나"</td><td>1</td><td>V27, V1011</td></tr>
       <tr><td>3 릴리스 관리</td><td>기존 <code>versions</code>를 릴리스로 넓힘: 포함 작업·MR·배포 이력, 환경별 현황 화면, 릴리스 노트 내보내기</td><td>1·2</td><td>V28, V1012</td></tr>
       <tr><td>4 자동화 규칙</td><td>프로젝트별 규칙(기본 꺼짐): 이벤트 → 상태 전환(워크플로 준수)·알림, <code>closes #123</code> 같은 명령. 연동 이름으로 <code>journals.cause</code>에 기록</td><td>1·2</td><td>V29, V1013</td></tr>
-      <tr><td>5 변경 관리 연결</td><td>운영 배포 ↔ ITSM 변경 요청, 승인 없는 운영 배포 감지·경고, 실행 계획서 2~4절에 빌드·배포 증거 자동 첨부</td><td>2·3 + <span class="tag warn">ITSM 5단계(V24)</span></td><td>V30, V1014</td></tr>
+      <tr><td>5 변경 관리 연결</td><td><b>보류 — ITSM 제거(2026-10-16)로 기반 없음, 다시 정함</b>. 처음 구상: 운영 배포 ↔ ITSM 변경 요청, 승인 없는 운영 배포 감지·경고, 실행 계획서에 빌드·배포 증거 자동 첨부</td><td><span class="tag warn">보류</span></td><td>–</td></tr>
     </tbody>
   </table>
-  <p>ITSM 2~6단계가 V21–V25·V1005–V1009를 잡아 두었으므로 V26·V1010부터 쓴다(시작할 때 비어 있는지 확인). 1~4단계는 ITSM과 따로 진행할 수 있고, 5단계만 ITSM 5단계 뒤에 한다.</p>
+  <p>1단계는 V26·V1010을 쓴다. 그 앞의 V20–V25·V1004–V1009는 비워 둔다: Flyway는 빈 번호를 문제 삼지 않고, 한때 ITSM 마이그레이션(V20·V21)을 돌린 DB와 같은 번호로 검사합이 부딪치지 않는다. 단계마다 시작할 때 번호가 비어 있는지 확인한다.</p>
 
   <h3>단계 사이에 오가는 것</h3>
   <table class="handoff">
@@ -211,7 +212,7 @@
       <tr><td>2</td><td>어댑터 인터페이스, 이벤트 수집</td><td>파이프라인·배포 표, 환경 정의</td></tr>
       <tr><td>3</td><td><code>versions</code>, MR·배포</td><td>릴리스 범위·이력</td></tr>
       <tr><td>4</td><td>정규화 이벤트, 워크플로</td><td>규칙 엔진, 자동 전환 기록</td></tr>
-      <tr><td>5</td><td>배포·릴리스, ITSM 변경 요청·실행 계획서</td><td>변경 ↔ 배포 연결, 무승인 배포 경고·웹훅 이벤트</td></tr>
+      <tr><td>5</td><td>(보류)</td><td>(보류)</td></tr>
     </tbody>
   </table>
 </section>
@@ -250,9 +251,9 @@
     </tbody>
   </table>
   <ul>
-    <li>새 프로젝트 역할 <b>"개발 리더"</b>를 V26이 운영 데이터로 넣는다(V20의 요청자 역할과 같은 방식). 내장 역할이 아니어서 관리 › 역할에서 고칠 수 있다. 권한은 멤버 + <code>cicd.manage</code>.</li>
+    <li>새 프로젝트 역할 <b>"개발 리더"</b>를 V26이 운영 데이터로 넣는다. 내장 역할이 아니어서 관리 › 역할에서 고칠 수 있다. 권한은 멤버 + <code>cicd.manage</code>.</li>
     <li>이미 설치된 곳: 작업 보기 권한이 있는 프로젝트 역할에 <code>cicd.view</code>, 작업 편집 권한이 있는 역할에 <code>cicd.link</code>를 더한다.</li>
-    <li>비멤버(공개 프로젝트)에는 주지 않는다(커밋 제목은 사내 정보). 요청자에게는 어떤 <code>cicd.*</code>도 주지 않고, 포털에 개발 정보를 내보내지 않는다.</li>
+    <li>비멤버(공개 프로젝트)에는 주지 않는다(커밋 제목은 사내 정보).</li>
     <li><code>cicd.*</code>는 <code>Ctx.MODULE_OF</code>로 모듈 <code>cicd</code>에 묶는다. 모듈이 꺼진 프로젝트에서는 탭이 숨고 API는 404. <code>GLOBAL_PERMISSIONS</code>에 <code>global.manage_cicd</code>를 더한다.</li>
   </ul>
 
@@ -261,7 +262,6 @@
   <table>
     <thead><tr><th>사람(역할)</th><th style="text-align:center">보기</th><th style="text-align:center">연결 고치기</th><th style="text-align:center">저장소 붙이기</th><th style="text-align:center">도구 등록</th></tr></thead>
     <tbody>
-      <tr><td>요청자(서비스 데스크 포털)</td><td style="text-align:center">–</td><td style="text-align:center">–</td><td style="text-align:center">–</td><td style="text-align:center">–</td></tr>
       <tr><td>비멤버(공개 프로젝트 방문자)</td><td style="text-align:center">–</td><td style="text-align:center">–</td><td style="text-align:center">–</td><td style="text-align:center">–</td></tr>
       <tr><td>참관자</td><td style="text-align:center">✓</td><td style="text-align:center">–</td><td style="text-align:center">–</td><td style="text-align:center">–</td></tr>
       <tr class="current"><td><b>멤버(일반 사용자)</b></td><td style="text-align:center">✓</td><td style="text-align:center">✓</td><td style="text-align:center">–</td><td style="text-align:center">–</td></tr>
@@ -280,7 +280,7 @@
     <span class="state">멤버<br><small>커밋·브랜치에 #123, 잘못된 연결 끊기</small></span><span class="arrow">→</span>
     <span class="state closed">참관자<br><small>개발 탭에서 상태 보기</small></span>
   </div>
-  <p>이미 설치된 곳은 역할 이름이 아니라 가진 권한으로 판단해 새 권한을 더하고(<code>scope = 'project'</code>이고 <code>builtin</code>이 없는 역할 중 <code>wp.view</code>가 있으면 <code>cicd.view</code>, <code>wp.edit</code>이 있으면 <code>cicd.link</code>, <code>project.manage_members</code>가 있으면 <code>cicd.manage</code>. 비멤버·요청자 내장 역할은 건드리지 않음), "개발 리더"는 새로 생기므로 프로젝트 관리자가 해당자의 역할을 바꾼다.</p>
+  <p>이미 설치된 곳은 역할 이름이 아니라 가진 권한으로 판단해 새 권한을 더하고(<code>scope = 'project'</code>이고 <code>builtin</code>이 없는 역할 중 <code>wp.view</code>가 있으면 <code>cicd.view</code>, <code>wp.edit</code>이 있으면 <code>cicd.link</code>, <code>project.manage_members</code>가 있으면 <code>cicd.manage</code>. 비멤버 내장 역할은 건드리지 않음), "개발 리더"는 새로 생기므로 프로젝트 관리자가 해당자의 역할을 바꾼다.</p>
 
   <h3>들어오는 웹훅</h3>
   <div class="callout"><code>POST /api/v1/hooks/cicd/{hookKey}</code> — <code>SpaConfig</code>가 <code>/api</code> 밖의 주소를 <code>index.html</code>로 돌려주고 운영 프록시도 <code>/api</code>만 백엔드로 보내므로 <code>/api</code> 아래에 둔다. <code>SecurityConfig</code>에서 <b>이 경로만</b> <code>permitAll</code>과 CSRF 제외를 건다(<code>/api/**</code> authenticated보다 앞에).</div>
@@ -351,7 +351,7 @@
     <li>프로젝트 경계: 다른 프로젝트 작업은 연결되지 않음(자동·손 모두)</li>
     <li>끊은 연결이 다시 생기지 않음</li>
     <li>토큰 암호화, 끝 4자리 가림, 키 없으면 422</li>
-    <li>권한: 멤버는 보기·연결, 참관자는 보기만, 비멤버·요청자는 404, <code>global.manage_cicd</code> 위임</li>
+    <li>권한: 멤버는 보기·연결, 참관자는 보기만, 비멤버는 404, <code>global.manage_cicd</code> 위임</li>
     <li>JDK <code>HttpServer</code>로 만든 가짜 GitLab·GitHub로 폴링·연결 확인</li>
     <li><code>NoPinningTest</code>·<code>PerfBudgetIT</code>에 개발 탭 API를 더함</li>
   </ul>
@@ -372,10 +372,10 @@
 <section id="s8">
   <h2><span class="no">8</span>문서 <small style="font-weight:400;color:var(--muted);font-size:14px">다음 판, 백그라운드 서브에이전트</small></h2>
   <ul>
-    <li>01: 새 영역 3.25 CI/CD 연동(REQ-CICD), REQ-OOS-011을 "일부 들여옴"으로 바꿈. 02 추적</li>
+    <li>01: 새 영역 3.24 CI/CD 연동(REQ-CICD), REQ-OOS-011을 "일부 들여옴"으로 바꿈. 02 추적</li>
     <li>03 아키텍처(이벤트 수집 계층·어댑터), 04 인터페이스(들어오는 웹훅·연동 API), 05 데이터베이스(V26), 06 화면, 08·09 시험</li>
     <li>07 사용자 매뉴얼·10 운영자 매뉴얼: <b>새 절 번호</b>로 덧붙인다. <code>OPENPMS_SECRET_KEY</code> 보관·백업과 도구별 웹훅 등록 방법을 10에 적는다.</li>
-    <li>판 번호는 구현 시점 README 개정 이력을 따른다(ITSM 2단계가 2.5를 잡고 있음). 줄바꿈 규칙(03·04·05·10은 CRLF)을 지킨다.</li>
+    <li>판 번호는 구현 시점 README 개정 이력을 따른다(ITSM 제거 뒤 2.6까지 씀). 줄바꿈 규칙(03·04·05·10은 CRLF)을 지킨다.</li>
   </ul>
 </section>
 
@@ -389,7 +389,7 @@
       <tr><td>위임 받은 사람이 사내 주소로 호출을 만듦</td><td>토큰 비노출, 감사 로그, 연결 확인 응답에 상대 본문 없음</td></tr>
       <tr><td>암호화 키 분실</td><td>운영자 매뉴얼에 보관·백업, 키가 없으면 저장을 막고 토큰 재입력 안내</td></tr>
       <tr><td>웹훅 폭주로 서버가 느려짐</td><td>요청에서는 저장만, 처리는 예약 작업이 묶어서. <code>PerfBudgetIT</code></td></tr>
-      <tr><td>CMDB의 CI와 이름 혼동</td><td>식별자 <code>cicd_</code>, 화면 문구 "CI/CD"</td></tr>
+      <tr><td>구성 항목(CI)과 이름 혼동</td><td>식별자 <code>cicd_</code>, 화면 문구 "CI/CD"</td></tr>
     </tbody>
   </table>
 </section>

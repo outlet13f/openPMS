@@ -3,7 +3,7 @@
 
 alter table projects drop constraint projects_known_modules;
 alter table projects add constraint projects_known_modules check (
-  enabled_modules <@ array['work_packages', 'gantt', 'boards', 'calendar', 'team_planner', 'time_tracking', 'service_desk', 'cicd']::text[]);
+  enabled_modules <@ array['work_packages', 'gantt', 'boards', 'calendar', 'team_planner', 'time_tracking', 'cicd']::text[]);
 
 -- 도구 연동. 토큰·웹훅 비밀은 앱이 OPENPMS_SECRET_KEY로 AES-GCM 암호화한 값(cicd/SecretBox)이다.
 create table cicd_connections (
@@ -106,7 +106,7 @@ create index work_package_cicd_links_created_by_idx on work_package_cicd_links (
 create index work_package_cicd_links_dismissed_by_idx on work_package_cicd_links (dismissed_by);
 
 -- 역할 -----------------------------------------------------------------------
--- 이미 설치된 곳: 이름이 아니라 가진 권한으로 더한다. 내장 역할(비멤버·요청자)은 건드리지 않는다.
+-- 이미 설치된 곳: 이름이 아니라 가진 권한으로 더한다. 내장 역할(비멤버)은 건드리지 않는다.
 update roles set permissions = permissions || array['cicd.view']
   where scope = 'project' and builtin is null and 'wp.view' = any (permissions) and not ('cicd.view' = any (permissions));
 update roles set permissions = permissions || array['cicd.link']
@@ -114,7 +114,7 @@ update roles set permissions = permissions || array['cicd.link']
 update roles set permissions = permissions || array['cicd.manage']
   where scope = 'project' and builtin is null and 'project.manage_members' = any (permissions) and not ('cicd.manage' = any (permissions));
 
--- 이름은 유일하다: 같은 이름을 이미 쓰는 설치는 그 행 뒤에 ' (기존)'을 붙인다(V20과 같은 방식)
+-- 이름은 유일하다: 같은 이름을 이미 쓰는 설치는 그 행 뒤에 ' (기존)'을 붙인다
 update roles set name = left(name, 95) || ' (기존)'
   where name in ('개발 리더', 'CI/CD 연동 관리자') and id not in ('8e9c194d-fcdf-5c47-b081-ab2b2b61c89a', 'bae8d8f2-850d-5250-9c69-25b1631be394');
 
