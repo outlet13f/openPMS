@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 import org.jooq.DSLContext;
 import org.jooq.impl.DSL;
@@ -26,6 +27,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * minutes later and the fifth failure makes it "error". When no question is left the deployment is "first", or "failed" if any
  * answer was an error, and the next deployment of the environment can go. The host is asked outside any transaction; every
  * answer is written in its own transaction that locks the head row, then the deployment row (the order CicdDeployments uses).
+ * A first deployment already being checked keeps being checked even if its environment is hidden meanwhile (it is already the
+ * environment's head; stopping would hold the environment's later deployments). A detached repository's questions wait
+ * untouched, and a code host that does not answer at all is asked once per run (its other questions wait for the next run).
  */
 @Service
 public class CicdFirstDeploy {
@@ -36,14 +40,15 @@ public class CicdFirstDeploy {
     static final int MAX_ATTEMPTS = 5;
 
     /**
-     * The due open questions of first deployments being checked (heads still "checking"), oldest deployment first and its newest
-     * commits first, at most CALLS_PER_REPO_PER_RUN per repository.
+     * The due open questions of first deployments being checked (heads still "checking") of attached repositories, oldest
+     * deployment first and its newest commits first, at most CALLS_PER_REPO_PER_RUN per repository.
      */
     private static final String OPEN = """
             select x.deployment_id, x.commit_id, x.attempts, x.commit_sha, x.deployed_sha, x.repository_id, x.environment_id,
-                   x.external_id, x.kind, x.base_url, x.active, x.api_token_enc
+                   x.external_id, x.kind, x.base_url, x.active, x.api_token_enc, x.connection_id
               from (select q.deployment_id, q.commit_id, q.attempts, c.sha as commit_sha, d.sha as deployed_sha, d.repository_id,
-                           d.environment_id, r.external_id, k.kind, k.base_url, k.active, k.api_token_enc, d.deployed_at, c.committed_at,
+                           d.environment_id, r.external_id, k.kind, k.base_url, k.active, k.api_token_enc, k.id as connection_id,
+                           d.deployed_at, c.committed_at,
                            row_number() over (partition by d.repository_id order by d.deployed_at, d.id, c.committed_at desc, c.id) as n
                       from cicd_first_deploy_checks q
                       join cicd_deployments d on d.id = q.deployment_id
@@ -51,7 +56,7 @@ public class CicdFirstDeploy {
                       join cicd_commits c on c.id = q.commit_id
                       join cicd_repositories r on r.id = d.repository_id
                       join cicd_connections k on k.id = r.connection_id
-                     where q.result is null and d.inclusion = 'checking' and d.sha is not null
+                     where q.result is null and d.inclusion = 'checking' and d.sha is not null and r.detached_at is null
                        and (q.next_attempt_at is null or q.next_attempt_at <= ?::timestamptz)) x
              where x.n <= ?
              order by x.deployed_at, x.deployment_id, x.committed_at desc, x.commit_id""";
@@ -76,16 +81,25 @@ public class CicdFirstDeploy {
     }
 
     private record Question(UUID deploymentId, UUID commitId, int attempts, String commitSha, String deployedSha, UUID repositoryId,
-            UUID environmentId, String externalId, String kind, String baseUrl, boolean active, String tokenEnc) {}
+            UUID environmentId, String externalId, String kind, String baseUrl, boolean active, String tokenEnc, UUID connectionId) {}
 
     private enum Answer { IN, OUT, FAILED }
 
     /** @return the number of questions whose result was decided in this run */
     public int check(Instant now) {
+        return check(now, new HashSet<>());
+    }
+
+    /**
+     * @param unreachable connections whose host did not answer in this run (shared with the run's deployment passes): their
+     *                    questions are skipped, and a host found dead here is added
+     * @return the number of questions whose result was decided in this run
+     */
+    public int check(Instant now, Set<UUID> unreachable) {
         var questions = db.fetch(OPEN, now.atOffset(ZoneOffset.UTC), CALLS_PER_REPO_PER_RUN).map(r -> new Question(
                 r.get(0, UUID.class), r.get(1, UUID.class), r.get(2, Integer.class), r.get(3, String.class), r.get(4, String.class),
                 r.get(5, UUID.class), r.get(6, UUID.class), r.get(7, String.class), r.get(8, String.class), r.get(9, String.class),
-                Boolean.TRUE.equals(r.get(10, Boolean.class)), r.get(11, String.class)));
+                Boolean.TRUE.equals(r.get(10, Boolean.class)), r.get(11, String.class), r.get(12, UUID.class)));
         var calls = new HashMap<UUID, Integer>();   // per repository, this run only: a local map, no lock
         var noToken = new HashSet<UUID>();
         int decided = 0;
@@ -95,6 +109,7 @@ public class CicdFirstDeploy {
                     if (noToken.add(q.deploymentId())) decided += giveUp(q);
                     continue;
                 }
+                if (unreachable.contains(q.connectionId())) continue;   // the host did not answer in this run: left for the next
                 int used = calls.getOrDefault(q.repositoryId(), 0);
                 if (used >= CALLS_PER_REPO_PER_RUN) continue;
                 calls.put(q.repositoryId(), used + 1);
@@ -105,6 +120,8 @@ public class CicdFirstDeploy {
                 } catch (IOException | RuntimeException e) {
                     log.warn("cicd first deployment {} repository {}: check failed ({})", q.deploymentId(), q.repositoryId(),
                             CicdDeployments.errorCode(e));
+                    if (CicdPoller.unreachable(e) && unreachable.add(q.connectionId()))
+                        log.warn("cicd first deployment check: connection {} unreachable, its other questions wait for the next run", q.connectionId());
                     answer = Answer.FAILED;
                 }
                 if (write(q, answer, now)) decided++;

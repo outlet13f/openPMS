@@ -122,9 +122,20 @@ class GitHubCompareTest {
         assertThat(r.query()).isEqualTo("per_page=1");
     }
 
-    @Test void containsOnAnUnknownCommitIsAnIoException() {
-        assertThatThrownBy(() -> github.contains(remote, "9001", "c000000", "9999999"))
-                .isInstanceOf(java.io.IOException.class).hasMessage("unexpected status 404");
+    @Test void anUnknownCommitIsNotContained() throws Exception {
+        // a commit deleted since (a force push): one stale commit must not fail the whole first deployment
+        assertThat(github.contains(remote, "9001", "c000000", "9999999")).isFalse();
+        git.respond("/api/v3/repositories/9005/compare/", 422, "{\"message\":\"No common ancestor\"}");
+        assertThat(github.contains(remote, "9005", "c000000", "b000000")).isFalse();
+    }
+
+    @Test void otherFailuresOfContainsAreIoExceptions() {
+        git.respond("/api/v3/repositories/9006/compare/", 500, "{}");
+        assertThatThrownBy(() -> github.contains(remote, "9006", "c000000", "b000000"))
+                .isInstanceOf(java.io.IOException.class).hasMessage("unexpected status 500");
+        git.respond("/api/v3/repositories/9007/compare/", 403, "{}");
+        assertThatThrownBy(() -> github.contains(remote, "9007", "c000000", "b000000"))
+                .isInstanceOf(java.io.IOException.class).hasMessage("unexpected status 403");
     }
 
     @Test void pollReadsRunsAndDeployments() throws Exception {

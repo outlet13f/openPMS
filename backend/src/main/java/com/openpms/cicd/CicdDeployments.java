@@ -15,7 +15,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.jooq.DSLContext;
@@ -31,7 +33,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * new one both ways: what the new one has and the head did not came in, what the head had and the new one has not went out
  * (a rollback, or a branch that left the old line). The code host is asked outside any transaction; the result is written in
  * one transaction that locks the environment's head row and writes nothing if the head moved meanwhile (the next pass plans
- * again). No synchronized, no in-memory locks: the head row is the only lock.
+ * again). No synchronized, no in-memory locks: the head row is the only lock. A code host that does not answer at all (refused,
+ * dropped, timed out) is asked once per run: the deployment that hit it waits like any failed compare, and the connection's
+ * other deployments are left as they are until the next run, so one dead server cannot hold the shared job for minutes.
  */
 @Service
 public class CicdDeployments {
@@ -46,10 +50,14 @@ public class CicdDeployments {
     static final int BATCH = 100;
     private static final Pattern SHA = Pattern.compile("[0-9a-f]{7,64}");
 
-    /** The front of each line: checking, not a head (a checking head is a first deployment being checked), nothing earlier waiting. */
+    /**
+     * The front of each line: checking, not a head (a checking head is a first deployment being checked), nothing earlier waiting.
+     * A detached repository's deployments wait untouched (no call to its host) and go on if it is attached again.
+     */
     private static final String QUEUE = """
-            select d.id from cicd_deployments d
+            select d.id from cicd_deployments d join cicd_repositories r on r.id = d.repository_id
              where d.inclusion = 'checking' and (d.next_attempt_at is null or d.next_attempt_at <= ?::timestamptz)
+               and r.detached_at is null
                and not exists (select 1 from cicd_environment_heads h where h.deployment_id = d.id)
                and not exists (select 1 from cicd_deployments e
                                 where e.repository_id = d.repository_id and e.environment_id = d.environment_id and e.inclusion = 'checking'
@@ -97,11 +105,20 @@ public class CicdDeployments {
 
     /** @return the number of deployments whose state changed */
     public int advance(Instant now) {
+        return advance(now, new HashSet<>());
+    }
+
+    /**
+     * @param unreachable connections whose host did not answer in this run (shared with the run's other passes and the
+     *                    first-deployment check): their deployments are skipped, and a host found dead here is added
+     * @return the number of deployments whose state changed
+     */
+    public int advance(Instant now, Set<UUID> unreachable) {
         var ids = db.fetch(QUEUE, now.atOffset(ZoneOffset.UTC), BATCH).getValues(0, UUID.class);
         int changed = 0;
         for (var id : ids) {
             try {
-                if (one(id, now)) changed++;
+                if (one(id, now, unreachable)) changed++;
             } catch (RuntimeException e) {
                 // an error while applying (a constraint, the linker): it waits like a failed compare, so it cannot hold its line for good
                 log.warn("cicd deployment {} not applied: {}: {}", id, e.getClass().getSimpleName(), firstLine(e.getMessage()));
@@ -115,7 +132,7 @@ public class CicdDeployments {
         return changed;
     }
 
-    private boolean one(UUID id, Instant now) {
+    private boolean one(UUID id, Instant now, Set<UUID> unreachable) {
         var d = waiting(id);
         if (d == null) return false;   // done by another run meanwhile
         // the repository moved to another project since: the deployment belongs to the old project's environment, only recorded
@@ -128,6 +145,7 @@ public class CicdDeployments {
         if (head.sha().startsWith(d.sha()) || d.sha().startsWith(head.sha()))   // a restart of the same commit
             return apply(d, head, List.of(), List.of(), false);
         if (!d.active() || d.tokenEnc() == null || d.tokenEnc().isEmpty()) return giveUp(d, head, "no_token", d.attempts());
+        if (unreachable.contains(d.connectionId())) return false;   // the host did not answer in this run: left as it is for the next
         CicdAdapter.Comparison added, removed;
         try {
             var remote = new CicdAdapter.Remote(d.baseUrl(), box.open(d.tokenEnc()));
@@ -135,6 +153,9 @@ public class CicdDeployments {
             added = adapter.compare(remote, d.externalId(), head.sha(), d.sha(), MAX_PER_DIRECTION);
             removed = adapter.compare(remote, d.externalId(), d.sha(), head.sha(), MAX_PER_DIRECTION);
         } catch (IOException | RuntimeException e) {
+            if (CicdPoller.unreachable(e) && unreachable.add(d.connectionId()))
+                log.warn("cicd deployment {} connection {} unreachable ({}), its other deployments wait for the next run", d.id(), d.connectionId(),
+                        errorCode(e));
             return failed(d, head, e, now);
         }
         return apply(d, head, added.commits(), removed.commits(), added.truncated() || removed.truncated());

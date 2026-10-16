@@ -1,6 +1,7 @@
 // The build badge next to a merge request or commit on the 개발 tab: success, failure, running or canceled, always
 // in words as well as an icon and a tone (never colour alone). Several workflows of one commit are summed up by the
-// server (any failure shows) and counted here. Clicking opens the build page on the tool, in a new window.
+// server (any failure shows) and counted here. Clicking opens the build page on the tool, in a new window; without a
+// link (the address failed the same-origin check) the badge is plain text.
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { CircleCheck, CircleSlash, CircleX, ExternalLink, LoaderCircle } from "lucide-react";
@@ -18,11 +19,24 @@ const LOOK: Record<CicdBuildStatus, { tone: "success" | "danger" | "accent" | "n
 export function BuildBadge({ build, className }: { build: CicdBuild; className?: string }) {
   const { t } = useTranslation();
   const look = LOOK[build.status];
+  const words = (
+    <>
+      {t(`cicd.build.statuses.${build.status}`)}
+      {build.count > 1 && <span className="font-normal">{t("cicd.build.workflows", { count: build.count })}</span>}
+    </>
+  );
+  if (!build.webUrl)
+    return (
+      <span title={formatDateTime(build.at)} className={`inline-flex ${className ?? ""}`}>
+        <Badge tone={look.tone} icon={look.icon}>
+          {words}
+        </Badge>
+      </span>
+    );
   return (
     <a href={build.webUrl} target="_blank" rel="noopener noreferrer" title={formatDateTime(build.at)} className={`inline-flex rounded-sm hover:underline ${className ?? ""}`}>
       <Badge tone={look.tone} icon={look.icon}>
-        {t(`cicd.build.statuses.${build.status}`)}
-        {build.count > 1 && <span className="font-normal">{t("cicd.build.workflows", { count: build.count })}</span>}
+        {words}
         <ExternalLink aria-hidden="true" />
         <span className="sr-only"> ({t("cicd.opensInNew")})</span>
       </Badge>

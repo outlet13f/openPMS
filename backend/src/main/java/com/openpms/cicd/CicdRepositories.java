@@ -70,9 +70,10 @@ public class CicdRepositories {
         return p;
     }
 
-    /** The active connections that allow this project. */
+    /** Connections a repository can be attached from: active, allowed here, and a code host (Jenkins·Argo CD only send notices). */
     public List<ConnectionChoice> connections(ProjectRow p) {
         return db.selectFrom(CICD_CONNECTIONS).where(CICD_CONNECTIONS.ACTIVE.isTrue()).and(allows(CICD_CONNECTIONS.ID, p.id()))
+                .and(CICD_CONNECTIONS.KIND.in("gitlab", "github"))
                 .orderBy(CICD_CONNECTIONS.NAME).fetch(r -> new ConnectionChoice(r.getId(), r.getKind(), r.getName()));
     }
 

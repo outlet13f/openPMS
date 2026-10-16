@@ -78,15 +78,17 @@ public class CicdProcessor {
             handled += progress;
             if (ids.size() < BATCH || progress == 0) break;
         }
-        // then the environments: a few passes, so a deployment waiting behind one applied in this run goes in too
+        // then the environments: a few passes, so a deployment waiting behind one applied in this run goes in too. A code host
+        // that does not answer is asked once in the whole run (passes and first-deployment check alike)
+        var unreachable = new java.util.HashSet<java.util.UUID>();
         for (int i = 0; i < 3; i++) {
-            int n = deployments.advance(now);
+            int n = deployments.advance(now, unreachable);
             handled += n;
             if (n == 0) break;
         }
         // first deployments: once per run, after the passes, so each repository is asked at most 50 times per run; a deployment
         // waiting behind a first deployment that is done now goes in on the next run
-        handled += firstDeploy.check(now);
+        handled += firstDeploy.check(now, unreachable);
         return handled;
     }
 

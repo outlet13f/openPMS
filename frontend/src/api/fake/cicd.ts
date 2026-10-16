@@ -613,7 +613,8 @@ export const cicdApi: Api["cicd"] = {
   projectConnections: (project) =>
     run(() => {
       const p = manageable(sessionUser(), project);
-      return db.cicdConnections.filter((c) => c.active && allows(c.id, p.id)).sort((a, b) => a.name.localeCompare(b.name, "ko")).map((c) => ({ id: c.id, kind: c.kind, name: c.name }));
+      // code hosts only: Jenkins·Argo CD connections send notices and have no repositories to attach
+      return db.cicdConnections.filter((c) => c.active && (c.kind === "gitlab" || c.kind === "github") && allows(c.id, p.id)).sort((a, b) => a.name.localeCompare(b.name, "ko")).map((c) => ({ id: c.id, kind: c.kind, name: c.name }));
     }),
   searchRepositories: (project, connectionId, q) =>
     run(() => {

@@ -11,6 +11,6 @@ def notifyOpenPms(Map n) {
   }
 }
 // 빌드가 끝난 뒤: notifyOpenPms(type: 'pipeline', repository: 'group/name', id: env.BUILD_TAG, name: env.JOB_NAME,
-//   sha: env.GIT_COMMIT, ref: env.GIT_BRANCH, status: currentBuild.currentResult == 'SUCCESS' ? 'success' : 'failed', url: env.BUILD_URL)
+//   sha: env.GIT_COMMIT, ref: env.BRANCH_NAME ?: env.GIT_BRANCH, status: currentBuild.currentResult == 'SUCCESS' ? 'success' : 'failed', url: env.BUILD_URL)
 // 배포 단계 뒤: notifyOpenPms(type: 'deployment', repository: 'group/name', id: "${env.BUILD_TAG}-prod", sha: env.GIT_COMMIT,
 //   environment: 'production', status: 'success', url: env.BUILD_URL)

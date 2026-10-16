@@ -315,10 +315,68 @@ class CicdDeploymentsIT {
     }
 
     @Test void aLinkedCommitIsACandidateOfAFirstDeployment() {
+        git.respondWith("/api/v4/projects/" + ext + "/repository/merge_base", r -> new FakeGitServer.Reply(503, "{}"));   // not answered yet
         var d = deploy("1", "dev", C, "success", T0.plusHours(1));   // B is linked here and is not the deployed commit
         assertThat(inclusion(d)).isEqualTo("checking");   // Task 11 checks B
         assertThat(db.fetchCount(CICD_FIRST_DEPLOY_CHECKS, CICD_FIRST_DEPLOY_CHECKS.DEPLOYMENT_ID.eq(d))).isEqualTo(1);
         assertThat(head("개발")).isEqualTo(d);
+    }
+
+    UUID environment(String name) throws Exception {
+        return db.select(CICD_ENVIRONMENTS.ID).from(CICD_ENVIRONMENTS)
+                .where(CICD_ENVIRONMENTS.PROJECT_ID.eq(UUID.fromString(f.projectId(admin, project))), CICD_ENVIRONMENTS.NAME.eq(name)).fetchOne().value1();
+    }
+
+    void detach(boolean detached) {
+        db.update(CICD_REPOSITORIES).set(CICD_REPOSITORIES.DETACHED_AT, detached ? OffsetDateTime.now() : null).where(CICD_REPOSITORIES.ID.eq(repo)).execute();
+    }
+
+    long requests(String endpoint) {
+        return git.requests().stream().filter(r -> r.path().endsWith("/repository/" + endpoint)).count();
+    }
+
+    @Test void aDetachedRepositorysDeploymentWaitsWithoutCallingTheHost() throws Exception {
+        deploy("1", "dev", B, "success", T0.plusHours(1));
+        // stored before the repository was detached (events of a detached repository are not stored as deployments)
+        var d = UUID.randomUUID();
+        db.insertInto(CICD_DEPLOYMENTS).set(CICD_DEPLOYMENTS.ID, d).set(CICD_DEPLOYMENTS.REPOSITORY_ID, repo).set(CICD_DEPLOYMENTS.ENVIRONMENT_ID, environment("개발"))
+                .set(CICD_DEPLOYMENTS.ENVIRONMENT_NAME, "dev").set(CICD_DEPLOYMENTS.EXTERNAL_ID, "9").set(CICD_DEPLOYMENTS.SHA, C)
+                .set(CICD_DEPLOYMENTS.STATUS, "success").set(CICD_DEPLOYMENTS.DEPLOYED_AT, T0.plusHours(2)).set(CICD_DEPLOYMENTS.SOURCE, "gitlab")
+                .set(CICD_DEPLOYMENTS.INCLUSION, "checking").execute();
+        detach(true);
+        run();
+        assertThat(requests("compare")).isZero();
+        assertThat(inclusion(d)).isEqualTo("checking");
+        assertThat(db.select(CICD_DEPLOYMENTS.ATTEMPTS).from(CICD_DEPLOYMENTS).where(CICD_DEPLOYMENTS.ID.eq(d)).fetchOne().value1()).isZero();
+        detach(false);   // attached again: it goes on where it stopped
+        run();
+        assertThat(inclusion(d)).isEqualTo("compared");
+        assertThat(in("개발")).containsExactlyInAnyOrder(B, C);
+    }
+
+    @Test void aDetachedRepositorysFirstDeploymentCheckWaitsWithoutCallingTheHost() {
+        git.respondWith("/api/v4/projects/" + ext + "/repository/merge_base", r -> new FakeGitServer.Reply(503, "{}"));
+        var d = deploy("1", "stg", C, "success", T0.plusHours(1));   // B is linked: one question, failed once
+        assertThat(inclusion(d)).isEqualTo("checking");
+        assertThat(requests("merge_base")).isEqualTo(1);
+        detach(true);
+        clock = clock.plus(java.time.Duration.ofMinutes(9));
+        run();
+        assertThat(requests("merge_base")).isEqualTo(1);
+        assertThat(inclusion(d)).isEqualTo("checking");
+    }
+
+    @Test void anAliasGivesADetachedRepositorysDeploymentsAsRecordsOnly() throws Exception {
+        var d = UUID.randomUUID();
+        db.insertInto(CICD_DEPLOYMENTS).set(CICD_DEPLOYMENTS.ID, d).set(CICD_DEPLOYMENTS.REPOSITORY_ID, repo)
+                .set(CICD_DEPLOYMENTS.ENVIRONMENT_NAME, "qa-9").set(CICD_DEPLOYMENTS.EXTERNAL_ID, "9").set(CICD_DEPLOYMENTS.SHA, C)
+                .set(CICD_DEPLOYMENTS.STATUS, "success").set(CICD_DEPLOYMENTS.DEPLOYED_AT, T0.plusHours(2)).set(CICD_DEPLOYMENTS.SOURCE, "gitlab").execute();
+        detach(true);
+        var stg = environment("스테이징");
+        f.send(admin, org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/v1/projects/" + project + "/cicd/environments/" + stg),
+                "{\"aliases\":[\"stg\",\"staging\",\"qa-9\"]}").andExpect(status().isOk());
+        assertThat(db.select(CICD_DEPLOYMENTS.ENVIRONMENT_ID, CICD_DEPLOYMENTS.INCLUSION).from(CICD_DEPLOYMENTS).where(CICD_DEPLOYMENTS.ID.eq(d)).fetchOne())
+                .satisfies(r -> { assertThat(r.value1()).isEqualTo(stg); assertThat(r.value2()).isNull(); });
     }
 
     @Test void errorCodesAndRetryDelays() {

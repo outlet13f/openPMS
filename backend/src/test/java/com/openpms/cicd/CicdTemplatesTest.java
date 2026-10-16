@@ -14,6 +14,8 @@ class CicdTemplatesTest {
         var t = CicdTemplates.jenkinsfile(HOOK);
         assertThat(t).contains(HOOK, "X-OpenPMS-Signature: sha256=", "openssl dgst -sha256 -hmac", "<웹훅 비밀>", "withCredentials")
                 .doesNotContain("{{WEBHOOK_URL}}");
+        // a multibranch job's branch name as the host has it; the plain Git plugin's GIT_BRANCH is "origin/x"
+        assertThat(t).contains("ref: env.BRANCH_NAME ?: env.GIT_BRANCH");
     }
 
     @Test void argoTemplateSendsTheImageNotTheManifestRevision() {

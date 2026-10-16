@@ -243,10 +243,14 @@ public class CicdEnvironments {
      * An alias was added: this project's unassigned deployments with that name join the environment. Only repositories whose
      * current project is this one count (detached ones too), so deployments of a repository now elsewhere are never touched.
      * Their effect on the environment's head is applied in time order by the deployment advance, which records a deployment
-     * only when a later one is already the head.
+     * only when a later one is already the head. A detached repository's deployments join the environment as records only (no
+     * "checking": its host is not asked while it is detached).
      */
     void reassign(UUID projectId, UUID environmentId, List<String> addedNames) {
-        var inclusion = DSL.when(CICD_DEPLOYMENTS.STATUS.eq("success").and(CICD_DEPLOYMENTS.SHA.isNull()), DSL.inline("unknown_commit"))
+        var detached = DSL.exists(DSL.selectOne().from(CICD_REPOSITORIES)
+                .where(CICD_REPOSITORIES.ID.eq(CICD_DEPLOYMENTS.REPOSITORY_ID), CICD_REPOSITORIES.DETACHED_AT.isNotNull()));
+        var inclusion = DSL.when(detached, DSL.inline((String) null))
+                .when(CICD_DEPLOYMENTS.STATUS.eq("success").and(CICD_DEPLOYMENTS.SHA.isNull()), DSL.inline("unknown_commit"))
                 .when(CICD_DEPLOYMENTS.STATUS.eq("success"), DSL.inline("checking")).otherwise(DSL.inline((String) null));
         db.update(CICD_DEPLOYMENTS).set(CICD_DEPLOYMENTS.ENVIRONMENT_ID, environmentId).set(CICD_DEPLOYMENTS.INCLUSION, inclusion)
                 .where(CICD_DEPLOYMENTS.ENVIRONMENT_ID.isNull())

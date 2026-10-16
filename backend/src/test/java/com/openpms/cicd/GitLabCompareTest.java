@@ -113,9 +113,18 @@ class GitLabCompareTest {
         assertThat(gitlab.contains(remote, "90", "ffffffffffffffffffffffffffffffffffffffff", "bcbb5ec4")).isFalse();
     }
 
-    @Test void containsOnAnUnknownCommitIsAnIoException() {
-        assertThatThrownBy(() -> gitlab.contains(remote, "77", "c000000", "9999999"))
-                .isInstanceOf(java.io.IOException.class).hasMessage("unexpected status 404");
+    @Test void anUnknownCommitIsNotContained() throws Exception {
+        // a commit deleted since (a force push): one stale commit must not fail the whole first deployment
+        assertThat(gitlab.contains(remote, "77", "c000000", "9999999")).isFalse();
+    }
+
+    @Test void otherFailuresOfContainsAreIoExceptions() {
+        git.respond("/api/v4/projects/91/repository/merge_base", 500, "{}");
+        assertThatThrownBy(() -> gitlab.contains(remote, "91", "c000000", "b000000"))
+                .isInstanceOf(java.io.IOException.class).hasMessage("unexpected status 500");
+        git.respond("/api/v4/projects/92/repository/merge_base", 401, "{}");
+        assertThatThrownBy(() -> gitlab.contains(remote, "92", "c000000", "b000000"))
+                .isInstanceOf(java.io.IOException.class).hasMessage("unexpected status 401");
     }
 
     @Test void pollAlsoReadsPipelinesAndDeployments() throws Exception {

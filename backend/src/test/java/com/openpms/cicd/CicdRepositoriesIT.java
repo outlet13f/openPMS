@@ -148,6 +148,19 @@ class CicdRepositoriesIT {
         f.send(junho, get("/api/v1/projects/" + project + "/cicd/connections"), "").andExpect(status().isNotFound());
     }
 
+    @Test void noticeConnectionsAreNotOfferedForAttaching() throws Exception {
+        var project = leaderProject("cicd");
+        var gitlab = f.newConnection(admin, "gitlab", git.baseUrl(), "glpat-token-1234");
+        var jenkins = f.newConnection(admin, "jenkins", "https://jenkins.local", null);
+        var argocd = f.newConnection(admin, "argocd", "https://argo.local", null);
+        f.allow(admin, gitlab[0], project);
+        f.allow(admin, jenkins[0], project);
+        f.allow(admin, argocd[0], project);
+        var conns = f.body(f.send(junho, get("/api/v1/projects/" + project + "/cicd/connections"), "").andExpect(status().isOk()).andReturn());
+        assertThat(conns).hasSize(1);
+        assertThat(conns.get(0).get("id").asString()).isEqualTo(gitlab[0]);
+    }
+
     @Test void searchNeedsAToken() throws Exception {
         var project = leaderProject("cicd");
         var c = f.newConnection(admin, "gitlab", git.baseUrl(), null);
