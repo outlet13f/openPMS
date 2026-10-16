@@ -172,6 +172,8 @@ class CicdCleanupIT {
         f.send(admin, get(cleanupUrl(p) + "?before=" + today().plusDays(1)), "").andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.errors[0].message").value(past));
         f.send(admin, post(cleanupUrl(p)), "{}").andExpect(status().isUnprocessableEntity());
+        f.mvc.perform(post(cleanupUrl(p)).session(admin).with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.errors[0].message").value(pick));
         f.send(admin, post(cleanupUrl(p)), "{\"before\":\"2026-13-01\"}").andExpect(status().isUnprocessableEntity());
         f.send(admin, post(cleanupUrl(p)), "{\"before\":12}").andExpect(status().isUnprocessableEntity());
         f.send(admin, post(cleanupUrl(p)), "{\"before\":\"" + today().plusDays(1) + "\"}").andExpect(status().isUnprocessableEntity())

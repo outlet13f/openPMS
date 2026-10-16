@@ -3,6 +3,8 @@ package com.openpms.cicd;
 import static com.openpms.db.Tables.CICD_COMMITS;
 import static com.openpms.db.Tables.CICD_DEPLOYMENTS;
 import static com.openpms.db.Tables.CICD_ENVIRONMENTS;
+import static com.openpms.db.Tables.CICD_ENVIRONMENT_COMMITS;
+import static com.openpms.db.Tables.CICD_ENVIRONMENT_HEADS;
 import static com.openpms.db.Tables.CICD_EVENTS;
 import static com.openpms.db.Tables.CICD_MERGE_REQUESTS;
 import static com.openpms.db.Tables.CICD_PIPELINES;
@@ -218,6 +220,22 @@ class CicdDetachIT {
         long wpA = wp(a);
         var repo = attach(a);
         feed(commit(sha(), "A의 작업 #" + wpA));
+        var wpAId = db.select(com.openpms.db.Tables.WORK_PACKAGES.ID).from(com.openpms.db.Tables.WORK_PACKAGES)
+                .where(com.openpms.db.Tables.WORK_PACKAGES.NUMBER.eq(wpA)).fetchOne(com.openpms.db.Tables.WORK_PACKAGES.ID);
+        var now = OffsetDateTime.now();
+        var env = db.insertInto(CICD_ENVIRONMENTS).set(CICD_ENVIRONMENTS.PROJECT_ID, projectUuid(a)).set(CICD_ENVIRONMENTS.NAME, "시험")
+                .set(CICD_ENVIRONMENTS.POSITION, 1).returning(CICD_ENVIRONMENTS.ID).fetchOne().getId();
+        var dep = db.insertInto(CICD_DEPLOYMENTS).set(CICD_DEPLOYMENTS.REPOSITORY_ID, repo).set(CICD_DEPLOYMENTS.ENVIRONMENT_ID, env)
+                .set(CICD_DEPLOYMENTS.ENVIRONMENT_NAME, "시험").set(CICD_DEPLOYMENTS.EXTERNAL_ID, "1").set(CICD_DEPLOYMENTS.STATUS, "success")
+                .set(CICD_DEPLOYMENTS.DEPLOYED_AT, now).set(CICD_DEPLOYMENTS.SOURCE, "gitlab").returning(CICD_DEPLOYMENTS.ID).fetchOne().getId();
+        var headSha = sha();
+        db.insertInto(CICD_ENVIRONMENT_HEADS).set(CICD_ENVIRONMENT_HEADS.REPOSITORY_ID, repo).set(CICD_ENVIRONMENT_HEADS.ENVIRONMENT_ID, env)
+                .set(CICD_ENVIRONMENT_HEADS.SHA, headSha).set(CICD_ENVIRONMENT_HEADS.DEPLOYMENT_ID, dep).set(CICD_ENVIRONMENT_HEADS.DEPLOYED_AT, now).execute();
+        db.insertInto(CICD_ENVIRONMENT_COMMITS).set(CICD_ENVIRONMENT_COMMITS.ENVIRONMENT_ID, env).set(CICD_ENVIRONMENT_COMMITS.REPOSITORY_ID, repo)
+                .set(CICD_ENVIRONMENT_COMMITS.COMMIT_ID, db.select(CICD_COMMITS.ID).from(CICD_COMMITS).where(CICD_COMMITS.REPOSITORY_ID.eq(repo)).limit(1).fetchOne(CICD_COMMITS.ID))
+                .set(CICD_ENVIRONMENT_COMMITS.DEPLOYMENT_ID, dep).execute();
+        db.insertInto(CICD_PIPELINES).set(CICD_PIPELINES.REPOSITORY_ID, repo).set(CICD_PIPELINES.EXTERNAL_ID, "1").set(CICD_PIPELINES.SHA, sha())
+                .set(CICD_PIPELINES.STATUS, "success").set(CICD_PIPELINES.SOURCE, "gitlab").set(CICD_PIPELINES.UPDATED_AT, now).execute();
         detach(a, repo);
         var search = f.body(f.send(admin, get("/api/v1/projects/" + b + "/cicd/connections/" + conn[0] + "/search?q=web"), "")
                 .andExpect(status().isOk()).andReturn());
@@ -230,6 +248,12 @@ class CicdDetachIT {
         assertThat(db.fetchCount(CICD_REPOSITORIES, CICD_REPOSITORIES.CONNECTION_ID.eq(UUID.fromString(conn[0])))).isEqualTo(1);
         // the link made on A's work package stays there
         assertThat(links(repo)).isEqualTo(1);
+        assertThat(db.fetchCount(WORK_PACKAGE_CICD_LINKS, WORK_PACKAGE_CICD_LINKS.WORK_PACKAGE_ID.eq(wpAId))).isEqualTo(1);
+        // the old project's environment state is gone, the history stays
+        assertThat(db.fetchCount(CICD_ENVIRONMENT_HEADS, CICD_ENVIRONMENT_HEADS.REPOSITORY_ID.eq(repo))).isZero();
+        assertThat(db.fetchCount(CICD_ENVIRONMENT_COMMITS, CICD_ENVIRONMENT_COMMITS.REPOSITORY_ID.eq(repo))).isZero();
+        assertThat(db.fetchCount(CICD_DEPLOYMENTS, CICD_DEPLOYMENTS.REPOSITORY_ID.eq(repo))).isEqualTo(1);
+        assertThat(db.fetchCount(CICD_PIPELINES, CICD_PIPELINES.REPOSITORY_ID.eq(repo))).isEqualTo(1);
         assertThat(commits(repo)).isEqualTo(1);
         var listA = f.body(f.send(admin, get("/api/v1/projects/" + a + "/cicd/repositories"), "").andExpect(status().isOk()).andReturn());
         assertThat(listA).isEmpty();

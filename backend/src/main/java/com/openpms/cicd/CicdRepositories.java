@@ -2,6 +2,8 @@ package com.openpms.cicd;
 
 import static com.openpms.db.Tables.CICD_CONNECTIONS;
 import static com.openpms.db.Tables.CICD_CONNECTION_PROJECTS;
+import static com.openpms.db.Tables.CICD_ENVIRONMENT_COMMITS;
+import static com.openpms.db.Tables.CICD_ENVIRONMENT_HEADS;
 import static com.openpms.db.Tables.CICD_PIPELINES;
 import static com.openpms.db.Tables.CICD_REPOSITORIES;
 
@@ -134,7 +136,15 @@ public class CicdRepositories {
                             .set(CICD_REPOSITORIES.WEB_URL, repo.webUrl()).set(CICD_REPOSITORIES.DETACHED_AT, (OffsetDateTime) null)
                             .set(CICD_REPOSITORIES.POLL_CURSOR, cursor)
                             .where(CICD_REPOSITORIES.ID.eq(existing.getId()), CICD_REPOSITORIES.DETACHED_AT.isNotNull()).execute();
-                    if (n == 0) throw new ApiException(409, "이미 다른 프로젝트에 붙은 저장소입니다.");
+                    if (n == 0) {
+                        var now = db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.ID.eq(existing.getId())).fetchOne();
+                        throw taken(now == null ? existing.getProjectId() : now.getProjectId(), p);
+                    }
+                    if (!existing.getProjectId().equals(p.id())) {
+                        // the environments belong to the old project: what they hold of this repository goes; builds and deployments stay
+                        db.deleteFrom(CICD_ENVIRONMENT_HEADS).where(CICD_ENVIRONMENT_HEADS.REPOSITORY_ID.eq(existing.getId())).execute();
+                        db.deleteFrom(CICD_ENVIRONMENT_COMMITS).where(CICD_ENVIRONMENT_COMMITS.REPOSITORY_ID.eq(existing.getId())).execute();
+                    }
                     return existing.getId();
                 }
                 var r = db.newRecord(CICD_REPOSITORIES);

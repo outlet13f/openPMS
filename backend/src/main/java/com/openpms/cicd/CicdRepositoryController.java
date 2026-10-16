@@ -62,9 +62,9 @@ public class CicdRepositoryController {
     }
 
     @PostMapping("/pipelines/cleanup")
-    public CicdRepositories.CleanupDone cleanup(@PathVariable String project, @RequestBody Map<String, Object> in) {
+    public CicdRepositories.CleanupDone cleanup(@PathVariable String project, @RequestBody(required = false) Map<String, Object> in) {
         var ctx = current.ctx();
-        var before = in.get("before") instanceof String b ? b : null;
+        var before = in != null && in.get("before") instanceof String b ? b : null;
         return repos.cleanup(ctx, repos.manageable(ctx, project), before);
     }
 
