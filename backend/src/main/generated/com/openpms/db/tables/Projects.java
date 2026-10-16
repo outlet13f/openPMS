@@ -10,6 +10,7 @@ import com.openpms.db.Public;
 import com.openpms.db.tables.BoardColumns.BoardColumnsPath;
 import com.openpms.db.tables.Boards.BoardsPath;
 import com.openpms.db.tables.Categories.CategoriesPath;
+import com.openpms.db.tables.CicdRepositories.CicdRepositoriesPath;
 import com.openpms.db.tables.CustomFields.CustomFieldsPath;
 import com.openpms.db.tables.Members.MembersPath;
 import com.openpms.db.tables.NotificationSettings.NotificationSettingsPath;
@@ -318,6 +319,19 @@ public class Projects extends TableImpl<ProjectsRecord> {
         return _categories;
     }
 
+    private transient CicdRepositoriesPath _cicdRepositories;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_repositories</code> table
+     */
+    public CicdRepositoriesPath cicdRepositories() {
+        if (_cicdRepositories == null)
+            _cicdRepositories = new CicdRepositoriesPath(this, null, Keys.CICD_REPOSITORIES__CICD_REPOSITORIES_PROJECT_ID_FKEY.getInverseKey());
+
+        return _cicdRepositories;
+    }
+
     private transient MembersPath _members;
 
     /**
@@ -485,7 +499,7 @@ public class Projects extends TableImpl<ProjectsRecord> {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("projects_custom_values_object"), "((jsonb_typeof(custom_values) = 'object'::text))", true),
             Internal.createCheck(this, DSL.name("projects_identifier_check"), "((identifier ~ '^[a-z][a-z0-9-]{0,99}$'::text))", true),
-            Internal.createCheck(this, DSL.name("projects_known_modules"), "((enabled_modules <@ ARRAY['work_packages'::text, 'gantt'::text, 'boards'::text, 'calendar'::text, 'team_planner'::text, 'time_tracking'::text]))", true),
+            Internal.createCheck(this, DSL.name("projects_known_modules"), "((enabled_modules <@ ARRAY['work_packages'::text, 'gantt'::text, 'boards'::text, 'calendar'::text, 'team_planner'::text, 'time_tracking'::text, 'cicd'::text]))", true),
             Internal.createCheck(this, DSL.name("projects_name_check"), "(((length(name) >= 1) AND (length(name) <= 255)))", true),
             Internal.createCheck(this, DSL.name("projects_not_own_parent"), "((parent_id <> id))", true),
             Internal.createCheck(this, DSL.name("projects_status_check"), "((status = ANY (ARRAY['on_track'::text, 'at_risk'::text, 'off_track'::text])))", true)
