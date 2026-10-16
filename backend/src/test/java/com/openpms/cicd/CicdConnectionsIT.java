@@ -143,7 +143,116 @@ class CicdConnectionsIT {
         db.insertInto(CICD_REPOSITORIES).set(CICD_REPOSITORIES.CONNECTION_ID, UUID.fromString(busy)).set(CICD_REPOSITORIES.EXTERNAL_ID, "1")
                 .set(CICD_REPOSITORIES.FULL_PATH, "g/r").set(CICD_REPOSITORIES.WEB_URL, "https://g.local/g/r").set(CICD_REPOSITORIES.PROJECT_ID, projectId).execute();
         f.send(admin, delete("/api/v1/admin/cicd/connections/" + busy), "").andExpect(status().isConflict())
-                .andExpect(jsonPath("$.title").value("저장소가 붙어 있는 연동은 지울 수 없습니다. 먼저 저장소를 떼세요."));
+                .andExpect(jsonPath("$.title").value(KEEP));
+    }
+
+    static final String KEEP = "기록이 남은 저장소(뗀 저장소 포함)가 있는 연동은 지울 수 없습니다. 대신 끄세요.";
+
+    @Test void deleteRefusedWhileDetachedRepositoriesKeepHistory() throws Exception {
+        var id = f.newConnection(admin, "github", git.baseUrl(), null)[0];
+        var project = f.newProject(admin, "work_packages", "cicd");
+        var projectId = db.select(PROJECTS.ID).from(PROJECTS).where(PROJECTS.IDENTIFIER.eq(project)).fetchOne(0, UUID.class);
+        db.insertInto(CICD_REPOSITORIES).set(CICD_REPOSITORIES.CONNECTION_ID, UUID.fromString(id)).set(CICD_REPOSITORIES.EXTERNAL_ID, "2")
+                .set(CICD_REPOSITORIES.FULL_PATH, "g/old").set(CICD_REPOSITORIES.WEB_URL, "https://g.local/g/old").set(CICD_REPOSITORIES.PROJECT_ID, projectId)
+                .set(CICD_REPOSITORIES.DETACHED_AT, java.time.OffsetDateTime.now()).execute();
+        f.send(admin, delete("/api/v1/admin/cicd/connections/" + id), "").andExpect(status().isConflict()).andExpect(jsonPath("$.title").value(KEEP));
+        var list = f.body(f.send(admin, get("/api/v1/admin/cicd/connections"), "").andExpect(status().isOk()).andReturn());
+        for (var c : list) if (c.get("id").asString().equals(id)) assertThat(c.get("repositoryCount").asInt()).isZero();
+    }
+
+    @Test void jenkinsConnectionHasNoToken() throws Exception {
+        var name = "Jenkins " + UUID.randomUUID();
+        var created = f.body(f.send(admin, post("/api/v1/admin/cicd/connections"),
+                "{\"kind\":\"jenkins\",\"name\":\"" + name + "\",\"baseUrl\":\"https://jenkins.local/\"}").andExpect(status().isCreated()).andReturn());
+        assertThat(created.at("/connection/toolUrl").asString()).isEqualTo("https://jenkins.local");
+        assertThat(created.at("/connection/baseUrl").asString()).isEqualTo("https://jenkins.local");
+        assertThat(created.at("/connection/tokenHint").isNull()).isTrue();
+        var id = created.at("/connection/id").asString();
+        var refused = "Jenkins·Argo CD 연동에는 API 토큰을 쓰지 않습니다.";
+        f.send(admin, post("/api/v1/admin/cicd/connections"),
+                "{\"kind\":\"jenkins\",\"name\":\"" + name + "-2\",\"baseUrl\":\"https://jenkins.local\",\"apiToken\":\"abc\"}")
+                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.detail").value(refused));
+        // a blank token counts as absent (F14), also on PATCH
+        f.send(admin, post("/api/v1/admin/cicd/connections"),
+                "{\"kind\":\"argocd\",\"name\":\"" + name + "-3\",\"baseUrl\":\"https://argo.local\",\"apiToken\":\"  \"}").andExpect(status().isCreated());
+        f.send(admin, patch("/api/v1/admin/cicd/connections/" + id), "{\"apiToken\":\"abc\"}").andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.detail").value(refused));
+        f.send(admin, patch("/api/v1/admin/cicd/connections/" + id), "{\"apiToken\":\"\"}").andExpect(status().isOk());
+        // the tool address follows the base address
+        var moved = f.body(f.send(admin, patch("/api/v1/admin/cicd/connections/" + id), "{\"baseUrl\":\"https://ci.local/\"}").andExpect(status().isOk()).andReturn());
+        assertThat(moved.get("toolUrl").asString()).isEqualTo("https://ci.local");
+        assertThat(db.select(CICD_CONNECTIONS.TOOL_URL).from(CICD_CONNECTIONS).where(CICD_CONNECTIONS.ID.eq(UUID.fromString(id))).fetchOne(0, String.class))
+                .isEqualTo("https://ci.local");
+        assertThat(f.send(admin, post("/api/v1/admin/cicd/connections/" + id + "/check"), "").andExpect(status().isOk()).andReturn()
+                .getResponse().getContentAsString()).isEqualTo("{\"ok\":false,\"status\":0}");
+    }
+
+    @Test void gitlabKeepsItsTokenAndIgnoresTheTagRule() throws Exception {
+        var created = f.body(f.send(admin, post("/api/v1/admin/cicd/connections"),
+                "{\"kind\":\"gitlab\",\"name\":\"GL " + UUID.randomUUID() + "\",\"baseUrl\":\"" + git.baseUrl() + "\",\"apiToken\":\"glpat-ZZZZ1111\",\"imageTagPattern\":\"x\"}")
+                .andExpect(status().isCreated()).andReturn());
+        assertThat(created.at("/connection/tokenHint").asString()).isEqualTo("1111");
+        assertThat(created.at("/connection/toolUrl").isNull()).isTrue();
+        assertThat(created.at("/connection/imageTagPattern").isNull()).isTrue();
+    }
+
+    @Test void imageTagPatternIsValidated() throws Exception {
+        var url = "/api/v1/admin/cicd/connections";
+        var name = "Argo " + UUID.randomUUID();
+        f.send(admin, post(url), "{\"kind\":\"argocd\",\"name\":\"" + name + "\",\"baseUrl\":\"https://argo.local\",\"imageTagPattern\":\"([0-9\"}")
+                .andExpect(status().isUnprocessableEntity());
+        var created = f.body(f.send(admin, post(url), "{\"kind\":\"argocd\",\"name\":\"" + name + "\",\"baseUrl\":\"https://argo.local\",\"imageTagPattern\":\"-g([0-9a-f]{7,40})$\"}")
+                .andExpect(status().isCreated()).andReturn());
+        var id = created.at("/connection/id").asString();
+        assertThat(created.at("/connection/imageTagPattern").asString()).isEqualTo("-g([0-9a-f]{7,40})$");
+        var shown = false;
+        for (var c : f.body(f.send(admin, get(url), "").andExpect(status().isOk()).andReturn()))
+            if (c.get("id").asString().equals(id)) shown = "-g([0-9a-f]{7,40})$".equals(c.get("imageTagPattern").asString());
+        assertThat(shown).isTrue();
+        f.send(admin, patch(url + "/" + id), "{\"imageTagPattern\":\"([0-9\"}").andExpect(status().isUnprocessableEntity());
+        var cleared = f.body(f.send(admin, patch(url + "/" + id), "{\"imageTagPattern\":\"\"}").andExpect(status().isOk()).andReturn());
+        assertThat(cleared.get("imageTagPattern").isNull()).isTrue();
+    }
+
+    @Test void templatesForJenkinsAndArgo() throws Exception {
+        var jenkins = f.body(f.send(admin, post("/api/v1/admin/cicd/connections"),
+                "{\"kind\":\"jenkins\",\"name\":\"J " + UUID.randomUUID() + "\",\"baseUrl\":\"https://jenkins.local\"}").andExpect(status().isCreated()).andReturn());
+        var id = jenkins.at("/connection/id").asString();
+        var hook = jenkins.at("/connection/webhookUrl").asString();
+        var t = f.body(f.send(admin, get("/api/v1/admin/cicd/connections/" + id + "/templates"), "").andExpect(status().isOk()).andReturn());
+        assertThat(t.get("kind").asString()).isEqualTo("jenkins");
+        assertThat(t.get("jenkinsfile").asString()).contains(hook).doesNotContain(jenkins.get("webhookSecret").asString());
+        assertThat(t.get("argocd").isNull()).isTrue();
+        var argo = f.body(f.send(admin, post("/api/v1/admin/cicd/connections"),
+                "{\"kind\":\"argocd\",\"name\":\"A " + UUID.randomUUID() + "\",\"baseUrl\":\"https://argo.local\"}").andExpect(status().isCreated()).andReturn());
+        var at = f.body(f.send(admin, get("/api/v1/admin/cicd/connections/" + argo.at("/connection/id").asString() + "/templates"), "").andExpect(status().isOk()).andReturn());
+        assertThat(at.get("argocd").asString()).contains(argo.at("/connection/webhookUrl").asString());
+        assertThat(at.get("jenkinsfile").isNull()).isTrue();
+        var gl = f.newConnection(admin, "gitlab", git.baseUrl(), null)[0];
+        var none = f.body(f.send(admin, get("/api/v1/admin/cicd/connections/" + gl + "/templates"), "").andExpect(status().isOk()).andReturn());
+        assertThat(none.get("jenkinsfile").isNull()).isTrue();
+        assertThat(none.get("argocd").isNull()).isTrue();
+        f.send(junho, get("/api/v1/admin/cicd/connections/" + id + "/templates"), "").andExpect(status().isForbidden());
+    }
+
+    @Test void delegatedAdminSeesNoSecretInTemplates() throws Exception {
+        var argo = f.body(f.send(admin, post("/api/v1/admin/cicd/connections"),
+                "{\"kind\":\"argocd\",\"name\":\"A " + UUID.randomUUID() + "\",\"baseUrl\":\"https://argo.local\"}").andExpect(status().isCreated()).andReturn());
+        f.grantGlobal(admin, CicdFixture.JUNHO, CicdFixture.ROLE_CICD_ADMIN);
+        junho = f.login(CicdFixture.JUNHO_EMAIL);
+        var body = f.send(junho, get("/api/v1/admin/cicd/connections/" + argo.at("/connection/id").asString() + "/templates"), "")
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(body).doesNotContain(argo.get("webhookSecret").asString()).contains("$openpms-webhook-secret");
+    }
+
+    @Test void imageTagTest() throws Exception {
+        var url = "/api/v1/admin/cicd/image-tag-test";
+        assertThat(f.send(admin, post(url), "{\"pattern\":null,\"image\":\"a/b:1a2b3c4d\"}").andExpect(status().isOk()).andReturn()
+                .getResponse().getContentAsString()).isEqualTo("{\"sha\":\"1a2b3c4d\"}");
+        assertThat(f.send(admin, post(url), "{\"image\":\"a/b:latest\"}").andExpect(status().isOk()).andReturn()
+                .getResponse().getContentAsString()).isEqualTo("{\"sha\":null}");
+        f.send(admin, post(url), "{\"pattern\":\"([0-9\",\"image\":\"a/b:1\"}").andExpect(status().isUnprocessableEntity());
+        f.send(junho, post(url), "{\"image\":\"a/b:1a2b3c4d\"}").andExpect(status().isForbidden());
     }
 
     @Test void answersWithTheWebhookSecretAreNotKeptForIdempotencyRetries() throws Exception {

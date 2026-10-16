@@ -61,6 +61,13 @@ public class CicdConnectionController {
         return connections.check(id);
     }
 
+    /** The Jenkinsfile or Argo CD settings to paste, with this connection's webhook address (never the secret). */
+    @GetMapping("/{id}/templates")
+    public CicdConnections.Templates templates(@PathVariable UUID id) {
+        manager();
+        return connections.templates(id);
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         connections.delete(manager(), id);

@@ -29,19 +29,20 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Tool connections (GitLab, GitHub): who may manage them, validation, secrets at rest, and the audit trail. */
+/** Tool connections (GitLab, GitHub, Jenkins, Argo CD): who may manage them, validation, secrets at rest, and the audit trail. */
 @Service
 public class CicdConnections {
     private static final Logger AUDIT = LoggerFactory.getLogger("openpms.audit");
     private static final SecureRandom RANDOM = new SecureRandom();
-    private static final Set<String> KINDS = Set.of("gitlab", "github");
+    private static final Set<String> KINDS = Set.of("gitlab", "github", "jenkins", "argocd");
+    private static final Set<String> NOTICE_KINDS = Set.of("jenkins", "argocd");
 
     /**
      * Never holds a secret. projects: the allowed projects the caller may see (by name); hiddenProjectCount: the others on the
      * list, counted only (a delegated CI/CD 연동 관리자 does not learn the names of projects they cannot see).
      */
     public record ConnectionDto(UUID id, String kind, String name, String baseUrl, String webhookUrl, String tokenHint, String secretHint,
-                                boolean active, int repositoryCount, OffsetDateTime createdAt, List<ProjectRef> projects, int hiddenProjectCount) {}
+                                boolean active, int repositoryCount, OffsetDateTime createdAt, List<ProjectRef> projects, int hiddenProjectCount, String toolUrl, String imageTagPattern) {}
 
     public record ProjectRef(UUID id, String name) {}
 
@@ -63,6 +64,9 @@ public class CicdConnections {
     }
 
     public record CheckResult(boolean ok, int status) {}
+
+    /** Only the part for the connection's kind is filled (GitLab and GitHub: neither). The webhook secret is never in it. */
+    public record Templates(String kind, String jenkinsfile, String argocd) {}
 
     private final DSLContext db;
     private final SecretBox box;
@@ -98,6 +102,9 @@ public class CicdConnections {
         var name = name(In.str(in, "name"));
         var baseUrl = baseUrl(In.str(in, "baseUrl"));
         var token = In.str(in, "apiToken");
+        var notice = NOTICE_KINDS.contains(kind);
+        if (notice) rejectToken(token);
+        var pattern = notice ? ImageTags.validate(In.str(in, "imageTagPattern")) : null;
         box.requireReady();
         if (db.fetchExists(CICD_CONNECTIONS, CICD_CONNECTIONS.NAME.eq(name))) throw duplicate();
         var secret = random();
@@ -105,6 +112,10 @@ public class CicdConnections {
         r.setKind(kind);
         r.setName(name);
         r.setBaseUrl(baseUrl);
+        if (notice) {
+            r.setToolUrl(baseUrl);
+            r.setImageTagPattern(pattern);
+        }
         if (token != null && !token.isBlank()) {
             r.setApiTokenEnc(box.seal(token));
             r.setApiTokenHint(SecretBox.hint(token));
@@ -115,13 +126,15 @@ public class CicdConnections {
         r.setActive(true);
         r.setCreatedBy(ctx.userId());
         r.insert();
-        AUDIT.info("cicd.connection.created by={} id={} name={}", ctx.userId(), r.getId(), name);
+        AUDIT.info("cicd.connection.created by={} id={} name={} kind={}", ctx.userId(), r.getId(), name, kind);
         return new CreatedConnection(dto(r, 0, Allowed.NONE), secret);
     }
 
     @Transactional
     public ConnectionDto update(Ctx ctx, UUID id, Map<String, Object> in) {
         var r = find(id);
+        var notice = NOTICE_KINDS.contains(r.getKind());
+        if (notice && In.has(in, "apiToken")) rejectToken(In.str(in, "apiToken"));
         if (In.has(in, "name")) {
             var name = name(In.str(in, "name"));
             if (!name.equals(r.getName()) && db.fetchExists(CICD_CONNECTIONS, CICD_CONNECTIONS.NAME.eq(name))) throw duplicate();
@@ -134,12 +147,14 @@ public class CicdConnections {
             if (!url.equals(r.getBaseUrl())) {
                 // a stored token must never follow the connection to another address
                 r.setBaseUrl(url);
+                if (notice) r.setToolUrl(url);
                 if (r.getApiTokenEnc() != null) tokenCleared = true;
                 r.setApiTokenEnc(null);
                 r.setApiTokenHint(null);
             }
         }
-        if (In.has(in, "apiToken")) {
+        if (notice && In.has(in, "imageTagPattern")) r.setImageTagPattern(ImageTags.validate(In.str(in, "imageTagPattern")));
+        if (!notice && In.has(in, "apiToken")) {
             var token = newToken;
             if (token == null || token.isEmpty()) {
                 r.setApiTokenEnc(null);
@@ -185,7 +200,8 @@ public class CicdConnections {
         if (!removed.isEmpty()) {
             db.deleteFrom(CICD_CONNECTION_PROJECTS).where(CICD_CONNECTION_PROJECTS.CONNECTION_ID.eq(id))
                     .and(CICD_CONNECTION_PROJECTS.PROJECT_ID.in(removed)).execute();
-            if (db.fetchExists(CICD_REPOSITORIES, CICD_REPOSITORIES.CONNECTION_ID.eq(id).and(CICD_REPOSITORIES.PROJECT_ID.in(removed))))
+            if (db.fetchExists(CICD_REPOSITORIES, CICD_REPOSITORIES.CONNECTION_ID.eq(id).and(CICD_REPOSITORIES.PROJECT_ID.in(removed))
+                    .and(CICD_REPOSITORIES.DETACHED_AT.isNull())))
                 throw new ApiException(409, "이 연동의 저장소가 붙어 있는 프로젝트는 뺄 수 없습니다. 먼저 저장소를 떼세요.");
         }
         for (var projectId : added)
@@ -222,9 +238,25 @@ public class CicdConnections {
     @Transactional
     public void delete(Ctx ctx, UUID id) {
         var r = find(id);
-        if (count(id) > 0) throw new ApiException(409, "저장소가 붙어 있는 연동은 지울 수 없습니다. 먼저 저장소를 떼세요.");
+        // detached repositories keep their history (builds, deployments), so they count too
+        if (db.fetchExists(CICD_REPOSITORIES, CICD_REPOSITORIES.CONNECTION_ID.eq(id)))
+            throw new ApiException(409, "기록이 남은 저장소(뗀 저장소 포함)가 있는 연동은 지울 수 없습니다. 대신 끄세요.");
         r.delete();
         AUDIT.info("cicd.connection.deleted by={} id={} name={}", ctx.userId(), id, r.getName());
+    }
+
+    public Templates templates(UUID id) {
+        var r = find(id);
+        var hook = publicBase + "/api/v1/hooks/cicd/" + r.getHookKey();
+        return switch (r.getKind()) {
+            case "jenkins" -> new Templates("jenkins", CicdTemplates.jenkinsfile(hook), null);
+            case "argocd" -> new Templates("argocd", null, CicdTemplates.argocd(hook));
+            default -> new Templates(r.getKind(), null, null);
+        };
+    }
+
+    private static void rejectToken(String token) {
+        if (token != null && !token.isBlank()) throw ApiException.field("apiToken", "Jenkins·Argo CD 연동에는 API 토큰을 쓰지 않습니다.");
     }
 
     private com.openpms.db.tables.records.CicdConnectionsRecord find(UUID id) {
@@ -234,11 +266,11 @@ public class CicdConnections {
     }
 
     private int count(UUID id) {
-        return db.fetchCount(CICD_REPOSITORIES, CICD_REPOSITORIES.CONNECTION_ID.eq(id));
+        return db.fetchCount(CICD_REPOSITORIES, CICD_REPOSITORIES.CONNECTION_ID.eq(id).and(CICD_REPOSITORIES.DETACHED_AT.isNull()));
     }
 
     private static org.jooq.Field<Integer> repoCount() {
-        return DSL.field(DSL.select(DSL.count()).from(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(CICD_CONNECTIONS.ID))).cast(Integer.class).as("repo_count");
+        return DSL.field(DSL.select(DSL.count()).from(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(CICD_CONNECTIONS.ID).and(CICD_REPOSITORIES.DETACHED_AT.isNull()))).cast(Integer.class).as("repo_count");
     }
 
     private Allowed allowedOf(Ctx ctx, UUID id) {
@@ -272,7 +304,7 @@ public class CicdConnections {
     private ConnectionDto dto(com.openpms.db.tables.records.CicdConnectionsRecord r, int repos, Allowed allowed) {
         return new ConnectionDto(r.getId(), r.getKind(), r.getName(), r.getBaseUrl(), publicBase + "/api/v1/hooks/cicd/" + r.getHookKey(),
                 r.getApiTokenHint(), r.getWebhookSecretHint(), Boolean.TRUE.equals(r.getActive()), repos, r.getCreatedAt(),
-                allowed.projects(), allowed.hidden());
+                allowed.projects(), allowed.hidden(), r.getToolUrl(), r.getImageTagPattern());
     }
 
     private static ApiException duplicate() {

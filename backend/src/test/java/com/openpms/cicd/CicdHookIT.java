@@ -183,6 +183,32 @@ class CicdHookIT {
                 .andExpect(status().isForbidden());
     }
 
+    static final String NOTICE = "{\"type\":\"deployment\",\"repository\":\"web/portal\",\"id\":\"portal-42\",\"image\":\"registry.local/web/portal:1a2b3c4d\","
+            + "\"environment\":\"production\",\"status\":\"success\",\"url\":\"https://jenkins.local/job/portal/42/\",\"at\":\"2026-10-15T09:00:00+09:00\"}";
+
+    private MockHttpServletRequestBuilder standard(String key, byte[] body) {
+        return post("/api/v1/hooks/cicd/" + key).contentType(MediaType.APPLICATION_JSON).content(body);
+    }
+
+    @Test void jenkinsSignedNoticeIsAccepted() throws Exception {
+        var c = f.newConnection(admin, "jenkins", "https://jenkins.local", null);
+        var body = NOTICE.getBytes(StandardCharsets.UTF_8);
+        mvc.perform(standard(c[2], body).header("X-OpenPMS-Signature", sign(body, c[1]))).andExpect(status().isAccepted()).andExpect(jsonPath("$.accepted").value(1));
+        assertThat(db.fetchCount(CICD_EVENTS, CICD_EVENTS.CONNECTION_ID.eq(UUID.fromString(c[0])))).isEqualTo(1);
+        var wrong = mvc.perform(standard(c[2], body).header("X-OpenPMS-Signature", sign(body, "other"))).andExpect(status().isNotFound()).andReturn();
+        assertThat(wrong.getResponse().getContentAsString()).isNotEmpty().isEqualTo(unknownBody(body));
+        // Jenkins can sign, so the plain token does not do
+        mvc.perform(standard(c[2], body).header("X-OpenPMS-Token", c[1])).andExpect(status().isNotFound());
+        assertThat(db.fetchCount(CICD_EVENTS, CICD_EVENTS.CONNECTION_ID.eq(UUID.fromString(c[0])))).isEqualTo(1);
+    }
+
+    @Test void argoTokenHeaderIsAccepted() throws Exception {
+        var c = f.newConnection(admin, "argocd", "https://argo.local", null);
+        var body = NOTICE.getBytes(StandardCharsets.UTF_8);
+        mvc.perform(standard(c[2], body).header("X-OpenPMS-Token", c[1])).andExpect(status().isAccepted()).andExpect(jsonPath("$.accepted").value(1));
+        mvc.perform(standard(c[2], body).header("X-OpenPMS-Token", "wrong")).andExpect(status().isNotFound());
+    }
+
     @Test void gitlabTokenHeader() throws Exception {
         var c = f.newConnection(admin, "gitlab", "https://gitlab.example.com", null);
         var body = resource("gitlab-push.json");
