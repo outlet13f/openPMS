@@ -244,6 +244,11 @@ export function useCicdConnectionMutations() {
     create: useMutation({ mutationFn: (input: CicdConnectionInput) => api.cicd.createConnection(input), onSuccess: done }),
     update: useMutation({ mutationFn: (v: { id: Id; patch: CicdConnectionPatch }) => api.cicd.updateConnection(v.id, v.patch), onSuccess: done }),
     rotateSecret: useMutation({ mutationFn: (id: Id) => api.cicd.rotateSecret(id), onSuccess: done }),
+    // the project side's choice lists change with it
+    setProjects: useMutation({
+      mutationFn: (v: { id: Id; projectIds: Id[] }) => api.cicd.setConnectionProjects(v.id, v.projectIds),
+      onSuccess: () => qc.invalidateQueries({ queryKey: ["cicd"] }),
+    }),
     check: useMutation({ mutationFn: (id: Id) => api.cicd.checkConnection(id) }),
     remove: useMutation({ mutationFn: (id: Id) => api.cicd.deleteConnection(id), onSuccess: done }),
   };

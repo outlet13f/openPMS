@@ -16,6 +16,11 @@ export interface DbCicdConnection {
   createdBy: Id | null;
   createdAt: IsoDateTime;
 }
+/** cicd_connection_projects: a project on a connection's allowed list */
+export interface DbCicdConnectionProject {
+  connectionId: Id;
+  projectId: Id;
+}
 export interface DbCicdRepository {
   id: Id;
   connectionId: Id;
@@ -80,6 +85,11 @@ export function seedCicd() {
       active: false, createdBy: "u-seoyeon", createdAt: "2026-10-01T00:30:00Z",
     },
   ];
+  // V1011: the projects with V1010's repositories are on the list
+  const connectionProjects: DbCicdConnectionProject[] = [
+    { connectionId: CICD.connection, projectId: "p-web" },
+    { connectionId: CICD.connection, projectId: "p-mobile" },
+  ];
   const repositories: DbCicdRepository[] = [
     {
       id: CICD.repoWeb, connectionId: CICD.connection, externalId: "101", fullPath: "web/portal", webUrl: `${GITLAB}/web/portal`, projectId: "p-web",
@@ -123,5 +133,5 @@ export function seedCicd() {
     // 끊은 연결: 13번 작업이 커밋 4를 잘못 잇던 것을 서연이 끊음
     link(7, 13, "cicd-commit-4", null, "message", "2026-10-08T07:06:00Z", true),
   ];
-  return { connections, repositories, commits, mergeRequests, links };
+  return { connections, connectionProjects, repositories, commits, mergeRequests, links };
 }

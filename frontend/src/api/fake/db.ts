@@ -3,7 +3,7 @@
 // State survives reloads through localStorage (per browser, per user) and can be reset from the login page.
 
 import type { DbTimeEntry } from "./time-seed";
-import type { DbCicdCommit, DbCicdConnection, DbCicdLink, DbCicdMergeRequest, DbCicdRepository } from "./cicd-seed";
+import type { DbCicdCommit, DbCicdConnection, DbCicdConnectionProject, DbCicdLink, DbCicdMergeRequest, DbCicdRepository } from "./cicd-seed";
 import type {
   TimeActivity,
   OverviewWidget,
@@ -165,6 +165,8 @@ export interface Db {
   apiTokensEnabled?: boolean;
   /** CI/CD 연동 (webhooks do not exist here: only the seeded merge requests and commits) */
   cicdConnections: DbCicdConnection[];
+  /** cicd_connection_projects (V27): the projects that may use a connection */
+  cicdConnectionProjects: DbCicdConnectionProject[];
   cicdRepositories: DbCicdRepository[];
   cicdCommits: DbCicdCommit[];
   cicdMergeRequests: DbCicdMergeRequest[];
@@ -193,8 +195,8 @@ export interface Db {
 }
 
 const KEY = "openpms.fakedb";
-// 19: re-seed browsers that still hold the removed ITSM seed (schema 15-17); 20: the CI/CD seed
-const SCHEMA = 20;
+// 19: re-seed browsers that still hold the removed ITSM seed (schema 15-17); 20: the CI/CD seed; 21: allowed projects per connection
+const SCHEMA = 21;
 
 function load(): Db {
   try {

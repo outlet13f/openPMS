@@ -391,7 +391,16 @@ export interface Api {
     checkConnection(id: Id): Promise<{ ok: boolean; status: number }>;
     /** DELETE /admin/cicd/connections/{id} — 409 "저장소가 붙어 있는 연동은 지울 수 없습니다. 먼저 저장소를 떼세요." */
     deleteConnection(id: Id): Promise<void>;
-    /** GET /projects/{p}/cicd/connections (cicd.manage) — the active connections to choose from */
+    /**
+     * PUT /admin/cicd/connections/{id}/projects — the allowed projects as a whole, system administrators only (403 "허용 프로젝트는
+     * 시스템 관리자만 바꿀 수 있습니다."); 422 projectIds "없는 프로젝트가 있습니다."; 409 "이 연동의 저장소가 붙어 있는 프로젝트는 뺄 수
+     * 없습니다. 먼저 저장소를 떼세요."
+     */
+    setConnectionProjects(id: Id, projectIds: Id[]): Promise<CicdConnection>;
+    /**
+     * GET /projects/{p}/cicd/connections (cicd.manage) — the active connections that allow this project. Search and attach
+     * through any other connection is the same 404 "연동을 찾을 수 없습니다." as for one that is off or missing.
+     */
     projectConnections(project: string): Promise<CicdConnectionChoice[]>;
     /**
      * GET /projects/{p}/cicd/connections/{c}/search?q= (cicd.manage) — q at most 100 characters (422 "검색어가 너무 깁니다.");

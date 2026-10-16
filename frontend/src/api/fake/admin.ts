@@ -366,6 +366,7 @@ export const projectExtras: Pick<Api["projects"], "setTypes" | "archive" | "unar
       db.projectFavorites = db.projectFavorites.filter((f) => f.projectId !== p.id);
       db.projectCustomFields = db.projectCustomFields.filter((f) => f.projectId !== p.id);
       db.notificationSettings = db.notificationSettings.filter((x) => x.projectId !== p.id);
+      db.cicdConnectionProjects = db.cicdConnectionProjects.filter((x) => x.projectId !== p.id);
       db.projects = db.projects.filter((x) => x.id !== p.id);
     }),
 };

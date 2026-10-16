@@ -1289,6 +1289,10 @@ export interface CicdConnection {
   active: boolean;
   repositoryCount: number;
   createdAt: IsoDateTime;
+  /** the allowed projects the caller may see (a delegated CI/CD 연동 관리자 sees only their own projects by name) */
+  projects: { id: Id; name: string }[];
+  /** the other allowed projects, counted only */
+  hiddenProjectCount: number;
 }
 export interface CicdConnectionInput {
   kind: CicdKind;

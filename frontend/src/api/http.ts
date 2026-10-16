@@ -242,6 +242,7 @@ export const httpApi: Api = {
     rotateSecret: (id) => post(`/admin/cicd/connections/${id}/secret`),
     checkConnection: (id) => post(`/admin/cicd/connections/${id}/check`),
     deleteConnection: (id) => del(`/admin/cicd/connections/${id}`),
+    setConnectionProjects: (id, projectIds) => put(`/admin/cicd/connections/${id}/projects`, { projectIds }),
     projectConnections: (project) => get(`/projects/${encodeURIComponent(project)}/cicd/connections`),
     searchRepositories: (project, connectionId, q) => get(`/projects/${encodeURIComponent(project)}/cicd/connections/${connectionId}/search`, { q }),
     repositories: (project) => get(`/projects/${encodeURIComponent(project)}/cicd/repositories`),

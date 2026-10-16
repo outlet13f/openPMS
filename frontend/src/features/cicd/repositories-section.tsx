@@ -1,6 +1,7 @@
 // 프로젝트 설정 › 저장소: the GitLab·GitHub repositories attached to the project (cicd.view sees the list). With
 // cicd.manage: attach one (pick a connection → search the code host → attach) and detach (its commits, merge requests
 // and links go with it). How to set up the webhook is the connection administrator's business: a hint says whom to ask.
+// Only connections that allow this project are offered; with none, the attach button gives way to whom to ask.
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ExternalLink, FolderGit2, Link2, Plus, Unlink } from "lucide-react";
@@ -113,6 +114,8 @@ export function RepositoriesSection() {
   const project = useCurrentProject();
   const manage = can(project, "cicd.manage");
   const list = useProjectRepositories(project.identifier);
+  const choices = useProjectCicdConnections(project.identifier, manage);
+  const noneAllowed = manage && choices.data?.length === 0;
   const m = useRepositoryMutations(project.identifier);
   const runToast = useRunWithToast();
   const [attaching, setAttaching] = useState(false);
@@ -129,11 +132,14 @@ export function RepositoriesSection() {
           <p className="mt-1 text-sm text-fg-muted">{t("cicd.repos.hint")}</p>
           <p className="mt-1 text-sm text-fg-muted">{t("cicd.repos.webhookHint")}</p>
         </div>
-        {manage && (
-          <Button variant="primary" icon={<Plus />} onClick={() => setAttaching(true)}>
-            {t("cicd.repos.attach")}
-          </Button>
-        )}
+        {manage &&
+          (noneAllowed ? (
+            <p className="max-w-xs text-sm text-fg-muted">{t("cicd.repos.notAllowed")}</p>
+          ) : (
+            <Button variant="primary" icon={<Plus />} onClick={() => setAttaching(true)}>
+              {t("cicd.repos.attach")}
+            </Button>
+          ))}
       </div>
       {list.isPending ? (
         <Skeleton className="h-24 w-full" />

@@ -1,5 +1,5 @@
 // CI/CD 연동 in the fake layer: the same rules and messages as the server's cicd/CicdConnections, CicdRepositories and
-// DevTabController. There is no webhook and no code host here: the seeded merge requests and commits are what the
+// DevTabController. A project sees only the connections whose allowed list holds it (V27). There is no webhook and no code host here: the seeded merge requests and commits are what the
 // development tab shows, the repository search is a fixed list of three, attaching only makes the repository.
 import type { Api } from "../api";
 import type { CicdConnection, CicdMergeRequest, CicdRepository, DevInfo, Id } from "../types";
@@ -36,10 +36,27 @@ function random() {
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-const toConnection = (c: (typeof db.cicdConnections)[number]): CicdConnection => ({
+/** the allowed projects the person may see, by name (sorted); the others are counted only */
+function allowedOf(user: DbUser, connectionId: Id) {
+  const projects: { id: Id; name: string }[] = [];
+  let hidden = 0;
+  for (const row of db.cicdConnectionProjects.filter((x) => x.connectionId === connectionId)) {
+    const p = db.projects.find((x) => x.id === row.projectId);
+    if (!p) continue;
+    if (user.isAdmin || can(user, p, "project.view")) projects.push({ id: p.id, name: p.name });
+    else hidden += 1;
+  }
+  projects.sort((a, b) => a.name.localeCompare(b.name, "ko") || (a.id < b.id ? -1 : 1));
+  return { projects, hiddenProjectCount: hidden };
+}
+
+const toConnection = (user: DbUser, c: (typeof db.cicdConnections)[number]): CicdConnection => ({
   id: c.id, kind: c.kind, name: c.name, baseUrl: c.baseUrl, webhookUrl: `/api/v1/hooks/cicd/${c.hookKey}`, tokenHint: c.tokenHint, secretHint: c.secretHint,
   active: c.active, repositoryCount: db.cicdRepositories.filter((r) => r.connectionId === c.id).length, createdAt: c.createdAt,
+  ...allowedOf(user, c.id),
 });
+
+const allows = (connectionId: Id, projectId: Id) => db.cicdConnectionProjects.some((x) => x.connectionId === connectionId && x.projectId === projectId);
 
 function checkName(v: unknown) {
   const n = typeof v === "string" ? v.trim() : "";
@@ -86,9 +103,10 @@ function manageable(user: DbUser, project: string): DbProject {
   return p;
 }
 
-function activeConnection(id: Id | null | undefined) {
+function activeConnection(id: Id | null | undefined, p: DbProject) {
   const c = id ? db.cicdConnections.find((x) => x.id === id) : undefined;
-  if (!c || !c.active) throw new ApiError(404, "연동을 찾을 수 없습니다.");
+  // not on the allowed list: the same 404, the connection's existence is not revealed
+  if (!c || !c.active || !allows(c.id, p.id)) throw new ApiError(404, "연동을 찾을 수 없습니다.");
   if (c.tokenHint === null) throw new ApiError(422, "이 연동에는 API 토큰이 없어 저장소를 찾을 수 없습니다.");
   return c;
 }
@@ -142,12 +160,14 @@ function projectAncestors(p: DbProject): Id[] {
 export const cicdApi: Api["cicd"] = {
   connections: () =>
     run(() => {
-      requireManager(sessionUser());
-      return db.cicdConnections.slice().sort((a, b) => a.name.localeCompare(b.name, "ko")).map(toConnection);
+      const user = sessionUser();
+      requireManager(user);
+      return db.cicdConnections.slice().sort((a, b) => a.name.localeCompare(b.name, "ko")).map((c) => toConnection(user, c));
     }),
   createConnection: (input) =>
     run(() => {
-      requireManager(sessionUser());
+      const user = sessionUser();
+      requireManager(user);
       if (!KINDS.includes(input.kind)) throw fieldError("kind", "지원하지 않는 도구입니다.");
       const name = checkName(input.name);
       const baseUrl = checkBaseUrl(input.baseUrl);
@@ -159,11 +179,12 @@ export const cicdApi: Api["cicd"] = {
         secretHint: hint(secret), active: true, createdBy: db.sessionUserId, createdAt: nowIso(),
       };
       db.cicdConnections.push(c);
-      return { connection: toConnection(c), webhookSecret: secret };
+      return { connection: toConnection(user, c), webhookSecret: secret };
     }),
   updateConnection: (id, patch) =>
     run(() => {
-      requireManager(sessionUser());
+      const user = sessionUser();
+      requireManager(user);
       const c = findConnection(id);
       const next = { ...c };
       if (patch.name !== undefined) {
@@ -185,7 +206,27 @@ export const cicdApi: Api["cicd"] = {
         next.active = patch.active;
       }
       Object.assign(c, next);
-      return toConnection(c);
+      return toConnection(user, c);
+    }),
+  setConnectionProjects: (id, projectIds) =>
+    run(() => {
+      const user = sessionUser();
+      requireManager(user);
+      if (!user.isAdmin) throw new ApiError(403, "허용 프로젝트는 시스템 관리자만 바꿀 수 있습니다.");
+      const c = findConnection(id);
+      if (!Array.isArray(projectIds)) throw fieldError("projectIds", "허용 프로젝트 목록이 올바르지 않습니다.");
+      if (projectIds.length > 1000) throw fieldError("projectIds", "허용 프로젝트가 너무 많습니다.");
+      const wanted = [...new Set(projectIds)];
+      if (wanted.some((pid) => !db.projects.some((p) => p.id === pid))) throw fieldError("projectIds", "없는 프로젝트가 있습니다.");
+      const current = db.cicdConnectionProjects.filter((x) => x.connectionId === c.id).map((x) => x.projectId);
+      const removed = current.filter((pid) => !wanted.includes(pid));
+      if (db.cicdRepositories.some((r) => r.connectionId === c.id && removed.includes(r.projectId)))
+        throw new ApiError(409, "이 연동의 저장소가 붙어 있는 프로젝트는 뺄 수 없습니다. 먼저 저장소를 떼세요.");
+      db.cicdConnectionProjects = [
+        ...db.cicdConnectionProjects.filter((x) => x.connectionId !== c.id),
+        ...wanted.map((projectId) => ({ connectionId: c.id, projectId })),
+      ];
+      return toConnection(user, c);
     }),
   rotateSecret: (id) =>
     run(() => {
@@ -206,18 +247,19 @@ export const cicdApi: Api["cicd"] = {
       const c = findConnection(id);
       if (db.cicdRepositories.some((r) => r.connectionId === id)) throw new ApiError(409, "저장소가 붙어 있는 연동은 지울 수 없습니다. 먼저 저장소를 떼세요.");
       db.cicdConnections = db.cicdConnections.filter((x) => x !== c);
+      db.cicdConnectionProjects = db.cicdConnectionProjects.filter((x) => x.connectionId !== c.id);
     }),
 
   projectConnections: (project) =>
     run(() => {
-      manageable(sessionUser(), project);
-      return db.cicdConnections.filter((c) => c.active).sort((a, b) => a.name.localeCompare(b.name, "ko")).map((c) => ({ id: c.id, kind: c.kind, name: c.name }));
+      const p = manageable(sessionUser(), project);
+      return db.cicdConnections.filter((c) => c.active && allows(c.id, p.id)).sort((a, b) => a.name.localeCompare(b.name, "ko")).map((c) => ({ id: c.id, kind: c.kind, name: c.name }));
     }),
   searchRepositories: (project, connectionId, q) =>
     run(() => {
-      manageable(sessionUser(), project);
+      const p = manageable(sessionUser(), project);
       if (q && q.length > 100) throw fieldError("q", "검색어가 너무 깁니다.");
-      const c = activeConnection(connectionId);
+      const c = activeConnection(connectionId, p);
       const needle = (q ?? "").trim().toLowerCase();
       return REMOTE.filter((r) => r.fullPath.toLowerCase().includes(needle)).map((r) => {
         const out: { externalId: string; fullPath: string; webUrl: string; attachedProject?: boolean } = {
@@ -237,7 +279,7 @@ export const cicdApi: Api["cicd"] = {
       const p = manageable(sessionUser(), project);
       const externalId = input.externalId;
       if (typeof externalId !== "string" || !externalId.trim() || externalId.length > 200) throw fieldError("externalId", "저장소를 고르세요.");
-      const c = activeConnection(input.connectionId);
+      const c = activeConnection(input.connectionId, p);
       const existing = db.cicdRepositories.find((r) => r.connectionId === c.id && r.externalId === externalId);
       if (existing) throw taken(existing.projectId, p);
       // what is stored is what the host says: the fixed list here

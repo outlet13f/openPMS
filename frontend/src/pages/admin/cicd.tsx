@@ -2,16 +2,19 @@
 // "CI/CD 연동 관리자" global role) register a connection, get its webhook address and secret once (again only by
 // rotating the secret), check that the API token works and remove a connection no project uses any more.
 // The API token is never shown again (the last four characters only); a changed address clears it unless a new one comes along.
+// Each connection has a list of allowed projects (only those can search and attach through it): system administrators pick
+// them in the edit dialog; a delegated manager sees the projects visible to them by name and the rest as a count.
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Copy, GitMerge, KeyRound, MoreHorizontal, Pencil, Plus, PlugZap, Trash2 } from "lucide-react";
 import { isApiError, type CicdConnection, type CicdConnectionPatch, type CicdKind } from "@/api";
 import { useCicdConnectionMutations, useCicdConnections } from "@/api/admin-hooks";
-import { useMe } from "@/api/hooks";
+import { useMe, useProjects } from "@/api/hooks";
 import { Badge } from "@/components/ui/badges";
 import { Button } from "@/components/ui/button";
 import { Checkbox, Segmented } from "@/components/ui/choice";
 import { Field, Input } from "@/components/ui/field";
+import { MultiSelect } from "@/components/ui/multi-select";
 import { Banner, EmptyState, useToast } from "@/components/ui/feedback";
 import { Dialog, Menu } from "@/components/ui/overlay";
 import { Skeleton } from "@/components/ui/spinner";
@@ -49,6 +52,28 @@ function CopyRow({ label, copyLabel, copied, value }: { label: string; copyLabel
   );
 }
 
+/** "웹 플랫폼 개편, 모바일 앱 2.0 외 비공개 1개" — names the reader may see, the rest counted. */
+function useProjectsText() {
+  const { t } = useTranslation();
+  return (c: CicdConnection) => {
+    const names = c.projects.map((p) => p.name).join(", ");
+    if (c.hiddenProjectCount > 0)
+      return names ? t("cicd.admin.projectsWithHidden", { names, count: c.hiddenProjectCount }) : t("cicd.admin.projectsOnlyHidden", { count: c.hiddenProjectCount });
+    return names || t("cicd.admin.projectsNone");
+  };
+}
+
+/** System administrators pick the allowed projects (the active ones, plus any already on the list). */
+function ProjectsPicker({ editing, value, onChange }: { editing: CicdConnection; value: string[]; onChange: (v: string[]) => void }) {
+  const { t } = useTranslation();
+  const active = useProjects({ filter: "active", pageSize: 100 }).data?.items ?? [];
+  const options = [
+    ...active.map((p) => ({ value: p.id, label: p.name })),
+    ...editing.projects.filter((p) => !active.some((a) => a.id === p.id)).map((p) => ({ value: p.id, label: p.name })),
+  ].sort((a, b) => a.label.localeCompare(b.label, "ko"));
+  return <MultiSelect aria-label={t("cicd.admin.projects")} placeholder={t("cicd.admin.projectsPlaceholder")} options={options} value={value} onValueChange={onChange} />;
+}
+
 /** After making a connection or rotating its secret: the webhook address and secret, this once. */
 function SecretDialog({ webhookUrl, secret, onClose }: { webhookUrl: string; secret: string; onClose: () => void }) {
   const { t } = useTranslation();
@@ -68,6 +93,10 @@ function ConnectionDialog({ editing, onClose, onSecret }: { editing: CicdConnect
   const { t } = useTranslation();
   const m = useCicdConnectionMutations();
   const runToast = useRunWithToast();
+  const toast = useToast();
+  const isAdmin = !!useMe().data?.isAdmin;
+  const projectsText = useProjectsText();
+  const [projectIds, setProjectIds] = useState<string[]>(editing?.projects.map((p) => p.id) ?? []);
   const [kind, setKind] = useState<CicdKind>(editing?.kind ?? "gitlab");
   const [name, setName] = useState(editing?.name ?? "");
   const [baseUrl, setBaseUrl] = useState(editing?.baseUrl ?? "");
@@ -78,6 +107,10 @@ function ConnectionDialog({ editing, onClose, onSecret }: { editing: CicdConnect
   const err = (f: string) => fieldErrorOf(mutation.error, f);
   const urlChanged = !!editing && baseUrl.trim().replace(/\/+$/, "") !== editing.baseUrl;
   const generalError = isApiError(mutation.error) && !mutation.error.fieldErrors.length ? mutation.error.message : undefined;
+  // a 409 (a project with this connection's repositories) or a 422 from saving the list: shown here, the dialog stays open
+  const projectsError = isApiError(m.setProjects.error) ? (fieldErrorOf(m.setProjects.error, "projectIds") ?? m.setProjects.error.message) : undefined;
+  const projectsChanged =
+    !!editing && isAdmin && (projectIds.length !== editing.projects.length || projectIds.some((id) => !editing.projects.some((p) => p.id === id)));
 
   const save = async () => {
     if (!editing) {
@@ -96,8 +129,19 @@ function ConnectionDialog({ editing, onClose, onSecret }: { editing: CicdConnect
     if (apiToken.trim()) patch.apiToken = apiToken.trim();
     else if (clearToken) patch.apiToken = "";
     if (active !== editing.active) patch.active = active;
-    if (!Object.keys(patch).length) return onClose();
-    if (await runToast(m.update.mutateAsync({ id: editing.id, patch }), t("cicd.admin.saved"))) onClose();
+    const patched = Object.keys(patch).length > 0;
+    if (!patched && !projectsChanged) return onClose();
+    if (patched && !(await runToast(m.update.mutateAsync({ id: editing.id, patch })))) return;
+    if (projectsChanged) {
+      // its own request (PUT …/projects), after the other changes
+      try {
+        await m.setProjects.mutateAsync({ id: editing.id, projectIds });
+      } catch {
+        return;
+      }
+    }
+    toast({ tone: "success", title: t("cicd.admin.saved") });
+    onClose();
   };
 
   return (
@@ -158,6 +202,29 @@ function ConnectionDialog({ editing, onClose, onSecret }: { editing: CicdConnect
           <Checkbox label={t("cicd.admin.clearToken")} checked={clearToken} onCheckedChange={(c) => setClearToken(c === true)} />
         )}
         {editing && <Checkbox label={t("cicd.admin.active")} description={t("cicd.admin.activeHint")} checked={active} onCheckedChange={(c) => setActive(c === true)} />}
+        {!editing ? (
+          <p className="text-xs text-fg-muted">{t("cicd.admin.projectsNewHint")}</p>
+        ) : (
+          <fieldset className="flex flex-col gap-1.5">
+            <legend className="mb-1 text-sm font-medium text-fg">{t("cicd.admin.projects")}</legend>
+            {isAdmin ? (
+              <>
+                <ProjectsPicker editing={editing} value={projectIds} onChange={setProjectIds} />
+                <p className="text-xs text-fg-muted">{t("cicd.admin.projectsHint")}</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-fg">{projectsText(editing)}</p>
+                <p className="text-xs text-fg-muted">{t("cicd.admin.projectsAdminOnly")}</p>
+              </>
+            )}
+            {projectsError && (
+              <p role="alert" className="text-xs text-danger">
+                {projectsError}
+              </p>
+            )}
+          </fieldset>
+        )}
         <button type="submit" hidden />
       </form>
     </Dialog>
@@ -180,6 +247,7 @@ export function AdminCicdPage() {
   const [removing, setRemoving] = useState<CicdConnection | null>(null);
   const [checks, setChecks] = useState<Record<string, { ok: boolean; status: number }>>({});
   const [checking, setChecking] = useState<string | null>(null);
+  const projectsText = useProjectsText();
 
   // a result belongs to the address and token it was made with: a change of either drops it
   const checkKey = (c: CicdConnection) => `${c.id} ${c.baseUrl} ${c.tokenHint ?? ""}`;
@@ -225,7 +293,7 @@ export function AdminCicdPage() {
             </EmptyState>
           </div>
         ) : (
-          <AdminTable minWidth={900}>
+          <AdminTable minWidth={1040}>
             <caption className="sr-only">{t("cicd.admin.list")}</caption>
             <thead>
               <tr className={theadRow}>
@@ -234,6 +302,7 @@ export function AdminCicdPage() {
                 <th scope="col" className={th}>{t("cicd.admin.cols.baseUrl")}</th>
                 <th scope="col" className={th}>{t("cicd.admin.cols.token")}</th>
                 <th scope="col" className={th}>{t("cicd.admin.cols.repositories")}</th>
+                <th scope="col" className={th}>{t("cicd.admin.cols.projects")}</th>
                 <th scope="col" className={th}>{t("cicd.admin.cols.status")}</th>
                 <th scope="col" className={`${th} w-40`}>
                   <span className="sr-only">{t("app.more")}</span>
@@ -257,6 +326,7 @@ export function AdminCicdPage() {
                       {c.tokenHint ? <span className="font-mono text-xs">{t("cicd.admin.tokenEnd", { hint: c.tokenHint })}</span> : t("cicd.admin.tokenNone")}
                     </td>
                     <td className="px-3 tabular-nums">{t("cicd.admin.repositoryCount", { count: c.repositoryCount })}</td>
+                    <td className={c.projects.length || c.hiddenProjectCount ? "max-w-64 px-3 py-1.5 text-fg" : "px-3 text-fg-muted"}>{projectsText(c)}</td>
                     <td className="px-3 py-1.5">
                       <span className="flex flex-wrap items-center gap-1.5">
                         <Badge tone={c.active ? "accent" : "neutral"}>{c.active ? t("cicd.admin.statuses.active") : t("cicd.admin.statuses.off")}</Badge>
