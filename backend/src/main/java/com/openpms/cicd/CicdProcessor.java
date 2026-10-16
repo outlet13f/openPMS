@@ -49,17 +49,20 @@ public class CicdProcessor {
     private final TransactionTemplate tx;
     private final CicdCommitStore commits;
     private final CicdBuilds builds;
+    private final CicdDeployments deployments;
 
-    public CicdProcessor(DSLContext db, JsonMapper json, CicdLinker linker, TransactionTemplate tx, CicdCommitStore commits, CicdBuilds builds) {
+    public CicdProcessor(DSLContext db, JsonMapper json, CicdLinker linker, TransactionTemplate tx, CicdCommitStore commits, CicdBuilds builds,
+            CicdDeployments deployments) {
         this.db = db;
         this.json = json;
         this.linker = linker;
         this.tx = tx;
         this.commits = commits;
         this.builds = builds;
+        this.deployments = deployments;
     }
 
-    /** @return the number of events handled (done or failed) */
+    /** @return the number of events handled (done or failed) and deployments applied to their environments */
     public int run(Instant now) {
         int handled = 0;
         while (handled < MAX_PER_RUN) {
@@ -72,6 +75,12 @@ public class CicdProcessor {
             }
             handled += progress;
             if (ids.size() < BATCH || progress == 0) break;
+        }
+        // then the environments: a few passes, so a deployment waiting behind one applied in this run goes in too
+        for (int i = 0; i < 3; i++) {
+            int n = deployments.advance(now);
+            handled += n;
+            if (n == 0) break;
         }
         return handled;
     }
