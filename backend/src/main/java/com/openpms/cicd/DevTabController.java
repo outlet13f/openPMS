@@ -107,7 +107,13 @@ public class DevTabController {
         var found = linkable(number);
         var wpId = found.wp().getId();
         var url = normalize(in == null ? null : in.url());
-        var mrId = url.isEmpty() ? null : findMergeRequest(linker.projectAncestors(found.project().id()), url);
+        // only the ancestors whose repositories this person may see: a member of a private child is not shown the parent's MRs
+        var ctx = current.ctx();
+        var tree = linker.projectAncestors(found.project().id()).stream().filter(id -> {
+            var p = ctx.s().projects().get(id);
+            return p != null && ctx.can(p, "cicd.view");
+        }).toList();
+        var mrId = url.isEmpty() || tree.isEmpty() ? null : findMergeRequest(tree, url);
         if (mrId == null) throw ApiException.unprocessable("이 프로젝트에 붙은 저장소의 MR/PR 주소가 아니거나 아직 받지 않은 MR/PR입니다.", null);
         var me = current.ctx().userId();
         // a dismissed link is revived (source becomes 'manual': the person chose it); an active one stays as it is

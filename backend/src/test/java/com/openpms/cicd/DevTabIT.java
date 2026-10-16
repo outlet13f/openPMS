@@ -153,7 +153,7 @@ class DevTabIT {
         assertThat(f.body(f.send(minji, get("/api/v1/work-packages/" + s.number + "/cicd"), "").andReturn()).get("mergeRequests")).hasSize(1);
     }
 
-    @Test void nonMemberAndRequesterAreNotFound() throws Exception {
+    @Test void nonMemberIsNotFound() throws Exception {
         var s = setup();
         f.send(admin, patch("/api/v1/projects/" + s.project), "{\"isPublic\":true}").andExpect(status().isOk());
         var doyoon = f.login("doyoon.han@openpms.local");
@@ -263,6 +263,23 @@ class DevTabIT {
         // a work package of the child can take an MR of the parent's repository
         f.send(junho, post("/api/v1/work-packages/" + inChild + "/cicd/links"), "{\"url\":\"" + mrUrl(parentRepo, 2) + "\"}")
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.source").value("manual"));
+    }
+
+    @Test void aChildMemberCannotTakeAnMrOfAPrivateParentTheyDoNotBelongTo() throws Exception {
+        var parent = f.newProject(admin, "work_packages", "cicd"); // private; 박준호 is a member, 한도윤 is not
+        var child = subProject(parent);
+        f.addMember(admin, child, CicdFixture.DOYOON, CicdFixture.ROLE_MEMBER);
+        long inChild = wp(child);
+        var parentRepo = attach(parent);
+        events.store(connection, List.of(mr(parentRepo, 4, "부모만 아는 비밀 MR")), "webhook");
+        processor.run(Instant.now());
+        var doyoon = f.login("doyoon.han@openpms.local");
+        var denied = f.send(doyoon, post("/api/v1/work-packages/" + inChild + "/cicd/links"), "{\"url\":\"" + mrUrl(parentRepo, 4) + "\"}")
+                .andExpect(status().isUnprocessableEntity()).andReturn().getResponse().getContentAsString();
+        assertThat(denied).contains(NO_MR).doesNotContain("비밀 MR");
+        // a member of both may
+        f.send(f.login(CicdFixture.JUNHO_EMAIL), post("/api/v1/work-packages/" + inChild + "/cicd/links"), "{\"url\":\"" + mrUrl(parentRepo, 4) + "\"}")
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.title").value("부모만 아는 비밀 MR"));
     }
 
     @Test void nonMemberDeleteIsNotFound() throws Exception {
