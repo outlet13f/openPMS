@@ -214,11 +214,34 @@ class CicdEnvironmentsIT {
     @Test void aMovedRepositoryStaysOutOfThisProjectsReassign() throws Exception {
         var p = f.newProject(admin, "cicd");
         var q = f.newProject(admin, "cicd");
-        var moved = repo(q);   // its current project is q, whatever its history says
+        var moved = repo(p);
         var d = deployment(moved, null, "qa-9", "success", sha(), OffsetDateTime.now());
+        // the row moves to q (detach, then attach from q): its history stays, its current project is q
+        db.update(CICD_REPOSITORIES).set(CICD_REPOSITORIES.PROJECT_ID, projectId(q)).where(CICD_REPOSITORIES.ID.eq(moved)).execute();
         f.send(admin, patch(url(p) + "/" + envId(p, "스테이징")), "{\"aliases\":[\"qa-9\"]}").andExpect(status().isOk());
         assertThat(environmentOf(d)).isNull();
         assertThat(view(admin, p).get("unassigned").size()).isZero();
+        assertThat(view(admin, q).get("unassigned").size()).isEqualTo(1);
+    }
+
+    @Test void creatingRenamingAndUnhidingReassign() throws Exception {
+        var p = f.newProject(admin, "cicd");
+        var repo = repo(p);
+        var byAlias = deployment(repo, null, "Qa-1", "success", sha(), OffsetDateTime.now());
+        var byName = deployment(repo, null, "Verify", "success", sha(), OffsetDateTime.now());
+        var hiddenOne = deployment(repo, null, "Later", "success", sha(), OffsetDateTime.now());
+        var qa = UUID.fromString(f.body(f.send(admin, post(url(p)), "{\"name\":\"QA\",\"aliases\":[\"qa-1\"]}").andExpect(status().isCreated())
+                .andReturn()).get("id").asString());
+        assertThat(environmentOf(byAlias)).isEqualTo(qa);
+        assertThat(inclusion(byAlias)).isEqualTo("checking");
+        f.send(admin, patch(url(p) + "/" + qa), "{\"name\":\"verify\"}").andExpect(status().isOk());
+        assertThat(environmentOf(byName)).isEqualTo(qa);
+        // hidden, then new names do not match; visible again takes what waits for its name or aliases
+        f.send(admin, patch(url(p) + "/" + qa), "{\"hidden\":true}").andExpect(status().isOk());
+        f.send(admin, patch(url(p) + "/" + qa), "{\"aliases\":[\"qa-1\",\"later\"]}").andExpect(status().isOk());
+        assertThat(environmentOf(hiddenOne)).isNull();
+        f.send(admin, patch(url(p) + "/" + qa), "{\"hidden\":false}").andExpect(status().isOk());
+        assertThat(environmentOf(hiddenOne)).isEqualTo(qa);
     }
 
     @Test void unassignedListGroupsByName() throws Exception {
@@ -256,11 +279,13 @@ class CicdEnvironmentsIT {
         var secret = f.body(f.send(admin, post("/api/v1/me/api-tokens"), "{\"name\":\"환경 시험 토큰\",\"scope\":\"write\",\"expiresInDays\":30}")
                 .andExpect(status().isCreated()).andReturn()).get("secret").asString();
         try {
-            f.mvc.perform(get(url(p)).header("Authorization", "Bearer " + secret)).andExpect(status().isForbidden());
+            var refused = "API 토큰으로는 로그인·비밀번호·토큰·연동 설정을 다룰 수 없습니다.";
+            f.mvc.perform(get(url(p)).header("Authorization", "Bearer " + secret)).andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.title").value(refused));
             f.mvc.perform(post(url(p)).header("Authorization", "Bearer " + secret).contentType("application/json").content("{\"name\":\"x\"}"))
-                    .andExpect(status().isForbidden());
+                    .andExpect(status().isForbidden()).andExpect(jsonPath("$.title").value(refused));
             f.mvc.perform(get(new java.net.URI(url(p).replace("environments", "%65nvironments"))).header("Authorization", "Bearer " + secret))
-                    .andExpect(status().isForbidden());
+                    .andExpect(status().isForbidden()).andExpect(jsonPath("$.title").value(refused));
             // the repositories list stays open to a token
             f.mvc.perform(get("/api/v1/projects/" + p + "/cicd/repositories").header("Authorization", "Bearer " + secret)).andExpect(status().isOk());
         } finally {

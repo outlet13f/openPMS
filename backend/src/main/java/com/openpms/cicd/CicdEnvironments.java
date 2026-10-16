@@ -126,6 +126,10 @@ public class CicdEnvironments {
             throw sameName();
         }
         AUDIT.info("cicd.environment.created by={} project={} environment={} name={}", ctx.userId(), p.id(), id, name);
+        var names = new LinkedHashSet<String>();
+        names.add(name.toLowerCase(Locale.ROOT));
+        names.addAll(aliases);
+        reassign(p.id(), id, List.copyOf(names));
         return one(id);
     }
 
@@ -159,7 +163,18 @@ public class CicdEnvironments {
             AUDIT.info("cicd.environment.aliases_changed by={} project={} environment={} added={} removed={}", ctx.userId(), p.id(), id,
                     added.size(), removed.size());
         }
-        if (!added.isEmpty() && !hidden) reassign(p.id(), id, added);
+        if (!hidden) {
+            // what the environment now answers to that it did not before (a new alias, a new name, or everything once visible again)
+            var names = new LinkedHashSet<String>();
+            if (env.getHidden()) {
+                names.add(name.toLowerCase(Locale.ROOT));
+                names.addAll(aliases);
+            } else {
+                if (!name.equalsIgnoreCase(env.getName())) names.add(name.toLowerCase(Locale.ROOT));
+                names.addAll(added);
+            }
+            if (!names.isEmpty()) reassign(p.id(), id, List.copyOf(names));
+        }
         return one(id);
     }
 
