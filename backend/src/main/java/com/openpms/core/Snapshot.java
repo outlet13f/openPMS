@@ -51,13 +51,13 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class Snapshot {
     public record UserRow(UUID id, String email, String name, String status, boolean isAdmin, String locale, String timeZone, String theme,
-                          OffsetDateTime lastLoginAt, OffsetDateTime createdAt, UUID managerId) {
+                          OffsetDateTime lastLoginAt, OffsetDateTime createdAt) {
         public String displayName() {
             return "deleted".equals(status) ? "삭제된 사용자" : name;
         }
     }
 
-    public record GroupRow(UUID id, String name, Set<UUID> memberIds, UUID leadUserId) {}
+    public record GroupRow(UUID id, String name, Set<UUID> memberIds) {}
 
     public record RoleRow(UUID id, String name, String scope, String builtin, List<String> permissions, int position) {}
 
@@ -70,7 +70,7 @@ public final class Snapshot {
     public record TypeRow(UUID id, String name, String color, int position, boolean isMilestone, boolean isDefault, boolean isInRoadmap) {}
 
     public record StatusRow(UUID id, String name, String color, int position, boolean isDefault, boolean isClosed, boolean isReadonly,
-                            int defaultDoneRatio, boolean excludedFromTotals, boolean slaPause) {}
+                            int defaultDoneRatio, boolean excludedFromTotals) {}
 
     public record PriorityRow(UUID id, String name, String color, int position, boolean isDefault, boolean isActive) {}
 
@@ -126,14 +126,14 @@ public final class Snapshot {
 
     private final Supplier<Map<UUID, UserRow>> users = lazy(() -> this.db.selectFrom(USERS).fetch().stream()
             .map(r -> new UserRow(r.getId(), r.getEmail(), r.getName(), r.getStatus(), r.getIsAdmin(), r.getLocale(), r.getTimeZone(), r.getTheme(),
-                    r.getLastLoginAt(), r.getCreatedAt(), r.getManagerId()))
+                    r.getLastLoginAt(), r.getCreatedAt()))
             .collect(Collectors.toMap(UserRow::id, u -> u, (a, b) -> a, LinkedHashMap::new)));
 
     private final Supplier<Map<UUID, GroupRow>> groups = lazy(() -> {
         var members = new HashMap<UUID, Set<UUID>>();
         this.db.selectFrom(USER_GROUP_MEMBERS).fetch().forEach(r -> members.computeIfAbsent(r.getGroupId(), k -> new HashSet<>()).add(r.getUserId()));
         return this.db.selectFrom(USER_GROUPS).orderBy(USER_GROUPS.NAME).fetch().stream()
-                .map(r -> new GroupRow(r.getId(), r.getName(), members.getOrDefault(r.getId(), Set.of()), r.getLeadUserId()))
+                .map(r -> new GroupRow(r.getId(), r.getName(), members.getOrDefault(r.getId(), Set.of())))
                 .collect(Collectors.toMap(GroupRow::id, g -> g, (a, b) -> a, LinkedHashMap::new));
     });
 
@@ -166,7 +166,7 @@ public final class Snapshot {
 
     private final Supplier<List<StatusRow>> statuses = lazy(() -> this.db.selectFrom(STATUSES).orderBy(STATUSES.POSITION, STATUSES.NAME).fetch().stream()
             .map(r -> new StatusRow(r.getId(), r.getName(), r.getColor(), r.getPosition(), r.getIsDefault(), r.getIsClosed(), r.getIsReadonly(),
-                    r.getDefaultDoneRatio(), r.getExcludedFromTotals(), r.getSlaPause()))
+                    r.getDefaultDoneRatio(), r.getExcludedFromTotals()))
             .toList());
 
     private final Supplier<List<PriorityRow>> priorities = lazy(() -> this.db.selectFrom(PRIORITIES).orderBy(PRIORITIES.POSITION, PRIORITIES.NAME).fetch().stream()

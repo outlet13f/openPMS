@@ -4,12 +4,9 @@
 package com.openpms.db.tables;
 
 
-import com.openpms.db.Indexes;
 import com.openpms.db.Keys;
 import com.openpms.db.Public;
-import com.openpms.db.tables.CatalogItems.CatalogItemsPath;
 import com.openpms.db.tables.Members.MembersPath;
-import com.openpms.db.tables.ServiceTickets.ServiceTicketsPath;
 import com.openpms.db.tables.UserGroupMembers.UserGroupMembersPath;
 import com.openpms.db.tables.Users.UsersPath;
 import com.openpms.db.tables.records.UserGroupsRecord;
@@ -24,7 +21,6 @@ import org.jooq.Check;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
-import org.jooq.Index;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
 import org.jooq.Path;
@@ -85,11 +81,6 @@ public class UserGroups extends TableImpl<UserGroupsRecord> {
      * The column <code>public.user_groups.updated_at</code>.
      */
     public final TableField<UserGroupsRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
-
-    /**
-     * The column <code>public.user_groups.lead_user_id</code>.
-     */
-    public final TableField<UserGroupsRecord, UUID> LEAD_USER_ID = createField(DSL.name("lead_user_id"), SQLDataType.UUID, this, "");
 
     private UserGroups(Name alias, Table<UserGroupsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -159,11 +150,6 @@ public class UserGroups extends TableImpl<UserGroupsRecord> {
     }
 
     @Override
-    public List<Index> getIndexes() {
-        return Arrays.asList(Indexes.USER_GROUPS_LEAD_IDX);
-    }
-
-    @Override
     public UniqueKey<UserGroupsRecord> getPrimaryKey() {
         return Keys.USER_GROUPS_PKEY;
     }
@@ -171,36 +157,6 @@ public class UserGroups extends TableImpl<UserGroupsRecord> {
     @Override
     public List<UniqueKey<UserGroupsRecord>> getUniqueKeys() {
         return Arrays.asList(Keys.USER_GROUPS_NAME_KEY);
-    }
-
-    @Override
-    public List<ForeignKey<UserGroupsRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.USER_GROUPS__USER_GROUPS_LEAD_USER_ID_FKEY);
-    }
-
-    private transient UsersPath _users;
-
-    /**
-     * Get the implicit join path to the <code>public.users</code> table.
-     */
-    public UsersPath users() {
-        if (_users == null)
-            _users = new UsersPath(this, Keys.USER_GROUPS__USER_GROUPS_LEAD_USER_ID_FKEY, null);
-
-        return _users;
-    }
-
-    private transient CatalogItemsPath _catalogItems;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.catalog_items</code> table
-     */
-    public CatalogItemsPath catalogItems() {
-        if (_catalogItems == null)
-            _catalogItems = new CatalogItemsPath(this, null, Keys.CATALOG_ITEMS__CATALOG_ITEMS_ASSIGNMENT_GROUP_ID_FKEY.getInverseKey());
-
-        return _catalogItems;
     }
 
     private transient MembersPath _members;
@@ -216,19 +172,6 @@ public class UserGroups extends TableImpl<UserGroupsRecord> {
         return _members;
     }
 
-    private transient ServiceTicketsPath _serviceTickets;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.service_tickets</code> table
-     */
-    public ServiceTicketsPath serviceTickets() {
-        if (_serviceTickets == null)
-            _serviceTickets = new ServiceTicketsPath(this, null, Keys.SERVICE_TICKETS__SERVICE_TICKETS_ASSIGNMENT_GROUP_ID_FKEY.getInverseKey());
-
-        return _serviceTickets;
-    }
-
     private transient UserGroupMembersPath _userGroupMembers;
 
     /**
@@ -240,6 +183,14 @@ public class UserGroups extends TableImpl<UserGroupsRecord> {
             _userGroupMembers = new UserGroupMembersPath(this, null, Keys.USER_GROUP_MEMBERS__USER_GROUP_MEMBERS_GROUP_ID_FKEY.getInverseKey());
 
         return _userGroupMembers;
+    }
+
+    /**
+     * Get the implicit many-to-many join path to the <code>public.users</code>
+     * table
+     */
+    public UsersPath users() {
+        return userGroupMembers().users();
     }
 
     @Override

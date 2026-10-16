@@ -5,6 +5,7 @@ import static com.openpms.db.Tables.WORK_PACKAGES;
 
 import com.openpms.api.Dto;
 import com.openpms.common.ApiException;
+import com.openpms.common.SettingsRepo;
 import com.openpms.core.Ctx;
 import com.openpms.core.Current;
 import com.openpms.core.Refs;
@@ -13,13 +14,21 @@ import com.openpms.wp.Journals;
 import com.openpms.wp.WorkPackageService;
 import com.openpms.webhook.Webhooks;
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import org.apache.tika.Tika;
 import org.jooq.DSLContext;
 import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -43,22 +52,26 @@ public class AttachmentController {
     public record Attachment(UUID id, String fileName, String contentType, long byteSize, Dto.UserRef author, OffsetDateTime createdAt, String url,
                              boolean canDelete) {}
 
+    /** Shown inline (thumbnails, opening in a tab). SVG is not here: it can carry script. */
+    private static final Set<String> INLINE = Set.of("image/png", "image/jpeg", "image/gif", "image/webp");
+    private static final Tika TIKA = new Tika();
+
     private final Current current;
     private final DSLContext db;
     private final WorkPackageService workPackages;
     private final FileStorage storage;
-    private final AttachmentStore store;
+    private final SettingsRepo settings;
     private final Journals journals;
     private final Webhooks webhooks;
 
-    public AttachmentController(Current current, DSLContext db, WorkPackageService workPackages, FileStorage storage, AttachmentStore store, Journals journals,
+    public AttachmentController(Current current, DSLContext db, WorkPackageService workPackages, FileStorage storage, SettingsRepo settings, Journals journals,
                                 Webhooks webhooks) {
         this.webhooks = webhooks;
         this.current = current;
         this.db = db;
         this.workPackages = workPackages;
         this.storage = storage;
-        this.store = store;
+        this.settings = settings;
         this.journals = journals;
     }
 
@@ -76,13 +89,66 @@ public class AttachmentController {
                 .map(a -> toDto(ctx, a, canAttach)).toList();
     }
 
+    /** "C:\\fakepath\\보고서.pdf" → "보고서.pdf"; control characters out; at most 255 characters. */
+    static String cleanName(String original) {
+        var name = original == null ? "" : original.replace('\\', '/');
+        name = name.substring(name.lastIndexOf('/') + 1).replaceAll("[\\p{Cntrl}]", "").trim();
+        if (name.isEmpty()) name = "file";
+        return name.length() > 255 ? name.substring(name.length() - 255) : name;
+    }
+
     @PostMapping(value = "/work-packages/{number}/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Transactional
     public ResponseEntity<Attachment> upload(@PathVariable long number, @RequestParam("file") MultipartFile file) throws IOException {
         var ctx = current.ctx();
         var f = workPackages.find(ctx, number);
         ctx.require(f.project(), f.wp().getId(), "wp.attach", "파일을 첨부할 권한이 없습니다.");
-        return ResponseEntity.status(HttpStatus.CREATED).body(toDto(ctx, store.save(ctx, f, file), true));
+        long max = settings.integer("attachments.max_bytes", 26_214_400);
+        if (file.isEmpty()) throw ApiException.field("file", "빈 파일은 올릴 수 없습니다.");
+        if (file.getSize() > max) throw new ApiException(413, "파일이 너무 큽니다.", "파일 하나는 " + (max / 1024 / 1024) + "MB까지 올릴 수 있습니다.");
+        var name = cleanName(file.getOriginalFilename());
+        String type;
+        try (var head = file.getInputStream()) {
+            type = TIKA.detect(head.readNBytes(64 * 1024), name);
+        }
+        var key = storage.newKey();
+        MessageDigest sha;
+        try {
+            sha = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+        try (var in = new DigestInputStream(file.getInputStream(), sha)) {
+            storage.put(key, in);
+        }
+        try {
+            var a = db.newRecord(ATTACHMENTS);
+            a.setWorkPackageId(f.wp().getId());
+            a.setFileName(name);
+            a.setContentType(type);
+            a.setByteSize(file.getSize());
+            a.setSha256(sha.digest());
+            a.setStorageKey(key);
+            a.setAuthorId(ctx.userId());
+            a.store();
+            a.refresh();
+            var changes = new LinkedHashMap<String, List<Object>>();
+            changes.put("attachment:" + a.getId(), listOf(null, name)); // one key per file, so merged entries keep every name
+            var j = journals.write(ctx, f.wp(), changes, "", null, false);
+            journals.fanOut(ctx, f.wp(), j, List.of());
+            webhooks.enqueue(ctx, f.wp(), "work_package.updated", Map.of("changes", Webhooks.changes(journals.toDto(ctx, j, f.project(), changes))));
+            return ResponseEntity.status(HttpStatus.CREATED).body(toDto(ctx, a, true));
+        } catch (RuntimeException e) {
+            storage.delete(key); // the row did not make it: do not keep the bytes
+            throw e;
+        }
+    }
+
+    private static List<Object> listOf(Object a, Object b) {
+        var l = new java.util.ArrayList<>(2);
+        l.add(a);
+        l.add(b);
+        return l;
     }
 
     private record Found(AttachmentsRecord attachment, WorkPackageService.Found wp) {}
@@ -100,7 +166,18 @@ public class AttachmentController {
 
     @GetMapping("/attachments/{id}/content")
     public ResponseEntity<InputStreamResource> content(@PathVariable UUID id) throws IOException {
-        return store.serve(find(current.ctx(), id).attachment());
+        var ctx = current.ctx();
+        var a = find(ctx, id).attachment();
+        boolean inline = INLINE.contains(a.getContentType());
+        var encoded = URLEncoder.encode(a.getFileName(), StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .contentType(inline ? MediaType.parseMediaType(a.getContentType()) : MediaType.APPLICATION_OCTET_STREAM)
+                .contentLength(a.getByteSize())
+                .header(HttpHeaders.CONTENT_DISPOSITION, (inline ? "inline" : "attachment") + "; filename*=UTF-8''" + encoded)
+                .header("X-Content-Type-Options", "nosniff")
+                .header("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self'")
+                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=3600")
+                .body(new InputStreamResource(storage.open(a.getStorageKey())));
     }
 
     @DeleteMapping("/attachments/{id}")
@@ -112,7 +189,7 @@ public class AttachmentController {
         var a = found.attachment();
         a.delete();
         var changes = new LinkedHashMap<String, List<Object>>();
-        changes.put("attachment:" + a.getId(), AttachmentStore.listOf(a.getFileName(), null));
+        changes.put("attachment:" + a.getId(), listOf(a.getFileName(), null));
         var j = journals.write(ctx, found.wp().wp(), changes, "", null, false);
         webhooks.enqueue(ctx, found.wp().wp(), "work_package.updated", Map.of("changes", Webhooks.changes(journals.toDto(ctx, j, found.wp().project(), changes))));
         storage.delete(a.getStorageKey());

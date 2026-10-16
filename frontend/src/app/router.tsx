@@ -37,7 +37,6 @@ import { AdminWorkflowsPage } from "@/pages/admin/workflows";
 import { AdminRoleEditPage, AdminRolesPage, AdminRolesReportPage } from "@/pages/admin/roles";
 import { AdminGroupsPage, AdminUsersPage } from "@/pages/admin/users";
 import { AdminCalendarPage } from "@/pages/admin/calendar";
-import { AdminServiceCalendarsPage } from "@/pages/admin/service-calendars";
 import { AdminIntegrationsPage } from "@/pages/admin/integrations";
 import { AdminSystemPage } from "@/pages/admin/system";
 import { ApiDocsPage } from "@/pages/api-docs";
@@ -55,8 +54,6 @@ const CalendarPage = lazy(() => import("@/pages/planning/calendar").then((m) => 
 const DesignPage = lazy(() => import("@/pages/design-page").then((m) => ({ default: m.DesignPage })));
 // 도움말 (the manuals) is its own chunk; the manuals' text is loaded separately on first use
 const HelpPage = lazy(() => import("@/pages/help").then((m) => ({ default: m.HelpPage })));
-// 서비스 요청 (the requester's portal, every signed-in employee) is its own chunk
-const PortalRoutes = lazy(() => import("@/pages/portal/routes").then((m) => ({ default: m.PortalRoutes })));
 const helpPage = (manual: "user" | "admin") => (
   <Suspense fallback={<Skeleton className="m-8 h-96" />}>
     <HelpPage manual={manual} />
@@ -110,14 +107,6 @@ export const router = createBrowserRouter([
         children: [{ path: "details/:number/:tab?", element: <NotificationDetailRoute /> }],
       },
       { path: "search", element: <SearchPage /> },
-      {
-        path: "portal/*",
-        element: (
-          <Suspense fallback={<Skeleton className="m-8 h-96" />}>
-            <PortalRoutes />
-          </Suspense>
-        ),
-      },
       { path: "work-packages", element: <WorkPackagesPage /> },
       { path: "gantt", element: <GanttPage /> },
       { path: "projects", element: <MeRoute render={(me) => <ProjectsPage me={me} />} /> },
@@ -198,7 +187,6 @@ export const router = createBrowserRouter([
       { path: "admin/users", element: <AdminUsersPage /> },
       { path: "admin/groups", element: <AdminGroupsPage /> },
       { path: "admin/calendar", element: <AdminCalendarPage /> },
-      { path: "admin/service-calendars", element: <AdminServiceCalendarsPage /> },
       { path: "admin/integrations", element: <AdminIntegrationsPage /> },
       { path: "admin/system", element: <AdminSystemPage /> },
       { path: "help", element: helpPage("user") },

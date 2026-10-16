@@ -6,7 +6,6 @@ import static com.openpms.db.Tables.WEBHOOK_DELIVERIES;
 import com.openpms.common.Mailer;
 import com.openpms.core.Ctx;
 import com.openpms.core.Refs;
-import com.openpms.core.Snapshot;
 import com.openpms.db.tables.records.JournalsRecord;
 import com.openpms.db.tables.records.WebhookDeliveriesRecord;
 import com.openpms.db.tables.records.WebhooksRecord;
@@ -46,7 +45,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Service
 public class Webhooks {
     private static final Logger log = LoggerFactory.getLogger(Webhooks.class);
-    public static final List<String> EVENTS = List.of("work_package.created", "work_package.updated", "work_package.deleted", "work_package.commented", "service_ticket.sla_breached");
+    public static final List<String> EVENTS = List.of("work_package.created", "work_package.updated", "work_package.deleted", "work_package.commented");
     private static final List<Duration> BACKOFF = List.of(Duration.ofMinutes(1), Duration.ofMinutes(5), Duration.ofMinutes(30), Duration.ofMinutes(120));
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -104,7 +103,8 @@ public class Webhooks {
     }
 
     /** The work package as a payload shows it. */
-    private Map<String, Object> describe(Snapshot s, WorkPackagesRecord w) {
+    private Map<String, Object> describe(Ctx ctx, WorkPackagesRecord w) {
+        var s = ctx.s();
         var project = s.project(w.getProjectId()).orElse(null);
         var m = new LinkedHashMap<String, Object>();
         m.put("id", w.getId());
@@ -137,15 +137,6 @@ public class Webhooks {
      * from/to texts) for an update, "comment" for a comment.
      */
     public void enqueue(Ctx ctx, WorkPackagesRecord w, String event, Map<String, Object> extra) {
-        enqueue(ctx.s(), ctx.userId(), w, event, extra);
-    }
-
-    /** An event no person caused (an SLA deadline passing): no actor. */
-    public void enqueueSystem(Snapshot s, WorkPackagesRecord w, String event, Map<String, Object> extra) {
-        enqueue(s, null, w, event, extra);
-    }
-
-    private void enqueue(Snapshot s, UUID actorId, WorkPackagesRecord w, String event, Map<String, Object> extra) {
         var hooks = db.selectFrom(WEBHOOKS).where(WEBHOOKS.ENABLED.isTrue()).fetch().stream()
                 .filter(h -> Arrays.asList(h.getEvents()).contains(event))
                 .filter(h -> h.getProjectIds() == null || h.getProjectIds().length == 0 || Arrays.asList(h.getProjectIds()).contains(w.getProjectId()))
@@ -154,8 +145,8 @@ public class Webhooks {
         var payload = new LinkedHashMap<String, Object>();
         payload.put("event", event);
         payload.put("occurredAt", OffsetDateTime.now(ZoneOffset.UTC));
-        payload.put("actor", actorId == null ? null : Refs.user(s, actorId));
-        payload.put("workPackage", describe(s, w));
+        payload.put("actor", Refs.user(ctx.s(), ctx.userId()));
+        payload.put("workPackage", describe(ctx, w));
         if (extra != null) payload.putAll(extra);
         var body = JSONB.valueOf(json.writeValueAsString(payload));
         for (var h : hooks)

@@ -2,8 +2,6 @@ package com.openpms.query;
 
 import static com.openpms.db.Tables.JOURNALS;
 import static com.openpms.db.Tables.RELATIONS;
-import static com.openpms.db.Tables.SERVICE_TICKETS;
-import static com.openpms.db.Tables.TICKET_APPROVALS;
 import static com.openpms.db.Tables.WATCHERS;
 import static com.openpms.db.Tables.WORK_PACKAGES;
 import static com.openpms.db.Tables.WORK_PACKAGE_ASSIGNEES;
@@ -72,10 +70,6 @@ public class QueryEngine {
         OPS.put("status", Set.of("open", "closed", "eq", "neq"));
         for (var f : List.of("type", "priority", "assignee", "responsible", "author", "version", "category", "project")) OPS.put(f, ref);
         for (var f : List.of("watcher", "assigneeGroup", "assigneeRole", "number")) OPS.put(f, Set.of("eq", "neq"));
-        // 서비스 데스크 티켓: facts of the ticket now (the baseline has no history of them)
-        for (var f : List.of("requester", "assignmentGroup", "catalogItem")) OPS.put(f, Set.of("eq", "neq"));
-        OPS.put("approvalState", Set.of("eq"));
-        for (var f : List.of("channel", "slaBreached")) OPS.put(f, Set.of("eq"));
         OPS.put("parent", Set.of("eq", "any", "none"));
         for (var f : List.of("subject", "description", "comment")) OPS.put(f, text);
         for (var f : List.of("startDate", "dueDate", "createdAt", "updatedAt")) OPS.put(f, date);
@@ -297,35 +291,6 @@ public class QueryEngine {
             case "version" -> ref(t.VERSION_ID, f.op(), vals);
             case "category" -> ref(t.CATEGORY_ID, f.op(), vals);
             case "project" -> ref(t.PROJECT_ID, f.op(), vals);
-            case "requester", "assignmentGroup", "channel", "catalogItem" -> {
-                var T = SERVICE_TICKETS;
-                var column = switch (f.field()) {
-                    case "requester" -> T.REQUESTER_ID.cast(String.class);
-                    case "assignmentGroup" -> T.ASSIGNMENT_GROUP_ID.cast(String.class);
-                    case "catalogItem" -> T.CATALOG_ITEM_ID.cast(String.class);
-                    default -> T.CHANNEL;
-                };
-                var hit = exists(selectOne().from(T).where(T.WORK_PACKAGE_ID.eq(t.ID), column.in(vals)));
-                yield "neq".equals(f.op()) ? hit.not() : hit;
-            }
-            case "approvalState" -> {
-                // pending: a decision is awaited; delayed: that approver was already reminded; rejected; none: the request never had approval rows
-                var A = TICKET_APPROVALS;
-                if (vals.size() != 1) throw ApiException.unprocessable("필터를 확인하세요.", "승인 상태는 하나만 고를 수 있습니다.");
-                var mine = A.WORK_PACKAGE_ID.eq(t.ID);
-                yield switch (needle) {
-                    case "pending" -> exists(selectOne().from(A).where(mine, A.DECISION.eq("pending")));
-                    case "delayed" -> exists(selectOne().from(A).where(mine, A.DECISION.eq("pending"), A.REMINDED_AT.isNotNull()));
-                    case "rejected" -> exists(selectOne().from(A).where(mine, A.DECISION.eq("rejected")));
-                    case "none" -> notExists(selectOne().from(A).where(mine));
-                    default -> throw ApiException.unprocessable("필터를 확인하세요.", "승인 상태는 pending, delayed, rejected, none 중 하나여야 합니다.");
-                };
-            }
-            case "slaBreached" -> {
-                var T = SERVICE_TICKETS;
-                var hit = exists(selectOne().from(T).where(T.WORK_PACKAGE_ID.eq(t.ID), T.RESPONSE_BREACHED.eq(true).or(T.RESOLVE_BREACHED.eq(true))));
-                yield yes ? hit : hit.not();
-            }
             case "watcher" -> {
                 var ids = vals.stream().map(QueryEngine::uuid).filter(x -> x != null).toList();
                 var watched = selectOne().from(WATCHERS).where(WATCHERS.WORK_PACKAGE_ID.eq(t.ID), WATCHERS.USER_ID.in(ids));
@@ -420,7 +385,7 @@ public class QueryEngine {
 
     record Light(UUID id, long number, UUID parentId, UUID projectId, String subject, UUID typeId, UUID statusId, UUID priorityId, UUID assigneeId,
                  UUID responsibleId, UUID authorId, LocalDate startDate, LocalDate dueDate, OffsetDateTime updatedAt, JSONB customValues, UUID versionId,
-                 BigDecimal workHours, BigDecimal remainingHours, Integer doneRatio, OffsetDateTime slaDue) {}
+                 BigDecimal workHours, BigDecimal remainingHours, Integer doneRatio) {}
 
     /** Sort key of a custom field: empty (or not on for the item) sorts last. Parsed values are cached per run. */
     private Comparable<?> customSortValue(Snapshot s, Light w, String field, Map<UUID, Map<String, Object>> parsed) {
@@ -451,7 +416,6 @@ public class QueryEngine {
             case "startDate" -> w.startDate() == null ? "9999" : w.startDate().toString();
             case "dueDate" -> w.dueDate() == null ? "9999" : w.dueDate().toString();
             case "updatedAt" -> w.updatedAt().toInstant().toString();
-            case "slaDue" -> w.slaDue() == null ? "9999" : w.slaDue().toInstant().toString();
             case "project" -> s.project(w.projectId()).map(Snapshot.ProjectRow::name).orElse("");
             case "version" -> w.versionId() == null ? "￿" : s.version(w.versionId()).map(Snapshot.VersionRow::name).orElse("");
             case "work" -> w.workHours() == null ? Double.MAX_VALUE : w.workHours().doubleValue();
@@ -593,11 +557,10 @@ public class QueryEngine {
 
     private List<Light> fetchLight(Condition where) {
         return db.select(W.ID, W.NUMBER, W.PARENT_ID, W.PROJECT_ID, W.SUBJECT, W.TYPE_ID, W.STATUS_ID, W.PRIORITY_ID, W.ASSIGNEE_ID, W.RESPONSIBLE_ID,
-                        W.AUTHOR_ID, W.START_DATE, W.DUE_DATE, W.UPDATED_AT, W.CUSTOM_VALUES, W.VERSION_ID, W.WORK_HOURS, W.REMAINING_HOURS, W.DONE_RATIO,
-                        SERVICE_TICKETS.RESOLVE_DUE_AT)
-                .from(W).leftJoin(SERVICE_TICKETS).on(SERVICE_TICKETS.WORK_PACKAGE_ID.eq(W.ID)).where(where).fetch(r -> new Light(r.value1(), r.value2(), r.value3(), r.value4(), r.value5(), r.value6(), r.value7(), r.value8(),
+                        W.AUTHOR_ID, W.START_DATE, W.DUE_DATE, W.UPDATED_AT, W.CUSTOM_VALUES, W.VERSION_ID, W.WORK_HOURS, W.REMAINING_HOURS, W.DONE_RATIO)
+                .from(W).where(where).fetch(r -> new Light(r.value1(), r.value2(), r.value3(), r.value4(), r.value5(), r.value6(), r.value7(), r.value8(),
                         r.value9(), r.value10(), r.value11(), r.value12(), r.value13(), r.value14(), r.value15(), r.value16(), r.value17(), r.value18(),
-                        r.value19() == null ? null : r.value19().intValue(), r.value20()));
+                        r.value19() == null ? null : r.value19().intValue()));
     }
 
     /** Projects in scope: one project (plus subprojects when asked) or every visible one. */

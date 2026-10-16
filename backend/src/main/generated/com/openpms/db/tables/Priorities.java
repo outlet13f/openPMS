@@ -7,9 +7,6 @@ package com.openpms.db.tables;
 import com.openpms.db.Indexes;
 import com.openpms.db.Keys;
 import com.openpms.db.Public;
-import com.openpms.db.tables.CatalogItems.CatalogItemsPath;
-import com.openpms.db.tables.PriorityMatrix.PriorityMatrixPath;
-import com.openpms.db.tables.SlaPolicies.SlaPoliciesPath;
 import com.openpms.db.tables.WorkPackages.WorkPackagesPath;
 import com.openpms.db.tables.records.PrioritiesRecord;
 
@@ -185,45 +182,6 @@ public class Priorities extends TableImpl<PrioritiesRecord> {
     @Override
     public List<UniqueKey<PrioritiesRecord>> getUniqueKeys() {
         return Arrays.asList(Keys.PRIORITIES_NAME_KEY);
-    }
-
-    private transient CatalogItemsPath _catalogItems;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.catalog_items</code> table
-     */
-    public CatalogItemsPath catalogItems() {
-        if (_catalogItems == null)
-            _catalogItems = new CatalogItemsPath(this, null, Keys.CATALOG_ITEMS__CATALOG_ITEMS_DEFAULT_PRIORITY_ID_FKEY.getInverseKey());
-
-        return _catalogItems;
-    }
-
-    private transient PriorityMatrixPath _priorityMatrix;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.priority_matrix</code> table
-     */
-    public PriorityMatrixPath priorityMatrix() {
-        if (_priorityMatrix == null)
-            _priorityMatrix = new PriorityMatrixPath(this, null, Keys.PRIORITY_MATRIX__PRIORITY_MATRIX_PRIORITY_ID_FKEY.getInverseKey());
-
-        return _priorityMatrix;
-    }
-
-    private transient SlaPoliciesPath _slaPolicies;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.sla_policies</code> table
-     */
-    public SlaPoliciesPath slaPolicies() {
-        if (_slaPolicies == null)
-            _slaPolicies = new SlaPoliciesPath(this, null, Keys.SLA_POLICIES__SLA_POLICIES_PRIORITY_ID_FKEY.getInverseKey());
-
-        return _slaPolicies;
     }
 
     private transient WorkPackagesPath _workPackages;

@@ -94,14 +94,7 @@ public final class Dto {
                               WorkPackageRef parent, int childCount, LocalDate startDate, LocalDate dueDate, Integer duration,
                               boolean ignoreNonWorkingDays, boolean scheduleManually, Double workHours, Double remainingHours, Integer doneRatio,
                               boolean watching, int watcherCount, int relationCount, int attachmentCount, Map<String, CustomValue> customValues,
-                              Totals totals, int lockVersion, OffsetDateTime createdAt, OffsetDateTime updatedAt, ServiceTicket serviceTicket,
-                              @JsonProperty("_meta") Meta meta) {}
-
-    /** SLA of a service desk ticket (ITSM 1단계); times are null without a policy. */
-    public record Sla(OffsetDateTime firstResponseDueAt, OffsetDateTime firstRespondedAt, OffsetDateTime resolveDueAt, OffsetDateTime resolvedAt,
-                      boolean paused, long pausedSeconds, boolean responseBreached, boolean resolveBreached) {}
-
-    public record ServiceTicket(UserRef requester, String channel, int impact, int urgency, IdName assignmentGroup, IdName catalogItem, Sla sla) {}
+                              Totals totals, int lockVersion, OffsetDateTime createdAt, OffsetDateTime updatedAt, @JsonProperty("_meta") Meta meta) {}
 
     /** 공동 담당자: one of the people who have an item (the first is the main assignee) and their own estimate in hours */
     public record Assignee(UserRef user, Double workHours) {}
@@ -131,7 +124,7 @@ public final class Dto {
 
     public record AdminCustomField(UUID id, String name, String format, boolean isRequired, boolean isForAll, boolean isFilterable, boolean isMultiValue,
                                    Object defaultValue, Integer minLength, Integer maxLength, String regexp, int position, List<CustomFieldOption> options,
-                                   List<UUID> typeIds, int projectCount, boolean portalVisible) {}
+                                   List<UUID> typeIds, int projectCount) {}
 
     public record ProjectCustomFields(List<CustomField> fields, List<UUID> enabledIds) {}
 

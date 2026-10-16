@@ -3,7 +3,6 @@
 // State survives reloads through localStorage (per browser, per user) and can be reset from the login page.
 
 import type { DbTimeEntry } from "./time-seed";
-import type { DbCatalogCategory, DbCatalogItem, DbMatrixCell, DbServiceCalendar, DbServiceTicket, DbSlaPolicy, DbTicketApproval } from "./service-desk-seed";
 import type {
   TimeActivity,
   OverviewWidget,
@@ -26,11 +25,8 @@ export interface DbUser {
   lastLoginAt: IsoDateTime | null;
   /** S31 global roles */
   globalRoleIds?: Id[];
-  /** ITSM 2단계: 관리자(상사), who approves this person's catalog requests (absent = none) */
-  managerId?: Id | null;
 }
-/** builtin requester: 요청자 (ITSM), only its workflow is used, on the portal */
-export interface DbRole { id: Id; name: string; scope: "project" | "global"; builtin: "non_member" | "requester" | null; permissions: string[] }
+export interface DbRole { id: Id; name: string; scope: "project" | "global"; builtin: "non_member" | null; permissions: string[] }
 export interface DbProject {
   id: Id;
   identifier: string;
@@ -53,15 +49,12 @@ export interface DbProject {
 /** A project member is a user or a group (exactly one of userId / groupId, like members_one_principal). */
 export interface DbMember { id: Id; projectId: Id; userId: Id | null; groupId: Id | null; roleIds: Id[]; createdAt: IsoDateTime }
 export interface DbType { id: Id; name: string; color: string; position: number; isMilestone: boolean; isDefault: boolean; isInRoadmap: boolean; form?: TypeForm | null; descriptionTemplateHtml?: string }
-/** slaPause: the resolve clock of a service ticket stops while it is here (답변 대기); absent = false */
-export interface DbStatus { id: Id; name: string; color: string; position: number; isDefault: boolean; isClosed: boolean; isReadonly: boolean; defaultDoneRatio: number; excludedFromTotals: boolean; slaPause?: boolean }
+export interface DbStatus { id: Id; name: string; color: string; position: number; isDefault: boolean; isClosed: boolean; isReadonly: boolean; defaultDoneRatio: number; excludedFromTotals: boolean }
 export interface DbPriority { id: Id; name: string; color: string; position: number; isDefault: boolean; isActive: boolean }
-/** appliesTo (absent = always): author / assignee rows only apply to the item's author / assignees */
-export interface DbWorkflow { typeId: Id; roleId: Id; from: Id; to: Id; appliesTo?: "always" | "author" | "assignee" }
+export interface DbWorkflow { typeId: Id; roleId: Id; from: Id; to: Id }
 export interface DbVersion { id: Id; projectId: Id; name: string; description: string; status: "open" | "locked" | "closed"; startDate: IsoDate | null; endDate: IsoDate | null }
 export interface DbCategory { id: Id; projectId: Id; name: string; defaultAssigneeId: Id | null }
-/** leadUserId: 그룹 책임자 (ITSM 2단계; absent = none) */
-export interface DbGroup { id: Id; name: string; memberIds: Id[]; leadUserId?: Id | null }
+export interface DbGroup { id: Id; name: string; memberIds: Id[] }
 export interface DbWp {
   id: Id;
   number: number;
@@ -137,11 +130,6 @@ export interface DbMail { id: Id; to: string; subject: string; link: string; sen
 
 export interface DbApiToken { id: Id; userId: Id; name: string; scope: "read" | "write"; createdAt: IsoDateTime; lastUsedAt: IsoDateTime | null; expiresAt: IsoDateTime | null }
 
-/** portalVisible (absent = false): shown on the portal's form and ticket page */
-export type DbCustomField = CustomField & { portalVisible?: boolean };
-
-export type { DbCatalogCategory, DbCatalogItem, DbMatrixCell, DbServiceCalendar, DbServiceTicket, DbSlaPolicy, DbTicketApproval };
-
 export interface Db {
   schema: number;
   seq: { wp: number; id: number };
@@ -166,7 +154,7 @@ export interface Db {
   tokens: DbToken[];
   outbox: DbMail[];
   shares: { id: Id; wpId: Id; userId: Id; role: ShareRole; createdBy: Id | null; createdAt: IsoDateTime }[];
-  customFields: DbCustomField[];
+  customFields: CustomField[];
   projectCustomFields: { projectId: Id; customFieldId: Id }[];
   apiTokens?: DbApiToken[];
   temporaryPasswords?: DbTemporaryPassword[];
@@ -174,15 +162,6 @@ export interface Db {
   timeEntries?: DbTimeEntry[];
   webhooks?: (Omit<Webhook, "secret"> & { secret: string })[];
   apiTokensEnabled?: boolean;
-  /** 서비스 데스크 (ITSM 1단계) */
-  serviceCalendars: DbServiceCalendar[];
-  slaPolicies: DbSlaPolicy[];
-  priorityMatrix: DbMatrixCell[];
-  serviceTickets: DbServiceTicket[];
-  /** 서비스 카탈로그와 승인 (ITSM 2단계) */
-  catalogCategories: DbCatalogCategory[];
-  catalogItems: DbCatalogItem[];
-  ticketApprovals: DbTicketApproval[];
   queries: DbQuery[];
   queryFavorites: { userId: Id; queryId: Id }[];
   boards: DbBoard[];
@@ -207,7 +186,8 @@ export interface Db {
 }
 
 const KEY = "openpms.fakedb";
-const SCHEMA = 17;
+// 19: re-seed browsers that still hold the removed ITSM seed (schema 15-17)
+const SCHEMA = 19;
 
 function load(): Db {
   try {

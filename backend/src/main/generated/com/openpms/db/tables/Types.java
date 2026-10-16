@@ -6,12 +6,10 @@ package com.openpms.db.tables;
 
 import com.openpms.db.Keys;
 import com.openpms.db.Public;
-import com.openpms.db.tables.CatalogItems.CatalogItemsPath;
 import com.openpms.db.tables.CustomFieldTypes.CustomFieldTypesPath;
 import com.openpms.db.tables.CustomFields.CustomFieldsPath;
 import com.openpms.db.tables.ProjectTypes.ProjectTypesPath;
 import com.openpms.db.tables.Projects.ProjectsPath;
-import com.openpms.db.tables.SlaPolicies.SlaPoliciesPath;
 import com.openpms.db.tables.WorkPackages.WorkPackagesPath;
 import com.openpms.db.tables.Workflows.WorkflowsPath;
 import com.openpms.db.tables.records.TypesRecord;
@@ -200,19 +198,6 @@ public class Types extends TableImpl<TypesRecord> {
         return Arrays.asList(Keys.TYPES_NAME_KEY);
     }
 
-    private transient CatalogItemsPath _catalogItems;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.catalog_items</code> table
-     */
-    public CatalogItemsPath catalogItems() {
-        if (_catalogItems == null)
-            _catalogItems = new CatalogItemsPath(this, null, Keys.CATALOG_ITEMS__CATALOG_ITEMS_TYPE_ID_FKEY.getInverseKey());
-
-        return _catalogItems;
-    }
-
     private transient CustomFieldTypesPath _customFieldTypes;
 
     /**
@@ -237,19 +222,6 @@ public class Types extends TableImpl<TypesRecord> {
             _projectTypes = new ProjectTypesPath(this, null, Keys.PROJECT_TYPES__PROJECT_TYPES_TYPE_ID_FKEY.getInverseKey());
 
         return _projectTypes;
-    }
-
-    private transient SlaPoliciesPath _slaPolicies;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.sla_policies</code> table
-     */
-    public SlaPoliciesPath slaPolicies() {
-        if (_slaPolicies == null)
-            _slaPolicies = new SlaPoliciesPath(this, null, Keys.SLA_POLICIES__SLA_POLICIES_TYPE_ID_FKEY.getInverseKey());
-
-        return _slaPolicies;
     }
 
     private transient WorkPackagesPath _workPackages;

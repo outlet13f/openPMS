@@ -10,20 +10,13 @@ import { Input } from "@/components/ui/field";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { useLatestSent } from "@/lib/use-latest-sent";
-import { useServiceCatalog } from "@/api/hooks";
-import { can, useOptionalProject } from "@/app/project";
-
-/** 서비스 데스크 filters: only in a project with the module on (no ticket matches anywhere else). */
-const SERVICE_FILTERS: FilterField[] = ["requester", "assignmentGroup", "channel", "slaBreached", "catalogItem", "approvalState"];
 
 /** What the value part of a filter row looks like for an operator. */
-/** one: a single value picked from a list (starts empty, unlike bool) */
-type ValueKind = "multi" | "text" | "number" | "days" | "date" | "range" | "bool" | "one" | "wp";
+type ValueKind = "multi" | "text" | "number" | "days" | "date" | "range" | "bool" | "wp";
 type OpDef = { op: FilterOp; label: string; input?: ValueKind };
 type Def = { label: string; ops: OpDef[]; values?: (o: FilterOptions) => SelectOption[] };
 
-/** catalogItems: the desk's catalog items (service desk projects only), the catalog item filter's choices */
-function useDefs(options?: FilterOptions, catalogItems: { id: string; name: string }[] = []): Record<FilterField, Def> {
+function useDefs(options?: FilterOptions): Record<FilterField, Def> {
   const { t } = useTranslation();
   const f = (k: string) => t(`filters.${k}` as "filters.is");
   const col = (k: string) => t(`filters.fields.${k}` as "filters.fields.status");
@@ -102,18 +95,6 @@ function useDefs(options?: FilterOptions, catalogItems: { id: string; name: stri
     },
     isMilestone: { label: col("isMilestone"), ops: bool, values: yesNo },
     blocked: { label: col("blocked"), ops: bool, values: yesNo },
-    // 서비스 데스크 티켓 (only tickets match is / yes)
-    requester: { label: col("requester"), ops: [is, isNot], values: people },
-    assignmentGroup: { label: col("assignmentGroup"), ops: [is, isNot], values: (o) => o.groups.map((g) => ({ value: g.id, label: g.name })) },
-    channel: { label: col("channel"), ops: [is], values: () => (["portal", "agent", "api"] as const).map((c) => ({ value: c, label: f(`channels.${c}`) })) },
-    slaBreached: { label: col("slaBreached"), ops: bool, values: yesNo },
-    catalogItem: { label: col("catalogItem"), ops: [is, isNot], values: () => catalogItems.map((i) => ({ value: i.id, label: i.name })) },
-    // exactly one value (the server answers 422 for more)
-    approvalState: {
-      label: col("approvalState"),
-      ops: [{ op: "eq", label: f("is"), input: "one" }],
-      values: () => (["pending", "delayed", "rejected", "none"] as const).map((s) => ({ value: s, label: f(`approvalStates.${s}`) })),
-    },
     // custom fields on in this scope that the administrator made filterable
     ...Object.fromEntries(
       (options?.customFields ?? [])
@@ -160,7 +141,6 @@ function ValueInput({ def, op, filter, options, onValues }: { def: Def; op: OpDe
     case "multi":
       return <MultiSelect size="sm" aria-label={label} value={v} placeholder={t("filters.pickValue")} onValueChange={onValues} options={options && def.values ? def.values(options) : []} />;
     case "bool":
-    case "one":
       return <Select size="sm" aria-label={label} value={v[0]} placeholder={t("filters.pickValue")} onValueChange={(x) => onValues([x])} options={options && def.values ? def.values(options) : []} />;
     case "text":
       return <LazyInput aria-label={label} value={v[0] ?? ""} onCommit={(x) => onValues([x])} placeholder={filter.field === "number" ? t("filters.numbersHint") : undefined} />;
@@ -194,11 +174,7 @@ function ValueInput({ def, op, filter, options, onValues }: { def: Def; op: OpDe
 
 export function FilterPanel({ spec, onSpec, options }: { spec: QuerySpec; onSpec: (s: QuerySpec) => void; options?: FilterOptions }) {
   const { t } = useTranslation();
-  const project = useOptionalProject();
-  const serviceOn = !!project && project.enabledModules.includes("service_desk") && can(project, "service.view");
-  const catalog = useServiceCatalog(serviceOn ? project.identifier : "");
-  const allDefs = useDefs(options, serviceOn ? (catalog.data?.items ?? []) : []);
-  const defs = serviceOn ? allDefs : (Object.fromEntries(Object.entries(allDefs).filter(([k]) => !SERVICE_FILTERS.includes(k as FilterField))) as typeof allDefs);
+  const defs = useDefs(options);
   // The spec as last sent, ahead of its round trip through the URL: two quick edits (removing two filters,
   // say) must build on each other, not on the same stale props.
   const { latest, send } = useLatestSent(spec, (s) => JSON.stringify(s));

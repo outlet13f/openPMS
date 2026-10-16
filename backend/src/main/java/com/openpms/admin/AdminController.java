@@ -80,7 +80,7 @@ public class AdminController {
                             long workPackageCount, long projectCount, Dto.TypeForm form, String descriptionTemplateHtml) {}
 
     public record AdminStatus(UUID id, String name, String color, boolean isClosed, boolean isReadonly, int position, boolean isDefault,
-                              int defaultDoneRatio, boolean excludedFromTotals, boolean slaPause, long workPackageCount) {}
+                              int defaultDoneRatio, boolean excludedFromTotals, long workPackageCount) {}
 
     public record AdminPriority(UUID id, String name, String color, int position, boolean isDefault, boolean isActive, long workPackageCount) {}
 
@@ -92,7 +92,7 @@ public class AdminController {
      *  temporaryPasswordUntil: until when the temporary password runs (past ones too until token-cleanup; never the password). */
     public record AdminUser(UUID id, String name, String email, String status, boolean isAdmin, String locale, String timeZone,
                             OffsetDateTime lastLoginAt, long projectCount, OffsetDateTime createdAt, OffsetDateTime lockedUntil, List<Dto.IdName> globalRoles,
-                            OffsetDateTime temporaryPasswordUntil, Dto.UserRef manager) {}
+                            OffsetDateTime temporaryPasswordUntil) {}
 
     /** 임시 비밀번호로 만들기: the password is in this answer (and later in GET …/temporary-password), nowhere else. */
     public record CreatedWithPassword(AdminUser user, String temporaryPassword, OffsetDateTime expiresAt) {
@@ -102,7 +102,7 @@ public class AdminController {
         }
     }
 
-    public record AdminGroup(UUID id, String name, List<Dto.UserRef> members, Dto.UserRef lead) {}
+    public record AdminGroup(UUID id, String name, List<Dto.UserRef> members) {}
 
     public record CalendarSettings(List<Integer> workingDays, int hoursPerDay) {}
 
@@ -122,7 +122,6 @@ public class AdminController {
         for (var k : List.of("query.save", "query.manage_public")) PERMISSIONS.add(new Permission(k, "project", "query"));
         for (var k : List.of("board.view", "board.manage")) PERMISSIONS.add(new Permission(k, "project", "board"));
         for (var k : List.of("time.log", "time.view", "time.manage")) PERMISSIONS.add(new Permission(k, "project", "time"));
-        for (var k : List.of("service.view", "service.handle", "service.manage")) PERMISSIONS.add(new Permission(k, "project", "service"));
         for (var k : List.of("global.create_projects", "global.manage_users")) PERMISSIONS.add(new Permission(k, "global", "global"));
     }
 
@@ -299,7 +298,7 @@ public class AdminController {
         var wp = db.select(WORK_PACKAGES.STATUS_ID, count()).from(WORK_PACKAGES).groupBy(WORK_PACKAGES.STATUS_ID).fetchMap(WORK_PACKAGES.STATUS_ID, count());
         return db.selectFrom(STATUSES).orderBy(STATUSES.POSITION).fetch().stream().filter(s -> only == null || s.getId().equals(only))
                 .map(s -> new AdminStatus(s.getId(), s.getName(), s.getColor(), s.getIsClosed(), s.getIsReadonly(), s.getPosition(), s.getIsDefault(),
-                        s.getDefaultDoneRatio(), s.getExcludedFromTotals(), s.getSlaPause(), wp.getOrDefault(s.getId(), 0)))
+                        s.getDefaultDoneRatio(), s.getExcludedFromTotals(), wp.getOrDefault(s.getId(), 0)))
                 .toList();
     }
 
@@ -328,8 +327,7 @@ public class AdminController {
         var s = db.insertInto(STATUSES).set(STATUSES.NAME, n).set(STATUSES.COLOR, c).set(STATUSES.POSITION, db.fetchCount(STATUSES) + 1)
                 .set(STATUSES.IS_DEFAULT, isDefault).set(STATUSES.IS_CLOSED, Boolean.TRUE.equals(In.bool(in, "isClosed")))
                 .set(STATUSES.IS_READONLY, Boolean.TRUE.equals(In.bool(in, "isReadonly"))).set(STATUSES.DEFAULT_DONE_RATIO, (short) (r == null ? 0 : r))
-                .set(STATUSES.EXCLUDED_FROM_TOTALS, Boolean.TRUE.equals(In.bool(in, "excludedFromTotals")))
-                .set(STATUSES.SLA_PAUSE, Boolean.TRUE.equals(In.bool(in, "slaPause"))).returning(STATUSES.ID).fetchOne();
+                .set(STATUSES.EXCLUDED_FROM_TOTALS, Boolean.TRUE.equals(In.bool(in, "excludedFromTotals"))).returning(STATUSES.ID).fetchOne();
         return ResponseEntity.status(HttpStatus.CREATED).body(statuses(s.getId()).get(0));
     }
 
@@ -355,8 +353,6 @@ public class AdminController {
         if (In.has(in, "isClosed")) s.setIsClosed(Boolean.TRUE.equals(In.bool(in, "isClosed")));
         if (In.has(in, "isReadonly")) s.setIsReadonly(Boolean.TRUE.equals(In.bool(in, "isReadonly")));
         if (In.has(in, "excludedFromTotals")) s.setExcludedFromTotals(Boolean.TRUE.equals(In.bool(in, "excludedFromTotals")));
-        // the SLA clock reads it from the snapshot, which every request loads afresh
-        if (In.has(in, "slaPause")) s.setSlaPause(Boolean.TRUE.equals(In.bool(in, "slaPause")));
         s.changed(STATUSES.IS_DEFAULT, true);
         s.store();
         return statuses(id).get(0);
@@ -602,8 +598,7 @@ public class AdminController {
         var globalRoles = s.globalRoleIds(u.id()).stream().map(id -> s.roles().stream().filter(r -> r.id().equals(id)).findFirst().orElse(null))
                 .filter(java.util.Objects::nonNull).sorted(Comparator.comparing(Snapshot.RoleRow::name, Text.KOREAN)).map(r -> new Dto.IdName(r.id(), r.name())).toList();
         return new AdminUser(u.id(), u.displayName(), u.email(), u.status(), u.isAdmin(), u.locale(), u.timeZone(), u.lastLoginAt(), projects, u.createdAt(),
-                "active".equals(u.status()) ? lockouts.get(u.id()) : null, globalRoles, "deleted".equals(u.status()) ? null : temporary.get(u.id()),
-                "deleted".equals(u.status()) ? null : Refs.user(s, u.managerId()));
+                "active".equals(u.status()) ? lockouts.get(u.id()) : null, globalRoles, "deleted".equals(u.status()) ? null : temporary.get(u.id()));
     }
 
     private AdminUser toUser(Ctx ctx, Snapshot.UserRow u) {
@@ -612,8 +607,7 @@ public class AdminController {
 
     /** The 잠김 filter also finds people locked out for a while by failed sign-ins. */
     @GetMapping("/users")
-    public List<AdminUser> listUsers(@RequestParam(required = false) String q, @RequestParam(required = false) String status,
-                                    @RequestParam(required = false) Boolean noManager) {
+    public List<AdminUser> listUsers(@RequestParam(required = false) String q, @RequestParam(required = false) String status) {
         var ctx = userManager();
         var needle = q == null ? "" : q.trim().toLowerCase();
         var lockouts = lockouts();
@@ -622,7 +616,6 @@ public class AdminController {
                 .filter(u -> !"deleted".equals(u.status()) || "deleted".equals(status))
                 .filter(u -> status == null || status.isBlank() || status.equals(u.status())
                         || "locked".equals(status) && "active".equals(u.status()) && lockouts.containsKey(u.id()))
-                .filter(u -> !Boolean.TRUE.equals(noManager) || "active".equals(u.status()) && u.managerId() == null)
                 .filter(u -> needle.isEmpty() || u.name().toLowerCase().contains(needle) || u.email().toLowerCase().contains(needle))
                 .sorted(Comparator.comparing(Snapshot.UserRow::name, Text.KOREAN)).map(u -> toUser(ctx, u, lockouts, temporary)).toList();
     }
@@ -651,10 +644,8 @@ public class AdminController {
         if (db.fetchExists(USERS, USERS.EMAIL.eq(email))) throw ApiException.field("email", "이미 등록된 이메일입니다.");
         boolean isAdmin = Boolean.TRUE.equals(In.bool(in, "isAdmin"));
         if (isAdmin && !ctx.isAdmin()) throw ApiException.forbidden("관리자만 관리자를 지정할 수 있습니다.");
-        requireAdminFor(ctx, in, "managerId");
-        var managerId = In.has(in, "managerId") ? activeUser(in, "managerId", null) : null;
         var u = db.insertInto(USERS).set(USERS.EMAIL, email).set(USERS.NAME, n).set(USERS.STATUS, temporary ? "active" : "invited").set(USERS.IS_ADMIN, isAdmin)
-                .set(USERS.MANAGER_ID, managerId).returning(USERS.ID).fetchOne();
+                .returning(USERS.ID).fetchOne();
         db.insertInto(USER_PREFERENCES).set(USER_PREFERENCES.USER_ID, u.getId()).execute();
         if (!temporary) {
             sendInvitation(ctx, u.getId(), email, n);
@@ -665,20 +656,6 @@ public class AdminController {
         ctx.refresh();
         return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore())
                 .body(new CreatedWithPassword(toUser(ctx, ctx.s().user(u.getId()).orElseThrow()), issued.temporaryPassword(), issued.expiresAt()));
-    }
-
-    /** Who approves whom follows from managers and group leads: only administrators set them (a user manager could route approvals to themselves). */
-    private static void requireAdminFor(Ctx ctx, Map<String, Object> in, String field) {
-        if (In.has(in, field) && !ctx.isAdmin()) throw ApiException.forbidden("관리자만 관리자(상사)·그룹 책임자를 정할 수 있습니다.");
-    }
-
-    /** A person named by a body field (승인자의 관리자, 그룹 책임자): active; null clears. {@code self} may not name itself. */
-    private UUID activeUser(Map<String, Object> in, String field, UUID self) {
-        var id = In.uuid(in, field, field);
-        if (id == null) return null;
-        if (id.equals(self)) throw ApiException.field(field, "자기 자신을 관리자로 지정할 수 없습니다.");
-        if (!db.fetchExists(USERS, USERS.ID.eq(id), USERS.STATUS.eq("active"))) throw ApiException.field(field, "활성 사용자만 지정할 수 있습니다.");
-        return id;
     }
 
     private long activeAdmins() {
@@ -692,7 +669,6 @@ public class AdminController {
         var u = db.selectFrom(USERS).where(USERS.ID.eq(id), USERS.STATUS.ne("deleted")).fetchOne();
         if (u == null) throw notFound("사용자");
         requireAdminFor(ctx, u);
-        requireAdminFor(ctx, in, "managerId");
         var n = name(in, false);
         if (n != null) u.setName(n);
         if (In.has(in, "isAdmin")) {
@@ -715,7 +691,6 @@ public class AdminController {
             u.setStatus(st);
             if ("locked".equals(st)) sessions.endAll(u.getId());
         }
-        if (In.has(in, "managerId")) u.setManagerId(activeUser(in, "managerId", id));
         u.store();
         ctx.refresh();
         return toUser(ctx, ctx.s().user(id).orElseThrow());
@@ -788,7 +763,7 @@ public class AdminController {
     private AdminGroup toGroup(Ctx ctx, UUID id) {
         var s = ctx.s();
         var g = s.groups().get(id);
-        return new AdminGroup(g.id(), g.name(), g.memberIds().stream().map(u -> Refs.user(s, u)).sorted(Comparator.comparing(Dto.UserRef::name, Text.KOREAN)).toList(), Refs.user(s, g.leadUserId()));
+        return new AdminGroup(g.id(), g.name(), g.memberIds().stream().map(u -> Refs.user(s, u)).sorted(Comparator.comparing(Dto.UserRef::name, Text.KOREAN)).toList());
     }
 
     @GetMapping("/groups")
@@ -803,9 +778,7 @@ public class AdminController {
         var ctx = userManager();
         var n = name(in, true);
         unique(USER_GROUPS, USER_GROUPS.NAME, USER_GROUPS.ID, n, null);
-        requireAdminFor(ctx, in, "leadUserId");
-        var lead = In.has(in, "leadUserId") ? activeUser(in, "leadUserId", null) : null;
-        var g = db.insertInto(USER_GROUPS).set(USER_GROUPS.NAME, n).set(USER_GROUPS.LEAD_USER_ID, lead).returning(USER_GROUPS.ID).fetchOne();
+        var g = db.insertInto(USER_GROUPS).set(USER_GROUPS.NAME, n).returning(USER_GROUPS.ID).fetchOne();
         ctx.refresh();
         return ResponseEntity.status(HttpStatus.CREATED).body(toGroup(ctx, g.getId()));
     }
@@ -815,13 +788,9 @@ public class AdminController {
     public AdminGroup renameGroup(@PathVariable UUID id, @RequestBody Map<String, Object> in) {
         var ctx = userManager();
         if (!ctx.s().groups().containsKey(id)) throw notFound("그룹");
-        requireAdminFor(ctx, in, "leadUserId");
-        var n = name(in, !In.has(in, "leadUserId"));
-        if (n != null) {
-            unique(USER_GROUPS, USER_GROUPS.NAME, USER_GROUPS.ID, n, id);
-            db.update(USER_GROUPS).set(USER_GROUPS.NAME, n).where(USER_GROUPS.ID.eq(id)).execute();
-        }
-        if (In.has(in, "leadUserId")) db.update(USER_GROUPS).set(USER_GROUPS.LEAD_USER_ID, activeUser(in, "leadUserId", null)).where(USER_GROUPS.ID.eq(id)).execute();
+        var n = name(in, true);
+        unique(USER_GROUPS, USER_GROUPS.NAME, USER_GROUPS.ID, n, id);
+        db.update(USER_GROUPS).set(USER_GROUPS.NAME, n).where(USER_GROUPS.ID.eq(id)).execute();
         ctx.refresh();
         return toGroup(ctx, id);
     }

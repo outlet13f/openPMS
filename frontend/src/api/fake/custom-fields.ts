@@ -129,12 +129,10 @@ export function applyValues(w: Pick<DbWp, "projectId" | "typeId" | "customValues
 }
 
 /** New items: defaults for active fields not given, then the required check for all of them. */
-export function initialValues(projectId: string, typeId: string, input: Record<string, CustomValue> | undefined, skipRequired?: Set<string>): Record<string, CustomValue> {
+export function initialValues(projectId: string, typeId: string, input: Record<string, CustomValue> | undefined): Record<string, CustomValue> {
   const out: Record<string, CustomValue> = {};
   for (const f of activeFields(projectId, typeId)) {
     const raw = input && f.id in input ? input[f.id] : f.defaultValue;
-    // portal: a required field the requester cannot see must not block the submission (defaults still apply)
-    if (skipRequired?.has(f.id) && empty(raw)) continue;
     const v = checkValue(f, raw, projectId);
     if (v !== null) out[f.id] = v;
   }

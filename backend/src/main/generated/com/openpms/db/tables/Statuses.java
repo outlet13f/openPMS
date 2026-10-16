@@ -8,7 +8,6 @@ import com.openpms.db.Indexes;
 import com.openpms.db.Keys;
 import com.openpms.db.Public;
 import com.openpms.db.tables.BoardColumns.BoardColumnsPath;
-import com.openpms.db.tables.ServiceTickets.ServiceTicketsPath;
 import com.openpms.db.tables.WorkPackages.WorkPackagesPath;
 import com.openpms.db.tables.Workflows.WorkflowsPath;
 import com.openpms.db.tables.records.StatusesRecord;
@@ -120,11 +119,6 @@ public class Statuses extends TableImpl<StatusesRecord> {
      */
     public final TableField<StatusesRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
 
-    /**
-     * The column <code>public.statuses.sla_pause</code>.
-     */
-    public final TableField<StatusesRecord, Boolean> SLA_PAUSE = createField(DSL.name("sla_pause"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
-
     private Statuses(Name alias, Table<StatusesRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -218,19 +212,6 @@ public class Statuses extends TableImpl<StatusesRecord> {
             _boardColumns = new BoardColumnsPath(this, null, Keys.BOARD_COLUMNS__BOARD_COLUMNS_STATUS_ID_FKEY.getInverseKey());
 
         return _boardColumns;
-    }
-
-    private transient ServiceTicketsPath _serviceTickets;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.service_tickets</code> table
-     */
-    public ServiceTicketsPath serviceTickets() {
-        if (_serviceTickets == null)
-            _serviceTickets = new ServiceTicketsPath(this, null, Keys.SERVICE_TICKETS__SERVICE_TICKETS_REQUESTER_MAILED_STATUS_ID_FKEY.getInverseKey());
-
-        return _serviceTickets;
     }
 
     private transient WorkPackagesPath _workPackages;

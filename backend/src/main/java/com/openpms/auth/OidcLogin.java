@@ -15,7 +15,6 @@ import java.util.UUID;
 import org.jooq.DSLContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
@@ -67,15 +66,12 @@ public class OidcLogin implements AuthenticationSuccessHandler, AuthenticationFa
     private final OidcProviders providers;
     private final SecurityContextRepository contextRepo;
     private final TransactionTemplate tx;
-    private final String managerClaim;
 
-    public OidcLogin(DSLContext db, OidcProviders providers, SecurityContextRepository contextRepo, TransactionTemplate tx,
-                     @Value("${openpms.oidc.manager-claim:}") String managerClaim) {
+    public OidcLogin(DSLContext db, OidcProviders providers, SecurityContextRepository contextRepo, TransactionTemplate tx) {
         this.db = db;
         this.providers = providers;
         this.contextRepo = contextRepo;
         this.tx = tx;
-        this.managerClaim = managerClaim == null ? "" : managerClaim.trim();
     }
 
     /** /api/v1/auth/oidc/start/{slug}[?next=/path]: PKCE on, and the page to come back to kept in the session. */
@@ -199,19 +195,7 @@ public class OidcLogin implements AuthenticationSuccessHandler, AuthenticationFa
         db.update(USERS).set(USERS.LAST_LOGIN_AT, now).set(USERS.FAILED_LOGIN_COUNT, 0).where(USERS.ID.eq(user.getId())).execute();
         db.update(USER_IDENTITIES).set(USER_IDENTITIES.LAST_LOGIN_AT, now)
                 .where(USER_IDENTITIES.PROVIDER_ID.eq(p.getId()), USER_IDENTITIES.USER_ID.eq(user.getId())).execute();
-        if (!managerClaim.isEmpty()) {
-            var manager = claim(person, managerClaim);
-            if (manager != null && !manager.isBlank()) syncManager(user.getId(), manager);
-        }
         return user.getId();
-    }
-
-    /** 승인자를 정할 관리자: the active person with this e-mail address, unless it is the person themselves; no match leaves it as is. */
-    public void syncManager(UUID userId, String managerEmail) {
-        if (managerEmail == null || managerEmail.isBlank()) return;
-        var manager = db.select(USERS.ID).from(USERS).where(USERS.EMAIL.eq(managerEmail.trim().toLowerCase()), USERS.STATUS.eq("active")).fetchOne(USERS.ID);
-        if (manager == null || manager.equals(userId)) return;
-        db.update(USERS).set(USERS.MANAGER_ID, manager).where(USERS.ID.eq(userId), USERS.MANAGER_ID.isDistinctFrom(manager)).execute();
     }
 
     private static String claim(OidcUser person, String name) {

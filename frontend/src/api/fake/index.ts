@@ -34,7 +34,7 @@ import type {
 import { ApiError } from "../errors";
 import { addDays, countWorkingDays, diffDays, isWorkingDay, nowIso, todayIso } from "@/lib/dates";
 import { db, newId, persist, type DbBoard, type DbJournal, type DbProject, type DbUser, type DbWp } from "./db";
-import { allowedFor, allowedStatusIds, can, findProject, findWp, globalPermissions, memberRoleIds, projectUserIds, requirePerm, sessionUser, visibleProjects } from "./permissions";
+import { allowedStatusIds, can, findProject, findWp, globalPermissions, memberRoleIds, projectUserIds, requirePerm, sessionUser, visibleProjects } from "./permissions";
 import { clone, display, projectRef, statusRef, toJournal, toProject, toWp, typeRef, priorityRef, userRef, wpRef } from "./dto";
 import { propagate, resolveDates, wouldCycle, workCalendar } from "./scheduling";
 import { matches, defaultSpec, runQuery, listTakes, viewableProjectIds } from "./query";
@@ -52,11 +52,6 @@ import { clearTemporaryPassword, expireTemporaryPassword, temporaryPasswordOf } 
 import { adminApi, categoriesApi, projectExtras, versionsApi } from "./admin";
 import { followMove, timeApi } from "./time";
 import { beyondMain, journalTeam, readTeam, sameTeam, swap, teamOf, withMain, type TeamEntry } from "./assignees";
-import {
-  appliesTo, cannotMoveTickets, connectWriters, hiddenFieldIds, matrixPriority, portalApi, serviceDeskApi, staysPrivate, ticketCommented, ticketCopied, ticketCreated,
-  ticketDraft, ticketUpdated, type Acting,
-} from "./service-desk";
-import { ITSM } from "./service-desk-seed";
 
 /* ---------- plumbing ---------- */
 
@@ -159,8 +154,6 @@ function copyTemplate(t: DbProject, p: DbProject, parts: Set<string>, user: DbUs
     for (const r of db.relations.filter((x) => ids.has(x.fromId) && ids.has(x.toId) && sources.some((w) => w.id === x.fromId)))
       db.relations.push({ ...r, id: newId("rel"), fromId: ids.get(r.fromId)!, toId: ids.get(r.toId)! });
     for (const c of made) db.journals.push({ id: newId("j"), wpId: c.id, version: 1, userId: user.id, notesHtml: "", isInternal: false, changes: {}, cause: null, createdAt: now, updatedAt: now });
-    // ITSM 1단계: copied tickets keep their requester and classification (the new project took the template's modules)
-    sources.forEach((w, i) => ticketCopied(t, w.id, made[i]));
   }
   const remap = <T,>(v: T): T => {
     let s = JSON.stringify(v);
@@ -200,7 +193,6 @@ function createProjectFor(user: DbUser, input: ProjectInput, source: DbProject |
   }
   const template = source ?? (input.templateId ? visibleProjects(user).find((p) => p.isTemplate && !p.archivedAt && (p.id === input.templateId || p.identifier === input.templateId)) : null);
   if (!source && input.templateId && !template) throw fieldError("template", "템플릿을 찾을 수 없습니다.");
-  staysPrivate(!!input.isPublic, template?.enabledModules ?? [], "isPublic");
   const now = nowIso();
   const p: DbProject = {
     id: newId("p"), identifier, name, descriptionHtml: input.descriptionHtml ?? "", status: null, statusExplanation: "",
@@ -414,19 +406,10 @@ const mentionsIn = (html: string) => Array.from(html.matchAll(/data-user-id="([^
 
 function applyPatch(user: DbUser, number: number, patch: WorkPackagePatch): WorkPackage {
   const { wp, project } = findWp(user, number);
-  requirePerm(user, project, "wp.edit", "이 작업을 수정할 권한이 없습니다.", wp);
-  return toWp(patchWp(user, wp, project, patch, "member"), user);
-}
-
-/**
- * The saved row (wp itself when nothing changed). acting "portal": a requester moves their own ticket under the
- * 요청자 role's workflow (the portal decided who may); a conflict then carries no work package.
- */
-function patchWp(user: DbUser, wp: DbWp, project: DbProject, patch: WorkPackagePatch, acting: Acting): DbWp {
   if (patch.lockVersion !== wp.lockVersion) {
-    // only a member's conflict carries the work package: a requester or an approver never gets it
-    throw new ApiError(409, "다른 사람이 먼저 수정했습니다.", "최신 내용을 불러온 뒤 다시 저장하세요.", acting === "member" ? { current: toWp(wp, user) } : {});
+    throw new ApiError(409, "다른 사람이 먼저 수정했습니다.", "최신 내용을 불러온 뒤 다시 저장하세요.", { current: toWp(wp, user) });
   }
+  requirePerm(user, project, "wp.edit", "이 작업을 수정할 권한이 없습니다.", wp);
 
   const given = Object.entries(patch).filter(([k, v]) => !["lockVersion", "touched"].includes(k) && v !== undefined).map(([k]) => k);
   if (statusOf(wp).isReadonly && given.some((k) => k !== "statusId")) {
@@ -443,12 +426,7 @@ function patchWp(user: DbUser, wp: DbWp, project: DbProject, patch: WorkPackageP
   };
 
   if (patch.statusId !== undefined && patch.statusId !== wp.statusId) {
-    const allowed =
-      acting === "portal" ? allowedFor([ITSM.requesterRole], user.id, wp, user.id)
-      // an approver's decision: only out of 승인 대기, only to 접수 (last approval) or 반려 (rejection)
-      : acting === "approval" ? (wp.statusId === ITSM.awaitingApproval && (patch.statusId === ITSM.received || patch.statusId === ITSM.rejected) ? [patch.statusId] : [])
-      : allowedStatusIds(user, wp);
-    if (!allowed.includes(patch.statusId)) {
+    if (!allowedStatusIds(user, wp).includes(patch.statusId)) {
       const from = statusOf(wp).name;
       const to = db.statuses.find((s) => s.id === patch.statusId)?.name ?? "?";
       throw new ApiError(422, "허용되지 않는 상태 전환입니다.", `내 역할로는 '${from}'에서 '${to}'(으)로 바꿀 수 없습니다.`);
@@ -554,10 +532,8 @@ function patchWp(user: DbUser, wp: DbWp, project: DbProject, patch: WorkPackageP
     }
   }
 
-  if (!Object.keys(changes).length) return wp;
+  if (!Object.keys(changes).length) return toWp(wp, user);
 
-  // 서비스 데스크: may refuse (ticket ↔ ordinary type) before anything is stored, then pauses, resolves and recomputes the SLA
-  ticketUpdated(user, wp, { ...wp, ...next });
   const oldParent = wp.parentId;
   Object.assign(wp, next, { lockVersion: wp.lockVersion + 1, updatedAt: nowIso() });
   const journal = writeJournal(wp, user, changes);
@@ -576,7 +552,7 @@ function patchWp(user: DbUser, wp: DbWp, project: DbProject, patch: WorkPackageP
       writeJournal(c.wp, user, c.changes, "", c.cause);
     }
   }
-  return wp;
+  return toWp(wp, user);
 }
 
 /* ---------- default views (built into the app, not stored) ---------- */
@@ -680,8 +656,6 @@ const REASON_TEXT: Record<string, (actor: string) => string> = {
   date_alert_due: () => "완료일이 다가옵니다",
   date_alert_start: () => "시작일이 다가옵니다",
   date_alert_overdue: () => "기한이 지났습니다",
-  sla_warning: () => "SLA 기한이 다가옵니다",
-  sla_breached: () => "SLA 기한을 넘겼습니다",
 };
 
 function notificationSummary(n: (typeof db.notifications)[number], user: DbUser): string {
@@ -713,20 +687,10 @@ function managedBoard(id: string) {
 function createWp(user: DbUser, projectId: string, input: WorkPackageInput): WorkPackage {
   const p = findProject(user, projectId);
   requirePerm(user, p, "wp.create", "이 프로젝트에 작업을 만들 권한이 없습니다.");
-  return toWp(insertWp(user, p, input, "member"), user);
-}
-
-/**
- * A new row; acting "portal": a requester's ticket (the portal checked who may and passes only portal fields). waived:
- * more fields whose required check is waived when empty (a catalog item's form decides what is required).
- */
-function insertWp(user: DbUser, p: DbProject, input: WorkPackageInput, acting: Acting, waived?: Set<string>): DbWp {
   const subject = input.subject?.trim() ?? "";
   if (!subject) throw fieldError("subject", "제목을 입력하세요.");
   if (subject.length > 255) throw fieldError("subject", "제목은 255자 이하로 입력하세요.");
   if (!p.typeIds.includes(input.typeId)) throw fieldError("type", "이 프로젝트에서 쓰지 않는 유형입니다.");
-  // 서비스 데스크: a ticket starts as 접수 with the matrix priority and gets its service_tickets row
-  const ticket = appliesTo(p, input.typeId) ? ticketDraft(user, input, acting === "portal" ? "portal" : "agent") : null;
   const team = input.assignees ? readTeam(input.assignees, (id) => isMember(id, p.id)) : null;
   if (typeof team === "string") throw fieldError("assignees", team);
   if (team?.length) input = { ...input, assigneeId: team[0].userId };
@@ -744,16 +708,13 @@ function insertWp(user: DbUser, p: DbProject, input: WorkPackageInput, acting: A
     if (!parent) throw fieldError("parent", "상위 작업을 찾을 수 없습니다.");
     parentId = parent.id;
   }
-  // portal: a required field the requester cannot see must not block (or reveal itself in) the submission
-  const skipRequired = acting === "portal" ? hiddenFieldIds() : new Set<string>();
-  waived?.forEach((id) => skipRequired.add(id));
-  const customValues = initialValues(p.id, input.typeId, input.customValues, skipRequired.size ? skipRequired : undefined);
+  const customValues = initialValues(p.id, input.typeId, input.customValues);
   const now = nowIso();
   db.seq.wp += 1;
   const base: DbWp = {
     id: newId("wp"), number: db.seq.wp, projectId: p.id, typeId: input.typeId,
-    statusId: input.statusId ?? (ticket ? ITSM.received : db.statuses.find((s) => s.isDefault)!.id),
-    priorityId: input.priorityId ?? (ticket ? matrixPriority(p.id, ticket.impact, ticket.urgency) : null) ?? db.priorities.find((x) => x.isDefault)!.id,
+    statusId: input.statusId ?? db.statuses.find((s) => s.isDefault)!.id,
+    priorityId: input.priorityId ?? db.priorities.find((x) => x.isDefault)!.id,
     subject, descriptionHtml: input.descriptionHtml ?? "", authorId: user.id, assigneeId, ...(team?.length ? { team } : {}),
     responsibleId: input.responsibleId ?? null, versionId: input.versionId ?? null, categoryId: category?.id ?? null, parentId,
     startDate: null, dueDate: null, duration: null, ignoreNonWorkingDays: false, scheduleManually: true,
@@ -762,17 +723,14 @@ function insertWp(user: DbUser, p: DbProject, input: WorkPackageInput, acting: A
   Object.assign(base, resolveDates(base, { startDate: input.startDate, dueDate: input.dueDate }));
   Object.assign(base, deriveProgress(base));
   db.workPackages.push(base);
-  if (ticket) ticketCreated(base, ticket);
   const j = writeJournal(base, user, { _created: [null, true] });
   fanOut(base, j, user);
   for (const c of propagate([base])) {
     c.wp.lockVersion += 1;
     writeJournal(c.wp, user, c.changes, "", c.cause);
   }
-  return base;
+  return toWp(base, user);
 }
-
-connectWriters({ insert: insertWp, patch: patchWp, update: applyPatch, journal: writeJournal, fanOut });
 
 /** DELETE /work-packages/{n}: children deleted too, or moved up to the grandparent. */
 function removeWp(user: DbUser, number: number, childrenMode: "delete" | "reparent") {
@@ -791,8 +749,6 @@ function removeWp(user: DbUser, number: number, childrenMode: "delete" | "repare
   db.journals = db.journals.filter((j) => !doomed.has(j.wpId));
   db.watchers = db.watchers.filter((x) => !doomed.has(x.wpId));
   db.notifications = db.notifications.filter((x) => !doomed.has(x.wpId));
-  db.serviceTickets = db.serviceTickets.filter((x) => !doomed.has(x.workPackageId));
-  db.ticketApprovals = db.ticketApprovals.filter((x) => !doomed.has(x.wpId));
 }
 
 /** A copy goes through the create rules: what still fits the target (members, its versions and categories, its active fields). */
@@ -817,10 +773,7 @@ function copyWp(user: DbUser, w: DbWp, target: DbProject, subject: string, paren
     dueDate: w.dueDate,
     customValues: Object.fromEntries(Object.entries(w.customValues ?? {}).filter(([k]) => active.has(k))),
   });
-  // ITSM 1단계: a copied ticket keeps the original's requester and classification and sends no new receipt
-  const copy = db.workPackages.find((x) => x.id === made.id)!;
-  ticketCopied(target, w.id, copy);
-  return w.workHours === null ? toWp(copy, user) : applyPatch(user, made.number, { lockVersion: made.lockVersion, workHours: w.workHours });
+  return w.workHours === null ? made : applyPatch(user, made.number, { lockVersion: made.lockVersion, workHours: w.workHours });
 }
 
 function copyChildren(user: DbUser, sourceParentId: string, target: DbProject, newParentNumber: number) {
@@ -843,7 +796,6 @@ function moveWp(user: DbUser, number: number, input: MoveInput): WorkPackage {
   if (!target.typeIds.includes(typeId)) throw fieldError("type", "대상 프로젝트에서 쓰는 유형을 고르세요.");
   const moving = [root];
   for (let i = 0; i < moving.length; i++) moving.push(...db.workPackages.filter((x) => x.parentId === moving[i].id).sort((a, b) => a.number - b.number));
-  cannotMoveTickets(moving);
   for (const w of moving.slice(1))
     if (!target.typeIds.includes(w.typeId)) throw fieldError("type", `하위 작업 #${w.number}의 유형 '${db.types.find((t) => t.id === w.typeId)?.name ?? "?"}'을(를) 대상 프로젝트에서 쓰지 않습니다.`);
   for (const w of moving) {
@@ -1080,8 +1032,6 @@ export const fakeApi: Api = {
           for (let a: DbProject | undefined = parent; a; a = a.parentId ? db.projects.find((x) => x.id === a!.parentId) : undefined)
             if (a.id === p.id) throw fieldError("parent", "자기 자신이나 하위 프로젝트를 상위로 정할 수 없습니다.");
         }
-        if (patch.isPublic !== undefined || patch.enabledModules !== undefined)
-          staysPrivate(patch.isPublic ?? p.isPublic, patch.enabledModules ?? p.enabledModules, patch.isPublic !== undefined ? "isPublic" : "enabledModules");
         Object.assign(p, patch, { updatedAt: nowIso() });
         return toProject(p, user);
       }),
@@ -1311,7 +1261,6 @@ export const fakeApi: Api = {
         if (!bodyHtml.replace(/<[^>]*>/g, "").trim()) throw fieldError("comment", "코멘트를 입력하세요.");
         const j = writeJournal(wp, user, {}, bodyHtml, null, internal);
         fanOut(wp, j, user, mentionsIn(bodyHtml));
-        ticketCommented(user, wp, internal);
         return toJournal(j, user);
       }),
     editComment: (journalId, bodyHtml) =>
@@ -1861,8 +1810,6 @@ export const fakeApi: Api = {
   },
 
   time: timeApi,
-  serviceDesk: serviceDeskApi,
-  portal: portalApi,
   search: {
     suggest: (q) =>
       run(() => {

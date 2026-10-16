@@ -2,7 +2,6 @@
 import type { ShareRole } from "../types";
 import { ApiError } from "../errors";
 import { db, type DbProject, type DbUser, type DbWp } from "./db";
-import { teamOf } from "./assignees";
 
 const MODULE_OF: Record<string, DbProject["enabledModules"][number]> = {
   "board.view": "boards",
@@ -10,9 +9,6 @@ const MODULE_OF: Record<string, DbProject["enabledModules"][number]> = {
   "time.log": "time_tracking",
   "time.view": "time_tracking",
   "time.manage": "time_tracking",
-  "service.view": "service_desk",
-  "service.handle": "service_desk",
-  "service.manage": "service_desk",
 };
 
 const ALL_PROJECT_PERMS = Array.from(new Set(db.roles.filter((r) => r.scope === "project").flatMap((r) => r.permissions)));
@@ -105,20 +101,8 @@ export function requirePerm(user: DbUser, project: DbProject, perm: string, mess
 /** Workflow check (architecture.md §3.2): the statuses this user may move this work package to. */
 export function allowedStatusIds(user: DbUser, wp: DbWp): string[] {
   if (user.isAdmin) return db.statuses.filter((s) => s.id !== wp.statusId).map((s) => s.id);
-  return allowedFor(memberRoleIds(user.id, wp.projectId), user.id, wp, wp.authorId);
-}
-
-/**
- * The same for given roles, without the administrator's shortcut (backend Assembler.allowedFor): the portal checks the
- * built-in 요청자 role with the requester as the author. "author" / "assignee" rows apply only to that person.
- */
-export function allowedFor(roleIds: string[], userId: string, wp: DbWp, authorId: string): string[] {
-  const team = teamOf(wp).map((e) => e.userId);
-  const out: string[] = [];
-  for (const w of db.workflows) {
-    if (w.typeId !== wp.typeId || w.from !== wp.statusId || !roleIds.includes(w.roleId)) continue;
-    const applies = w.appliesTo === "author" ? userId === authorId : w.appliesTo === "assignee" ? team.includes(userId) : true;
-    if (applies && !out.includes(w.to)) out.push(w.to);
-  }
-  return out;
+  const roleIds = memberRoleIds(user.id, wp.projectId);
+  return Array.from(
+    new Set(db.workflows.filter((w) => w.typeId === wp.typeId && w.from === wp.statusId && roleIds.includes(w.roleId)).map((w) => w.to)),
+  );
 }

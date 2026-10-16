@@ -1,7 +1,7 @@
 // Query hooks for administration (S27–S36) and project settings (S24–S26).
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { DisplaySettings, OidcProviderInput, AuthSettings, CalendarSettings, CustomFieldInput, Id, ProgressSettings, PriorityInput, RoleInput, StatusInput, Transition, TypeInput, UserInput, VersionInput, ServiceCalendar } from "./types";
+import type { DisplaySettings, OidcProviderInput, AuthSettings, CalendarSettings, CustomFieldInput, Id, ProgressSettings, PriorityInput, RoleInput, StatusInput, Transition, TypeInput, UserInput, VersionInput } from "./types";
 
 export const ak = {
   customFields: ["admin", "custom-fields"] as const,
@@ -135,7 +135,7 @@ export function useRoleMutations() {
 
 /* ---------- users / groups ---------- */
 
-export const useAdminUsers = (params: { q?: string; status?: "invited" | "active" | "locked" | "deleted"; noManager?: boolean }) =>
+export const useAdminUsers = (params: { q?: string; status?: "invited" | "active" | "locked" | "deleted" }) =>
   useQuery({ queryKey: ak.users(params), queryFn: () => api.admin.users.list(params) });
 export function useUserMutations() {
   return {
@@ -154,8 +154,6 @@ export function useGroupMutations() {
   return {
     create: useMut((name: string) => api.admin.groups.create(name)),
     rename: useMut(({ id, name }: { id: Id; name: string }) => api.admin.groups.rename(id, name)),
-    /** name and/or 그룹 책임자 (administrators only) */
-    update: useMut(({ id, patch }: { id: Id; patch: { name?: string; leadUserId?: Id | null } }) => api.admin.groups.update(id, patch)),
     remove: useMut((id: Id) => api.admin.groups.remove(id)),
     setMembers: useMut(({ id, userIds }: { id: Id; userIds: Id[] }) => api.admin.groups.setMembers(id, userIds)),
   };
@@ -233,20 +231,4 @@ export const useSystemInfo = () => useQuery({ queryKey: ["admin", "system"], que
 export function useBackupNow() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: () => api.admin.system.backup(), onSettled: () => qc.invalidateQueries({ queryKey: ["admin", "system"] }) });
-}
-
-/* ---------- 서비스 달력 (ITSM) ---------- */
-
-/** A calendar change moves SLA deadlines of the next saves and the settings screens' choices. */
-export function useServiceCalendarMutations() {
-  const qc = useQueryClient();
-  const done = () => (qc.invalidateQueries({ queryKey: ["service-calendars"] }), qc.invalidateQueries({ queryKey: ["serviceDesk"] }));
-  return {
-    create: useMutation({ mutationFn: (input: Omit<ServiceCalendar, "id">) => api.serviceDesk.createCalendar(input), onSuccess: done }),
-    update: useMutation({
-      mutationFn: (v: { id: Id; patch: Partial<Omit<ServiceCalendar, "id">> }) => api.serviceDesk.updateCalendar(v.id, v.patch),
-      onSuccess: done,
-    }),
-    remove: useMutation({ mutationFn: (id: Id) => api.serviceDesk.deleteCalendar(id), onSuccess: done }),
-  };
 }

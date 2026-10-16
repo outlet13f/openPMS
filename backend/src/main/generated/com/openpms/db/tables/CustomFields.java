@@ -6,8 +6,6 @@ package com.openpms.db.tables;
 
 import com.openpms.db.Keys;
 import com.openpms.db.Public;
-import com.openpms.db.tables.CatalogItemFields.CatalogItemFieldsPath;
-import com.openpms.db.tables.CatalogItems.CatalogItemsPath;
 import com.openpms.db.tables.CustomFieldOptions.CustomFieldOptionsPath;
 import com.openpms.db.tables.CustomFieldTypes.CustomFieldTypesPath;
 import com.openpms.db.tables.ProjectCustomFields.ProjectCustomFieldsPath;
@@ -147,11 +145,6 @@ public class CustomFields extends TableImpl<CustomFieldsRecord> {
      */
     public final TableField<CustomFieldsRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
 
-    /**
-     * The column <code>public.custom_fields.portal_visible</code>.
-     */
-    public final TableField<CustomFieldsRecord, Boolean> PORTAL_VISIBLE = createField(DSL.name("portal_visible"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
-
     private CustomFields(Name alias, Table<CustomFieldsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -229,19 +222,6 @@ public class CustomFields extends TableImpl<CustomFieldsRecord> {
         return Arrays.asList(Keys.CUSTOM_FIELDS_ENTITY_NAME_KEY);
     }
 
-    private transient CatalogItemFieldsPath _catalogItemFields;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.catalog_item_fields</code> table
-     */
-    public CatalogItemFieldsPath catalogItemFields() {
-        if (_catalogItemFields == null)
-            _catalogItemFields = new CatalogItemFieldsPath(this, null, Keys.CATALOG_ITEM_FIELDS__CATALOG_ITEM_FIELDS_CUSTOM_FIELD_ID_FKEY.getInverseKey());
-
-        return _catalogItemFields;
-    }
-
     private transient CustomFieldOptionsPath _customFieldOptions;
 
     /**
@@ -279,14 +259,6 @@ public class CustomFields extends TableImpl<CustomFieldsRecord> {
             _projectCustomFields = new ProjectCustomFieldsPath(this, null, Keys.PROJECT_CUSTOM_FIELDS__PROJECT_CUSTOM_FIELDS_CUSTOM_FIELD_ID_FKEY.getInverseKey());
 
         return _projectCustomFields;
-    }
-
-    /**
-     * Get the implicit many-to-many join path to the
-     * <code>public.catalog_items</code> table
-     */
-    public CatalogItemsPath catalogItems() {
-        return catalogItemFields().catalogItems();
     }
 
     /**

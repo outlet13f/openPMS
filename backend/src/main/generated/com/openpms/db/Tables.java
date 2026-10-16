@@ -9,10 +9,6 @@ import com.openpms.db.tables.Attachments;
 import com.openpms.db.tables.BoardCards;
 import com.openpms.db.tables.BoardColumns;
 import com.openpms.db.tables.Boards;
-import com.openpms.db.tables.CatalogCategories;
-import com.openpms.db.tables.CatalogItemApprovalSteps;
-import com.openpms.db.tables.CatalogItemFields;
-import com.openpms.db.tables.CatalogItems;
 import com.openpms.db.tables.Categories;
 import com.openpms.db.tables.CustomFieldOptions;
 import com.openpms.db.tables.CustomFieldTypes;
@@ -27,7 +23,6 @@ import com.openpms.db.tables.NotificationSettings;
 import com.openpms.db.tables.Notifications;
 import com.openpms.db.tables.OidcProviders;
 import com.openpms.db.tables.Priorities;
-import com.openpms.db.tables.PriorityMatrix;
 import com.openpms.db.tables.ProjectCustomFields;
 import com.openpms.db.tables.ProjectFavorites;
 import com.openpms.db.tables.ProjectTypes;
@@ -36,13 +31,9 @@ import com.openpms.db.tables.Queries;
 import com.openpms.db.tables.QueryFavorites;
 import com.openpms.db.tables.Relations;
 import com.openpms.db.tables.Roles;
-import com.openpms.db.tables.ServiceCalendars;
-import com.openpms.db.tables.ServiceTickets;
 import com.openpms.db.tables.Settings;
-import com.openpms.db.tables.SlaPolicies;
 import com.openpms.db.tables.Statuses;
 import com.openpms.db.tables.TemporaryPasswords;
-import com.openpms.db.tables.TicketApprovals;
 import com.openpms.db.tables.TimeActivities;
 import com.openpms.db.tables.TimeEntries;
 import com.openpms.db.tables.Types;
@@ -92,26 +83,6 @@ public class Tables {
      * The table <code>public.boards</code>.
      */
     public static final Boards BOARDS = Boards.BOARDS;
-
-    /**
-     * The table <code>public.catalog_categories</code>.
-     */
-    public static final CatalogCategories CATALOG_CATEGORIES = CatalogCategories.CATALOG_CATEGORIES;
-
-    /**
-     * The table <code>public.catalog_item_approval_steps</code>.
-     */
-    public static final CatalogItemApprovalSteps CATALOG_ITEM_APPROVAL_STEPS = CatalogItemApprovalSteps.CATALOG_ITEM_APPROVAL_STEPS;
-
-    /**
-     * The table <code>public.catalog_item_fields</code>.
-     */
-    public static final CatalogItemFields CATALOG_ITEM_FIELDS = CatalogItemFields.CATALOG_ITEM_FIELDS;
-
-    /**
-     * The table <code>public.catalog_items</code>.
-     */
-    public static final CatalogItems CATALOG_ITEMS = CatalogItems.CATALOG_ITEMS;
 
     /**
      * The table <code>public.categories</code>.
@@ -184,11 +155,6 @@ public class Tables {
     public static final Priorities PRIORITIES = Priorities.PRIORITIES;
 
     /**
-     * The table <code>public.priority_matrix</code>.
-     */
-    public static final PriorityMatrix PRIORITY_MATRIX = PriorityMatrix.PRIORITY_MATRIX;
-
-    /**
      * The table <code>public.project_custom_fields</code>.
      */
     public static final ProjectCustomFields PROJECT_CUSTOM_FIELDS = ProjectCustomFields.PROJECT_CUSTOM_FIELDS;
@@ -229,24 +195,9 @@ public class Tables {
     public static final Roles ROLES = Roles.ROLES;
 
     /**
-     * The table <code>public.service_calendars</code>.
-     */
-    public static final ServiceCalendars SERVICE_CALENDARS = ServiceCalendars.SERVICE_CALENDARS;
-
-    /**
-     * The table <code>public.service_tickets</code>.
-     */
-    public static final ServiceTickets SERVICE_TICKETS = ServiceTickets.SERVICE_TICKETS;
-
-    /**
      * The table <code>public.settings</code>.
      */
     public static final Settings SETTINGS = Settings.SETTINGS;
-
-    /**
-     * The table <code>public.sla_policies</code>.
-     */
-    public static final SlaPolicies SLA_POLICIES = SlaPolicies.SLA_POLICIES;
 
     /**
      * The table <code>public.statuses</code>.
@@ -257,11 +208,6 @@ public class Tables {
      * The table <code>public.temporary_passwords</code>.
      */
     public static final TemporaryPasswords TEMPORARY_PASSWORDS = TemporaryPasswords.TEMPORARY_PASSWORDS;
-
-    /**
-     * The table <code>public.ticket_approvals</code>.
-     */
-    public static final TicketApprovals TICKET_APPROVALS = TicketApprovals.TICKET_APPROVALS;
 
     /**
      * The table <code>public.time_activities</code>.
