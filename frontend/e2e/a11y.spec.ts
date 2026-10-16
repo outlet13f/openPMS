@@ -27,6 +27,7 @@ const SCREENS: [string, string, RegExp | string][] = [
   ["전역 Gantt", "/gantt", /Gantt/],
   ["관리 CI/CD 연동", "/admin/cicd", "사내 GitLab(개발용)"],
   ["프로젝트 설정 저장소", "/projects/web-platform/settings/repositories", "web/portal"],
+  ["프로젝트 설정 환경", "/projects/web-platform/settings/environments", "개발"],
   ["개발 탭", "/projects/web-platform/work-packages/details/4/dev", "결제 API 클라이언트 추가 (#4)"],
 ];
 
@@ -70,6 +71,7 @@ test.describe("axe in the dark theme", () => {
     ["S35 사용자 (dark)", "/admin/users"],
     ["개발 탭 (dark)", "/projects/web-platform/work-packages/details/4/dev"],
     ["관리 CI/CD 연동 (dark)", "/admin/cicd"],
+    ["프로젝트 설정 환경 (dark)", "/projects/web-platform/settings/environments"],
   ] as const) {
     test(`a11y ${name}`, async ({ page }) => {
       await page.goto(url);

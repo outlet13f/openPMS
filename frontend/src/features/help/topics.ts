@@ -26,6 +26,7 @@ const TOPICS: [RegExp, ManualId, string][] = [
   [new RegExp(`${P}/settings/work-packages`), "user", "11.6"],
   [new RegExp(`${P}/settings/versions`), "user", "11.7"],
   [new RegExp(`${P}/settings/repositories`), "user", "16.3"],
+  [new RegExp(`${P}/settings/environments`), "user", "16.7"],
   [new RegExp(`${P}/settings`), "user", "11.3"],
   [/^\/projects\/new/, "user", "11.1"],
   [new RegExp(`${P}/?$`), "user", "4.3"],

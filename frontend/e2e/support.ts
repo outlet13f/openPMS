@@ -59,6 +59,28 @@ export async function api<T>(page: Page, fn: string, ...args: unknown[]): Promis
   );
 }
 
+/** A JSON request as the signed-in user, from the page (same CSRF handling as the app's client). */
+export async function send(page: Page, method: string, path: string, body?: unknown) {
+  return page.evaluate(
+    async ([m, p, b]) => {
+      const xsrf = document.cookie.match(/(?:^|; )XSRF-TOKEN=([^;]+)/)?.[1];
+      const headers: Record<string, string> = xsrf ? { "X-XSRF-TOKEN": decodeURIComponent(xsrf) } : {};
+      if (b !== undefined) headers["Content-Type"] = "application/json";
+      const r = await fetch(p as string, { method: m as string, headers, body: b === undefined ? undefined : JSON.stringify(b) });
+      return { status: r.status, json: r.headers.get("content-type")?.includes("json") ? await r.json() : null };
+    },
+    [method, path, body] as const,
+  );
+}
+
+/** POST as the signed-in user, from the page. */
+export const post = (page: Page, path: string, body?: unknown) => send(page, "POST", path, body);
+
+/** Runs a dev-profile job now, as the signed-in administrator. */
+export async function runJob(page: Page, name: string) {
+  expect((await post(page, `/api/v1/dev/jobs/${name}`)).status, `job ${name}`).toBe(200);
+}
+
 /** WCAG 2.1 A/AA rules on what is on screen now. */
 export async function axe(page: Page, screen: string) {
   // a pointer resting on a control starts its hover transition, and a closing menu fades out: scanned halfway, the

@@ -8,7 +8,7 @@
 // 개발 데이터 V1010: web-platform #4 병합된 MR + 커밋 2, 개발용 GitLab 연동은 토큰이 없어 꺼져 있음(V1011: 허용 프로젝트 web-platform·mobile-app).
 import crypto from "node:crypto";
 import type { Page } from "@playwright/test";
-import { test, expect, login, logout, resetDb, axe, panel } from "./support";
+import { test, expect, login, logout, resetDb, axe, panel, post, runJob } from "./support";
 
 const GIT_CHECK = `${process.env.FAKE_GIT_URL ?? "http://127.0.0.1:18090"}/health`;
 const GIT_BASE = "http://openpms-cicd-git:18090";
@@ -35,30 +35,11 @@ test.beforeAll(async () => {
 test.afterAll(resetDb);
 test.beforeEach(() => test.skip(!gitUp, "test code host (e2e/fake-git.mjs) is not running"));
 
-/** POST as the signed-in user, from the page (same CSRF handling as the app's client). */
-async function post(page: Page, path: string, body?: unknown) {
-  return page.evaluate(
-    async ([p, b]) => {
-      const xsrf = document.cookie.match(/(?:^|; )XSRF-TOKEN=([^;]+)/)?.[1];
-      const headers: Record<string, string> = xsrf ? { "X-XSRF-TOKEN": decodeURIComponent(xsrf) } : {};
-      if (b !== undefined) headers["Content-Type"] = "application/json";
-      const r = await fetch(p as string, { method: "POST", headers, body: b === undefined ? undefined : JSON.stringify(b) });
-      return { status: r.status, json: r.headers.get("content-type")?.includes("json") ? await r.json() : null };
-    },
-    [path, body] as const,
-  );
-}
-
 /** Opens the connection's edit dialog from its row menu. */
 async function editConnection(page: Page, name: string) {
   await page.getByRole("button", { name: `${name} 메뉴` }).click();
   await page.getByRole("menuitem", { name: "수정" }).click();
   return page.getByRole("dialog", { name: "연동 수정" });
-}
-
-/** Runs a dev-profile job now, as the signed-in administrator. */
-async function runJob(page: Page, name: string) {
-  expect((await post(page, `/api/v1/dev/jobs/${name}`)).status, `job ${name}`).toBe(200);
 }
 
 test.describe("F22 CI/CD 연동", () => {
