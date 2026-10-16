@@ -163,6 +163,32 @@ class CicdBuildsIT {
         assertThat(db.fetchCount(CICD_DEPLOYMENTS, CICD_DEPLOYMENTS.REPOSITORY_ID.eq(repo))).isEqualTo(1);
     }
 
+    @Test void aLaterNoticeWithoutACommitKeepsTheKnownOne() throws Exception {
+        var repo = attachedRepository();
+        var sha = sha();
+        feed(new CicdEvent("deployment", "deployment:" + repo + ":20:running", ext(repo), null, null, null,
+                new CicdEvent.Deployment("20", sha, "registry.local/web:" + sha.substring(0, 8), "dev", "running", "", T0), null));
+        feed(deployment(repo, "20", null, "dev", "success", T0.plusMinutes(1)));
+        var row = deploymentRow(repo, "20");
+        assertThat(row.getStatus()).isEqualTo("success");
+        assertThat(row.getSha()).isEqualTo(sha);
+        assertThat(row.getImage()).isEqualTo("registry.local/web:" + sha.substring(0, 8));
+        assertThat(row.getInclusion()).isIn("checking", "first");
+    }
+
+    @Test void successOnAnEnvironmentHiddenMeanwhileIsOnlyRecorded() throws Exception {
+        var repo = attachedRepository();
+        var sha = sha();
+        feed(deployment(repo, "21", sha, "staging", "running", T0));
+        var staging = environment(repo, "스테이징");
+        assertThat(deploymentRow(repo, "21").getEnvironmentId()).isEqualTo(staging);
+        db.update(CICD_ENVIRONMENTS).set(CICD_ENVIRONMENTS.HIDDEN, true).where(CICD_ENVIRONMENTS.ID.eq(staging)).execute();
+        feed(deployment(repo, "21", sha, "staging", "success", T0.plusMinutes(1)));
+        var row = deploymentRow(repo, "21");
+        assertThat(row.getStatus()).isEqualTo("success");
+        assertThat(row.getInclusion()).isNull();
+    }
+
     @Test void olderDeploymentNoticeDoesNotRollBack() throws Exception {
         var repo = attachedRepository();
         var sha = sha();

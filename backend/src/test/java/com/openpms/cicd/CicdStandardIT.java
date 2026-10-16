@@ -42,6 +42,7 @@ class CicdStandardIT {
     @Autowired WebApplicationContext context;
     @Autowired DSLContext db;
     @Autowired CicdProcessor processor;
+    @Autowired CicdEvents events;
     MockMvc mvc;
     CicdFixture f;
     MockHttpSession admin;
@@ -117,8 +118,9 @@ class CicdStandardIT {
         return db.fetchCount(CICD_DEPLOYMENTS, CICD_DEPLOYMENTS.REPOSITORY_ID.eq(repo));
     }
 
+    /** id: the notice's own id; Jenkins ids are stored with the tool's name in front. */
     private com.openpms.db.tables.records.CicdDeploymentsRecord deploymentRow(UUID repo, String id) {
-        return db.selectFrom(CICD_DEPLOYMENTS).where(CICD_DEPLOYMENTS.REPOSITORY_ID.eq(repo), CICD_DEPLOYMENTS.EXTERNAL_ID.eq(id)).fetchOne();
+        return db.selectFrom(CICD_DEPLOYMENTS).where(CICD_DEPLOYMENTS.REPOSITORY_ID.eq(repo), CICD_DEPLOYMENTS.EXTERNAL_ID.eq("jenkins:" + id)).fetchOne();
     }
 
     @Test void jenkinsDeploymentReachesAnAllowedRepository() throws Exception {
@@ -143,6 +145,21 @@ class CicdStandardIT {
         // a link off the Jenkins address is not kept
         deliver(deploymentNotice("portal-43", "registry.local/web/portal:" + full.substring(0, 8), "production", "https://evil.example.com/x", at()));
         assertThat(deploymentRow(repo, "portal-43").getWebUrl()).isEmpty();
+    }
+
+    @Test void aJenkinsIdNeverSharesARowWithAGitLabId() throws Exception {
+        var repo = portal(projectA);
+        var gitlabSha = sha();
+        events.store(gitlab, java.util.List.of(new CicdEvent("deployment", "deployment:" + repo + ":15:success", "x-" + repo, null, null, null,
+                new CicdEvent.Deployment("15", gitlabSha, null, "production", "success", "", OffsetDateTime.now().minusHours(2)), null)), "webhook");
+        processor.run(Instant.now());
+        deliver(deploymentNotice("15", "web/portal:latest", "production", "", at()));
+        var rows = db.selectFrom(CICD_DEPLOYMENTS).where(CICD_DEPLOYMENTS.REPOSITORY_ID.eq(repo)).fetchMap(CICD_DEPLOYMENTS.EXTERNAL_ID);
+        assertThat(rows.keySet()).containsExactlyInAnyOrder("15", "jenkins:15");
+        assertThat(rows.get("15").getSource()).isEqualTo("gitlab");
+        assertThat(rows.get("15").getSha()).isEqualTo(gitlabSha);
+        assertThat(rows.get("jenkins:15").getSource()).isEqualTo("jenkins");
+        assertThat(rows.get("jenkins:15").getSha()).isNull();
     }
 
     @Test void repositoriesOutsideTheAllowedProjectsAreIgnored() throws Exception {
@@ -208,7 +225,7 @@ class CicdStandardIT {
         var sha = sha();
         deliver("{\"type\":\"pipeline\",\"repository\":\"web/PORTAL\",\"id\":\"portal-build-7\",\"name\":\"portal-build\",\"sha\":\"" + sha
                 + "\",\"ref\":\"main\",\"status\":\"failed\",\"url\":\"https://evil.example.com/job/7\",\"at\":\"" + at() + "\"}");
-        var row = db.selectFrom(CICD_PIPELINES).where(CICD_PIPELINES.REPOSITORY_ID.eq(repo), CICD_PIPELINES.EXTERNAL_ID.eq("portal-build-7")).fetchOne();
+        var row = db.selectFrom(CICD_PIPELINES).where(CICD_PIPELINES.REPOSITORY_ID.eq(repo), CICD_PIPELINES.EXTERNAL_ID.eq("jenkins:portal-build-7")).fetchOne();
         assertThat(row).isNotNull();
         assertThat(row.getSource()).isEqualTo("jenkins");
         assertThat(row.getName()).isEqualTo("portal-build");

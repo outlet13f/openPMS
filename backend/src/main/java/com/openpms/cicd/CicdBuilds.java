@@ -2,6 +2,7 @@ package com.openpms.cicd;
 
 import static com.openpms.db.Tables.CICD_COMMITS;
 import static com.openpms.db.Tables.CICD_DEPLOYMENTS;
+import static com.openpms.db.Tables.CICD_ENVIRONMENTS;
 import static com.openpms.db.Tables.CICD_PIPELINES;
 
 import java.util.Locale;
@@ -32,15 +33,16 @@ public class CicdBuilds {
         var url = CicdLinks.sameOrigin(p.webUrl(), linkBase);
         var name = p.name() == null ? "" : p.name();
         var ref = p.ref() == null ? "" : p.ref();
+        var externalId = externalId(source, p.externalId());
         int added = db.insertInto(CICD_PIPELINES)
-                .set(CICD_PIPELINES.REPOSITORY_ID, repo.id()).set(CICD_PIPELINES.EXTERNAL_ID, p.externalId())
+                .set(CICD_PIPELINES.REPOSITORY_ID, repo.id()).set(CICD_PIPELINES.EXTERNAL_ID, externalId)
                 .set(CICD_PIPELINES.NAME, name).set(CICD_PIPELINES.SHA, p.sha()).set(CICD_PIPELINES.REF, ref)
                 .set(CICD_PIPELINES.STATUS, p.status()).set(CICD_PIPELINES.WEB_URL, url)
                 .set(CICD_PIPELINES.STARTED_AT, p.startedAt()).set(CICD_PIPELINES.FINISHED_AT, p.finishedAt())
                 .set(CICD_PIPELINES.SOURCE, source).set(CICD_PIPELINES.UPDATED_AT, p.updatedAt())
                 .onConflict(CICD_PIPELINES.REPOSITORY_ID, CICD_PIPELINES.EXTERNAL_ID).doNothing().execute();
         if (added == 1) return;
-        var old = db.selectFrom(CICD_PIPELINES).where(CICD_PIPELINES.REPOSITORY_ID.eq(repo.id()), CICD_PIPELINES.EXTERNAL_ID.eq(p.externalId()))
+        var old = db.selectFrom(CICD_PIPELINES).where(CICD_PIPELINES.REPOSITORY_ID.eq(repo.id()), CICD_PIPELINES.EXTERNAL_ID.eq(externalId))
                 .forUpdate().fetchOne();
         if (old == null || !CicdStates.replaces(old.getStatus(), old.getUpdatedAt(), p.status(), p.updatedAt())) return;
         // what a notice leaves out (no name, no link, no start time) keeps what an earlier one said
@@ -61,24 +63,44 @@ public class CicdBuilds {
         sha = resolve(repo.id(), sha);
         var image = d.image() == null || d.image().isEmpty() ? null : d.image();
         var environmentId = environments.match(repo.projectId(), d.environment());
+        var externalId = externalId(source, d.externalId());
         int added = db.insertInto(CICD_DEPLOYMENTS)
-                .set(CICD_DEPLOYMENTS.REPOSITORY_ID, repo.id()).set(CICD_DEPLOYMENTS.EXTERNAL_ID, d.externalId())
+                .set(CICD_DEPLOYMENTS.REPOSITORY_ID, repo.id()).set(CICD_DEPLOYMENTS.EXTERNAL_ID, externalId)
                 .set(CICD_DEPLOYMENTS.ENVIRONMENT_ID, environmentId).set(CICD_DEPLOYMENTS.ENVIRONMENT_NAME, d.environment())
                 .set(CICD_DEPLOYMENTS.SHA, sha).set(CICD_DEPLOYMENTS.IMAGE, image).set(CICD_DEPLOYMENTS.STATUS, d.status())
                 .set(CICD_DEPLOYMENTS.WEB_URL, url).set(CICD_DEPLOYMENTS.DEPLOYED_AT, d.deployedAt()).set(CICD_DEPLOYMENTS.SOURCE, source)
                 .set(CICD_DEPLOYMENTS.INCLUSION, inclusion(d.status(), environmentId, sha))
                 .onConflict(CICD_DEPLOYMENTS.REPOSITORY_ID, CICD_DEPLOYMENTS.EXTERNAL_ID).doNothing().execute();
         if (added == 1) return;
-        var old = db.selectFrom(CICD_DEPLOYMENTS).where(CICD_DEPLOYMENTS.REPOSITORY_ID.eq(repo.id()), CICD_DEPLOYMENTS.EXTERNAL_ID.eq(d.externalId()))
+        var old = db.selectFrom(CICD_DEPLOYMENTS).where(CICD_DEPLOYMENTS.REPOSITORY_ID.eq(repo.id()), CICD_DEPLOYMENTS.EXTERNAL_ID.eq(externalId))
                 .forUpdate().fetchOne();
         // a successful deployment is never reopened: what the environment holds was decided from it
         if (old == null || "success".equals(old.getStatus())) return;
         if (!CicdStates.replaces(old.getStatus(), old.getDeployedAt(), d.status(), d.deployedAt())) return;
+        // what the newer notice leaves out (no commit, no image, no link) keeps what an earlier one said
+        var newSha = sha != null ? sha : old.getSha();
+        // the environment may have been hidden (or the repository moved) since the earlier notice: then it is only recorded
+        var environment = usable(repo, old.getEnvironmentId()) ? old.getEnvironmentId() : null;
         db.update(CICD_DEPLOYMENTS)
-                .set(CICD_DEPLOYMENTS.STATUS, d.status()).set(CICD_DEPLOYMENTS.DEPLOYED_AT, d.deployedAt()).set(CICD_DEPLOYMENTS.SHA, sha)
-                .set(CICD_DEPLOYMENTS.IMAGE, image).set(CICD_DEPLOYMENTS.WEB_URL, url.isEmpty() ? old.getWebUrl() : url)
-                .set(CICD_DEPLOYMENTS.INCLUSION, inclusion(d.status(), old.getEnvironmentId(), sha))
+                .set(CICD_DEPLOYMENTS.STATUS, d.status()).set(CICD_DEPLOYMENTS.DEPLOYED_AT, d.deployedAt()).set(CICD_DEPLOYMENTS.SHA, newSha)
+                .set(CICD_DEPLOYMENTS.IMAGE, image != null ? image : old.getImage())
+                .set(CICD_DEPLOYMENTS.WEB_URL, url.isEmpty() ? old.getWebUrl() : url)
+                .set(CICD_DEPLOYMENTS.INCLUSION, inclusion(d.status(), environment, newSha))
                 .where(CICD_DEPLOYMENTS.ID.eq(old.getId())).execute();
+    }
+
+    /** A visible environment of the repository's current project. */
+    private boolean usable(CicdRepoRef repo, UUID environmentId) {
+        return environmentId != null && db.fetchExists(CICD_ENVIRONMENTS, CICD_ENVIRONMENTS.ID.eq(environmentId),
+                CICD_ENVIRONMENTS.PROJECT_ID.eq(repo.projectId()), CICD_ENVIRONMENTS.HIDDEN.isFalse());
+    }
+
+    /**
+     * The stored external id: a standard notice's id is the tool's own (a Jenkins build named "15" is not GitLab deployment
+     * 15 of the same repository), so Jenkins and Argo CD ids carry their tool's name; GitLab and GitHub ids stay as they are.
+     */
+    static String externalId(String source, String id) {
+        return source.equals("jenkins") || source.equals("argocd") ? source + ":" + id : id;
     }
 
     /** Only a successful deployment to a known environment waits for the inclusion check; without a commit it is only recorded. */
