@@ -21,20 +21,21 @@ import { htmlToText, textToHtml } from "@/lib/text";
 import { ErrorState, PageBody, PageHeader, useDocumentTitle } from "@/app/page";
 import { can, useCurrentProject } from "@/app/project";
 import { AdminTable, ConfirmDialog, fieldErrorOf, tbodyRow, th, theadRow, useRunWithToast } from "@/features/admin/common";
+import { EnvironmentsSection } from "@/features/cicd/environments-section";
 import { RepositoriesSection } from "@/features/cicd/repositories-section";
 
 /** The 정보·모듈·작업 설정·버전 sections. */
 const projectSettingsOn = (p: Project) =>
   can(p, "project.edit") || can(p, "project.manage_versions") || can(p, "project.manage_types") || can(p, "project.manage_custom_fields");
 
-/** 저장소 (CI/CD): the module on and cicd.view (참관자 see the list; cicd.manage attaches and detaches). */
+/** 저장소·환경 (CI/CD): the module on and cicd.view (참관자 see the lists; cicd.manage changes them). */
 const repositoriesOn = (p: Project) => p.enabledModules.includes("cicd") && can(p, "cicd.view");
 
-const SECTIONS = ["general", "modules", "work-packages", "versions", "repositories"] as const;
+const SECTIONS = ["general", "modules", "work-packages", "versions", "repositories", "environments"] as const;
 type Section = (typeof SECTIONS)[number];
 /** The sections this person may open, in menu order. */
 const visibleSections = (p: Project): Section[] =>
-  SECTIONS.filter((s) => (s === "repositories" ? repositoriesOn(p) : projectSettingsOn(p)));
+  SECTIONS.filter((s) => (s === "repositories" || s === "environments" ? repositoriesOn(p) : projectSettingsOn(p)));
 
 function SettingsNav({ base }: { base: string }) {
   const { t } = useTranslation();
@@ -673,6 +674,7 @@ export function ProjectSettingsPage() {
       {section === "work-packages" && <WorkPackagesSection />}
       {section === "versions" && <VersionsSection />}
       {section === "repositories" && <RepositoriesSection />}
+      {section === "environments" && <EnvironmentsSection />}
     </PageBody>
   );
 }

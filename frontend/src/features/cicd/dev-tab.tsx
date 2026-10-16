@@ -1,11 +1,13 @@
 // 개발 tab of a work package: the merge requests (GitLab MR, GitHub PR) and commits linked to it through "#<번호>" in a
 // commit message, branch name or MR title, or by hand. People with cicd.link can link an MR/PR by its address and cut a
 // wrong link (no confirmation: linking the address again brings an MR back). The caller shows the tab only with the
-// module on and cicd.view (the API answers 404 otherwise).
+// module on and cicd.view (the API answers 404 otherwise). On top, how far the work went per environment (hidden when
+// there is no environment or no linked commit); each MR and commit carries its build badge, the environments it is in
+// and "뗀 저장소" when its repository was detached.
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ExternalLink, GitCommitHorizontal, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Link2, Unlink } from "lucide-react";
-import { isApiError, type CicdCommit, type CicdMergeRequest, type WorkPackage } from "@/api";
+import { ExternalLink, Flag, GitCommitHorizontal, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Link2, Unlink } from "lucide-react";
+import { isApiError, type CicdCommit, type CicdEnvironmentStatus, type CicdMergeRequest, type WorkPackage } from "@/api";
 import { useDevInfo, useDevLinkMutations } from "@/api/hooks";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badges";
@@ -15,7 +17,8 @@ import { Field, Input } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/spinner";
 import { ErrorState } from "@/app/page";
 import { useRunWithToast } from "@/features/admin/common";
-import { formatDateTime, relativeTime } from "@/lib/dates";
+import { DEFAULT_TZ, formatDateTime, formatTime, relativeTime } from "@/lib/dates";
+import { BuildBadge } from "./build-badge";
 
 /** state → badge tone and icon; the badge always carries the state in words too */
 const STATE: Record<CicdMergeRequest["state"], { tone: "accent" | "neutral" | "success" | "danger"; icon: ReactNode }> = {
@@ -54,6 +57,99 @@ function When({ at }: { at: string }) {
       {relativeTime(at)}
     </time>
   );
+}
+
+/** "10-14 15:20" (Asia/Seoul): the deployment time in the environment row */
+function shortWhen(at: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: DEFAULT_TZ, month: "2-digit", day: "2-digit" }).formatToParts(new Date(at));
+  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${part("month")}-${part("day")} ${formatTime(at)}`;
+}
+
+/** How far the work went in one environment, in words (the ✓ and – are for the eye; screen readers hear the words). */
+function EnvState({ env }: { env: CicdEnvironmentStatus }) {
+  const { t } = useTranslation();
+  switch (env.state) {
+    case "in":
+      return (
+        <span className="text-fg">
+          <span aria-hidden="true">✓</span>
+          <span className="sr-only">{t("cicd.env.deployed")}</span>
+          {env.deployedAt && (
+            <>
+              {" "}
+              <time dateTime={env.deployedAt} title={formatDateTime(env.deployedAt)} className="tabular-nums text-fg-muted">
+                {shortWhen(env.deployedAt)}
+              </time>
+            </>
+          )}
+        </span>
+      );
+    case "partial":
+      return <span className="text-fg">{t("cicd.env.partial", { included: env.included, total: env.total })}</span>;
+    case "checking":
+      return <span className="text-fg-muted">{t("cicd.env.checking")}</span>;
+    case "failed":
+      return <span className="text-danger">{t("cicd.env.failed")}</span>;
+    case "before_first":
+      return <span className="text-fg-muted">{t("cicd.env.beforeFirst")}</span>;
+    default:
+      return (
+        <span className="text-fg-muted">
+          <span aria-hidden="true">–</span>
+          <span className="sr-only">{t("cicd.env.notDeployed")}</span>
+        </span>
+      );
+  }
+}
+
+/** The row at the top: one item per environment, split by project when the linked commits come from several. */
+function EnvironmentRow({ environments }: { environments: CicdEnvironmentStatus[] }) {
+  const { t } = useTranslation();
+  const groups: { project: string | null; items: CicdEnvironmentStatus[] }[] = [];
+  for (const e of environments) {
+    const g = groups.find((x) => x.project === e.project);
+    if (g) g.items.push(e);
+    else groups.push({ project: e.project, items: [e] });
+  }
+  const several = groups.length > 1 || groups.some((g) => g.project !== null);
+  return (
+    <div className="flex flex-col gap-2">
+      {groups.map((g) => (
+        <div key={g.project ?? ""} className="flex flex-col gap-1">
+          {several && g.project && (
+            <p className="text-xs font-semibold text-fg-muted" aria-hidden="true">
+              {g.project}
+            </p>
+          )}
+          <ul aria-label={several && g.project ? t("cicd.env.projectRow", { project: g.project }) : t("cicd.env.row")} className="flex flex-wrap gap-2">
+            {g.items.map((e) => (
+              <li key={e.id} className="inline-flex flex-wrap items-center gap-x-1.5 rounded-md border border-border px-2 py-1 text-sm">
+                {e.production && (
+                  <>
+                    <Flag className="size-3 text-accent" aria-hidden="true" />
+                    <span className="sr-only">{t("cicd.env.production")}</span>
+                  </>
+                )}
+                {e.webUrl ? (
+                  <External href={e.webUrl}>{e.name}</External>
+                ) : (
+                  <span className="font-medium text-fg">{e.name}</span>
+                )}
+                <EnvState env={e} />
+                {e.partialCheck && <span className="text-fg-muted">· {t("cicd.env.partialCheck")}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DetachedBadge() {
+  const { t } = useTranslation();
+  return <Badge tone="neutral">{t("cicd.dev.detached")}</Badge>;
 }
 
 function UnlinkButton({ label, pending, onClick }: { label: string; pending: boolean; onClick: () => void }) {
@@ -119,7 +215,7 @@ export function DevTab({ wp }: { wp: WorkPackage }) {
       </div>
     );
   if (q.isError) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
-  const { mergeRequests, commits, canLink } = q.data;
+  const { mergeRequests, commits, canLink, environments } = q.data;
   const cut = (linkId: string) => {
     setCutting(linkId);
     void runToast(unlink.mutateAsync(linkId), t("cicd.dev.unlinked")).finally(() => setCutting(null));
@@ -128,6 +224,7 @@ export function DevTab({ wp }: { wp: WorkPackage }) {
 
   return (
     <div className="flex flex-col gap-6 py-4">
+      {environments.length > 0 && <EnvironmentRow environments={environments} />}
       {canLink && <LinkForm number={wp.number} />}
       {mergeRequests.length === 0 && commits.length === 0 ? (
         <div className="rounded-md border border-border">
@@ -149,9 +246,13 @@ export function DevTab({ wp }: { wp: WorkPackage }) {
                       {t(`cicd.dev.states.${m.state}`)}
                     </Badge>
                     <div className="min-w-0 flex-1">
-                      <External href={m.webUrl} className="text-sm font-medium break-words text-accent hover:underline">
-                        {m.title}
-                      </External>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <External href={m.webUrl} className="text-sm font-medium break-words text-accent hover:underline">
+                          {m.title}
+                        </External>
+                        {m.build && <BuildBadge build={m.build} />}
+                        {m.detached && <DetachedBadge />}
+                      </div>
                       <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-fg-muted">
                         <span className="font-mono">{m.repository}</span>
                         <span>{t("cicd.dev.mrNumber", { iid: m.iid })}</span>
@@ -181,14 +282,24 @@ export function DevTab({ wp }: { wp: WorkPackage }) {
                   <li key={c.linkId} className="flex flex-wrap items-start gap-x-3 gap-y-1 px-3 py-2">
                     <code className="mt-0.5 rounded-sm bg-surface px-1 font-mono text-xs text-fg">{c.shortSha}</code>
                     <div className="min-w-0 flex-1">
-                      <External href={c.webUrl} className="text-sm break-words text-accent hover:underline">
-                        {c.title}
-                      </External>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <External href={c.webUrl} className="text-sm break-words text-accent hover:underline">
+                          {c.title}
+                        </External>
+                        {c.build && <BuildBadge build={c.build} />}
+                        {c.detached && <DetachedBadge />}
+                      </div>
                       <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-fg-muted">
                         <span className="font-mono">{c.repository}</span>
                         <Who name={c.author} user={c.user} />
                         <When at={c.committedAt} />
                         <span>· {via(c.source)}</span>
+                        {c.environments.length > 0 && (
+                          <span className="text-fg">
+                            · <span className="sr-only">{t("cicd.dev.inEnvironments")} </span>
+                            {c.environments.join("·")}
+                          </span>
+                        )}
                       </p>
                     </div>
                     {canLink && <UnlinkButton label={t("cicd.dev.unlinkName", { title: `${c.shortSha} ${c.title}` })} pending={cutting === c.linkId} onClick={() => cut(c.linkId)} />}
