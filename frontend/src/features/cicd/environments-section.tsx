@@ -2,10 +2,10 @@
 // send (aliases, case ignored), and the deployments no environment took. cicd.view sees both lists; cicd.manage adds,
 // edits, reorders (up/down buttons), deletes (an environment with deployment history is hidden instead), shows a hidden
 // one again and adds an unassigned name as an alias of the environment picked (its deployments then join it).
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowDown, ArrowUp, Eye, Layers, MoreHorizontal, Pencil, Plus, Tag, Trash2 } from "lucide-react";
-import type { CicdEnvironment, CicdUnassigned } from "@/api";
+import { isApiError, type CicdEnvironment, type CicdUnassigned } from "@/api";
 import { useCicdEnvironmentMutations, useCicdEnvironments } from "@/api/admin-hooks";
 import { Badge } from "@/components/ui/badges";
 import { Button } from "@/components/ui/button";
@@ -84,11 +84,20 @@ function UnassignedRow({ project, row, environments, canManage }: { project: str
   const runToast = useRunWithToast();
   const [envId, setEnvId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  // a 422 (the name is another environment's, too many aliases, …) shows under this row's picker; runToast leaves field errors to the form
+  const [error, setError] = useState<string | null>(null);
+  const errorId = useId();
   const env = environments.find((e) => e.id === envId);
   const add = async () => {
     if (!env) return;
     setPending(true);
-    await runToast(m.update.mutateAsync({ id: env.id, patch: { aliases: [...env.aliases, row.name] } }), t("cicd.environments.aliasAdded", { name: row.name, env: env.name }));
+    setError(null);
+    const saving = m.update.mutateAsync({ id: env.id, patch: { aliases: [...env.aliases, row.name] } }).catch((e: unknown) => {
+      const message = isApiError(e) ? e.fieldErrors[0]?.message : undefined;
+      if (message) setError(message);
+      throw e;
+    });
+    await runToast(saving, t("cicd.environments.aliasAdded", { name: row.name, env: env.name }));
     setPending(false);
   };
   return (
@@ -111,13 +120,20 @@ function UnassignedRow({ project, row, environments, canManage }: { project: str
               aria-label={t("cicd.environments.pickFor", { name: row.name })}
               value={envId ?? ""}
               placeholder={t("cicd.environments.pick")}
-              onValueChange={(v) => setEnvId(v || null)}
+              aria-invalid={!!error}
+              aria-describedby={error ? errorId : undefined}
+              onValueChange={(v) => (setEnvId(v || null), setError(null))}
               options={environments.filter((e) => !e.hidden).map((e) => ({ value: e.id, label: e.name, textValue: e.name }))}
             />
             <Button size="sm" icon={<Tag />} disabled={!env} loading={pending} aria-label={t("cicd.environments.addAliasName", { name: row.name })} onClick={() => void add()}>
               {t("cicd.environments.addAlias")}
             </Button>
           </div>
+          {error && (
+            <p id={errorId} role="alert" className="mt-1 text-right text-xs text-danger">
+              {error}
+            </p>
+          )}
         </td>
       )}
     </tr>

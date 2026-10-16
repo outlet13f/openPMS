@@ -75,6 +75,8 @@ function CleanupDialog({ project, onClose }: { project: string; onClose: () => v
             <span className="text-fg-muted">{t("cicd.cleanup.pick")}</span>
           ) : count.isFetching ? (
             <Skeleton className="h-5 w-64" />
+          ) : n === 0 ? (
+            <span className="text-fg-muted">{t("cicd.cleanup.nothing")}</span>
           ) : n !== undefined ? (
             t("cicd.cleanup.count", { count: n })
           ) : null}
