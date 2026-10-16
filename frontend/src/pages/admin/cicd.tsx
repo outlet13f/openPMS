@@ -6,9 +6,9 @@
 // them in the edit dialog; a delegated manager sees the projects visible to them by name and the rest as a count.
 import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Copy, GitMerge, KeyRound, MoreHorizontal, Pencil, Plus, PlugZap, Trash2 } from "lucide-react";
+import { Copy, FileCode2, GitMerge, KeyRound, MoreHorizontal, Pencil, Plus, PlugZap, Trash2 } from "lucide-react";
 import { isApiError, type CicdConnection, type CicdConnectionPatch, type CicdKind } from "@/api";
-import { useCicdConnectionMutations, useCicdConnections } from "@/api/admin-hooks";
+import { useCicdConnectionMutations, useCicdConnections, useImageTagTest } from "@/api/admin-hooks";
 import { useMe, useProjects } from "@/api/hooks";
 import { Badge } from "@/components/ui/badges";
 import { Button } from "@/components/ui/button";
@@ -20,9 +20,12 @@ import { Dialog, Menu } from "@/components/ui/overlay";
 import { Skeleton } from "@/components/ui/spinner";
 import { ErrorState, PageBody, PageHeader, useDocumentTitle } from "@/app/page";
 import { AdminTable, ConfirmDialog, fieldErrorOf, tbodyRow, th, theadRow, useRunWithToast } from "@/features/admin/common";
+import { TemplatesDialog } from "@/features/cicd/templates-dialog";
 import { AdminGuard } from "./index";
 
-const KINDS: CicdKind[] = ["gitlab", "github"];
+const KINDS: CicdKind[] = ["gitlab", "github", "jenkins", "argocd"];
+/** Jenkins and Argo CD only send webhooks: no API token, and links are limited to the tool's address. */
+const isNoticeKind = (k: CicdKind) => k === "jenkins" || k === "argocd";
 
 /** The server answers with a path when it has no public address configured: make it one the code host can call. */
 const absolute = (url: string) => (url.startsWith("/") ? `${location.origin}${url}` : url);
@@ -113,6 +116,54 @@ function SecretDialog({ webhookUrl, secret, onClose }: { webhookUrl: string; sec
   );
 }
 
+/** 시험: what the server's rule makes of an example image (the server answers, so the screen never disagrees with it). */
+function ImageTagTest({ pattern, patternError }: { pattern: string; patternError: (message: string | undefined) => void }) {
+  const { t } = useTranslation();
+  const test = useImageTagTest();
+  const [image, setImage] = useState("");
+  const imageId = useId();
+  const mapped = fieldErrorOf(test.error, "imageTagPattern");
+  const imageError = fieldErrorOf(test.error, "image");
+  useEffect(() => patternError(mapped), [mapped, patternError]);
+  const { reset } = test;
+  // an answer belongs to the rule it was asked with
+  useEffect(() => reset(), [pattern, reset]);
+  const run = () => test.mutate({ pattern: pattern.trim(), image: image.trim() });
+  return (
+    <div role="group" aria-label={t("cicd.admin.imageTagTest")} className="flex flex-col gap-1.5">
+      <label htmlFor={imageId} className="text-sm font-medium text-fg">
+        {t("cicd.admin.imageTagImage")}
+      </label>
+      <div className="flex items-center gap-2">
+        <Input
+          id={imageId}
+          value={image}
+          placeholder={t("cicd.admin.imageTagImagePlaceholder")}
+          spellCheck={false}
+          aria-invalid={!!imageError || undefined}
+          onChange={(e) => {
+            setImage(e.target.value);
+            test.reset();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (image.trim()) run();
+            }
+          }}
+        />
+        <Button type="button" loading={test.isPending} disabled={!image.trim()} onClick={run}>
+          {t("cicd.admin.imageTagTest")}
+        </Button>
+      </div>
+      {imageError && <p className="text-xs text-danger">{imageError}</p>}
+      <p role="status" className="min-h-4 text-xs text-fg">
+        {test.data ? (test.data.sha ? t("cicd.admin.imageTagResult", { sha: test.data.sha }) : t("cicd.admin.imageTagNone")) : null}
+      </p>
+    </div>
+  );
+}
+
 function ConnectionDialog({ editing, onClose, onSecret }: { editing: CicdConnection | null; onClose: () => void; onSecret: (s: { webhookUrl: string; secret: string }) => void }) {
   const { t } = useTranslation();
   const m = useCicdConnectionMutations();
@@ -125,10 +176,14 @@ function ConnectionDialog({ editing, onClose, onSecret }: { editing: CicdConnect
   const [name, setName] = useState(editing?.name ?? "");
   const [baseUrl, setBaseUrl] = useState(editing?.baseUrl ?? "");
   const [apiToken, setApiToken] = useState("");
+  const [imageTagPattern, setImageTagPattern] = useState(editing?.imageTagPattern ?? "");
+  const [testPatternError, setTestPatternError] = useState<string | undefined>();
+  const notice = isNoticeKind(kind);
   const [clearToken, setClearToken] = useState(false);
   const [active, setActive] = useState(editing?.active ?? true);
   const mutation = editing ? m.update : m.create;
   const err = (f: string) => fieldErrorOf(mutation.error, f);
+  const patternError = err("imageTagPattern") ?? testPatternError;
   const urlChanged = !!editing && baseUrl.trim().replace(/\/+$/, "") !== editing.baseUrl;
   const generalError = isApiError(mutation.error) && !mutation.error.fieldErrors.length ? mutation.error.message : undefined;
   // a 409 (a project with this connection's repositories) or a 422 from saving the list: shown here, the dialog stays open
@@ -141,7 +196,15 @@ function ConnectionDialog({ editing, onClose, onSecret }: { editing: CicdConnect
 
   const save = async () => {
     if (!editing) {
-      const made = await runToast(m.create.mutateAsync({ kind, name, baseUrl, apiToken: apiToken.trim() || undefined }), t("cicd.admin.created"));
+      const made = await runToast(
+        m.create.mutateAsync({
+          kind,
+          name,
+          baseUrl,
+          ...(notice ? { imageTagPattern: imageTagPattern.trim() || undefined } : { apiToken: apiToken.trim() || undefined }),
+        }),
+        t("cicd.admin.created"),
+      );
       if (made) {
         // the secret leaves the mutation's memory: the dialog below is its one showing
         m.create.reset();
@@ -153,7 +216,9 @@ function ConnectionDialog({ editing, onClose, onSecret }: { editing: CicdConnect
     const patch: CicdConnectionPatch = {};
     if (name !== editing.name) patch.name = name;
     if (urlChanged) patch.baseUrl = baseUrl;
-    if (apiToken.trim()) patch.apiToken = apiToken.trim();
+    if (notice) {
+      if (imageTagPattern.trim() !== (editing.imageTagPattern ?? "")) patch.imageTagPattern = imageTagPattern.trim();
+    } else if (apiToken.trim()) patch.apiToken = apiToken.trim();
     else if (clearToken) patch.apiToken = "";
     if (active !== editing.active) patch.active = active;
     const patched = Object.keys(patch).length > 0;
@@ -198,7 +263,7 @@ function ConnectionDialog({ editing, onClose, onSecret }: { editing: CicdConnect
         {!editing ? (
           <fieldset className="flex flex-col gap-1.5">
             <legend className="mb-1 text-sm font-medium text-fg">{t("cicd.admin.kind")}</legend>
-            <Segmented aria-label={t("cicd.admin.kind")} value={kind} onValueChange={(v) => setKind(v as CicdKind)} options={KINDS.map((k) => ({ value: k, label: t(`cicd.kinds.${k}`) }))} />
+            <Segmented aria-label={t("cicd.admin.kind")} value={kind} onValueChange={(v) => (setKind(v as CicdKind), setApiToken(""))} options={KINDS.map((k) => ({ value: k, label: t(`cicd.kinds.${k}`) }))} />
             {err("kind") && <p className="text-xs text-danger">{err("kind")}</p>}
           </fieldset>
         ) : (
@@ -209,10 +274,20 @@ function ConnectionDialog({ editing, onClose, onSecret }: { editing: CicdConnect
         <Field label={t("cicd.admin.name")} required error={err("name")}>
           <Input data-autofocus value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <Field label={t("cicd.admin.baseUrl")} required hint={t("cicd.admin.baseUrlHint")} error={err("baseUrl")}>
+        <Field label={notice ? t("cicd.admin.baseUrlTool") : t("cicd.admin.baseUrl")} required hint={notice ? t("cicd.admin.baseUrlToolHint") : t("cicd.admin.baseUrlHint")} error={err("baseUrl")}>
           <Input type="url" value={baseUrl} placeholder="https://" spellCheck={false} onChange={(e) => setBaseUrl(e.target.value)} />
         </Field>
-        {urlChanged && editing?.tokenHint && !apiToken.trim() && <Banner tone="warning">{t("cicd.admin.baseUrlChanged")}</Banner>}
+        {!notice && urlChanged && editing?.tokenHint && !apiToken.trim() && <Banner tone="warning">{t("cicd.admin.baseUrlChanged")}</Banner>}
+        {notice ? (
+          <>
+            <p className="text-xs text-fg-muted">{t("cicd.admin.noTokenTool")}</p>
+            <Field label={t("cicd.admin.imageTag")} hint={t("cicd.admin.imageTagHint")} error={patternError}>
+              <Input value={imageTagPattern} maxLength={200} spellCheck={false} placeholder={t("cicd.admin.imageTagPlaceholder")} onChange={(e) => setImageTagPattern(e.target.value)} />
+            </Field>
+            <ImageTagTest pattern={imageTagPattern} patternError={setTestPatternError} />
+          </>
+        ) : (
+          <>
         <Field
           label={t("cicd.admin.apiToken")}
           error={err("apiToken")}
@@ -228,6 +303,8 @@ function ConnectionDialog({ editing, onClose, onSecret }: { editing: CicdConnect
         </Field>
         {editing?.tokenHint && !apiToken.trim() && !urlChanged && (
           <Checkbox label={t("cicd.admin.clearToken")} checked={clearToken} onCheckedChange={(c) => setClearToken(c === true)} />
+        )}
+          </>
         )}
         {editing && <Checkbox label={t("cicd.admin.active")} description={t("cicd.admin.activeHint")} checked={active} onCheckedChange={(c) => setActive(c === true)} />}
         {!editing ? (
@@ -273,6 +350,8 @@ export function AdminCicdPage() {
   const [secret, setSecret] = useState<{ webhookUrl: string; secret: string } | null>(null);
   const [rotating, setRotating] = useState<CicdConnection | null>(null);
   const [removing, setRemoving] = useState<CicdConnection | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<CicdConnection | null>(null);
   const [checks, setChecks] = useState<Record<string, { ok: boolean; status: number }>>({});
   const [checking, setChecking] = useState<string | null>(null);
   const projectsText = useProjectsText();
@@ -351,14 +430,20 @@ export function AdminCicdPage() {
                       {c.baseUrl}
                     </td>
                     <td className="px-3 text-fg-muted">
-                      {c.tokenHint ? <span className="font-mono text-xs">{t("cicd.admin.tokenEnd", { hint: c.tokenHint })}</span> : t("cicd.admin.tokenNone")}
+                      {isNoticeKind(c.kind) ? (
+                        t("cicd.admin.tokenNoneWebhook")
+                      ) : c.tokenHint ? (
+                        <span className="font-mono text-xs">{t("cicd.admin.tokenEnd", { hint: c.tokenHint })}</span>
+                      ) : (
+                        t("cicd.admin.tokenNone")
+                      )}
                     </td>
                     <td className="px-3 tabular-nums">{t("cicd.admin.repositoryCount", { count: c.repositoryCount })}</td>
                     <td className={c.projects.length || c.hiddenProjectCount ? "max-w-64 px-3 py-1.5 text-fg" : "px-3 text-fg-muted"}>{projectsText(c)}</td>
                     <td className="px-3 py-1.5">
                       <span className="flex flex-wrap items-center gap-1.5">
                         <Badge tone={c.active ? "accent" : "neutral"}>{c.active ? t("cicd.admin.statuses.active") : t("cicd.admin.statuses.off")}</Badge>
-                        {c.active && !c.tokenHint && <Badge>{t("cicd.admin.webhookOnly")}</Badge>}
+                        {c.active && !c.tokenHint && !isNoticeKind(c.kind) && <Badge>{t("cicd.admin.webhookOnly")}</Badge>}
                         {!c.secretHint && <Badge tone="warning">{t("cicd.admin.noSecret")}</Badge>}
                         {result && (
                           <span className={result.ok ? "text-xs text-success" : "text-xs text-danger"}>{t("cicd.admin.checkResult", { result: checkText(result) })}</span>
@@ -367,17 +452,20 @@ export function AdminCicdPage() {
                     </td>
                     <td className="px-2">
                       <span className="flex items-center justify-end gap-1">
-                        <Button size="sm" icon={<PlugZap />} aria-label={t("cicd.admin.checkFor", { name: c.name })} loading={checking === c.id} onClick={() => void check(c)}>
-                          {t("cicd.admin.check")}
-                        </Button>
+                        {!isNoticeKind(c.kind) && (
+                          <Button size="sm" icon={<PlugZap />} aria-label={t("cicd.admin.checkFor", { name: c.name })} loading={checking === c.id} onClick={() => void check(c)}>
+                            {t("cicd.admin.check")}
+                          </Button>
+                        )}
                         <Menu
                           align="end"
                           trigger={<Button variant="ghost" size="sm" iconOnly aria-label={t("admin.actionsFor", { name: c.name })} icon={<MoreHorizontal />} />}
                           items={[
                             { label: t("app.edit"), icon: <Pencil />, onSelect: () => setDialog({ editing: c }) },
                             { label: t("cicd.admin.rotate"), icon: <KeyRound />, onSelect: () => setRotating(c) },
+                            ...(isNoticeKind(c.kind) ? [{ label: t("cicd.admin.templates"), icon: <FileCode2 />, onSelect: () => setTemplates(c) }] : []),
                             { kind: "separator" as const },
-                            { label: t("app.delete"), icon: <Trash2 />, danger: true, onSelect: () => setRemoving(c) },
+                            { label: t("app.delete"), icon: <Trash2 />, danger: true, onSelect: () => (setRemoveError(null), setRemoving(c)) },
                           ]}
                         />
                       </span>
@@ -405,18 +493,58 @@ export function AdminCicdPage() {
           if (c && r) setSecret({ webhookUrl: c.webhookUrl, secret: r.webhookSecret });
         }}
       />
-      <ConfirmDialog
+      {templates && <TemplatesDialog connection={templates} onClose={() => setTemplates(null)} />}
+      <Dialog
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}
+        size="sm"
         title={t("cicd.admin.deleteTitle", { name: removing?.name ?? "" })}
-        body={t("cicd.admin.deleteBody")}
-        confirm={t("app.delete")}
-        pending={m.remove.isPending}
-        onConfirm={async () => {
-          if (removing) await runToast(m.remove.mutateAsync(removing.id), t("admin.deleted"));
-          setRemoving(null);
-        }}
-      />
+        footer={
+          <>
+            <Button data-autofocus onClick={() => setRemoving(null)}>
+              {t("app.cancel")}
+            </Button>
+            {removing?.active && (
+              <Button
+                loading={m.update.isPending}
+                onClick={async () => {
+                  const c = removing;
+                  if (c && (await runToast(m.update.mutateAsync({ id: c.id, patch: { active: false } }), t("cicd.admin.turnedOff")))) setRemoving(null);
+                }}
+              >
+                {t("cicd.admin.turnOff")}
+              </Button>
+            )}
+            <Button
+              variant="danger"
+              loading={m.remove.isPending}
+              onClick={async () => {
+                const c = removing;
+                if (!c) return;
+                try {
+                  await m.remove.mutateAsync(c.id);
+                  toast({ tone: "success", title: t("admin.deleted") });
+                  setRemoving(null);
+                } catch (e) {
+                  // 409: the server's wording stays in the dialog, next to the way out
+                  if (isApiError(e) && e.status === 409) setRemoveError(e.message);
+                  else {
+                    toast({ tone: "danger", title: isApiError(e) ? e.title : t("app.errorTitle"), description: isApiError(e) && e.message !== e.title ? e.message : undefined });
+                    setRemoving(null);
+                  }
+                }
+              }}
+            >
+              {t("app.delete")}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3 text-sm text-fg">
+          {removeError ? <Banner tone="danger">{removeError}</Banner> : null}
+          <p>{t("cicd.admin.deleteBody")}</p>
+        </div>
+      </Dialog>
     </PageBody>
   );
 }
