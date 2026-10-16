@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import org.jooq.DSLContext;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -52,7 +51,6 @@ class CicdMigrationIT {
         assertThat(db.fetchOne("select count(*) from information_schema.columns where table_name = 'cicd_first_deploy_checks' and column_name = 'next_attempt_at'").get(0, Integer.class)).isOne();
     }
 
-    @Disabled("V1012 in Task 13")
     @Test void projectsWithTheModuleHaveTheDefaultEnvironments() {
         // web-platform (V1010 turns the module on; V28 or V1012 adds the environments)
         var rows = db.fetch("select name, production, aliases from cicd_environments where project_id = '935daeb0-d1aa-57f4-88e1-0050b30413ac' order by position");
