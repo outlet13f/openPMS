@@ -47,6 +47,22 @@ final class AdapterSupport {
         return t == null ? "" : t.toInstant().truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString();
     }
 
+    /** One read of a list from the host. */
+    @FunctionalInterface
+    interface Fetch {
+        JsonNode get() throws java.io.IOException;
+    }
+
+    /** A list the token may not read (403) or the host does not offer (404) counts as empty, so the other lists still come through. */
+    static JsonNode optionalList(Fetch fetch) throws java.io.IOException {
+        try {
+            return fetch.get();
+        } catch (UnexpectedStatus e) {
+            if (e.status() == 403 || e.status() == 404) return tools.jackson.databind.node.JsonNodeFactory.instance.arrayNode();
+            throw e;
+        }
+    }
+
     /** First line of a message, at most 500 characters. */
     static String title(String message) {
         if (message == null) return "";

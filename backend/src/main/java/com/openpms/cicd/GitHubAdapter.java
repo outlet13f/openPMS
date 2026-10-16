@@ -173,8 +173,15 @@ public class GitHubAdapter implements CicdAdapter {
     }
 
     private JsonNode getJson(Remote r, String path) throws IOException {
-        var res = http.get(api(r) + path, auth(r));
-        if (res.status() / 100 != 2) throw new IOException("unexpected status " + res.status());
+        return readOk(http.get(api(r) + path, auth(r)));
+    }
+
+    private JsonNode getJson(Remote r, String path, int maxBytes) throws IOException {
+        return readOk(http.get(api(r) + path, auth(r), maxBytes));
+    }
+
+    private JsonNode readOk(CicdHttp.HttpResult res) throws IOException {
+        if (res.status() / 100 != 2) throw new UnexpectedStatus(res.status());
         try {
             return json.readTree(res.body());
         } catch (JacksonException e) {
@@ -185,7 +192,7 @@ public class GitHubAdapter implements CicdAdapter {
     @Override public RemoteRepo repository(Remote remote, String externalId) throws IOException {
         var res = http.get(api(remote) + "/repositories/" + enc(externalId), auth(remote));
         if (res.status() == 404) return null;
-        if (res.status() / 100 != 2) throw new IOException("unexpected status " + res.status());
+        if (res.status() / 100 != 2) throw new UnexpectedStatus(res.status());
         JsonNode p;
         try {
             p = json.readTree(res.body());
@@ -261,11 +268,13 @@ public class GitHubAdapter implements CicdAdapter {
                 if (lookBack != null && created != null && created.toInstant().isBefore(lookBack)) break deployments;   // newest first: the rest are older
                 var depId = text(d.path("id"));
                 if (depId.isEmpty()) continue;
+                var touched = time(text(d.path("updated_at")));
+                if (since != null && touched != null && touched.isBefore(since)) continue;   // nothing new since the last poll: no status read
                 if (statusReads == MAX_DEPLOYMENT_STATUS_READS) { truncated = true; break deployments; }
                 statusReads++;
                 // only the latest status counts (an older one never overrides it)
                 var latest = optionalList(remote, "/repositories/" + id + "/deployments/" + enc(depId) + "/statuses?per_page=1");
-                if (latest.size() == 0) continue;
+                if (!latest.isArray() || latest.size() == 0) continue;
                 out.addAll(deployment(repoExternalId, d, latest.get(0)));
             }
             if (items.size() < PAGE_SIZE) break;
@@ -274,14 +283,8 @@ public class GitHubAdapter implements CicdAdapter {
         return new Polled(out, truncated);
     }
 
-    /** A list the token may not read (403) or the repository does not offer (404) counts as empty, so commits and pull requests still come through. */
     private JsonNode optionalList(Remote r, String path) throws IOException {
-        try {
-            return getJson(r, path);
-        } catch (IOException e) {
-            if ("unexpected status 403".equals(e.getMessage()) || "unexpected status 404".equals(e.getMessage())) return json.createArrayNode();
-            throw e;
-        }
+        return AdapterSupport.optionalList(() -> getJson(r, path));
     }
 
     private static CicdEvent.Commit commitOf(JsonNode c) {
@@ -299,13 +302,7 @@ public class GitHubAdapter implements CicdAdapter {
     }
 
     private JsonNode compareJson(Remote remote, String path) throws IOException {
-        var res = http.get(api(remote) + path, auth(remote), CicdHttp.MAX_COMPARE_BODY);
-        if (res.status() / 100 != 2) throw new IOException("unexpected status " + res.status());
-        try {
-            return json.readTree(res.body());
-        } catch (JacksonException e) {
-            throw new IOException("unreadable response");
-        }
+        return getJson(remote, path, CicdHttp.MAX_COMPARE_BODY);
     }
 
     /** GitHub lists a comparison's commits oldest first: page 1 tells the total, then only the pages holding the newest ones are read. */
@@ -315,7 +312,7 @@ public class GitHubAdapter implements CicdAdapter {
         var firstItems = first.path("commits");
         long total = first.path("total_commits").isNumber() ? first.path("total_commits").longValue() : firstItems.size();
         total = Math.max(total, firstItems.size());
-        int keep = (int) Math.min(Math.min(limit, (long) MAX_PAGES * PAGE_SIZE), total);
+        int keep = (int) Math.max(0, Math.min(Math.min(limit, (long) MAX_PAGES * PAGE_SIZE), total));
         int firstPage = (int) ((total - keep) / PAGE_SIZE) + 1;
         int lastPage = (int) ((total + PAGE_SIZE - 1) / PAGE_SIZE);
         var found = new ArrayList<CicdEvent.Commit>();

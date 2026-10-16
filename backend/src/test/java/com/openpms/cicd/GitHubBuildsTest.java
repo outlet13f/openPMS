@@ -98,9 +98,11 @@ class GitHubBuildsTest {
     @Test void deploymentFallsBackToTheDeploymentsEnvironmentAndTargetUrl() throws Exception {
         var text = res("github-deployment-status.json")
                 .replace("\"environment\": \"staging\",\n    \"description\"", "\"description\"")
-                .replace("\"log_url\": \"https://github.com/openpms-test/web/actions/runs/30433642/jobs/5\",", "");
+                .replace("\"log_url\": \"https://github.com/openpms-test/web/actions/runs/30433642/jobs/5\",", "")
+                .replace("\"task\": \"deploy\",\n    \"environment\": \"staging\"", "\"task\": \"deploy\",\n    \"environment\": \"production\"");
+        assertThat(text).contains("\"environment\": \"production\"").doesNotContain("\"log_url\"");
         var d = github.parse(Map.of("x-github-event", "deployment_status"), text.getBytes(StandardCharsets.UTF_8)).get(0).deployment();
-        assertThat(d.environment()).isEqualTo("staging");   // from the deployment
+        assertThat(d.environment()).isEqualTo("production");   // from the deployment, the status has none
         assertThat(d.webUrl()).isEqualTo("https://staging.example.com");
     }
 

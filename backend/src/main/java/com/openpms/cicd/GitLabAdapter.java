@@ -173,7 +173,7 @@ public class GitLabAdapter implements CicdAdapter {
 
     private JsonNode getJson(Remote r, String path) throws IOException {
         var res = http.get(api(r) + path, auth(r));
-        if (res.status() / 100 != 2) throw new IOException("unexpected status " + res.status());
+        if (res.status() / 100 != 2) throw new UnexpectedStatus(res.status());
         return readTree(res.body());
     }
 
@@ -188,7 +188,7 @@ public class GitLabAdapter implements CicdAdapter {
     @Override public RemoteRepo repository(Remote remote, String externalId) throws IOException {
         var res = http.get(api(remote) + "/projects/" + enc(externalId), auth(remote));
         if (res.status() == 404) return null;
-        if (res.status() / 100 != 2) throw new IOException("unexpected status " + res.status());
+        if (res.status() / 100 != 2) throw new UnexpectedStatus(res.status());
         JsonNode p;
         try {
             p = json.readTree(res.body());
@@ -268,14 +268,8 @@ public class GitLabAdapter implements CicdAdapter {
         return new Polled(out, truncated);
     }
 
-    /** A list the token may not read (403) or the project does not offer (404) counts as empty, so commits and merge requests still come through. */
     private JsonNode optionalList(Remote r, String path) throws IOException {
-        try {
-            return getJson(r, path);
-        } catch (IOException e) {
-            if ("unexpected status 403".equals(e.getMessage()) || "unexpected status 404".equals(e.getMessage())) return json.createArrayNode();
-            throw e;
-        }
+        return AdapterSupport.optionalList(() -> getJson(r, path));
     }
 
     private static List<CicdEvent.Commit> commitsOf(JsonNode items) {
@@ -300,7 +294,7 @@ public class GitLabAdapter implements CicdAdapter {
         try {
             var res = http.get(api(remote) + "/projects/" + id + "/repository/compare?from=" + enc(base) + "&to=" + enc(head) + "&straight=false",
                     auth(remote), CicdHttp.MAX_COMPARE_BODY);
-            if (res.status() / 100 != 2) throw new IOException("unexpected status " + res.status());
+            if (res.status() / 100 != 2) throw new UnexpectedStatus(res.status());
             found = commitsOf(readTree(res.body()).path("commits"));
         } catch (IOException e) {
             if (!"response too large".equals(e.getMessage())) throw e;

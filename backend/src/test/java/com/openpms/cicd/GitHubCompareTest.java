@@ -223,7 +223,33 @@ class GitHubCompareTest {
         }
         git.respond("/api/v3/repositories/9001/deployments", 200, list.append(']').toString());
         git.respond("/api/v3/repositories/9001/deployments/", 200, "cicd/github-deployment-statuses.json");
-        github.poll(remote, "9001", OffsetDateTime.parse("2026-10-14T00:00:00Z"));
+        var polled = github.poll(remote, "9001", OffsetDateTime.parse("2026-10-14T00:00:00Z"));
         assertThat(git.requests().stream().filter(r -> r.path().endsWith("/statuses")).count()).isEqualTo(30);
+        assertThat(polled.truncated()).isTrue();
+    }
+
+    @Test void deploymentsNotUpdatedSinceSinceCostNoStatusRead() throws Exception {
+        git.respond("/api/v3/repositories/9001/commits", 200, "[]");
+        git.respond("/api/v3/repositories/9001/pulls", 200, "[]");
+        git.respond("/api/v3/repositories/9001/actions/runs", 200, "{\"workflow_runs\":[]}");
+        var list = new StringBuilder("[");
+        for (int i = 1; i <= 40; i++) {   // created within the day of margin, but not touched since the last poll
+            if (i > 1) list.append(',');
+            list.append("{\"id\":").append(i).append(",\"sha\":\"a91957a858320c0e17f3a0eca7cfacbff50e4b3c\",\"environment\":\"s\","
+                    + "\"created_at\":\"2026-10-13T10:10:00Z\",\"updated_at\":\"2026-10-13T10:10:00Z\"}");
+        }
+        git.respond("/api/v3/repositories/9001/deployments", 200, list.append(']').toString());
+        var polled = github.poll(remote, "9001", OffsetDateTime.parse("2026-10-14T00:00:00Z"));
+        assertThat(git.requests()).noneMatch(r -> r.path().endsWith("/statuses"));
+        assertThat(polled.truncated()).isFalse();
+    }
+
+    @Test void aStatusesBodyThatIsNotAListIsSkipped() throws Exception {
+        git.respond("/api/v3/repositories/9001/commits", 200, "[]");
+        git.respond("/api/v3/repositories/9001/pulls", 200, "[]");
+        git.respond("/api/v3/repositories/9001/actions/runs", 200, "{\"workflow_runs\":[]}");
+        git.respond("/api/v3/repositories/9001/deployments", 200, "cicd/github-deployments.json");
+        git.respond("/api/v3/repositories/9001/deployments/", 200, "{\"message\":\"odd\"}");
+        assertThat(github.poll(remote, "9001", OffsetDateTime.parse("2026-10-14T00:00:00Z")).events()).isEmpty();
     }
 }

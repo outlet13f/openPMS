@@ -135,11 +135,14 @@ class CicdPollerIT {
         git.respond("/api/v3/repositories/9001/deployments", 200, "cicd/github-deployments.json");
         git.respond("/api/v3/repositories/9001/deployments/710692/statuses", 200, "cicd/github-deployment-statuses.json");
         git.respond("/api/v3/repositories/9001/deployments/710600/statuses", 200, "[]");
-        poller.poll(Instant.now());
+        poller.poll(Instant.parse("2026-10-16T00:00:00Z"));   // a fixed clock: the fixtures' times sit inside the look-back window
         assertThat(git.requests()).extracting(FakeGitServer.Recorded::path).contains("/api/v3/repositories/9001/commits",
                 "/api/v3/repositories/9001/actions/runs", "/api/v3/repositories/9001/deployments");
         assertThat(eventsOf(c)).isGreaterThanOrEqualTo(1);
-        assertThat(db.fetchCount(CICD_EVENTS, CICD_EVENTS.CONNECTION_ID.eq(c).and(CICD_EVENTS.KIND.eq("pipeline")))).isEqualTo(2);   // deployments are cut by the clock, so only the runs are counted
+        assertThat(db.fetchCount(CICD_EVENTS, CICD_EVENTS.CONNECTION_ID.eq(c).and(CICD_EVENTS.KIND.eq("pipeline")))).isEqualTo(2);
+        assertThat(db.select(CICD_EVENTS.DELIVERY_KEY).from(CICD_EVENTS)
+                .where(CICD_EVENTS.CONNECTION_ID.eq(c).and(CICD_EVENTS.KIND.eq("deployment"))).fetch(CICD_EVENTS.DELIVERY_KEY))
+                .containsExactly("deployment:9001:710692:1115122:2026-10-15T10:12:00Z");
     }
 
     @Test void oneFailingRepositoryDoesNotStopOthers() throws Exception {
