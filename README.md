@@ -56,7 +56,7 @@ podman run -d --name openpms-idp --network openpms-dev -p 127.0.0.1:18081:18080 
 
 SSO e2e(`f00-sso`)는 OIDC 콜백이 `OPENPMS_BASE_URL`(개발 환경은 `http://localhost:5173`)을 따라가므로, 5174와 8090에 더해 **5173 개발 서버(`npm run dev`)도 떠 있어야** 합니다. 없으면 SSO 케이스가 로그인 뒤 돌아올 곳을 찾지 못합니다.
 
-e2e의 CI/CD 테스트(`f22-cicd`)에는 가짜 Git 서버 컨테이너가 필요합니다(`frontend/` 폴더에서). 없으면 3건을 건너뜁니다. 호스트의 18090이 다른 프로그램에 잡혀 있으면(예: colima) `-p 127.0.0.1:18095:18090`으로 띄우고 e2e에 `FAKE_GIT_URL=http://127.0.0.1:18095`를 줍니다.
+e2e의 CI/CD 테스트(`f22-cicd`, 2.9부터 `f23-cicd-builds`)에는 가짜 Git 서버 컨테이너가 필요합니다(`frontend/` 폴더에서). 없으면 3건(F23은 4건)을 건너뜁니다. F23은 가짜 서버의 GitLab 모드(비교·파이프라인·배포 경로)를 씁니다. 호스트의 18090이 다른 프로그램에 잡혀 있으면(예: colima) `-p 127.0.0.1:18095:18090`으로 띄우고 e2e에 `FAKE_GIT_URL=http://127.0.0.1:18095`를 줍니다.
 
 ```bash
 podman run -d --rm --name openpms-cicd-git --network openpms-dev -p 127.0.0.1:18090:18090 \
@@ -87,11 +87,13 @@ npm run build                             # 운영용 화면 → backend/src/mai
 
 ### 4. 지금 상태 (2026-10-16)
 
+- CI/CD 연동 2단계 2.9(2026-10-16, 브랜치 feat/cicd-phase2): 작업의 **개발** 탭에 빌드 결과(빌드 배지)와 어느 환경까지 배포됐는지(환경 줄). GitLab·GitHub의 파이프라인·배포 이벤트, 새 연동 종류 Jenkins·Argo CD(표준 알림, 웹훅만), 프로젝트 설정 › **환경**(별칭, 기본 개발·스테이징·운영), 배포마다 비교 API로 환경에 든 커밋을 계산. 저장소 떼기가 기록을 남기고(다시 붙이기), 연동 삭제는 대신 끄기, 빌드 기록 정리. 스키마 V1–V19·V26–V28, 개발 데이터 V1000–V1003·V1010–V1012. JUnit 402/402(3f3ffd4), e2e 153건(3f3ffd4에서 148 통과·5 건너뜀(SSO 4건은 IdP 없이·PERF-5)·실패 0)
 - CI/CD 연동마다 허용 프로젝트 2.8(2026-10-16, 브랜치 feat/cicd-allowed-projects): 연동마다 저장소를 찾고 붙일 수 있는 프로젝트를 시스템 관리자가 정함(REQ-CICD-010, 관리 › CI/CD 연동의 수정 대화상자, `PUT /api/v1/admin/cicd/connections/{id}/projects`). 목록에 없는 프로젝트에는 연동이 보이지 않음. 스키마 V1–V19·V26·V27, 개발 데이터 V1000–V1003·V1010·V1011. JUnit 229/229(3a8c7bd), e2e 147건(3a8c7bd에서 142 통과·5 건너뜀(SSO 4건은 IdP 없이·PERF-5)·실패 0)
 - CI/CD 연동 1단계 2.7(2026-10-16, 브랜치 feat/cicd-phase1): 사내 GitLab·GitHub의 커밋·MR/PR을 `#번호`로 작업의 **개발** 탭에 잇기(관리 › CI/CD 연동, 프로젝트 설정 › 저장소, 서명한 웹훅 `POST /api/v1/hooks/cicd/{hookKey}`, 5분 보완 폴링). 스키마 V1–V19·V26(V20–V25는 비워 둠), 개발 데이터 V1000–V1003·V1010, 새 환경 변수 `OPENPMS_SECRET_KEY`(CI/CD 연동을 쓸 때만, `docs/deliverables/10-운영자매뉴얼.md` 9.18). JUnit 220/220(4014802), e2e 147건(4014802 전체에서 142 통과·5 건너뜀, SSO 4건은 IdP 없이·PERF-5). 설계서의 2–4단계는 설계서만 있고 5단계는 보류
 - 2.6까지: 원본 기능 패리티 100 (기능 142개, 필수 64/64), 스키마 V1–V19, JUnit 121건, e2e 137건 중 132 통과 + 5건 건너뜀(PERF-5와 테스트 IdP 없이 건너뜀 SSO 4건, 2026-10-16 ITSM 제거 뒤 전체). 이전: e2e 136건 통과 + 1건 의도적 건너뜀(느린 망 측정은 빌드된 화면에서만. 2.3 보안 수정 뒤 b34418b에서 전체 132 통과·5 건너뜀(SSO 4건은 IdP 포트 18081 충돌로 건너뜀)이었고 IdP를 띄워 SSO 4/4를 통과해 합계 136 통과·1 건너뜀)
 - 개선 계획 `replica/fixes.md` 1–6번 완료, 7번(반복 작업) 보류
 - ITSM 제거 2.6(2026-10-16): 사용자 결정으로 ITSM 전체 제거(코드는 3cb9acd로 되돌림, V20·V21·V1004–V1006과 설계 문서 삭제). 매뉴얼 16–18장 등 ITSM 절은 이때 지움. CI/CD는 한때 ITSM V20·V21을 돌린 DB와 부딪치지 않게 V26 / V1010을 씀
+- 산출물 2.9: CI/CD 연동 2단계 반영(요구사항 REQ-CICD-011–022, 04 `IF-CICD-017`–`026`·4.8 표준 알림, 05 V28, 화면 X17, 07 16.6·16.7, 10 6.14·9.18.11–13. `docs/deliverables/README.md`의 개정 이력)
 - 산출물 2.8: 연동마다 허용 프로젝트 반영(요구사항 REQ-CICD-010, 04 `IF-CICD-016`, 05 V27, 07 16.1·16.3, 10 6.13·9.18.10. `docs/deliverables/README.md`의 개정 이력)
 - 산출물 2.7: CI/CD 연동 1단계 반영(요구사항 3.24 REQ-CICD, 화면 X14–X16, 07 16장, 10 6.12·9.18. `docs/deliverables/README.md`의 개정 이력)
 - 산출물 2.6: ITSM 제거 반영. 2.4·2.5의 ITSM 내용은 이 판에서 모두 지움(`docs/deliverables/README.md`의 개정 이력)

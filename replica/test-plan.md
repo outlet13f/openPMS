@@ -340,10 +340,33 @@ f494f76·48f4a36, fixes.md #6. e2e는 `frontend/e2e/f18-co-assignees.spec.ts`(�
 | F22-A8 | edge: 처리와 경계 | 프로젝트 트리 밖 번호, 다시 온·폴링한 이벤트, 오래된 MR, 붙지 않은 저장소, 잠긴 사용자, 나쁜 이벤트 | 하위 프로젝트만, 한 번만, 되돌리지 않음, 지웠다가 붙인 뒤 다시 옴, 그 이벤트만 `failed` | JUnit (CicdProcessIT 10) | ✅ |
 | F22-A9 | edge: 보완 폴링 | cursor, 두 번째 폴링, Enterprise, 실패한 저장소, 토큰 없음, 정리, 100건 넘음·10쪽, 미래 시각, 풀 수 없는 토큰 | 규칙대로(10 9.18.8) | JUnit (CicdPollerIT 11) | ✅ |
 | F22-A10 | negative: 개발 탭 | 멤버·참관자·비멤버, 모듈 꺼짐, 주소로 연결, 트리 밖 주소, 다른 작업의 연결 id, 상위·하위 방향 | 보기·403·404, 422(제목 없음), 상위 프로젝트 저장소만 | JUnit (DevTabIT 9) | ✅ |
-| F22-A11 | budget: 개발 탭 | `PerfBudgetIT`에 MR 20·커밋 50 | p95 150 ms·SQL 8·40 KB 안(잰 값 6 ms·6·23 KB) | JUnit (PerfBudgetIT) | ✅ |
+| F22-A11 | budget: 개발 탭 | `PerfBudgetIT`에 MR 20·커밋 50 | p95 150 ms·SQL 8·40 KB 안(잰 값 6 ms·6·23 KB). 2.9에서 F23-A9로 예산을 고침 | JUnit (PerfBudgetIT) | ✅ |
 | F22-A12 | budget: 개발 탭 화면 | PERF-7: #4 분할 상세 개발 탭 | 중앙값 1,000 ms(개발 서버 2배) 안, 개발 서버 637 ms | e2e (perf) | ✅(병합 전) |
 
 - 실행: e2e 3개 + 접근성 6개(관리 CI/CD 연동, 프로젝트 설정 저장소, 개발 탭과 어두운 2·고대비 1) + PERF-7, JUnit 91개. 병합 전 8e6b00b 전체 실행에서 CI/CD 10건 통과. ITSM 제거 병합 뒤(c8896eb) JUnit 212/212, e2e 전체는 Podman 복구 뒤.
+- 자동 테스트가 없는 것은 아래 "확인할 것"에 있습니다.
+
+## F23 CI/CD 빌드·배포 (X16 개발 탭 환경 줄·빌드 배지, X17 프로젝트 설정 · 환경, X15 뗀 저장소·빌드 기록 정리, X14 Jenkins·Argo CD)
+
+018642b–3f3ffd4, 사내 설계 합의(`docs/superpowers/specs/2026-10-16-cicd-phase2-design.md`). e2e는 `frontend/e2e/f23-cicd-builds.spec.ts`(가짜 Git 서버의 GitLab 모드, 커밋 E1·E2·E3), JUnit은 `backend/src/test/java/com/openpms/cicd/`의 2.9 클래스.
+
+| ID | 종류 | 단계 | 기대 결과 | 방법 | 결과 |
+| --- | --- | --- | --- | --- | --- |
+| F23-1 | happy: GitLab 빌드·배포 | 연동(API) → 저장소 붙이기(화면) → 새 작업 → Push(E1·E2·E3) → Pipeline Hook(E2 성공) → Deployment Hook(`development`, E2) | E2만 이어짐, **빌드 성공** 배지, 개발 배포됨(링크), 스테이징·운영 배포 안 됨, axe | e2e (f23) | ✅ |
+| F23-2 | happy: Jenkins 운영 배포·되돌리기 | Jenkins 연동(화면) → 알림 설정 예시 → 서명한 알림(이미지 태그 = E3 앞 8자) → E1 배포 → 모르는 커밋 배포 | 예시에 주소만(비밀 없음), 운영 배포됨 → 배포 안 됨(되돌리기), 개발은 그대로, 모르는 커밋은 **확인 중** | e2e (f23) | ✅ |
+| F23-3 | edge: 환경 미지정 → 별칭, 참관자 | `qa-e2e` 배포 → 환경 화면 → 스테이징에 **별칭으로 더하기** → 처리 → 최민지로 | 미지정 표 1건 → 사라짐, 스테이징 배포됨, 참관자는 보기만, axe(밝은·어두운) | e2e (f23) | ✅ |
+| F23-4 | edge: 떼기·정리 | 떼기 → 개발 탭 → 새 푸시 → 다시 붙이기 → 빌드 기록 정리 | 기록과 **뗀 저장소** 표시가 남음, 뗀 뒤 푸시는 들어오지 않음, 다시 붙음, 정리 건수 확인 뒤 E2 배지만 사라짐 | e2e (f23) | ✅ |
+| F23-A1 | edge: 파싱 | GitLab·GitHub 파이프라인·배포, 표준 알림(서명·토큰·형식), 이미지 태그 규칙 | 규칙대로(04 4.8, 10 9.18.11·12) | JUnit (GitLabBuildsTest 12, GitHubBuildsTest 8, StandardAdapterTest 8, ImageTagsTest 6) | ✅ |
+| F23-A2 | edge: 비교 | GitLab compare(8 MiB, 커밋 목록으로 다시)·merge_base, GitHub compare(최신 1,000개, 8 MiB 초과 실패)·status | 규칙대로 | JUnit (GitLabCompareTest 14, GitHubCompareTest 18) | ✅ |
+| F23-A3 | edge: 기록 | 같은 빌드 여러 번, 늦은 소식, 도구별 id, 허용 프로젝트·뗀 저장소·같은 경로 둘, 시각 범위, NUL | 최신만, 기록만, 섞이지 않음, 무시, 거절 | JUnit (CicdBuildsIT 10, CicdStandardIT 10, CicdStatesTest 2, CicdLinksTest 1) | ✅ |
+| F23-A4 | edge: 환경 반영 | 다음 배포·되돌리기·갈라진 배포·1,000개·실패와 간격·동시 두 배포·토큰 없음·옮긴 저장소·숨긴 환경 | 더하고 빼기, `partial`, 1·2·4·8분·5번째 `failed`, 차례로 | JUnit (CicdDeploymentsIT 17) | ✅ |
+| F23-A5 | edge: 첫 배포 | 200개 상한, 실행마다 50번, 다음 배포 대기, 오류, 별칭을 뒤에, 병합 MR | `first`·`first_cutoff_at`, 순서대로 | JUnit (CicdFirstDeployIT 8) | ✅ |
+| F23-A6 | negative: 환경 | 기본 환경, 별칭 겹침, 권한, 숨김, 다시 맞추기, 템플릿 복사, API 토큰 | 422·403·404, 숨김, 다시 처리 | JUnit (CicdEnvironmentsIT 13) | ✅ |
+| F23-A7 | edge: 떼기·정리 | 기록 유지, 새 이벤트 무시, 다시 붙이기, 옮기기, 허용 목록 밖, 손 연결, 날짜 기준, 권한 | 규칙대로(07 16.3, 10 9.18.13) | JUnit (CicdDetachIT 7, CicdCleanupIT 6, CicdConnectionsIT 7) | ✅ |
+| F23-A8 | edge: 개발 탭 | 배지(워크플로 여럿), 환경 줄의 상태들, 트리 밖, 다른 프로젝트, 비공개 상위, 옮긴 저장소, 참관자 | 규칙대로(07 16.6) | JUnit (DevTabBuildsIT 17) | ✅ |
+| F23-A9 | budget: 개발 탭 | `PerfBudgetIT`에 환경 3·빌드 120 | p95 150 ms·SQL 17·56 KB 안(잰 값 11 ms·15·37 KB) | JUnit (PerfBudgetIT) | ✅ |
+
+- 실행(2026-10-16, 3f3ffd4): JUnit 402/402, e2e 전체 153건 중 148 통과·5 건너뜀(SSO 4건은 IdP 없이·PERF-5)·실패 0.
 - 자동 테스트가 없는 것은 아래 "확인할 것"에 있습니다.
 
 ## 성능 예산 (작업 1,000건: S06 목록, S13 Gantt, S15 보드, S08 상세)
@@ -388,6 +411,7 @@ S02 S05 S08 S17(목록·보기) S18(목록·보기) S20 S21 S22 S24 S25 S26 S28 
 | 부하(동시 사용자) | `backend/scripts/perf_load.py`로 운영 이미지에서 손으로(PERF-L1–L3). 시험용 설치에서만 돌리고, 계정 비밀번호는 환경 변수 `OPENPMS_PERF_PASSWORD`로만 넘김. 느린 망(PERF-5)은 빌드된 화면에서 따로 돌려야 함 |
 | CI/CD 연동을 실제 도구로 | 가짜 서버로는 자동(F22, JUnit). 실제 사내 GitLab(자체 설치)·GitHub Enterprise·github.com에서 웹훅을 넣어 푸시·MR이 개발 탭에 나타나는지, 토큰으로 연결 확인·저장소 찾기·5분 보완 확인이 되는지, 방화벽(도구 → openPMS 웹훅 주소, openPMS → 도구 API)·사내 CA 인증서는 배포 때 `docs/deliverables/10-운영자매뉴얼.md` 9.18 순서대로 손으로(미수행) |
 | `OPENPMS_SECRET_KEY` 교체 | 시험 설치에서 키를 바꾼 뒤 연동마다 토큰을 다시 넣고 비밀을 다시 발급해, 그 사이 웹훅이 404였다가 다시 202가 되고 보완 확인이 빠진 것을 채우는지(10 9.18.2, 미수행) |
+| Jenkins·Argo CD 알림을 실제 도구로 | 가짜 본문으로는 자동(F23-2, JUnit). 실제 Jenkins에 자격 증명과 Jenkinsfile 조각을 넣어 빌드·배포가 개발 탭에 나타나는지, 실제 Argo CD의 기존 `argocd-notifications-cm`·`-secret`에 키를 합쳐 동기화 성공·실패가 오는지(notifications-controller 로그), 주석 값에 `"`가 있거나 이미지가 없는 앱이 조용히 실패하는지, 이미지 태그 규칙이 실제 태그와 맞는지(10 9.18.11·9.18.12) |
 
 ## 확인할 것 (재현하지 못했거나 아직 안 본 것)
 
@@ -448,3 +472,11 @@ S02 S05 S08 S17(목록·보기) S18(목록·보기) S20 S21 S22 S24 S25 S26 S28 
 - 연동마다 허용 프로젝트(2.8, f952e78–3a8c7bd와 리뷰 수정)에서 자동 테스트가 없는 것:
   - 붙이기의 트랜잭션 안 재검사(`CicdRepositories.attach`가 허용 행을 `FOR SHARE`로 잡고 없으면 404, `held == null` 분기)와, 같은 순간에 허용 목록에서 그 프로젝트를 빼는 요청(`CicdConnections.setProjects`, 행을 먼저 지우고 저장소를 확인해 409)이 엇갈리는 경우. 행 잠금 순서로 막지만 두 요청을 동시에 보내는 테스트는 없음(`attachChecksTheListAgain`은 찾기와 붙이기 사이에 목록이 바뀐 순차 경우만). 같은 연동의 허용 목록 저장 두 개가 겹치는 경우(연동 행 `FOR NO KEY UPDATE`로 차례로)도 동시 테스트 없음.
   - V26 → V27 이미지 업그레이드 스모크(이미 붙은 저장소의 프로젝트가 허용 목록에 채워지는지, 업그레이드 전 백업 `v26-to-v27`).
+- CI/CD 2단계 빌드·배포(2.9, 018642b–3f3ffd4)에서 자동 테스트가 없거나 손으로 확인해야 하는 것:
+  - 실제 Jenkins·Argo CD(위 "손으로 확인할 것"), 실제 GitLab·GitHub의 파이프라인·배포 웹훅과 비교 API(가짜 서버만). e2e F23은 GitLab·Jenkins만 보고 GitHub 경로는 JUnit만.
+  - 브라우저에서 **확인 실패**(비교가 다섯 번 실패하려면 15분 남짓 걸려 JUnit `DevTabBuildsIT#checkingAndFailedAreSaid`만), 가짜 데이터 계층(5173)의 확인 중·확인 실패 상태.
+  - V27 → V28 이미지 업그레이드 스모크(SQL로 V27 상태 DB에 V28·V1012를 적용해 본 것만, 10 6.14).
+  - 응답하지 않는 도구가 `cicd-process` 한 번 안에서 같은 저장소의 비교·조상 확인을 계속 기다리는 경우(호출마다 10초, 최종 리뷰로 넘긴 사항).
+  - 빌드 배지가 저장소를 다른 프로젝트로 옮긴 뒤에도 옛 연결에 보이는 것, 하위 프로젝트만 멤버인 사람이 상위 저장소의 연결된 커밋을 보는 것(의도한 동작, 01 6장 #46).
+  - 감사 로그 `cicd.environment.*`·`cicd.repository.reattached`·`moved`·`cicd.pipelines.cleaned`의 줄 내용은 `CicdDetachIT#auditLines`·`CicdEnvironmentsIT#auditLines`만 일부 확인.
+  - NVDA 낭독(환경 줄의 ✓·– 대신 **배포됨**·**배포 안 됨**, 빌드 배지의 글자), 빌드된 화면의 PERF-7.
