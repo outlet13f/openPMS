@@ -102,7 +102,7 @@ function ProjectsPicker({ editing, value, onChange }: { editing: CicdConnection;
 }
 
 /** After making a connection or rotating its secret: the webhook address and secret, this once. */
-function SecretDialog({ webhookUrl, secret, onClose }: { webhookUrl: string; secret: string; onClose: () => void }) {
+function SecretDialog({ kind, webhookUrl, secret, onClose }: { kind: CicdKind; webhookUrl: string; secret: string; onClose: () => void }) {
   const { t } = useTranslation();
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title={t("cicd.admin.secretTitle")} footer={<Button variant="primary" onClick={onClose}>{t("apiTokens.done")}</Button>}>
@@ -110,7 +110,7 @@ function SecretDialog({ webhookUrl, secret, onClose }: { webhookUrl: string; sec
         <Banner tone="warning">{t("cicd.admin.secretOnce")}</Banner>
         <CopyRow label={t("cicd.admin.webhookUrl")} copyLabel={t("cicd.admin.copyUrl")} copied={t("cicd.admin.copiedUrl")} value={absolute(webhookUrl)} />
         <CopyRow label={t("cicd.admin.webhookSecret")} copyLabel={t("cicd.admin.copySecret")} copied={t("cicd.admin.copiedSecret")} value={secret} />
-        <p className="text-xs text-fg-muted">{t("cicd.admin.secretHow")}</p>
+        <p className="text-xs text-fg-muted">{t(kind === "jenkins" ? "cicd.admin.secretHowJenkins" : kind === "argocd" ? "cicd.admin.secretHowArgocd" : "cicd.admin.secretHow")}</p>
       </div>
     </Dialog>
   );
@@ -164,7 +164,7 @@ function ImageTagTest({ pattern, patternError }: { pattern: string; patternError
   );
 }
 
-function ConnectionDialog({ editing, onClose, onSecret }: { editing: CicdConnection | null; onClose: () => void; onSecret: (s: { webhookUrl: string; secret: string }) => void }) {
+function ConnectionDialog({ editing, onClose, onSecret }: { editing: CicdConnection | null; onClose: () => void; onSecret: (s: { kind: CicdKind; webhookUrl: string; secret: string }) => void }) {
   const { t } = useTranslation();
   const m = useCicdConnectionMutations();
   const runToast = useRunWithToast();
@@ -209,7 +209,7 @@ function ConnectionDialog({ editing, onClose, onSecret }: { editing: CicdConnect
         // the secret leaves the mutation's memory: the dialog below is its one showing
         m.create.reset();
         onClose();
-        onSecret({ webhookUrl: made.connection.webhookUrl, secret: made.webhookSecret });
+        onSecret({ kind: made.connection.kind, webhookUrl: made.connection.webhookUrl, secret: made.webhookSecret });
       }
       return;
     }
@@ -347,7 +347,7 @@ export function AdminCicdPage() {
   const toast = useToast();
   const runToast = useRunWithToast();
   const [dialog, setDialog] = useState<{ editing: CicdConnection | null } | null>(null);
-  const [secret, setSecret] = useState<{ webhookUrl: string; secret: string } | null>(null);
+  const [secret, setSecret] = useState<{ kind: CicdKind; webhookUrl: string; secret: string } | null>(null);
   const [rotating, setRotating] = useState<CicdConnection | null>(null);
   const [removing, setRemoving] = useState<CicdConnection | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
@@ -478,7 +478,7 @@ export function AdminCicdPage() {
         )}
       </AdminGuard>
       {dialog && <ConnectionDialog key={dialog.editing?.id ?? "new"} editing={dialog.editing} onClose={() => setDialog(null)} onSecret={setSecret} />}
-      {secret && <SecretDialog webhookUrl={secret.webhookUrl} secret={secret.secret} onClose={() => (setSecret(null), m.rotateSecret.reset())} />}
+      {secret && <SecretDialog kind={secret.kind} webhookUrl={secret.webhookUrl} secret={secret.secret} onClose={() => (setSecret(null), m.rotateSecret.reset())} />}
       <ConfirmDialog
         open={!!rotating}
         onOpenChange={(o) => !o && setRotating(null)}
@@ -490,7 +490,7 @@ export function AdminCicdPage() {
           const c = rotating;
           const r = c ? await runToast(m.rotateSecret.mutateAsync(c.id)) : null;
           setRotating(null);
-          if (c && r) setSecret({ webhookUrl: c.webhookUrl, secret: r.webhookSecret });
+          if (c && r) setSecret({ kind: c.kind, webhookUrl: c.webhookUrl, secret: r.webhookSecret });
         }}
       />
       {templates && <TemplatesDialog connection={templates} onClose={() => setTemplates(null)} />}

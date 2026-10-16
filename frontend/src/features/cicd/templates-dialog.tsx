@@ -28,7 +28,7 @@ function CodeBlock({ id, label, code, copyLabel, copied }: { id: string; label: 
         </Button>
       </div>
       {/* tabIndex: a long line scrolls sideways, so the block must be reachable by keyboard */}
-      <pre tabIndex={0} className="max-h-96 overflow-auto rounded-md border border-border bg-surface px-3 py-2 text-xs text-fg">
+      <pre tabIndex={0} aria-labelledby={id} className="max-h-96 overflow-auto rounded-md border border-border bg-surface px-3 py-2 text-xs text-fg">
         <code className="font-mono">{code}</code>
       </pre>
     </section>
@@ -49,7 +49,7 @@ export function TemplatesDialog({ connection, onClose }: { connection: CicdConne
       footer={<Button variant="primary" onClick={onClose}>{t("apiTokens.done")}</Button>}
     >
       <div className="flex flex-col gap-4">
-        <p className="text-sm text-fg">{t("cicd.templates.secretNote")}</p>
+        <p className="text-sm text-fg">{jenkins ? t("cicd.templates.secretNoteJenkins") : t("cicd.templates.secretNoteArgocd")}</p>
         <p className="text-xs text-fg-muted">{jenkins ? t("cicd.templates.jenkinsHow") : t("cicd.templates.argocdHow")}</p>
         {q.isPending ? (
           <Skeleton className="h-40 w-full" />
