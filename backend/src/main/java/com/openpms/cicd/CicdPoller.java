@@ -63,7 +63,8 @@ public class CicdPoller {
                 stored += events.store(connectionId, found, "poll");
                 OffsetDateTime newest = cursor != null ? cursor : since;
                 for (var e : found) {
-                    var t = e.commit() != null ? e.commit().committedAt() : e.mr() != null ? e.mr().updatedAt() : null;
+                    var t = e.commit() != null ? e.commit().committedAt() : e.mr() != null ? e.mr().updatedAt()
+                            : e.pipeline() != null ? e.pipeline().updatedAt() : e.deployment() != null ? e.deployment().deployedAt() : null;
                     if (t != null && t.toInstant().isAfter(newest.toInstant())) newest = t;
                 }
                 // a timestamp in the future (clock skew, bad data) must not push the cursor ahead of this poll

@@ -25,6 +25,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class CicdHttp {
     public static final int MAX_BODY = 2 * 1024 * 1024;
+    /** Compare and ancestry answers carry diffs and file lists, so they may be larger. */
+    public static final int MAX_COMPARE_BODY = 8 * 1024 * 1024;
 
     public record HttpResult(int status, byte[] body) {}
 
@@ -38,6 +40,10 @@ public class CicdHttp {
     CicdHttp(Duration deadline) { this.deadline = deadline; }
 
     public HttpResult get(String url, Map<String, String> headers) throws IOException {
+        return get(url, headers, MAX_BODY);
+    }
+
+    public HttpResult get(String url, Map<String, String> headers, int maxBytes) throws IOException {
         HttpRequest request;
         try {
             var uri = URI.create(url);
@@ -51,7 +57,7 @@ public class CicdHttp {
         } catch (IllegalArgumentException e) {
             throw new IOException("invalid url");
         }
-        var future = client.sendAsync(request, info -> new Limited());
+        var future = client.sendAsync(request, info -> new Limited(maxBytes));
         try {
             var response = future.get(deadline.toMillis(), TimeUnit.MILLISECONDS);
             return new HttpResult(response.statusCode(), response.body());
@@ -70,11 +76,14 @@ public class CicdHttp {
         }
     }
 
-    /** Collects the body, and gives up as soon as it passes MAX_BODY. */
+    /** Collects the body, and gives up as soon as it passes the limit. */
     private static final class Limited implements HttpResponse.BodySubscriber<byte[]> {
+        private final int max;
         private final CompletableFuture<byte[]> result = new CompletableFuture<>();
         private final ByteArrayOutputStream buf = new ByteArrayOutputStream();
         private Flow.Subscription subscription;
+
+        Limited(int max) { this.max = max; }
 
         @Override public void onSubscribe(Flow.Subscription s) {
             subscription = s;
@@ -84,7 +93,7 @@ public class CicdHttp {
         @Override public void onNext(List<ByteBuffer> items) {
             if (result.isDone()) return;
             for (var bb : items) {
-                if (buf.size() + bb.remaining() > MAX_BODY) {
+                if (buf.size() + bb.remaining() > max) {
                     subscription.cancel();
                     result.completeExceptionally(new IOException("response too large"));
                     return;

@@ -28,6 +28,19 @@ public interface CicdAdapter {
     /** Commits and merge requests changed since the given time (all recent ones when null), up to MAX_PAGES pages per list. */
     Polled poll(Remote remote, String repoExternalId, OffsetDateTime since) throws IOException;
 
+    /** truncated: there were more commits than the limit (or more pages than MAX_PAGES). */
+    record Comparison(List<CicdEvent.Commit> commits, boolean truncated) {}
+
+    /** Commits head has and base does not (git log base..head), newest first, at most limit; truncated when there were more. */
+    default Comparison compare(Remote remote, String repoExternalId, String base, String head, int limit) throws IOException {
+        throw new UnsupportedOperationException("no code host API");
+    }
+
+    /** Is commit the same as head or one of its ancestors? */
+    default boolean contains(Remote remote, String repoExternalId, String head, String commit) throws IOException {
+        throw new UnsupportedOperationException("no code host API");
+    }
+
     /** Asks the host who the token belongs to; returns the HTTP status code. */
     int check(Remote remote) throws IOException;
 

@@ -71,6 +71,8 @@ class CicdPollerIT {
     private void gitlabServes(String external) {
         git.respond("/api/v4/projects/" + external + "/repository/commits", 200, COMMITS);
         git.respond("/api/v4/projects/" + external + "/merge_requests", 200, "cicd/gitlab-mrs.json");
+        git.respond("/api/v4/projects/" + external + "/pipelines", 200, "[]");
+        git.respond("/api/v4/projects/" + external + "/deployments", 200, "[]");
     }
 
     private int eventsOf(UUID connection) {
@@ -83,7 +85,8 @@ class CicdPollerIT {
         gitlabServes(ext);
         poller.poll(Instant.now());
         assertThat(eventsOf(c)).isEqualTo(3);
-        var reqs = git.requests().stream().filter(r -> r.path().startsWith("/api/v4/projects/" + ext + "/")).toList();
+        var reqs = git.requests().stream().filter(r -> r.path().equals("/api/v4/projects/" + ext + "/repository/commits")
+                || r.path().equals("/api/v4/projects/" + ext + "/merge_requests")).toList();
         assertThat(reqs).hasSize(2);
         assertThat(reqs.get(0).query()).contains("since=");
         assertThat(reqs.get(1).query()).contains("updated_after=");
@@ -173,6 +176,8 @@ class CicdPollerIT {
         git.respondPage("/api/v4/projects/" + ext + "/repository/commits", 1, 200, commits(0, 100, "2026-10-15T10:00:00Z"));
         git.respondPage("/api/v4/projects/" + ext + "/repository/commits", 2, 200, commits(100, 103, "2026-10-15T10:00:00Z"));
         git.respond("/api/v4/projects/" + ext + "/merge_requests", 200, "[]");
+        git.respond("/api/v4/projects/" + ext + "/pipelines", 200, "[]");
+        git.respond("/api/v4/projects/" + ext + "/deployments", 200, "[]");
         poller.poll(Instant.now());
         assertThat(eventsOf(c)).isEqualTo(103);
     }
@@ -182,6 +187,8 @@ class CicdPollerIT {
         var ext = repo(c);
         git.respond("/api/v4/projects/" + ext + "/repository/commits", 200, commits(0, 100, "2026-10-15T10:00:00Z"));
         git.respond("/api/v4/projects/" + ext + "/merge_requests", 200, "[]");
+        git.respond("/api/v4/projects/" + ext + "/pipelines", 200, "[]");
+        git.respond("/api/v4/projects/" + ext + "/deployments", 200, "[]");
         var polled = adapters.of("gitlab").poll(new CicdAdapter.Remote(git.baseUrl(), "glpat-t8"), ext, OffsetDateTime.parse("2026-10-01T00:00:00Z"));
         assertThat(polled.truncated()).isTrue();
         long before = git.requests().stream().filter(r -> r.path().endsWith("/repository/commits")).count();
@@ -196,6 +203,8 @@ class CicdPollerIT {
         var ext = repo(c);
         git.respond("/api/v4/projects/" + ext + "/repository/commits", 200, commits(0, 1, "2099-01-01T00:00:00Z"));
         git.respond("/api/v4/projects/" + ext + "/merge_requests", 200, "[]");
+        git.respond("/api/v4/projects/" + ext + "/pipelines", 200, "[]");
+        git.respond("/api/v4/projects/" + ext + "/deployments", 200, "[]");
         var now = Instant.now();
         poller.poll(now);
         var cursor = db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(c)).fetchOne().getPollCursor();

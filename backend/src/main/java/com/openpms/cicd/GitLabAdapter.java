@@ -13,8 +13,11 @@ import static com.openpms.cicd.AdapterSupport.trimSlash;
 import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -23,6 +26,9 @@ import tools.jackson.databind.json.JsonMapper;
 /** GitLab: webhooks carry the secret in X-Gitlab-Token; polling uses REST API v4 with PRIVATE-TOKEN. */
 @Component
 public class GitLabAdapter implements CicdAdapter {
+    private static final Pattern HEX = Pattern.compile("[0-9a-f]{7,64}");
+    private static final Pattern FULL_SHA = Pattern.compile("[0-9a-f]{40}");
+
     private final CicdHttp http;
     private final JsonMapper json;
 
@@ -68,10 +74,68 @@ public class GitLabAdapter implements CicdAdapter {
                 return List.of(mergeRequest(repo, a, opened ? text(root.path("user").path("name")) : "",
                         opened ? text(root.path("user").path("email")) : ""));
             }
+            case "Pipeline Hook" -> {
+                var a = root.path("object_attributes");
+                var started = time(text(a.path("created_at")));
+                var finished = time(text(a.path("finished_at")));
+                var id = text(a.path("id"));
+                var url = text(a.path("url"));
+                if (url.isEmpty() && !id.isEmpty()) url = text(root.path("project").path("web_url")) + "/-/pipelines/" + id;
+                return pipeline(repo, id, text(a.path("name")), text(a.path("sha")), text(a.path("ref")), text(a.path("status")), url,
+                        started, finished, finished != null ? finished : started);
+            }
+            case "Deployment Hook" -> {
+                var id = text(root.path("deployment_id"));
+                var status = text(root.path("status"));
+                var normalized = deploymentStatus(status);
+                if (id.isEmpty() || normalized == null) return List.of();
+                var commitUrl = text(root.path("commit_url"));
+                var last = commitUrl.substring(commitUrl.lastIndexOf('/') + 1).toLowerCase(Locale.ROOT);
+                var sha = FULL_SHA.matcher(last).matches() ? last : hexOrNull(text(root.path("short_sha")));
+                var d = new CicdEvent.Deployment(id, sha, null, text(root.path("environment")), normalized,
+                        text(root.path("deployable_url")), time(text(root.path("status_changed_at"))));
+                return List.of(new CicdEvent("deployment", "deployment:" + repo + ":" + id + ":" + status, repo, null, null, null, d, null));
+            }
             default -> {
                 return List.of();
             }
         }
+    }
+
+    /** running | success | failed | canceled, or null for a state we do not know. */
+    private static String pipelineStatus(String s) {
+        return switch (s) {
+            case "success" -> "success";
+            case "failed" -> "failed";
+            case "canceled", "skipped" -> "canceled";
+            case "created", "waiting_for_resource", "preparing", "pending", "running", "scheduled", "manual" -> "running";
+            default -> null;
+        };
+    }
+
+    /** running | success | failed, or null for a state we do not know. */
+    private static String deploymentStatus(String s) {
+        return switch (s) {
+            case "success" -> "success";
+            case "running", "created" -> "running";
+            case "failed", "canceled" -> "failed";
+            default -> null;
+        };
+    }
+
+    private static String hexOrNull(String sha) {
+        var s = sha == null ? "" : sha.toLowerCase(Locale.ROOT);
+        return HEX.matcher(s).matches() ? s : null;
+    }
+
+    /** No event for an unknown state, an empty id, or a sha that is not hex. */
+    private static List<CicdEvent> pipeline(String repo, String id, String name, String sha, String ref, String rawStatus, String url,
+                                            OffsetDateTime started, OffsetDateTime finished, OffsetDateTime updated) {
+        var status = pipelineStatus(rawStatus);
+        var lower = hexOrNull(sha);
+        if (id.isEmpty() || status == null || lower == null) return List.of();
+        var p = new CicdEvent.Pipeline(id, name, lower, ref, status, url, started, finished, updated);
+        return List.of(new CicdEvent("pipeline", "pipeline:" + repo + ":" + id + ":" + rawStatus, repo, null, null, p, null, null));
     }
 
     private static CicdEvent commit(String repo, String sha, String title, String message, String name, String email,
@@ -90,9 +154,14 @@ public class GitLabAdapter implements CicdAdapter {
         if (state.equals("opened") && (flag(a.path("draft")) || flag(a.path("work_in_progress")))) state = "draft";
         var url = text(a.path("url"));
         if (url.isEmpty()) url = text(a.path("web_url"));
+        String mergeCommit = null;
+        if (state.equals("merged")) {
+            mergeCommit = hexOrNull(text(a.path("squash_commit_sha")));
+            if (mergeCommit == null) mergeCommit = hexOrNull(text(a.path("merge_commit_sha")));
+        }
         var mr = new CicdEvent.MergeRequest(iid, text(a.path("title")), text(a.path("description")), state,
                 text(a.path("source_branch")), text(a.path("target_branch")), authorName, authorEmail,
-                time(text(a.path("merged_at"))), updated, url);
+                time(text(a.path("merged_at"))), updated, url, mergeCommit);
         return new CicdEvent("merge_request", "mr:" + repo + ":" + iid + ":" + instant(updated), repo, null, mr);
     }
 
@@ -105,8 +174,12 @@ public class GitLabAdapter implements CicdAdapter {
     private JsonNode getJson(Remote r, String path) throws IOException {
         var res = http.get(api(r) + path, auth(r));
         if (res.status() / 100 != 2) throw new IOException("unexpected status " + res.status());
+        return readTree(res.body());
+    }
+
+    private JsonNode readTree(byte[] body) throws IOException {
         try {
-            return json.readTree(res.body());
+            return json.readTree(body);
         } catch (JacksonException e) {
             throw new IOException("unreadable response");
         }
@@ -163,7 +236,87 @@ public class GitLabAdapter implements CicdAdapter {
             if (items.size() < PAGE_SIZE) break;
             if (page == MAX_PAGES) { truncated = true; break; }
         }
+        var updatedQuery = since == null ? "" : "updated_after=" + enc(since.toInstant().toString()) + "&";
+        var listQuery = updatedQuery + "order_by=updated_at&sort=desc&per_page=" + PAGE_SIZE + "&page=";
+        for (int page = 1; ; page++) {
+            var items = getJson(remote, "/projects/" + id + "/pipelines?" + listQuery + page);
+            for (var p : items) {
+                var updated = time(text(p.path("updated_at")));
+                var rawStatus = text(p.path("status"));
+                var status = pipelineStatus(rawStatus);
+                out.addAll(pipeline(repoExternalId, text(p.path("id")), text(p.path("name")), text(p.path("sha")), text(p.path("ref")), rawStatus,
+                        text(p.path("web_url")), time(text(p.path("created_at"))),
+                        "running".equals(status) ? null : updated, updated));
+            }
+            if (items.size() < PAGE_SIZE) break;
+            if (page == MAX_PAGES) { truncated = true; break; }
+        }
+        for (int page = 1; ; page++) {
+            var items = getJson(remote, "/projects/" + id + "/deployments?" + listQuery + page);
+            for (var d : items) {
+                var depId = text(d.path("id"));
+                var rawStatus = text(d.path("status"));
+                var status = deploymentStatus(rawStatus);
+                if (depId.isEmpty() || status == null) continue;
+                var dep = new CicdEvent.Deployment(depId, hexOrNull(text(d.path("sha"))), null, text(d.path("environment").path("name")),
+                        status, text(d.path("deployable").path("web_url")), time(text(d.path("updated_at"))));
+                out.add(new CicdEvent("deployment", "deployment:" + repoExternalId + ":" + depId + ":" + rawStatus, repoExternalId, null, null, null, dep, null));
+            }
+            if (items.size() < PAGE_SIZE) break;
+            if (page == MAX_PAGES) { truncated = true; break; }
+        }
         return new Polled(out, truncated);
+    }
+
+    private static List<CicdEvent.Commit> commitsOf(JsonNode items) {
+        var out = new ArrayList<CicdEvent.Commit>();
+        for (var c : items) {
+            var sha = text(c.path("id"));
+            if (sha.isEmpty()) continue;
+            var message = text(c.path("message"));
+            var t = text(c.path("title"));
+            var at = time(text(c.path("committed_date")));
+            if (at == null) at = time(text(c.path("created_at")));
+            out.add(new CicdEvent.Commit(sha, t.isEmpty() ? title(message) : title(t), message, text(c.path("author_name")),
+                    text(c.path("author_email")), at, text(c.path("web_url"))));
+        }
+        return out;
+    }
+
+    @Override public Comparison compare(Remote remote, String repoExternalId, String base, String head, int limit) throws IOException {
+        var id = enc(repoExternalId);
+        List<CicdEvent.Commit> found;
+        boolean truncated = false;
+        try {
+            var res = http.get(api(remote) + "/projects/" + id + "/repository/compare?from=" + enc(base) + "&to=" + enc(head) + "&straight=false",
+                    auth(remote), CicdHttp.MAX_COMPARE_BODY);
+            if (res.status() / 100 != 2) throw new IOException("unexpected status " + res.status());
+            found = commitsOf(readTree(res.body()).path("commits"));
+        } catch (IOException e) {
+            if (!"response too large".equals(e.getMessage())) throw e;
+            // the diffs made it too big: the same range from the commit list, which carries no diffs
+            found = new ArrayList<>();
+            for (int page = 1; ; page++) {
+                var items = getJson(remote, "/projects/" + id + "/repository/commits?ref_name=" + enc(base + ".." + head)
+                        + "&per_page=" + PAGE_SIZE + "&page=" + page);
+                found.addAll(commitsOf(items));
+                if (items.size() < PAGE_SIZE) break;
+                if (page == MAX_PAGES) { truncated = true; break; }
+            }
+        }
+        found.sort(Comparator.comparing(CicdEvent.Commit::committedAt, Comparator.nullsLast(Comparator.reverseOrder())));
+        if (found.size() > limit) {
+            found = new ArrayList<>(found.subList(0, limit));
+            truncated = true;
+        }
+        return new Comparison(List.copyOf(found), truncated);
+    }
+
+    @Override public boolean contains(Remote remote, String repoExternalId, String head, String commit) throws IOException {
+        var base = text(getJson(remote, "/projects/" + enc(repoExternalId) + "/repository/merge_base?refs%5B%5D=" + enc(commit)
+                + "&refs%5B%5D=" + enc(head)).path("id")).toLowerCase(Locale.ROOT);
+        var c = commit.toLowerCase(Locale.ROOT);
+        return !base.isEmpty() && !c.isEmpty() && (base.startsWith(c) || c.startsWith(base));
     }
 
     @Override public int check(Remote remote) throws IOException {

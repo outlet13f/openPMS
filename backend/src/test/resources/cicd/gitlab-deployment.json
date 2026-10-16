@@ -1,0 +1,9 @@
+{
+  "object_kind": "deployment", "status": "success", "status_changed_at": "2026-10-15 11:20:00 +0900",
+  "deployment_id": 15, "deployable_id": 796, "deployable_url": "https://gitlab.example.com/web/portal/-/jobs/796",
+  "environment": "staging", "environment_tier": "staging", "environment_slug": "staging",
+  "project": { "id": 101, "path_with_namespace": "web/portal", "web_url": "https://gitlab.example.com/web/portal" },
+  "short_sha": "bcbb5ec3", "ref": "main",
+  "commit_url": "https://gitlab.example.com/web/portal/-/commit/bcbb5ec396a2c0f828686f14fac9b80b780504f2",
+  "commit_title": "로그인 오류 고침 #12"
+}

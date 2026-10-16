@@ -24,6 +24,9 @@ public final class FakeGitServer implements AutoCloseable {
 
     private record Answer(int status, String body) {}
 
+    public record Reply(int status, String body) {}
+
+    private final java.util.Map<String, java.util.function.Function<Recorded, Reply>> handlers = new ConcurrentHashMap<>();
     private final HttpServer server;
     private final Map<String, Answer> answers = new ConcurrentHashMap<>();
     private final List<Recorded> requests = new CopyOnWriteArrayList<>();
@@ -61,6 +64,11 @@ public final class FakeGitServer implements AutoCloseable {
         respond(pathPrefix + "?page=" + page, status, body);
     }
 
+    /** A computed answer for every request under the prefix (wins over respond() for the same or a shorter prefix). */
+    public void respondWith(String pathPrefix, java.util.function.Function<Recorded, Reply> handler) {
+        handlers.put(pathPrefix, handler);
+    }
+
     public List<Recorded> requests() {
         return new ArrayList<>(requests);
     }
@@ -73,7 +81,8 @@ public final class FakeGitServer implements AutoCloseable {
         var headers = new LinkedHashMap<String, String>();
         ex.getRequestHeaders().forEach((k, v) -> headers.put(k.toLowerCase(), String.join(",", v)));
         var path = ex.getRequestURI().getPath();
-        requests.add(new Recorded(path, ex.getRequestURI().getRawQuery(), Collections.unmodifiableMap(headers)));
+        var recorded = new Recorded(path, ex.getRequestURI().getRawQuery(), Collections.unmodifiableMap(headers));
+        requests.add(recorded);
         Answer best = new Answer(404, "{}");
         int bestLength = -1;
         var query = "&" + (ex.getRequestURI().getRawQuery() == null ? "" : ex.getRequestURI().getRawQuery()) + "&";
@@ -90,6 +99,14 @@ public final class FakeGitServer implements AutoCloseable {
                 best = e.getValue();
                 bestLength = e.getKey().length();
             }
+        }
+        String handlerPrefix = null;
+        for (var key : handlers.keySet()) {
+            if (path.startsWith(key) && (handlerPrefix == null || key.length() > handlerPrefix.length())) handlerPrefix = key;
+        }
+        if (handlerPrefix != null && handlerPrefix.length() >= bestLength) {
+            var reply = handlers.get(handlerPrefix).apply(recorded);
+            best = new Answer(reply.status(), reply.body());
         }
         var bytes = best.body().getBytes(StandardCharsets.UTF_8);
         ex.getResponseHeaders().set("Content-Type", "application/json");

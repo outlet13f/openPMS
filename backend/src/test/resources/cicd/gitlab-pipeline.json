@@ -1,0 +1,11 @@
+{
+  "object_kind": "pipeline",
+  "object_attributes": {
+    "id": 31, "iid": 3, "name": "CI", "ref": "feature/12-login", "tag": false,
+    "sha": "bcbb5ec396a2c0f828686f14fac9b80b780504f2", "before_sha": "0000000000000000000000000000000000000000",
+    "source": "push", "status": "success", "detailed_status": "passed",
+    "created_at": "2026-10-15 10:00:00 UTC", "finished_at": "2026-10-15 10:07:30 UTC", "duration": 450,
+    "url": "https://gitlab.example.com/web/portal/-/pipelines/31"
+  },
+  "project": { "id": 101, "path_with_namespace": "web/portal", "web_url": "https://gitlab.example.com/web/portal" }
+}

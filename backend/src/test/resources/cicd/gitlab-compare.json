@@ -1,0 +1,26 @@
+{
+  "commit": {
+    "id": "b000000000000000000000000000000000000002", "short_id": "b0000000", "title": "로그인 #12",
+    "committed_date": "2026-10-15T10:01:00.000Z"
+  },
+  "commits": [
+    {
+      "id": "b000000000000000000000000000000000000002", "short_id": "b0000000", "title": "로그인 #12",
+      "message": "로그인 #12\n\n세션 만료 처리", "author_name": "박준호", "author_email": "junho.park@openpms.local",
+      "authored_date": "2026-10-15T10:01:00.000Z", "committed_date": "2026-10-15T10:01:00.000Z",
+      "web_url": "https://gitlab.example.com/g/r/-/commit/b000000000000000000000000000000000000002"
+    },
+    {
+      "id": "c000000000000000000000000000000000000003", "short_id": "c0000000", "title": "결제",
+      "message": "결제", "author_name": "박준호", "author_email": "junho.park@openpms.local",
+      "created_at": "2026-10-15T10:02:00.000Z",
+      "web_url": "https://gitlab.example.com/g/r/-/commit/c000000000000000000000000000000000000003"
+    }
+  ],
+  "diffs": [
+    { "old_path": "src/login.ts", "new_path": "src/login.ts", "new_file": false, "renamed_file": false, "deleted_file": false, "diff": "@@ -1 +1 @@\n-a\n+b\n" }
+  ],
+  "compare_timeout": false,
+  "compare_same_ref": false,
+  "web_url": "https://gitlab.example.com/g/r/-/compare/a...c"
+}
