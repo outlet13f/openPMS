@@ -190,7 +190,7 @@ public class DevTabController {
                 .or(DSL.concat(repoUrl, DSL.inline("/pull/"), iid).eq(url));
         return db.select(CICD_MERGE_REQUESTS.ID).from(CICD_MERGE_REQUESTS)
                 .join(CICD_REPOSITORIES).on(CICD_REPOSITORIES.ID.eq(CICD_MERGE_REQUESTS.REPOSITORY_ID))
-                .where(CICD_REPOSITORIES.PROJECT_ID.in(tree), match).orderBy(CICD_MERGE_REQUESTS.UPDATED_AT.desc()).limit(1)
+                .where(CICD_REPOSITORIES.PROJECT_ID.in(tree), CICD_REPOSITORIES.DETACHED_AT.isNull(), match).orderBy(CICD_MERGE_REQUESTS.UPDATED_AT.desc()).limit(1)
                 .fetchOne(CICD_MERGE_REQUESTS.ID);
     }
 }

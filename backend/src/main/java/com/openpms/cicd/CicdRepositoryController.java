@@ -50,6 +50,24 @@ public class CicdRepositoryController {
         return ResponseEntity.status(HttpStatus.CREATED).body(repos.attach(ctx, p, in));
     }
 
+    @PostMapping("/repositories/{repoId}/reattach")
+    public CicdRepositories.RepositoryDto reattach(@PathVariable String project, @PathVariable UUID repoId) {
+        var ctx = current.ctx();
+        return repos.reattach(ctx, repos.manageable(ctx, project), repoId);
+    }
+
+    @GetMapping("/pipelines/cleanup")
+    public CicdRepositories.CleanupCount cleanupCount(@PathVariable String project, @RequestParam(required = false) String before) {
+        return repos.cleanupCount(repos.manageable(current.ctx(), project), before);
+    }
+
+    @PostMapping("/pipelines/cleanup")
+    public CicdRepositories.CleanupDone cleanup(@PathVariable String project, @RequestBody Map<String, Object> in) {
+        var ctx = current.ctx();
+        var before = in.get("before") instanceof String b ? b : null;
+        return repos.cleanup(ctx, repos.manageable(ctx, project), before);
+    }
+
     @DeleteMapping("/repositories/{repoId}")
     public ResponseEntity<Void> detach(@PathVariable String project, @PathVariable UUID repoId) {
         var ctx = current.ctx();

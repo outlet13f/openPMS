@@ -127,10 +127,10 @@ public class CicdProcessor {
     }
 
     private boolean process(UUID connectionId, UUID repositoryId, String kind, CicdEvent event) {
-        var repo = repositoryId == null ? null : db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.ID.eq(repositoryId)).fetchOne();
+        var repo = repositoryId == null ? null : db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.ID.eq(repositoryId), CICD_REPOSITORIES.DETACHED_AT.isNull()).fetchOne();
         if (repo == null && event.repoExternalId() != null)   // the webhook came before the repository was attached
             repo = db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(connectionId),
-                    CICD_REPOSITORIES.EXTERNAL_ID.eq(event.repoExternalId())).fetchOne();
+                    CICD_REPOSITORIES.EXTERNAL_ID.eq(event.repoExternalId()), CICD_REPOSITORIES.DETACHED_AT.isNull()).fetchOne();
         if (repo == null) return false;
         if (kind.equals("commit")) commit(repo.getId(), repo.getProjectId(), repo.getWebUrl(), event.commit());
         else mergeRequest(repo.getId(), repo.getProjectId(), repo.getWebUrl(), event.mr());

@@ -2,6 +2,7 @@ package com.openpms.cicd;
 
 import static com.openpms.db.Tables.CICD_CONNECTIONS;
 import static com.openpms.db.Tables.CICD_CONNECTION_PROJECTS;
+import static com.openpms.db.Tables.CICD_PIPELINES;
 import static com.openpms.db.Tables.CICD_REPOSITORIES;
 
 import com.openpms.common.ApiException;
@@ -35,7 +36,12 @@ public class CicdRepositories {
 
     public record ConnectionChoice(UUID id, String kind, String name) {}
 
-    public record RepositoryDto(UUID id, String connectionName, String kind, String fullPath, String webUrl, OffsetDateTime lastPolledAt) {}
+    public record RepositoryDto(UUID id, String connectionName, String kind, String fullPath, String webUrl, OffsetDateTime lastPolledAt,
+                               OffsetDateTime detachedAt) {}
+
+    public record CleanupCount(long count) {}
+
+    public record CleanupDone(long deleted) {}
 
     private final DSLContext db;
     private final SecretBox box;
@@ -75,14 +81,15 @@ public class CicdRepositories {
 
     public List<RepositoryDto> list(ProjectRow p) {
         return db.select(CICD_REPOSITORIES.ID, CICD_CONNECTIONS.NAME, CICD_CONNECTIONS.KIND, CICD_REPOSITORIES.FULL_PATH,
-                        CICD_REPOSITORIES.WEB_URL, CICD_REPOSITORIES.LAST_POLLED_AT)
+                        CICD_REPOSITORIES.WEB_URL, CICD_REPOSITORIES.LAST_POLLED_AT, CICD_REPOSITORIES.DETACHED_AT)
                 .from(CICD_REPOSITORIES).join(CICD_CONNECTIONS).on(CICD_CONNECTIONS.ID.eq(CICD_REPOSITORIES.CONNECTION_ID))
-                .where(CICD_REPOSITORIES.PROJECT_ID.eq(p.id())).orderBy(CICD_REPOSITORIES.FULL_PATH)
+                .where(CICD_REPOSITORIES.PROJECT_ID.eq(p.id())).orderBy(CICD_REPOSITORIES.DETACHED_AT.asc().nullsFirst(), CICD_REPOSITORIES.FULL_PATH)
                 .fetch(r -> new RepositoryDto(r.get(CICD_REPOSITORIES.ID), r.get(CICD_CONNECTIONS.NAME), r.get(CICD_CONNECTIONS.KIND),
-                        r.get(CICD_REPOSITORIES.FULL_PATH), r.get(CICD_REPOSITORIES.WEB_URL), r.get(CICD_REPOSITORIES.LAST_POLLED_AT)));
+                        r.get(CICD_REPOSITORIES.FULL_PATH), r.get(CICD_REPOSITORIES.WEB_URL), r.get(CICD_REPOSITORIES.LAST_POLLED_AT),
+                        r.get(CICD_REPOSITORIES.DETACHED_AT)));
     }
 
-    /** attachedProject appears (true) only for repositories already attached somewhere; never which project. */
+    /** attachedProject appears (true) only for repositories attached somewhere now (a detached one is free); never which project. */
     public List<Map<String, Object>> search(ProjectRow p, UUID connectionId, String query) {
         if (query != null && query.length() > 100) throw ApiException.field("q", "검색어가 너무 깁니다.");
         var c = activeConnection(connectionId, p);
@@ -93,7 +100,8 @@ public class CicdRepositories {
             m.put("externalId", r.externalId());
             m.put("fullPath", r.fullPath());
             m.put("webUrl", r.webUrl());
-            if (db.fetchExists(CICD_REPOSITORIES, CICD_REPOSITORIES.CONNECTION_ID.eq(c.getId()).and(CICD_REPOSITORIES.EXTERNAL_ID.eq(r.externalId()))))
+            if (db.fetchExists(CICD_REPOSITORIES, CICD_REPOSITORIES.CONNECTION_ID.eq(c.getId()).and(CICD_REPOSITORIES.EXTERNAL_ID.eq(r.externalId())
+                    .and(CICD_REPOSITORIES.DETACHED_AT.isNull()))))
                 m.put("attachedProject", true);
             out.add(m);
         }
@@ -107,25 +115,37 @@ public class CicdRepositories {
         var c = activeConnection(connectionId, p);
         var existing = db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(c.getId()))
                 .and(CICD_REPOSITORIES.EXTERNAL_ID.eq(externalId)).fetchOne();
-        if (existing != null) throw taken(existing.getProjectId(), p);
+        if (existing != null && existing.getDetachedAt() == null) throw taken(existing.getProjectId(), p);
         // what we store is what the host says; anything else in the body (fullPath, webUrl) is ignored
         var repo = lookup(c, externalId);
         if (repo == null) throw ApiException.unprocessable("연동한 도구에서 저장소를 찾을 수 없습니다.", null);
-        var r = db.newRecord(CICD_REPOSITORIES);
-        r.setConnectionId(c.getId());
-        r.setExternalId(repo.externalId());
-        r.setFullPath(repo.fullPath());
-        r.setWebUrl(repo.webUrl());
-        r.setProjectId(p.id());
-        r.setPollCursor(OffsetDateTime.now().minusDays(7));
+        var cursor = OffsetDateTime.now().minusDays(7);
+        UUID repoId;
         try {
             // the list may have changed while we asked the host: check again, holding the row so that taking the project off
-            // the list (CicdConnections.setProjects) waits for this insert and then refuses with 409, or wins and we answer 404
-            tx.executeWithoutResult(s -> {
+            // the list (CicdConnections.setProjects) waits for this write and then refuses with 409, or wins and we answer 404
+            repoId = tx.execute(s -> {
                 var held = db.selectOne().from(CICD_CONNECTION_PROJECTS).where(CICD_CONNECTION_PROJECTS.CONNECTION_ID.eq(c.getId()))
                         .and(CICD_CONNECTION_PROJECTS.PROJECT_ID.eq(p.id())).forShare().fetchOne();
                 if (held == null) throw ApiException.notFound("연동을 찾을 수 없습니다.");
+                if (existing != null) {
+                    // a detached row: the same row comes back (history kept), here, whichever project it was on
+                    int n = db.update(CICD_REPOSITORIES).set(CICD_REPOSITORIES.PROJECT_ID, p.id()).set(CICD_REPOSITORIES.FULL_PATH, repo.fullPath())
+                            .set(CICD_REPOSITORIES.WEB_URL, repo.webUrl()).set(CICD_REPOSITORIES.DETACHED_AT, (OffsetDateTime) null)
+                            .set(CICD_REPOSITORIES.POLL_CURSOR, cursor)
+                            .where(CICD_REPOSITORIES.ID.eq(existing.getId()), CICD_REPOSITORIES.DETACHED_AT.isNotNull()).execute();
+                    if (n == 0) throw new ApiException(409, "이미 다른 프로젝트에 붙은 저장소입니다.");
+                    return existing.getId();
+                }
+                var r = db.newRecord(CICD_REPOSITORIES);
+                r.setConnectionId(c.getId());
+                r.setExternalId(repo.externalId());
+                r.setFullPath(repo.fullPath());
+                r.setWebUrl(repo.webUrl());
+                r.setProjectId(p.id());
+                r.setPollCursor(cursor);
                 r.insert();
+                return r.getId();
             });
         } catch (DataIntegrityViolationException e) {
             var owner = db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(c.getId()))
@@ -133,14 +153,70 @@ public class CicdRepositories {
             if (owner == null) throw e;
             throw taken(owner.getProjectId(), p);
         }
-        AUDIT.info("cicd.repository.attached by={} project={} connection={} repository={}", ctx.userId(), p.id(), c.getId(), r.getId());
-        return list(p).stream().filter(d -> d.id().equals(r.getId())).findFirst().orElseThrow();
+        if (existing == null) AUDIT.info("cicd.repository.attached by={} project={} connection={} repository={}", ctx.userId(), p.id(), c.getId(), repoId);
+        else if (existing.getProjectId().equals(p.id())) AUDIT.info("cicd.repository.reattached by={} project={} repository={}", ctx.userId(), p.id(), repoId);
+        else AUDIT.info("cicd.repository.moved by={} from={} to={} repository={}", ctx.userId(), existing.getProjectId(), p.id(), repoId);
+        return list(p).stream().filter(d -> d.id().equals(repoId)).findFirst().orElseThrow();
     }
 
+    /** Soft detach: the row, commits, merge requests, links, builds and deployments stay; only new events stop coming in. */
     public void detach(Ctx ctx, ProjectRow p, UUID repoId) {
-        int n = db.deleteFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.ID.eq(repoId)).and(CICD_REPOSITORIES.PROJECT_ID.eq(p.id())).execute();
+        int n = db.update(CICD_REPOSITORIES).set(CICD_REPOSITORIES.DETACHED_AT, OffsetDateTime.now())
+                .where(CICD_REPOSITORIES.ID.eq(repoId), CICD_REPOSITORIES.PROJECT_ID.eq(p.id()), CICD_REPOSITORIES.DETACHED_AT.isNull()).execute();
         if (n == 0) throw ApiException.notFound("저장소를 찾을 수 없습니다.");
         AUDIT.info("cicd.repository.detached by={} project={} repository={}", ctx.userId(), p.id(), repoId);
+    }
+
+    /** Takes a detached repository of this project back as the same row. No call to the host, so a connection without a token works. */
+    public RepositoryDto reattach(Ctx ctx, ProjectRow p, UUID repoId) {
+        var row = db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.ID.eq(repoId), CICD_REPOSITORIES.PROJECT_ID.eq(p.id()),
+                CICD_REPOSITORIES.DETACHED_AT.isNotNull()).fetchOne();
+        if (row == null) throw ApiException.notFound("저장소를 찾을 수 없습니다.");
+        tx.executeWithoutResult(s -> {
+            var held = db.selectOne().from(CICD_CONNECTION_PROJECTS).where(CICD_CONNECTION_PROJECTS.CONNECTION_ID.eq(row.getConnectionId()))
+                    .and(CICD_CONNECTION_PROJECTS.PROJECT_ID.eq(p.id())).forShare().fetchOne();
+            var active = db.fetchExists(CICD_CONNECTIONS, CICD_CONNECTIONS.ID.eq(row.getConnectionId()).and(CICD_CONNECTIONS.ACTIVE.isTrue()));
+            if (held == null || !active) throw ApiException.notFound("연동을 찾을 수 없습니다.");
+            int n = db.update(CICD_REPOSITORIES).set(CICD_REPOSITORIES.DETACHED_AT, (OffsetDateTime) null)
+                    .set(CICD_REPOSITORIES.POLL_CURSOR, OffsetDateTime.now().minusDays(7))
+                    .where(CICD_REPOSITORIES.ID.eq(repoId), CICD_REPOSITORIES.DETACHED_AT.isNotNull()).execute();
+            if (n == 0) throw ApiException.notFound("저장소를 찾을 수 없습니다.");
+        });
+        AUDIT.info("cicd.repository.reattached by={} project={} repository={}", ctx.userId(), p.id(), repoId);
+        return list(p).stream().filter(d -> d.id().equals(repoId)).findFirst().orElseThrow();
+    }
+
+    private static final java.time.ZoneId SEOUL = java.time.ZoneId.of("Asia/Seoul");
+
+    /** 00:00 Asia/Seoul of the chosen day; a missing or non-date value is 422, and so is a day after today. */
+    private static OffsetDateTime cutoff(String before) {
+        java.time.LocalDate day;
+        try {
+            day = before == null ? null : java.time.LocalDate.parse(before);
+        } catch (java.time.format.DateTimeParseException e) {
+            day = null;
+        }
+        if (day == null) throw ApiException.field("before", "날짜를 고르세요.");
+        if (day.isAfter(java.time.LocalDate.now(SEOUL))) throw ApiException.field("before", "오늘이나 그 앞 날짜를 고르세요.");
+        return day.atStartOfDay(SEOUL).toOffsetDateTime();
+    }
+
+    /** The project's builds (of its repositories, detached ones too) that ended, or were last heard of, before the cutoff. */
+    private org.jooq.Condition oldBuilds(ProjectRow p, OffsetDateTime cutoff) {
+        return CICD_PIPELINES.REPOSITORY_ID.in(DSL.select(CICD_REPOSITORIES.ID).from(CICD_REPOSITORIES).where(CICD_REPOSITORIES.PROJECT_ID.eq(p.id())))
+                .and(DSL.coalesce(CICD_PIPELINES.FINISHED_AT, CICD_PIPELINES.UPDATED_AT).lt(cutoff));
+    }
+
+    public CleanupCount cleanupCount(ProjectRow p, String before) {
+        return new CleanupCount(db.fetchCount(CICD_PIPELINES, oldBuilds(p, cutoff(before))));
+    }
+
+    /** Deletes build records only; deployments and environments stay. */
+    public CleanupDone cleanup(Ctx ctx, ProjectRow p, String before) {
+        var cut = cutoff(before);
+        int n = db.deleteFrom(CICD_PIPELINES).where(oldBuilds(p, cut)).execute();
+        AUDIT.info("cicd.pipelines.cleaned by={} project={} before={} deleted={}", ctx.userId(), p.id(), before, n);
+        return new CleanupDone(n);
     }
 
     private static ApiException taken(UUID owner, ProjectRow p) {

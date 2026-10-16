@@ -31,7 +31,7 @@ public class CicdEvents {
         if (events.isEmpty()) return 0;
         Map<String, UUID> repos = new HashMap<>();
         for (var r : db.select(CICD_REPOSITORIES.EXTERNAL_ID, CICD_REPOSITORIES.ID).from(CICD_REPOSITORIES)
-                .where(CICD_REPOSITORIES.CONNECTION_ID.eq(connectionId)).fetch())
+                .where(CICD_REPOSITORIES.CONNECTION_ID.eq(connectionId), CICD_REPOSITORIES.DETACHED_AT.isNull()).fetch())
             repos.put(r.value1(), r.value2());
         int added = 0;
         for (var e : events) {

@@ -90,7 +90,20 @@ class CicdRepositoriesIT {
         assertThat(again.get(0).get("attachedProject").asBoolean()).isTrue();
         f.send(junho, delete("/api/v1/projects/" + project + "/cicd/repositories/" + list.get(0).get("id").asString()), "")
                 .andExpect(status().isNoContent());
-        assertThat(db.fetchCount(CICD_REPOSITORIES, CICD_REPOSITORIES.CONNECTION_ID.eq(UUID.fromString(c[0])))).isZero();
+        // detaching keeps the row (and its history); only detached_at is set
+        var kept = db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(UUID.fromString(c[0]))).fetch();
+        assertThat(kept).hasSize(1);
+        assertThat(kept.get(0).getDetachedAt()).isNotNull();
+        // a second detach finds nothing attached
+        f.send(junho, delete("/api/v1/projects/" + project + "/cicd/repositories/" + list.get(0).get("id").asString()), "")
+                .andExpect(status().isNotFound());
+        // a detached repository is free in the search, and the list still shows it with its detachedAt
+        var free = f.body(f.send(junho, get("/api/v1/projects/" + project + "/cicd/connections/" + c[0] + "/search?q=web"), "")
+                .andExpect(status().isOk()).andReturn());
+        assertThat(free.get(0).has("attachedProject")).isFalse();
+        var after = f.body(f.send(junho, get("/api/v1/projects/" + project + "/cicd/repositories"), "").andExpect(status().isOk()).andReturn());
+        assertThat(after).hasSize(1);
+        assertThat(after.get(0).get("detachedAt").isNull()).isFalse();
     }
 
     @Test void membersAndObserversCanSeeButNotAttach() throws Exception {
