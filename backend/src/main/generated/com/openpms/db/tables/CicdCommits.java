@@ -7,6 +7,11 @@ package com.openpms.db.tables;
 import com.openpms.db.Indexes;
 import com.openpms.db.Keys;
 import com.openpms.db.Public;
+import com.openpms.db.tables.CicdDeploymentCommits.CicdDeploymentCommitsPath;
+import com.openpms.db.tables.CicdDeployments.CicdDeploymentsPath;
+import com.openpms.db.tables.CicdEnvironmentCommits.CicdEnvironmentCommitsPath;
+import com.openpms.db.tables.CicdEnvironments.CicdEnvironmentsPath;
+import com.openpms.db.tables.CicdFirstDeployChecks.CicdFirstDeployChecksPath;
 import com.openpms.db.tables.CicdRepositories.CicdRepositoriesPath;
 import com.openpms.db.tables.Users.UsersPath;
 import com.openpms.db.tables.WorkPackageCicdLinks.WorkPackageCicdLinksPath;
@@ -221,6 +226,45 @@ public class CicdCommits extends TableImpl<CicdCommitsRecord> {
         return _users;
     }
 
+    private transient CicdDeploymentCommitsPath _cicdDeploymentCommits;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_deployment_commits</code> table
+     */
+    public CicdDeploymentCommitsPath cicdDeploymentCommits() {
+        if (_cicdDeploymentCommits == null)
+            _cicdDeploymentCommits = new CicdDeploymentCommitsPath(this, null, Keys.CICD_DEPLOYMENT_COMMITS__CICD_DEPLOYMENT_COMMITS_COMMIT_ID_FKEY.getInverseKey());
+
+        return _cicdDeploymentCommits;
+    }
+
+    private transient CicdEnvironmentCommitsPath _cicdEnvironmentCommits;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_environment_commits</code> table
+     */
+    public CicdEnvironmentCommitsPath cicdEnvironmentCommits() {
+        if (_cicdEnvironmentCommits == null)
+            _cicdEnvironmentCommits = new CicdEnvironmentCommitsPath(this, null, Keys.CICD_ENVIRONMENT_COMMITS__CICD_ENVIRONMENT_COMMITS_COMMIT_ID_FKEY.getInverseKey());
+
+        return _cicdEnvironmentCommits;
+    }
+
+    private transient CicdFirstDeployChecksPath _cicdFirstDeployChecks;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_first_deploy_checks</code> table
+     */
+    public CicdFirstDeployChecksPath cicdFirstDeployChecks() {
+        if (_cicdFirstDeployChecks == null)
+            _cicdFirstDeployChecks = new CicdFirstDeployChecksPath(this, null, Keys.CICD_FIRST_DEPLOY_CHECKS__CICD_FIRST_DEPLOY_CHECKS_COMMIT_ID_FKEY.getInverseKey());
+
+        return _cicdFirstDeployChecks;
+    }
+
     private transient WorkPackageCicdLinksPath _workPackageCicdLinks;
 
     /**
@@ -232,6 +276,32 @@ public class CicdCommits extends TableImpl<CicdCommitsRecord> {
             _workPackageCicdLinks = new WorkPackageCicdLinksPath(this, null, Keys.WORK_PACKAGE_CICD_LINKS__WORK_PACKAGE_CICD_LINKS_COMMIT_ID_FKEY.getInverseKey());
 
         return _workPackageCicdLinks;
+    }
+
+    /**
+     * Get the implicit many-to-many join path to the
+     * <code>public.cicd_deployments</code> table, via the
+     * <code>cicd_deployment_commits_deployment_id_fkey</code> key
+     */
+    public CicdDeploymentsPath cicdDeploymentCommitsDeploymentIdFkey() {
+        return cicdDeploymentCommits().cicdDeployments();
+    }
+
+    /**
+     * Get the implicit many-to-many join path to the
+     * <code>public.cicd_environments</code> table
+     */
+    public CicdEnvironmentsPath cicdEnvironments() {
+        return cicdEnvironmentCommits().cicdEnvironments();
+    }
+
+    /**
+     * Get the implicit many-to-many join path to the
+     * <code>public.cicd_deployments</code> table, via the
+     * <code>cicd_first_deploy_checks_deployment_id_fkey</code> key
+     */
+    public CicdDeploymentsPath cicdFirstDeployChecksDeploymentIdFkey() {
+        return cicdFirstDeployChecks().cicdDeployments();
     }
 
     @Override

@@ -216,6 +216,36 @@ public class CicdConnectionsRecord extends UpdatableRecordImpl<CicdConnectionsRe
         return (OffsetDateTime) get(12);
     }
 
+    /**
+     * Setter for <code>public.cicd_connections.tool_url</code>.
+     */
+    public CicdConnectionsRecord setToolUrl(String value) {
+        set(13, value);
+        return this;
+    }
+
+    /**
+     * Getter for <code>public.cicd_connections.tool_url</code>.
+     */
+    public String getToolUrl() {
+        return (String) get(13);
+    }
+
+    /**
+     * Setter for <code>public.cicd_connections.image_tag_pattern</code>.
+     */
+    public CicdConnectionsRecord setImageTagPattern(String value) {
+        set(14, value);
+        return this;
+    }
+
+    /**
+     * Getter for <code>public.cicd_connections.image_tag_pattern</code>.
+     */
+    public String getImageTagPattern() {
+        return (String) get(14);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -239,7 +269,7 @@ public class CicdConnectionsRecord extends UpdatableRecordImpl<CicdConnectionsRe
     /**
      * Create a detached, initialised CicdConnectionsRecord
      */
-    public CicdConnectionsRecord(UUID id, String kind, String name, String baseUrl, String apiTokenEnc, String apiTokenHint, String webhookSecretEnc, String webhookSecretHint, String hookKey, Boolean active, UUID createdBy, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
+    public CicdConnectionsRecord(UUID id, String kind, String name, String baseUrl, String apiTokenEnc, String apiTokenHint, String webhookSecretEnc, String webhookSecretHint, String hookKey, Boolean active, UUID createdBy, OffsetDateTime createdAt, OffsetDateTime updatedAt, String toolUrl, String imageTagPattern) {
         super(CicdConnections.CICD_CONNECTIONS);
 
         setId(id);
@@ -255,6 +285,8 @@ public class CicdConnectionsRecord extends UpdatableRecordImpl<CicdConnectionsRe
         setCreatedBy(createdBy);
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
+        setToolUrl(toolUrl);
+        setImageTagPattern(imageTagPattern);
         resetTouchedOnNotNull();
     }
 }

@@ -124,6 +124,11 @@ public class CicdMergeRequests extends TableImpl<CicdMergeRequestsRecord> {
      */
     public final TableField<CicdMergeRequestsRecord, String> WEB_URL = createField(DSL.name("web_url"), SQLDataType.CLOB.nullable(false), this, "");
 
+    /**
+     * The column <code>public.cicd_merge_requests.merge_commit_sha</code>.
+     */
+    public final TableField<CicdMergeRequestsRecord, String> MERGE_COMMIT_SHA = createField(DSL.name("merge_commit_sha"), SQLDataType.CLOB, this, "");
+
     private CicdMergeRequests(Name alias, Table<CicdMergeRequestsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -252,6 +257,7 @@ public class CicdMergeRequests extends TableImpl<CicdMergeRequestsRecord> {
     @Override
     public List<Check<CicdMergeRequestsRecord>> getChecks() {
         return Arrays.asList(
+            Internal.createCheck(this, DSL.name("cicd_merge_requests_merge_commit_sha_check"), "((merge_commit_sha ~ '^[0-9a-f]{7,64}$'::text))", true),
             Internal.createCheck(this, DSL.name("cicd_merge_requests_state_check"), "((state = ANY (ARRAY['open'::text, 'draft'::text, 'merged'::text, 'closed'::text])))", true)
         );
     }

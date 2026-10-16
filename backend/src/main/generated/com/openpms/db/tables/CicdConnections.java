@@ -131,6 +131,16 @@ public class CicdConnections extends TableImpl<CicdConnectionsRecord> {
      */
     public final TableField<CicdConnectionsRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
 
+    /**
+     * The column <code>public.cicd_connections.tool_url</code>.
+     */
+    public final TableField<CicdConnectionsRecord, String> TOOL_URL = createField(DSL.name("tool_url"), SQLDataType.CLOB, this, "");
+
+    /**
+     * The column <code>public.cicd_connections.image_tag_pattern</code>.
+     */
+    public final TableField<CicdConnectionsRecord, String> IMAGE_TAG_PATTERN = createField(DSL.name("image_tag_pattern"), SQLDataType.CLOB, this, "");
+
     private CicdConnections(Name alias, Table<CicdConnectionsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -281,8 +291,10 @@ public class CicdConnections extends TableImpl<CicdConnectionsRecord> {
     public List<Check<CicdConnectionsRecord>> getChecks() {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("cicd_connections_base_url_check"), "((base_url ~ '^https?://'::text))", true),
-            Internal.createCheck(this, DSL.name("cicd_connections_kind_check"), "((kind = ANY (ARRAY['gitlab'::text, 'github'::text])))", true),
-            Internal.createCheck(this, DSL.name("cicd_connections_name_check"), "(((length(name) >= 1) AND (length(name) <= 100)))", true)
+            Internal.createCheck(this, DSL.name("cicd_connections_image_tag_pattern_check"), "(((length(image_tag_pattern) >= 1) AND (length(image_tag_pattern) <= 200)))", true),
+            Internal.createCheck(this, DSL.name("cicd_connections_kind_check"), "((kind = ANY (ARRAY['gitlab'::text, 'github'::text, 'jenkins'::text, 'argocd'::text])))", true),
+            Internal.createCheck(this, DSL.name("cicd_connections_name_check"), "(((length(name) >= 1) AND (length(name) <= 100)))", true),
+            Internal.createCheck(this, DSL.name("cicd_connections_tool_url_check"), "((tool_url ~ '^https?://'::text))", true)
         );
     }
 

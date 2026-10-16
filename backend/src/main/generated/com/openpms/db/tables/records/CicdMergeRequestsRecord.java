@@ -201,6 +201,21 @@ public class CicdMergeRequestsRecord extends UpdatableRecordImpl<CicdMergeReques
         return (String) get(11);
     }
 
+    /**
+     * Setter for <code>public.cicd_merge_requests.merge_commit_sha</code>.
+     */
+    public CicdMergeRequestsRecord setMergeCommitSha(String value) {
+        set(12, value);
+        return this;
+    }
+
+    /**
+     * Getter for <code>public.cicd_merge_requests.merge_commit_sha</code>.
+     */
+    public String getMergeCommitSha() {
+        return (String) get(12);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -224,7 +239,7 @@ public class CicdMergeRequestsRecord extends UpdatableRecordImpl<CicdMergeReques
     /**
      * Create a detached, initialised CicdMergeRequestsRecord
      */
-    public CicdMergeRequestsRecord(UUID id, UUID repositoryId, Long iid, String title, String state, String sourceBranch, String targetBranch, String authorName, UUID userId, OffsetDateTime mergedAt, OffsetDateTime updatedAt, String webUrl) {
+    public CicdMergeRequestsRecord(UUID id, UUID repositoryId, Long iid, String title, String state, String sourceBranch, String targetBranch, String authorName, UUID userId, OffsetDateTime mergedAt, OffsetDateTime updatedAt, String webUrl, String mergeCommitSha) {
         super(CicdMergeRequests.CICD_MERGE_REQUESTS);
 
         setId(id);
@@ -239,6 +254,7 @@ public class CicdMergeRequestsRecord extends UpdatableRecordImpl<CicdMergeReques
         setMergedAt(mergedAt);
         setUpdatedAt(updatedAt);
         setWebUrl(webUrl);
+        setMergeCommitSha(mergeCommitSha);
         resetTouchedOnNotNull();
     }
 }

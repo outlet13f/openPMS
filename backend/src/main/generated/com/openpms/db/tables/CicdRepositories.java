@@ -9,8 +9,13 @@ import com.openpms.db.Keys;
 import com.openpms.db.Public;
 import com.openpms.db.tables.CicdCommits.CicdCommitsPath;
 import com.openpms.db.tables.CicdConnections.CicdConnectionsPath;
+import com.openpms.db.tables.CicdDeployments.CicdDeploymentsPath;
+import com.openpms.db.tables.CicdEnvironmentCommits.CicdEnvironmentCommitsPath;
+import com.openpms.db.tables.CicdEnvironmentHeads.CicdEnvironmentHeadsPath;
+import com.openpms.db.tables.CicdEnvironments.CicdEnvironmentsPath;
 import com.openpms.db.tables.CicdEvents.CicdEventsPath;
 import com.openpms.db.tables.CicdMergeRequests.CicdMergeRequestsPath;
+import com.openpms.db.tables.CicdPipelines.CicdPipelinesPath;
 import com.openpms.db.tables.Projects.ProjectsPath;
 import com.openpms.db.tables.records.CicdRepositoriesRecord;
 
@@ -109,6 +114,11 @@ public class CicdRepositories extends TableImpl<CicdRepositoriesRecord> {
      * The column <code>public.cicd_repositories.created_at</code>.
      */
     public final TableField<CicdRepositoriesRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
+
+    /**
+     * The column <code>public.cicd_repositories.detached_at</code>.
+     */
+    public final TableField<CicdRepositoriesRecord, OffsetDateTime> DETACHED_AT = createField(DSL.name("detached_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
 
     private CicdRepositories(Name alias, Table<CicdRepositoriesRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -235,6 +245,45 @@ public class CicdRepositories extends TableImpl<CicdRepositoriesRecord> {
         return _cicdCommits;
     }
 
+    private transient CicdDeploymentsPath _cicdDeployments;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_deployments</code> table
+     */
+    public CicdDeploymentsPath cicdDeployments() {
+        if (_cicdDeployments == null)
+            _cicdDeployments = new CicdDeploymentsPath(this, null, Keys.CICD_DEPLOYMENTS__CICD_DEPLOYMENTS_REPOSITORY_ID_FKEY.getInverseKey());
+
+        return _cicdDeployments;
+    }
+
+    private transient CicdEnvironmentCommitsPath _cicdEnvironmentCommits;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_environment_commits</code> table
+     */
+    public CicdEnvironmentCommitsPath cicdEnvironmentCommits() {
+        if (_cicdEnvironmentCommits == null)
+            _cicdEnvironmentCommits = new CicdEnvironmentCommitsPath(this, null, Keys.CICD_ENVIRONMENT_COMMITS__CICD_ENVIRONMENT_COMMITS_REPOSITORY_ID_FKEY.getInverseKey());
+
+        return _cicdEnvironmentCommits;
+    }
+
+    private transient CicdEnvironmentHeadsPath _cicdEnvironmentHeads;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_environment_heads</code> table
+     */
+    public CicdEnvironmentHeadsPath cicdEnvironmentHeads() {
+        if (_cicdEnvironmentHeads == null)
+            _cicdEnvironmentHeads = new CicdEnvironmentHeadsPath(this, null, Keys.CICD_ENVIRONMENT_HEADS__CICD_ENVIRONMENT_HEADS_REPOSITORY_ID_FKEY.getInverseKey());
+
+        return _cicdEnvironmentHeads;
+    }
+
     private transient CicdEventsPath _cicdEvents;
 
     /**
@@ -259,6 +308,27 @@ public class CicdRepositories extends TableImpl<CicdRepositoriesRecord> {
             _cicdMergeRequests = new CicdMergeRequestsPath(this, null, Keys.CICD_MERGE_REQUESTS__CICD_MERGE_REQUESTS_REPOSITORY_ID_FKEY.getInverseKey());
 
         return _cicdMergeRequests;
+    }
+
+    private transient CicdPipelinesPath _cicdPipelines;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_pipelines</code> table
+     */
+    public CicdPipelinesPath cicdPipelines() {
+        if (_cicdPipelines == null)
+            _cicdPipelines = new CicdPipelinesPath(this, null, Keys.CICD_PIPELINES__CICD_PIPELINES_REPOSITORY_ID_FKEY.getInverseKey());
+
+        return _cicdPipelines;
+    }
+
+    /**
+     * Get the implicit many-to-many join path to the
+     * <code>public.cicd_environments</code> table
+     */
+    public CicdEnvironmentsPath cicdEnvironments() {
+        return cicdEnvironmentHeads().cicdEnvironments();
     }
 
     @Override

@@ -235,7 +235,7 @@ public class CicdEvents extends TableImpl<CicdEventsRecord> {
     @Override
     public List<Check<CicdEventsRecord>> getChecks() {
         return Arrays.asList(
-            Internal.createCheck(this, DSL.name("cicd_events_kind_check"), "((kind = ANY (ARRAY['commit'::text, 'merge_request'::text])))", true),
+            Internal.createCheck(this, DSL.name("cicd_events_kind_check"), "((kind = ANY (ARRAY['commit'::text, 'merge_request'::text, 'pipeline'::text, 'deployment'::text])))", true),
             Internal.createCheck(this, DSL.name("cicd_events_status_check"), "((status = ANY (ARRAY['pending'::text, 'done'::text, 'failed'::text])))", true),
             Internal.createCheck(this, DSL.name("cicd_events_via_check"), "((via = ANY (ARRAY['webhook'::text, 'poll'::text])))", true)
         );

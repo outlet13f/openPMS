@@ -13,8 +13,15 @@ import com.openpms.db.tables.Categories;
 import com.openpms.db.tables.CicdCommits;
 import com.openpms.db.tables.CicdConnectionProjects;
 import com.openpms.db.tables.CicdConnections;
+import com.openpms.db.tables.CicdDeploymentCommits;
+import com.openpms.db.tables.CicdDeployments;
+import com.openpms.db.tables.CicdEnvironmentCommits;
+import com.openpms.db.tables.CicdEnvironmentHeads;
+import com.openpms.db.tables.CicdEnvironments;
 import com.openpms.db.tables.CicdEvents;
+import com.openpms.db.tables.CicdFirstDeployChecks;
 import com.openpms.db.tables.CicdMergeRequests;
+import com.openpms.db.tables.CicdPipelines;
 import com.openpms.db.tables.CicdRepositories;
 import com.openpms.db.tables.CustomFieldOptions;
 import com.openpms.db.tables.CustomFieldTypes;
@@ -128,14 +135,49 @@ public class Public extends SchemaImpl {
     public final CicdConnections CICD_CONNECTIONS = CicdConnections.CICD_CONNECTIONS;
 
     /**
+     * The table <code>public.cicd_deployment_commits</code>.
+     */
+    public final CicdDeploymentCommits CICD_DEPLOYMENT_COMMITS = CicdDeploymentCommits.CICD_DEPLOYMENT_COMMITS;
+
+    /**
+     * The table <code>public.cicd_deployments</code>.
+     */
+    public final CicdDeployments CICD_DEPLOYMENTS = CicdDeployments.CICD_DEPLOYMENTS;
+
+    /**
+     * The table <code>public.cicd_environment_commits</code>.
+     */
+    public final CicdEnvironmentCommits CICD_ENVIRONMENT_COMMITS = CicdEnvironmentCommits.CICD_ENVIRONMENT_COMMITS;
+
+    /**
+     * The table <code>public.cicd_environment_heads</code>.
+     */
+    public final CicdEnvironmentHeads CICD_ENVIRONMENT_HEADS = CicdEnvironmentHeads.CICD_ENVIRONMENT_HEADS;
+
+    /**
+     * The table <code>public.cicd_environments</code>.
+     */
+    public final CicdEnvironments CICD_ENVIRONMENTS = CicdEnvironments.CICD_ENVIRONMENTS;
+
+    /**
      * The table <code>public.cicd_events</code>.
      */
     public final CicdEvents CICD_EVENTS = CicdEvents.CICD_EVENTS;
 
     /**
+     * The table <code>public.cicd_first_deploy_checks</code>.
+     */
+    public final CicdFirstDeployChecks CICD_FIRST_DEPLOY_CHECKS = CicdFirstDeployChecks.CICD_FIRST_DEPLOY_CHECKS;
+
+    /**
      * The table <code>public.cicd_merge_requests</code>.
      */
     public final CicdMergeRequests CICD_MERGE_REQUESTS = CicdMergeRequests.CICD_MERGE_REQUESTS;
+
+    /**
+     * The table <code>public.cicd_pipelines</code>.
+     */
+    public final CicdPipelines CICD_PIPELINES = CicdPipelines.CICD_PIPELINES;
 
     /**
      * The table <code>public.cicd_repositories</code>.
@@ -384,8 +426,15 @@ public class Public extends SchemaImpl {
             CicdCommits.CICD_COMMITS,
             CicdConnectionProjects.CICD_CONNECTION_PROJECTS,
             CicdConnections.CICD_CONNECTIONS,
+            CicdDeploymentCommits.CICD_DEPLOYMENT_COMMITS,
+            CicdDeployments.CICD_DEPLOYMENTS,
+            CicdEnvironmentCommits.CICD_ENVIRONMENT_COMMITS,
+            CicdEnvironmentHeads.CICD_ENVIRONMENT_HEADS,
+            CicdEnvironments.CICD_ENVIRONMENTS,
             CicdEvents.CICD_EVENTS,
+            CicdFirstDeployChecks.CICD_FIRST_DEPLOY_CHECKS,
             CicdMergeRequests.CICD_MERGE_REQUESTS,
+            CicdPipelines.CICD_PIPELINES,
             CicdRepositories.CICD_REPOSITORIES,
             CustomFieldOptions.CUSTOM_FIELD_OPTIONS,
             CustomFieldTypes.CUSTOM_FIELD_TYPES,

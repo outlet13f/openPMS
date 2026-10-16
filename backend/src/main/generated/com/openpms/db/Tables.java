@@ -13,8 +13,15 @@ import com.openpms.db.tables.Categories;
 import com.openpms.db.tables.CicdCommits;
 import com.openpms.db.tables.CicdConnectionProjects;
 import com.openpms.db.tables.CicdConnections;
+import com.openpms.db.tables.CicdDeploymentCommits;
+import com.openpms.db.tables.CicdDeployments;
+import com.openpms.db.tables.CicdEnvironmentCommits;
+import com.openpms.db.tables.CicdEnvironmentHeads;
+import com.openpms.db.tables.CicdEnvironments;
 import com.openpms.db.tables.CicdEvents;
+import com.openpms.db.tables.CicdFirstDeployChecks;
 import com.openpms.db.tables.CicdMergeRequests;
+import com.openpms.db.tables.CicdPipelines;
 import com.openpms.db.tables.CicdRepositories;
 import com.openpms.db.tables.CustomFieldOptions;
 import com.openpms.db.tables.CustomFieldTypes;
@@ -112,14 +119,49 @@ public class Tables {
     public static final CicdConnections CICD_CONNECTIONS = CicdConnections.CICD_CONNECTIONS;
 
     /**
+     * The table <code>public.cicd_deployment_commits</code>.
+     */
+    public static final CicdDeploymentCommits CICD_DEPLOYMENT_COMMITS = CicdDeploymentCommits.CICD_DEPLOYMENT_COMMITS;
+
+    /**
+     * The table <code>public.cicd_deployments</code>.
+     */
+    public static final CicdDeployments CICD_DEPLOYMENTS = CicdDeployments.CICD_DEPLOYMENTS;
+
+    /**
+     * The table <code>public.cicd_environment_commits</code>.
+     */
+    public static final CicdEnvironmentCommits CICD_ENVIRONMENT_COMMITS = CicdEnvironmentCommits.CICD_ENVIRONMENT_COMMITS;
+
+    /**
+     * The table <code>public.cicd_environment_heads</code>.
+     */
+    public static final CicdEnvironmentHeads CICD_ENVIRONMENT_HEADS = CicdEnvironmentHeads.CICD_ENVIRONMENT_HEADS;
+
+    /**
+     * The table <code>public.cicd_environments</code>.
+     */
+    public static final CicdEnvironments CICD_ENVIRONMENTS = CicdEnvironments.CICD_ENVIRONMENTS;
+
+    /**
      * The table <code>public.cicd_events</code>.
      */
     public static final CicdEvents CICD_EVENTS = CicdEvents.CICD_EVENTS;
 
     /**
+     * The table <code>public.cicd_first_deploy_checks</code>.
+     */
+    public static final CicdFirstDeployChecks CICD_FIRST_DEPLOY_CHECKS = CicdFirstDeployChecks.CICD_FIRST_DEPLOY_CHECKS;
+
+    /**
      * The table <code>public.cicd_merge_requests</code>.
      */
     public static final CicdMergeRequests CICD_MERGE_REQUESTS = CicdMergeRequests.CICD_MERGE_REQUESTS;
+
+    /**
+     * The table <code>public.cicd_pipelines</code>.
+     */
+    public static final CicdPipelines CICD_PIPELINES = CicdPipelines.CICD_PIPELINES;
 
     /**
      * The table <code>public.cicd_repositories</code>.

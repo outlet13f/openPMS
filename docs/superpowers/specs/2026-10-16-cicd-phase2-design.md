@@ -58,6 +58,12 @@ JSON 한 가지 형식: `type`(`pipeline`·`deployment`), `repository`(저장소
 - 커밋 번호: `sha`가 있으면 쓰고, 없으면 `image`의 태그에서 연동별 규칙(기본: 16진수 7~40자리)으로 뽑는다. 둘 다 없거나 짧은 번호가 여러 커밋과 맞으면 "커밋 모름"으로 기록만 남긴다.
 - Argo CD 앱이 어느 저장소·환경인지는 앱 주석(`openpms.repository`, `openpms.environment`)에 적고, 알림 틀이 그 값을 담는다.
 
+### 보완 (구현 계획에서 정함)
+
+- **Argo CD의 서명.** Argo CD Notifications의 웹훅 서비스는 고정 헤더만 보낼 수 있고 본문 HMAC을 만들지 못한다. 그래서 `argocd` 연동은 `X-OpenPMS-Signature`(HMAC) **또는** `X-OpenPMS-Token: <웹훅 비밀>`(상수 시간 비교)을 받는다. `jenkins`는 HMAC만(Jenkinsfile 셸 단계가 `openssl`로 서명). 거절은 그대로 모두 같은 404. (보완 1)
+- **Argo CD 알림 틀은 `sha`를 보내지 않는다.** Argo CD 앱의 `syncResult.revision`은 배포 설정(매니페스트) 저장소의 커밋이지 앱 코드의 커밋이 아니다. 틀은 `image`(앱이 쓰는 이미지)만 보내고 커밋 번호는 이미지 태그 규칙으로 뽑는다. (보완 2)
+- **표준 알림에 선택 필드 `name`**(빌드 이름, 배지 묶음용)을 더한다. 받을 수 있는 값과 길이는 구현 계획 Task 5. (보완 14)
+
 ## 3 데이터 (마이그레이션 V28, 개발 데이터 V1012)
 
 | 표 | 담는 것 | 비고 |
@@ -68,11 +74,13 @@ JSON 한 가지 형식: `type`(`pipeline`·`deployment`), `repository`(저장소
 | `cicd_deployment_commits` | 배포로 새로 들어간 커밋 | 3단계 릴리스 노트가 씀 |
 | `cicd_environment_commits` | **지금** 각 환경에 들어가 있는 커밋(환경, 저장소, 커밋, 들여온 배포) | "어느 환경까지 갔나"를 이 표로 답함. 되돌리기 배포가 빼면 지움 |
 | `cicd_environment_heads` | 저장소·환경마다 지금 배포된 커밋 번호와 배포 | 배포 처리의 잠금 단위 |
+| `cicd_first_deploy_checks` | 첫 배포가 확인할 연결된 커밋(최대 200개): 결과(`in`·`out`·`error`), `attempts`, `next_attempt_at` | 보완 5·8 |
 
 그 밖의 바뀌는 것:
 
 - `cicd_connections.kind`에 `jenkins`·`argocd`를 더하고, `tool_url`(링크 검사용 도구 주소)과 `image_tag_pattern`(이미지 태그 규칙)을 더한다. Jenkins·Argo CD는 API 토큰이 없다.
 - `cicd_repositories.detached_at`을 더한다(아래 "저장소 떼기").
+- `cicd_merge_requests.merge_commit_sha`, `cicd_pipelines.name`(빌드 이름), `cicd_deployments.next_attempt_at`·`first_cutoff_at`을 더한다(보완 5·6·7·8).
 - 모듈 `cicd`를 쓰는 프로젝트마다 기본 환경 세 개를 넣는다: 개발(`dev`, `development`) · 스테이징(`stg`, `staging`) · 운영(`prod`, `production`, 운영 여부 켬). 새로 모듈을 켜는 프로젝트도 같다.
 - 비교 결과에만 있던 커밋은 `cicd_commits`에 새로 넣고, 메시지의 `#번호`로 작업 연결을 만든다(1단계 규칙: 저장소가 붙은 프로젝트 트리 안에서만).
 - 권한은 새로 만들지 않는다: 보기 `cicd.view`, 환경 설정·빌드 기록 정리 `cicd.manage`.
@@ -88,6 +96,14 @@ JSON 한 가지 형식: `type`(`pipeline`·`deployment`), `repository`(저장소
 
 - 빌드·배포 기록은 자동으로 지우지 않는다. 개발 리더가 프로젝트 설정 › 저장소에서 "빌드 기록 정리"를 고르면, 고른 날짜보다 오래된 그 프로젝트 저장소들의 빌드 기록을 지운다(확인 창에 건수, 감사 로그). 배포 기록과 환경 상태는 정리 대상이 아니다.
 - `cicd_events`(처리 대기열)는 지금처럼 90일 뒤 자동 정리.
+
+### 보완 (구현 계획에서 정함)
+
+- **첫 배포 확인 대상 표 `cicd_first_deploy_checks`.** 설계서의 여섯 표 밖에 하나 더 둔다: 첫 배포가 확인할 연결된 커밋(최대 200개)과 결과(`in`·`out`·`error`), 시도 횟수 `attempts`, 다음 시도 시각 `next_attempt_at`. 실행마다 저장소당 50번까지 확인하고, 모두 끝나면 배포가 `first`가 된다. 200개보다 오래된 연결은 배포의 `first_cutoff_at`(확인한 가장 오래된 커밋 시각)으로 "첫 배포 이전"을 판단한다. (보완 5)
+- **MR의 병합 커밋.** MR로만 연결된 작업(브랜치 이름의 `#123`)도 환경 줄이 나오도록 `cicd_merge_requests.merge_commit_sha`(V28)를 더한다(GitLab `squash_commit_sha` → `merge_commit_sha`, GitHub `merge_commit_sha`, 병합된 MR만). 환경 판정에서 "연결된 커밋"은 끊지 않은 커밋 연결 + 연결된 병합 MR의 병합 커밋이다. (보완 6)
+- **빌드 배지는 워크플로마다 최신 하나를 모은다.** GitHub는 한 커밋에 워크플로가 여러 개(빌드·린트·배포) 돈다. 최신 하나만 보이면 실패한 빌드가 나중에 끝난 린트에 가려진다. `cicd_pipelines.name`(GitLab 파이프라인 이름, GitHub 워크플로 이름, Jenkins 작업 이름. 없으면 "")을 두고, 커밋(또는 MR 원본 브랜치)마다 이름별 최신을 모아 하나라도 `failed`면 실패, 아니면 `running`이 있으면 진행 중, 모두 `canceled`면 취소, 그 밖은 성공. 배지 링크는 그 상태를 만든 빌드 중 최신. (보완 7)
+- **기본 환경을 넣는 때.** 모듈 `cicd`를 켜는 순간(프로젝트 수정 `PATCH /projects/{id}`의 `enabledModules`, 템플릿·프로젝트 복사) 그 프로젝트에 환경이 하나도 없을 때만 `개발`·`스테이징`·`운영`을 넣는다. 템플릿의 환경 정의는 복사하지 않는다. V28은 이미 모듈을 쓰는 프로젝트에 넣는데, 새 개발 DB에서는 V28이 V1010(모듈을 켬)보다 먼저 돌므로 V1012가 web-platform·mobile-app에 넣는다. (보완 11)
+- **뗀 저장소의 경계.** 허용 프로젝트에서 빼기는 붙은(떼지 않은) 저장소만 막는다(409). 연동 목록의 저장소 수는 붙은 것만, 연동 삭제 409는 뗀 것까지 센다. 다시 붙이기는 `POST /projects/{p}/cicd/repositories/{id}/reattach`(원격 조회 없음, 토큰이 없는 연동도 됨), 다른 프로젝트로는 찾기 → 붙이기가 같은 행을 옮긴다. 저장소 찾기 결과의 `attachedProject`는 붙은 것만 표시. 손 연결은 뗀 저장소의 MR을 받지 않는다. (보완 12)
 
 ## 4 처리
 
@@ -128,6 +144,15 @@ JSON 한 가지 형식: `type`(`pipeline`·`deployment`), `repository`(저장소
 
 - 비교 API 실패(시간 초과·권한 없음 등)는 다음 실행에서 최대 5번 다시 시도하고, 그래도 안 되면 "확인 실패". 로그에는 연동 id·저장소 id·상태 코드만.
 
+### 보완 (구현 계획에서 정함)
+
+- **비교 응답 상한 8 MiB.** GitLab `repository/compare`와 GitHub `compare`는 커밋 목록과 함께 diff·바뀐 파일 목록을 돌려줘 2 MiB를 쉽게 넘는다. 비교·조상 확인 호출만 응답 본문 상한을 8 MiB로 둔다(나머지 1단계 규칙 — 10초 전체 마감, 리다이렉트 안 따름 — 은 그대로). GitLab은 그래도 넘으면 같은 범위를 커밋 목록 API(`repository/commits?ref_name=<base>..<head>`, diff 없음)로 다시 읽는다. GitHub는 넘으면 다시 시도하지 않고 바로 "확인 실패". (보완 3)
+- **조상 확인.** 첫 배포의 "그 커밋이 배포 커밋에 들어 있나"는 GitLab `repository/merge_base`(병합 기준 = 그 커밋이면 포함), GitHub `compare/{그 커밋}...{배포 커밋}`의 `status`가 `ahead`·`identical`이면 포함으로 본다(설계서의 "뒤에 있음·같음"). (보완 4)
+- **다시 시도 간격.** 비교 API 실패는 다음 실행에서 다시 하되 1·2·4·8분 간격(`next_attempt_at`)으로 하고 5번째 실패에 "확인 실패"(도구 서버를 몇 분 재시작해도 모두 실패로 끝나지 않게). 첫 배포의 조상 확인도 같은 간격을 `cicd_first_deploy_checks.next_attempt_at`(V28)에 두고, 5번 시도해도 안 되면 그 커밋의 결과를 `error`로 한다. 비교에 쓸 토큰이 없거나(웹훅만 쓰는 GitLab·GitHub 연동) 연동이 꺼졌으면 바로 "확인 실패". "확인 실패"여도 환경 머리는 그 배포로 옮긴다(다음 배포가 그것과 비교). (보완 8)
+- **Jenkins·Argo CD 저장소 찾기.** 표준 알림의 `repository`를 대소문자 무시로 그 연동의 허용 프로젝트에 붙은(떼지 않은) GitLab·GitHub 저장소의 `full_path`와 맞춘다. 둘 이상 맞으면(같은 경로가 GitLab·GitHub 양쪽에) 버리고 경고 로그(연동 id와 건수만). (보완 9)
+- **환경 맞추기.** 환경 이름도 별칭처럼 맞춘다(대소문자 무시). 숨긴 환경은 새 배포와 맞추지 않는다(미지정이 됨). 별칭은 소문자로 저장하고, 한 프로젝트 안에서 다른 환경의 이름·별칭과 겹치면 422. (보완 10)
+- **배포 시각과 상태.** 늦게 온 옛 배포 판단의 배포 시각은 GitLab `status_changed_at`(폴링은 `updated_at`), GitHub `deployment_status.created_at`, 표준 `at`. GitHub `inactive`(새 배포가 성공하면 GitHub가 옛 배포에 붙이는 상태)는 버린다. `error`는 실패. GitLab `canceled` 배포는 실패로 기록만. (보완 17)
+
 ## 5 화면
 
 ### 작업 패키지 › 개발 탭 (`cicd.view`)
@@ -157,6 +182,12 @@ JSON 한 가지 형식: `type`(`pipeline`·`deployment`), `repository`(저장소
 - 가짜 데이터 계층도 같은 규칙·문구, 시드에 빌드·배포 몇 건과 기본 환경. `SCHEMA` 올림.
 - 도움말: 07 §16.6 빌드·배포 보기, 16.7 환경 설정, 10 §9.18에 Jenkins·Argo CD 연동 새 절(기존 번호는 바꾸지 않음).
 
+### 보완 (구현 계획에서 정함)
+
+- **이미지 태그 규칙.** Java 정규식, 200자까지, 태그(마지막 `/` 뒤의 `:` 뒤, `@digest` 앞) 128자까지, 첫 묶음(없으면 일치 전체), 결과가 16진수 7–40자리이고 숫자만이 아닐 때만 커밋 번호(날짜·빌드 번호 태그 `20261015` 제외). 검사 단계 상한(문자 읽기 20만 번)을 넘으면 "커밋 모름". 화면의 "시험"은 서버 `POST /api/v1/admin/cicd/image-tag-test`가 답한다(브라우저 정규식과 결과가 다르지 않게). (보완 13)
+- **빌드 기록 정리.** 기준은 고른 날짜 00:00(Asia/Seoul) 이전, 시각은 `coalesce(finished_at, updated_at)`. 오늘보다 뒤 날짜는 422. 환경 설정과 빌드 기록 정리 경로는 `ApiTokenFilter`에서 API 토큰으로 닫는다(정규식 `^/api/v1/projects/[^/]+/cicd/(environments|pipelines)(/.*)?$`). (보완 16)
+- **도움말 번호.** 07은 16.5가 마지막 → 새 16.6 빌드·배포 보기, 16.7 환경 설정. 10의 9.18은 9.18.10이 마지막 → 9.18.11 Jenkins 연동, 9.18.12 Argo CD 연동, 9.18.13 저장소 떼기와 빌드 기록 정리. `topics.ts`: 개발 탭은 16.2 그대로(16.2에 16.6을 가리키는 문장), 설정 › 환경 → 16.7, `/admin/cicd`는 9.18 그대로. (보완 18)
+
 ## 6 보안
 
 - 받는 경로는 `/api/v1/hooks/cicd/{key}` 하나 그대로. Jenkins·Argo CD는 `X-OpenPMS-Signature` HMAC 검증, 거절은 모두 같은 404.
@@ -165,6 +196,11 @@ JSON 한 가지 형식: `type`(`pipeline`·`deployment`), `repository`(저장소
 - 관리 › CI/CD 연동은 지금처럼 API 토큰으로 닫혀 있다. 환경 설정·빌드 기록 정리도 세션만.
 - 감사 로그(`openpms.audit`): 빌드 기록 정리, 환경 추가·삭제·별칭 변경, 저장소 떼기·다시 붙이기.
 - 바깥 호출은 1단계 규칙 그대로(10초 전체 마감, 2 MiB, 리다이렉트 안 따름). 가상 스레드 규칙(`synchronized` 금지, `computeIfAbsent` 안에서 DB·HTTP 대기 금지).
+
+### 보완 (구현 계획에서 정함)
+
+- **연동 입력.** Jenkins·Argo CD도 `baseUrl` 칸을 "도구 주소"로 받고 서버가 `tool_url`에 같은 값을 둔다(`base_url`은 not null 그대로). API 토큰을 보내면 422 "Jenkins·Argo CD 연동에는 API 토큰을 쓰지 않습니다.". (보완 15)
+- **빌드 기록 정리.** 기준은 고른 날짜 00:00(Asia/Seoul) 이전, 시각은 `coalesce(finished_at, updated_at)`. 오늘보다 뒤 날짜는 422. 환경 설정과 빌드 기록 정리 경로는 `ApiTokenFilter`에서 API 토큰으로 닫는다(정규식 `^/api/v1/projects/[^/]+/cicd/(environments|pipelines)(/.*)?$`). (보완 16)
 
 ## 7 테스트
 

@@ -156,6 +156,21 @@ public class CicdRepositoriesRecord extends UpdatableRecordImpl<CicdRepositories
         return (OffsetDateTime) get(8);
     }
 
+    /**
+     * Setter for <code>public.cicd_repositories.detached_at</code>.
+     */
+    public CicdRepositoriesRecord setDetachedAt(OffsetDateTime value) {
+        set(9, value);
+        return this;
+    }
+
+    /**
+     * Getter for <code>public.cicd_repositories.detached_at</code>.
+     */
+    public OffsetDateTime getDetachedAt() {
+        return (OffsetDateTime) get(9);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -179,7 +194,7 @@ public class CicdRepositoriesRecord extends UpdatableRecordImpl<CicdRepositories
     /**
      * Create a detached, initialised CicdRepositoriesRecord
      */
-    public CicdRepositoriesRecord(UUID id, UUID connectionId, String externalId, String fullPath, String webUrl, UUID projectId, OffsetDateTime pollCursor, OffsetDateTime lastPolledAt, OffsetDateTime createdAt) {
+    public CicdRepositoriesRecord(UUID id, UUID connectionId, String externalId, String fullPath, String webUrl, UUID projectId, OffsetDateTime pollCursor, OffsetDateTime lastPolledAt, OffsetDateTime createdAt, OffsetDateTime detachedAt) {
         super(CicdRepositories.CICD_REPOSITORIES);
 
         setId(id);
@@ -191,6 +206,7 @@ public class CicdRepositoriesRecord extends UpdatableRecordImpl<CicdRepositories
         setPollCursor(pollCursor);
         setLastPolledAt(lastPolledAt);
         setCreatedAt(createdAt);
+        setDetachedAt(detachedAt);
         resetTouchedOnNotNull();
     }
 }
