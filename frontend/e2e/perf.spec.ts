@@ -7,7 +7,8 @@ import type { Page } from "@playwright/test";
 import { test, expect, login, resetDb } from "./support";
 
 const BASE = process.env.E2E_BASE ?? "http://localhost:5174";
-const BUILT = !/:517\d\b/.test(BASE);
+// vite dev servers listen on 51xx (a second worktree runs its own, e.g. 5184); the built app comes from the backend's port
+const BUILT = !/:51\d\d\b/.test(BASE);
 const RUNS = 5;
 
 /** Budgets for the built app (what people use); the dev server gets twice as long. */
@@ -22,6 +23,7 @@ const BUDGET = {
   slowAgain: 1500,
   portal: 1000,
   serviceDeskList: 1000,
+  devTab: 1000,
 };
 const budget = (k: keyof typeof BUDGET) => (BUILT ? BUDGET[k] : BUDGET[k] * 2);
 
@@ -146,6 +148,22 @@ test.describe("성능 예산 · 작업 1,000건", () => {
       await count(page, "tbody tr", 6);
       await page.locator("tbody").getByText("위반", { exact: true }).first().waitFor({ timeout: 30_000 });
     }), budget("serviceDeskList"));
+  });
+
+  test("PERF-7 개발 탭: MR 1건과 커밋 2건(작업 상세 패널)", async ({ page }) => {
+    // 개발 데이터 V1010: web-platform #4에 병합된 MR 1건과 커밋 2건. Same budget as the work package detail.
+    // polled every frame like count(): a locator's retry backoff must not land in the timing
+    const ready = () =>
+      page.waitForFunction(
+        () => {
+          const text = document.querySelector('[aria-label="상세 패널"]')?.textContent ?? "";
+          return text.includes("결제 API 연동 (#4)") && text.includes("결제 API 클라이언트 추가 (#4)") && text.includes("결제 승인 응답 처리 (#4)");
+        },
+        undefined,
+        { polling: "raf", timeout: 30_000 },
+      );
+    record("개발 탭", "상세 패널 · MR 1건, 커밋 2건", await timeOpen(page, "/projects/web-platform/work-packages/details/4/dev", ready), budget("devTab"));
+    await expect(page.getByRole("tab", { name: "개발", selected: true })).toBeVisible();
   });
 
   test("PERF-5 느린 망(10 Mbps, 왕복 40 ms): 처음 열기와 다시 열기, 주고받은 양", async ({ browser }) => {

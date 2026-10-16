@@ -28,6 +28,9 @@ const SCREENS: [string, string, RegExp | string][] = [
   ["서비스 요청 홈", "/portal", "무엇을 도와드릴까요?"],
   ["서비스 요청 접수", "/portal/new/service-desk", "장애 신고 · IT 서비스 데스크"],
   ["관리 서비스 달력", "/admin/service-calendars", /평일 근무 시간/],
+  ["관리 CI/CD 연동", "/admin/cicd", "사내 GitLab(개발용)"],
+  ["프로젝트 설정 저장소", "/projects/web-platform/settings/repositories", "web/portal"],
+  ["개발 탭", "/projects/web-platform/work-packages/details/4/dev", "결제 API 클라이언트 추가 (#4)"],
 ];
 
 test.describe("axe on every screen", () => {
@@ -68,6 +71,8 @@ test.describe("axe in the dark theme", () => {
     ["S19 알림 (dark)", "/notifications"],
     ["S02 홈 (dark)", "/"],
     ["S35 사용자 (dark)", "/admin/users"],
+    ["개발 탭 (dark)", "/projects/web-platform/work-packages/details/4/dev"],
+    ["관리 CI/CD 연동 (dark)", "/admin/cicd"],
   ] as const) {
     test(`a11y ${name}`, async ({ page }) => {
       await page.goto(url);
@@ -100,6 +105,7 @@ test.describe("axe in the high-contrast theme", () => {
     ["S13 Gantt (high contrast)", "/projects/web-platform/gantt"],
     ["S02 홈 (high contrast)", "/"],
     ["S37 계정 설정 (high contrast)", "/my/account"],
+    ["개발 탭 (high contrast)", "/projects/web-platform/work-packages/details/4/dev"],
   ] as const) {
     test(`a11y ${name}`, async ({ page }) => {
       await page.goto(url);
