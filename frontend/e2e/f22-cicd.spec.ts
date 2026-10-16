@@ -1,10 +1,11 @@
 // F22 CI/CD 연동(docs/superpowers/specs/2026-10-15-cicd-design.md): 관리자가 GitHub 연동을 만들고, 프로젝트에 저장소를 붙이고,
 // 서명한 웹훅으로 들어온 커밋이 작업의 개발 탭에 나타난다. 참관자는 보기만 하고, 모듈을 끄면 탭이 없고, 전역 역할
-// "CI/CD 연동 관리자"를 받은 사람은 관리 › CI/CD 연동만 열 수 있으며 토큰 평문은 어디에도 없다.
+// "CI/CD 연동 관리자"를 받은 사람은 관리 › CI/CD 연동만 열 수 있으며 토큰 평문은 어디에도 없다. 저장소는 연동의 허용 프로젝트(V27)에서만
+// 붙이고, 목록에 없는 프로젝트에는 연동이 보이지 않는다.
 // Needs the test code host (e2e/fake-git.mjs, see its header; the backend reaches it as http://openpms-cicd-git:18090);
 // skipped when it is not running (checked at FAKE_GIT_URL, its published port on the host). The webhook is posted to the
 // app's own address (the base URL: the dev servers proxy /api, the built app serves it), unsigned by any session.
-// 개발 데이터 V1010: web-platform #4 병합된 MR + 커밋 2, 개발용 GitLab 연동은 토큰이 없어 꺼져 있음.
+// 개발 데이터 V1010: web-platform #4 병합된 MR + 커밋 2, 개발용 GitLab 연동은 토큰이 없어 꺼져 있음(V1011: 허용 프로젝트 web-platform·mobile-app).
 import crypto from "node:crypto";
 import type { Page } from "@playwright/test";
 import { test, expect, login, logout, resetDb, axe, panel } from "./support";
@@ -19,6 +20,8 @@ const CONNECTION = "E2E GitHub";
 const TOKEN = "ghp_FAKE_E2E_not_a_real_token_WXYZ";
 const SHA = "e2e0c1d2e3f405162738495a6b7c8d9e0f1a2b3c";
 const TITLE = "로그인 화면 설계 반영 (#3)";
+const WEB = "웹 플랫폼 개편";
+const NOT_ALLOWED = "이 프로젝트에 허용된 연동이 없습니다. 관리자에게 요청하세요.";
 
 let gitUp = false;
 let hookUrl = "";
@@ -46,6 +49,13 @@ async function post(page: Page, path: string, body?: unknown) {
   );
 }
 
+/** Opens the connection's edit dialog from its row menu. */
+async function editConnection(page: Page, name: string) {
+  await page.getByRole("button", { name: `${name} 메뉴` }).click();
+  await page.getByRole("menuitem", { name: "수정" }).click();
+  return page.getByRole("dialog", { name: "연동 수정" });
+}
+
 /** Runs a dev-profile job now, as the signed-in administrator. */
 async function runJob(page: Page, name: string) {
   expect((await post(page, `/api/v1/dev/jobs/${name}`)).status, `job ${name}`).toBe(200);
@@ -55,7 +65,8 @@ test.describe("F22 CI/CD 연동", () => {
   test("F22-1 연동 → 저장소 → 웹훅 → 개발 탭 → 연결 끊기", async ({ page, request }) => {
     await login(page, ADMIN);
     await page.goto("/admin/cicd");
-    await expect(page.getByRole("table", { name: "CI/CD 연동 목록" }).getByText("사내 GitLab(개발용)")).toBeVisible(); // V1010
+    const devRow = page.getByRole("table", { name: "CI/CD 연동 목록" }).getByRole("row").filter({ hasText: "사내 GitLab(개발용)" }); // V1010
+    await expect(devRow).toContainText(`모바일 앱 2.0, ${WEB}`); // V1011
     await page.getByRole("button", { name: "연동 만들기" }).click();
     const dlg = page.getByRole("dialog", { name: "연동 만들기" });
     await dlg.getByRole("radio", { name: "GitHub" }).click();
@@ -79,6 +90,25 @@ test.describe("F22 CI/CD 연동", () => {
     await expect(row.getByText(`끝 ${TOKEN.slice(-4)}`)).toBeVisible();
     await row.getByRole("button", { name: `연결 확인: ${CONNECTION}` }).click();
     await expect(row.getByText("연결 확인: 성공 (200)")).toBeVisible();
+    // a new connection starts with no allowed project: web-platform does not see it yet
+    await expect(row).toContainText("없음");
+    await page.goto("/projects/web-platform/settings/repositories");
+    await expect(page.getByRole("table", { name: "붙은 저장소" }).getByText("web/portal")).toBeVisible(); // V1010
+    await expect(page.getByText(NOT_ALLOWED)).toBeVisible(); // the dev connection allows it but is off
+    await expect(page.getByRole("button", { name: "저장소 붙이기" })).toHaveCount(0);
+
+    // the administrator allows web-platform
+    await page.goto("/admin/cicd");
+    const edit = await editConnection(page, CONNECTION);
+    await edit.getByRole("button", { name: /^허용 프로젝트/ }).click();
+    await page.getByRole("checkbox", { name: WEB }).click();
+    await page.keyboard.press("Escape"); // closes the list, not the dialog
+    await expect(edit.getByRole("button", { name: `허용 프로젝트: ${WEB}` })).toBeVisible();
+    await axe(page, "CI/CD 연동 수정 (허용 프로젝트)");
+    await edit.getByRole("button", { name: "저장", exact: true }).click();
+    await expect(page.getByText("연동을 저장했습니다", { exact: true })).toBeVisible();
+    await expect(edit).toHaveCount(0);
+    await expect(row).toContainText(WEB);
 
     // 프로젝트 설정 › 저장소: search the code host and attach
     await page.goto("/projects/web-platform/settings/repositories");
@@ -91,6 +121,30 @@ test.describe("F22 CI/CD 연동", () => {
     await attach.getByRole("button", { name: "붙이기: openpms-e2e/web" }).click();
     await expect(page.getByText("저장소를 붙였습니다", { exact: true })).toBeVisible();
     await expect(page.getByRole("table", { name: "붙은 저장소" }).getByRole("row").filter({ hasText: "openpms-e2e/web" })).toContainText(CONNECTION);
+
+    // mobile-app is not on our connection's list: no choice, and the search answers as if there were no such connection
+    await page.goto("/projects/mobile-app/settings/repositories");
+    await expect(page.getByText(NOT_ALLOWED)).toBeVisible();
+    await expect(page.getByRole("button", { name: "저장소 붙이기" })).toHaveCount(0);
+    const hidden = await page.evaluate(async (name) => {
+      const list = (await (await fetch("/api/v1/admin/cicd/connections")).json()) as { id: string; name: string }[];
+      const id = list.find((c) => c.name === name)!.id;
+      const choices = await (await fetch("/api/v1/projects/mobile-app/cicd/connections")).text();
+      const search = await fetch(`/api/v1/projects/mobile-app/cicd/connections/${id}/search?q=web`);
+      return { offered: choices.includes(id), search: search.status };
+    }, CONNECTION);
+    expect(hidden).toEqual({ offered: false, search: 404 });
+
+    // web-platform has a repository of this connection: it cannot leave the list
+    await page.goto("/admin/cicd");
+    const again = await editConnection(page, CONNECTION);
+    await again.getByRole("button", { name: /^허용 프로젝트/ }).click();
+    await page.getByRole("checkbox", { name: WEB }).click();
+    await page.keyboard.press("Escape");
+    await again.getByRole("button", { name: "저장", exact: true }).click();
+    await expect(again.getByRole("alert")).toHaveText("이 연동의 저장소가 붙어 있는 프로젝트는 뺄 수 없습니다. 먼저 저장소를 떼세요.");
+    await again.getByRole("button", { name: "취소" }).click();
+    await expect(row).toContainText(WEB);
 
     // GitHub delivers a signed push; the job turns it into a commit linked to #3
     const key = hookUrl.split("/").pop();
@@ -201,5 +255,10 @@ test.describe("F22 CI/CD 연동", () => {
     const users = await page.evaluate(async () => (await fetch("/api/v1/admin/users")).status);
     expect(users).toBe(403);
     await axe(page, "CI/CD 연동 (연동 관리자)");
+    // the allowed projects are the system administrator's: read-only here
+    const edit = await editConnection(page, CONNECTION);
+    await expect(edit.getByText("허용 프로젝트는 시스템 관리자만 바꿀 수 있습니다.")).toBeVisible();
+    await expect(edit.getByRole("button", { name: /^허용 프로젝트/ })).toHaveCount(0);
+    await edit.getByRole("button", { name: "취소" }).click();
   });
 });
