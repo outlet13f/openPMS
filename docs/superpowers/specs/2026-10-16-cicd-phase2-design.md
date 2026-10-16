@@ -190,7 +190,7 @@ JSON 한 가지 형식: `type`(`pipeline`·`deployment`), `repository`(저장소
 
 ## 6 보안
 
-- 받는 경로는 `/api/v1/hooks/cicd/{key}` 하나 그대로. Jenkins·Argo CD는 `X-OpenPMS-Signature` HMAC 검증, 거절은 모두 같은 404.
+- 받는 경로는 `/api/v1/hooks/cicd/{key}` 하나 그대로. Jenkins는 `X-OpenPMS-Signature` HMAC 검증만, Argo CD는 그 서명 **또는** `X-OpenPMS-Token: <웹훅 비밀>`(상수 시간 비교, 보완 1). 거절은 모두 같은 404.
 - Jenkins·Argo CD 알림은 그 연동의 허용 프로젝트에 붙은 저장소에만 기록한다.
 - 빌드·배포 링크 검사: GitLab·GitHub는 저장소 주소와 같은 호스트, Jenkins·Argo CD는 연동의 도구 주소 호스트만. 아니면 링크를 비운다.
 - 관리 › CI/CD 연동은 지금처럼 API 토큰으로 닫혀 있다. 환경 설정·빌드 기록 정리도 세션만.
