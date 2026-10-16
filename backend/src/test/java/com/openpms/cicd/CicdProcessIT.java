@@ -115,7 +115,7 @@ class CicdProcessIT {
                 .fetchOne().value1();
     }
 
-    @Test void aPipelineEventStaysPendingAndDoesNotBlockACommitBehindIt() throws Exception {
+    @Test void aPipelineEventIsProcessedWithTheCommitsBesideIt() throws Exception {
         var p = newProject();
         var repo = attach(p);
         var sha = sha();
@@ -123,8 +123,9 @@ class CicdProcessIT {
                 new CicdEvent.Pipeline("1", "CI", sha, "main", "success", "", null, null, OffsetDateTime.now()), null, null);
         events.store(connection, List.of(pipeline, commit(repo, sha, "고침", "junho.park@openpms.local")), "webhook");
         processor.run(Instant.now());
-        assertThat(eventStatus("pipeline:" + repo + ":1:success:t")).isEqualTo("pending");
+        assertThat(eventStatus("pipeline:" + repo + ":1:success:t")).isEqualTo("done");
         assertThat(eventStatus("commit:" + repo + ":" + sha)).isEqualTo("done");
+        assertThat(db.fetchCount(com.openpms.db.Tables.CICD_PIPELINES, com.openpms.db.Tables.CICD_PIPELINES.REPOSITORY_ID.eq(repo))).isEqualTo(1);
     }
 
     @Test void commitLinksToWorkPackagesInTheProject() throws Exception {
