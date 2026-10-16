@@ -148,23 +148,8 @@ public class CicdProcessor {
      */
     static String safeUrl(String url, String repoWebUrl) {
         var fallback = repoWebUrl == null ? "" : repoWebUrl;
-        if (url == null || url.isBlank()) return fallback;
-        try {
-            var u = java.net.URI.create(url.strip());
-            var r = java.net.URI.create(fallback);
-            var scheme = u.getScheme() == null ? "" : u.getScheme().toLowerCase();
-            if (!(scheme.equals("http") || scheme.equals("https")) || u.getHost() == null || u.getRawUserInfo() != null) return fallback;
-            if (!scheme.equals(r.getScheme() == null ? "" : r.getScheme().toLowerCase()) || !u.getHost().equalsIgnoreCase(r.getHost() == null ? "" : r.getHost())
-                    || port(u) != port(r)) return fallback;
-            return url.strip();
-        } catch (IllegalArgumentException e) {
-            return fallback;
-        }
-    }
-
-    private static int port(java.net.URI u) {
-        if (u.getPort() != -1) return u.getPort();
-        return "http".equalsIgnoreCase(u.getScheme()) ? 80 : 443;
+        var same = CicdLinks.sameOrigin(url, fallback);
+        return same.isEmpty() ? fallback : same;
     }
 
     private UUID userByEmail(String email) {
