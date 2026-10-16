@@ -1274,9 +1274,9 @@ export interface VersionInput {
   startDate?: IsoDate | null;
   endDate?: IsoDate | null;
 }
-/* ---------- CI/CD 연동 (GitLab·GitHub) ---------- */
+/* ---------- CI/CD 연동 (GitLab·GitHub·Jenkins·Argo CD) ---------- */
 
-export type CicdKind = "gitlab" | "github";
+export type CicdKind = "gitlab" | "github" | "jenkins" | "argocd";
 /** Never holds a secret: only the last four characters (tokenHint, secretHint). */
 export interface CicdConnection {
   id: Id;
@@ -1293,19 +1293,27 @@ export interface CicdConnection {
   projects: { id: Id; name: string }[];
   /** the other allowed projects, counted only */
   hiddenProjectCount: number;
+  /** Jenkins·Argo CD: the address links must be on; null for GitLab·GitHub */
+  toolUrl: string | null;
+  /** Jenkins·Argo CD: null = the default rule (7–40 hex digits) */
+  imageTagPattern: string | null;
 }
 export interface CicdConnectionInput {
   kind: CicdKind;
   name: string;
   baseUrl: string;
-  /** optional; without it only the webhook feeds the connection */
+  /** optional; without it only the webhook feeds the connection (Jenkins·Argo CD take none: 422) */
   apiToken?: string;
+  /** Jenkins·Argo CD only; baseUrl is the tool's address */
+  imageTagPattern?: string;
 }
 /** apiToken "" clears the token; a changed baseUrl clears it too unless a new one is given */
 export interface CicdConnectionPatch {
   name?: string;
   baseUrl?: string;
   apiToken?: string;
+  /** Jenkins·Argo CD only; "" = back to the default rule */
+  imageTagPattern?: string;
   active?: boolean;
 }
 export interface CicdRepository {
@@ -1315,6 +1323,8 @@ export interface CicdRepository {
   fullPath: string;
   webUrl: string;
   lastPolledAt: IsoDateTime | null;
+  /** set = detached: the history stays, nothing new comes in */
+  detachedAt: IsoDateTime | null;
 }
 /** the project's choice list of active connections */
 export interface CicdConnectionChoice {
@@ -1328,6 +1338,15 @@ export interface CicdRemoteRepo {
   fullPath: string;
   webUrl: string;
   attachedProject?: boolean;
+}
+export type CicdBuildStatus = "running" | "success" | "failed" | "canceled";
+/** several workflows of one commit or branch, summed up: any failure shows (count = workflows) */
+export interface CicdBuild {
+  status: CicdBuildStatus;
+  webUrl: string;
+  at: IsoDateTime;
+  source: "gitlab" | "github" | "jenkins";
+  count: number;
 }
 export type CicdLinkSource = "message" | "branch" | "title" | "manual";
 export interface CicdMergeRequest {
@@ -1344,6 +1363,10 @@ export interface CicdMergeRequest {
   updatedAt: IsoDateTime;
   webUrl: string;
   source: CicdLinkSource;
+  /** the build of the source branch; null = none received */
+  build: CicdBuild | null;
+  /** the repository is detached */
+  detached: boolean;
 }
 export interface CicdCommit {
   linkId: Id;
@@ -1355,10 +1378,70 @@ export interface CicdCommit {
   committedAt: IsoDateTime;
   webUrl: string;
   source: CicdLinkSource;
+  build: CicdBuild | null;
+  /** the names of the environments it is in, the furthest one first */
+  environments: string[];
+  detached: boolean;
 }
-/** the work package's 개발 tab; canLink = cicd.link */
+export type CicdEnvState = "in" | "partial" | "none" | "checking" | "failed" | "before_first";
+/** how far the work went in one environment */
+export interface CicdEnvironmentStatus {
+  id: Id;
+  name: string;
+  production: boolean;
+  state: CicdEnvState;
+  included: number;
+  total: number;
+  /** some of the included commits were added by a check that saw only part of the history */
+  partialCheck: boolean;
+  deployedAt: IsoDateTime | null;
+  /** "" when nothing has been deployed there */
+  webUrl: string;
+  /** the project's name, only when the linked commits come from repositories of several projects */
+  project: string | null;
+}
+/** the work package's 개발 tab; canLink = cicd.link. The builds are on each merge request and commit (there is no top-level list). */
 export interface DevInfo {
   mergeRequests: CicdMergeRequest[];
   commits: CicdCommit[];
   canLink: boolean;
+  environments: CicdEnvironmentStatus[];
+}
+/** 프로젝트 › CI/CD › 환경; hidden = it has deployment history, so it was hidden instead of deleted */
+export interface CicdEnvironment {
+  id: Id;
+  name: string;
+  position: number;
+  production: boolean;
+  aliases: string[];
+  hidden: boolean;
+  deploymentCount: number;
+}
+/** deployments no environment took, grouped by name (lower case) */
+export interface CicdUnassigned {
+  name: string;
+  count: number;
+  lastAt: IsoDateTime | null;
+}
+export interface CicdEnvironmentsView {
+  environments: CicdEnvironment[];
+  unassigned: CicdUnassigned[];
+  canManage: boolean;
+}
+export interface CicdEnvironmentInput {
+  name: string;
+  production?: boolean;
+  aliases?: string[];
+}
+export interface CicdEnvironmentPatch {
+  name?: string;
+  production?: boolean;
+  aliases?: string[];
+  hidden?: boolean;
+}
+/** only the part for the connection's kind is filled (GitLab·GitHub: neither) */
+export interface CicdTemplates {
+  kind: CicdKind;
+  jenkinsfile: string | null;
+  argocd: string | null;
 }

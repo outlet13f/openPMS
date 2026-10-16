@@ -288,7 +288,8 @@ export function buildSeed(schema: number): Db {
     journals,
     ...(() => {
       const c = seedCicd();
-      return { cicdConnections: c.connections, cicdConnectionProjects: c.connectionProjects, cicdRepositories: c.repositories, cicdCommits: c.commits, cicdMergeRequests: c.mergeRequests, cicdLinks: c.links };
+      return { cicdConnections: c.connections, cicdConnectionProjects: c.connectionProjects, cicdRepositories: c.repositories, cicdCommits: c.commits, cicdMergeRequests: c.mergeRequests, cicdLinks: c.links,
+        cicdEnvironments: c.environments, cicdPipelines: c.pipelines, cicdDeployments: c.deployments, cicdEnvironmentCommits: c.environmentCommits };
     })(),
     watchers: [
       { wpId: "wp-8", userId: "u-seoyeon" },

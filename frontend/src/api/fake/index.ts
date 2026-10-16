@@ -52,7 +52,7 @@ import { clearTemporaryPassword, expireTemporaryPassword, temporaryPasswordOf } 
 import { adminApi, categoriesApi, projectExtras, versionsApi } from "./admin";
 import { followMove, timeApi } from "./time";
 import { beyondMain, journalTeam, readTeam, sameTeam, swap, teamOf, withMain, type TeamEntry } from "./assignees";
-import { cicdApi } from "./cicd";
+import { cicdApi, ensureCicdEnvironments } from "./cicd";
 
 /* ---------- plumbing ---------- */
 
@@ -105,6 +105,8 @@ function copyTemplate(t: DbProject, p: DbProject, parts: Set<string>, user: DbUs
     enabledModules: [...t.enabledModules], typeIds: [...t.typeIds], descriptionHtml: p.descriptionHtml || t.descriptionHtml,
     overviewWidgets: t.overviewWidgets ? [...t.overviewWidgets] : undefined, internalComments: t.internalComments,
   });
+  // the template's own environments are not copied: a copy with the module gets the defaults
+  if (p.enabledModules.includes("cicd")) ensureCicdEnvironments(p.id);
   for (const f of db.projectCustomFields.filter((x) => x.projectId === t.id)) db.projectCustomFields.push({ projectId: p.id, customFieldId: f.customFieldId });
   if (parts.has("members"))
     for (const m of db.members.filter((x) => x.projectId === t.id)) {
@@ -1033,7 +1035,10 @@ export const fakeApi: Api = {
           for (let a: DbProject | undefined = parent; a; a = a.parentId ? db.projects.find((x) => x.id === a!.parentId) : undefined)
             if (a.id === p.id) throw fieldError("parent", "자기 자신이나 하위 프로젝트를 상위로 정할 수 없습니다.");
         }
+        const turnedOnCicd = !!patch.enabledModules?.includes("cicd") && !p.enabledModules.includes("cicd");
         Object.assign(p, patch, { updatedAt: nowIso() });
+        // switching the module on gives a project without environments the default three
+        if (turnedOnCicd) ensureCicdEnvironments(p.id);
         return toProject(p, user);
       }),
     setFavorite: (id, favorite) =>

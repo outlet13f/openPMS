@@ -1,7 +1,7 @@
 // Query hooks for administration (S27–S36) and project settings (S24–S26).
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { DisplaySettings, OidcProviderInput, AuthSettings, CalendarSettings, CustomFieldInput, Id, ProgressSettings, PriorityInput, RoleInput, StatusInput, Transition, TypeInput, UserInput, VersionInput, CicdConnectionInput, CicdConnectionPatch } from "./types";
+import type { DisplaySettings, OidcProviderInput, AuthSettings, CalendarSettings, CustomFieldInput, Id, ProgressSettings, PriorityInput, RoleInput, StatusInput, Transition, TypeInput, UserInput, VersionInput, CicdConnectionInput, CicdConnectionPatch, CicdEnvironmentInput, CicdEnvironmentPatch } from "./types";
 
 export const ak = {
   customFields: ["admin", "custom-fields"] as const,
@@ -270,8 +270,45 @@ export function useRepositoryMutations(project: string) {
   return {
     attach: useMutation({ mutationFn: (input: { connectionId: Id; externalId: string }) => api.cicd.attachRepository(project, input), onSuccess: done }),
     detach: useMutation({ mutationFn: (repoId: Id) => api.cicd.detachRepository(project, repoId), onSuccess: done }),
+    // a detached repository comes back: the lists, the development tabs and the counts move with it
+    reattach: useMutation({ mutationFn: (repoId: Id) => api.cicd.reattachRepository(project, repoId), onSuccess: done }),
+    // build records go: the cleanup counts change (deployments and environments stay)
+    cleanup: useMutation({ mutationFn: (before: string) => api.cicd.cleanup(project, before), onSuccess: done }),
   };
 }
+
+/** How many build records the cleanup would delete (cicd.manage); asked only once a date is chosen. */
+export const useCleanupCount = (project: string, before: string | null) =>
+  useQuery({
+    queryKey: ["cicd", "project", project, "cleanup", before],
+    queryFn: () => api.cicd.cleanupCount(project, before!),
+    enabled: !!before,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+
+/** A project's environments with the unassigned deployments (cicd.view). */
+export const useCicdEnvironments = (project: string, enabled = true) =>
+  useQuery({ queryKey: ["cicd", "project", project, "environments"], queryFn: () => api.cicd.environments(project), enabled });
+
+export function useCicdEnvironmentMutations(project: string) {
+  const qc = useQueryClient();
+  // the development tabs show the environments too (and an alias takes deployments in): everything CI/CD is read again
+  const done = () => qc.invalidateQueries({ queryKey: ["cicd"] });
+  return {
+    create: useMutation({ mutationFn: (input: CicdEnvironmentInput) => api.cicd.createEnvironment(project, input), onSuccess: done }),
+    update: useMutation({ mutationFn: (v: { id: Id; patch: CicdEnvironmentPatch }) => api.cicd.updateEnvironment(project, v.id, v.patch), onSuccess: done }),
+    reorder: useMutation({ mutationFn: (ids: Id[]) => api.cicd.reorderEnvironments(project, ids), onSuccess: done }),
+    remove: useMutation({ mutationFn: (id: Id) => api.cicd.removeEnvironment(project, id), onSuccess: done }),
+  };
+}
+
+/** The Jenkinsfile or Argo CD settings of a connection (administrators or global.manage_cicd). */
+export const useCicdTemplates = (id: Id | null, enabled = true) =>
+  useQuery({ queryKey: ["cicd", "connections", id, "templates"], queryFn: () => api.cicd.connectionTemplates(id!), enabled: enabled && !!id });
+
+/** What an image tag rule makes of an image (the server answers, so the screen never disagrees with the processor). */
+export const useImageTagTest = () => useMutation({ mutationFn: (v: { pattern: string; image: string }) => api.cicd.testImageTag(v.pattern, v.image) });
 
 /** Search on the code host (a remote call: no refetch on focus, a short cache). */
 export const useRepositorySearch = (project: string, connectionId: Id | null, q: string) =>

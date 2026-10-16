@@ -89,6 +89,11 @@ import type {
   CicdRemoteRepo,
   CicdRepository,
   CicdMergeRequest,
+  CicdEnvironment,
+  CicdEnvironmentInput,
+  CicdEnvironmentPatch,
+  CicdEnvironmentsView,
+  CicdTemplates,
   DevInfo,
 } from "./types";
 
@@ -369,7 +374,7 @@ export interface Api {
   };
 
   /**
-   * CI/CD 연동 (GitLab·GitHub). Connections: administrators or global.manage_cicd (else 403 "CI/CD 연동을 관리할 권한이 없습니다.").
+   * CI/CD 연동 (GitLab·GitHub·Jenkins·Argo CD). Connections: administrators or global.manage_cicd (else 403 "CI/CD 연동을 관리할 권한이 없습니다.").
    * Repositories per project: cicd.view to list, cicd.manage to search, attach and detach (a project without the module or
    * without cicd.view is a 404 "프로젝트를 찾을 수 없습니다."; no cicd.manage is 403 "저장소를 관리할 권한이 없습니다.").
    * The development tab per work package (404 "작업을 찾을 수 없습니다." without the module or cicd.view).
@@ -389,8 +394,20 @@ export interface Api {
     rotateSecret(id: Id): Promise<{ webhookSecret: string }>;
     /** POST /admin/cicd/connections/{id}/check — only ok and the HTTP status (0 = no token or no answer) */
     checkConnection(id: Id): Promise<{ ok: boolean; status: number }>;
-    /** DELETE /admin/cicd/connections/{id} — 409 "저장소가 붙어 있는 연동은 지울 수 없습니다. 먼저 저장소를 떼세요." */
+    /** DELETE /admin/cicd/connections/{id} — 409 "기록이 남은 저장소(뗀 저장소 포함)가 있는 연동은 지울 수 없습니다. 대신 끄세요." */
     deleteConnection(id: Id): Promise<void>;
+    /**
+     * GET /admin/cicd/connections/{id}/templates — the Jenkinsfile or Argo CD settings to paste, with this connection's webhook address
+     * (never the secret); only the part for the connection's kind is filled. 404 "연동을 찾을 수 없습니다."
+     */
+    connectionTemplates(id: Id): Promise<CicdTemplates>;
+    /**
+     * POST /admin/cicd/image-tag-test { pattern, image } (no connection in the path) — what the image tag rule
+     * makes of an image (sha = null: none found). An empty pattern is the default rule; 422 pattern "이미지 태그 규칙이 올바르지 않습니다.",
+     * image "이미지 이름이 너무 깁니다." (over 500); 403 "CI/CD 연동을 관리할 권한이 없습니다." The fake layer's answer may differ from the
+     * server's (JavaScript and Java regular expressions are not the same).
+     */
+    testImageTag(pattern: string, image: string): Promise<{ sha: string | null }>;
     /**
      * PUT /admin/cicd/connections/{id}/projects — the allowed projects as a whole, system administrators only (403 "허용 프로젝트는
      * 시스템 관리자만 바꿀 수 있습니다."); 422 projectIds "없는 프로젝트가 있습니다."; 409 "이 연동의 저장소가 붙어 있는 프로젝트는 뺄 수
@@ -409,11 +426,47 @@ export interface Api {
     searchRepositories(project: string, connectionId: Id, q: string): Promise<CicdRemoteRepo[]>;
     /** GET /projects/{p}/cicd/repositories (cicd.view) */
     repositories(project: string): Promise<CicdRepository[]>;
-    /** POST /projects/{p}/cicd/repositories (cicd.manage) — 201; 409 "이미 이 프로젝트에 붙은 저장소입니다." / "이미 다른 프로젝트에 붙은 저장소입니다." */
+    /**
+     * POST /projects/{p}/cicd/repositories (cicd.manage) — 201; 409 "이미 이 프로젝트에 붙은 저장소입니다." / "이미 다른 프로젝트에 붙은 저장소입니다."
+     * A repository that was detached comes back as the same row (history kept), here, whichever project it was on.
+     */
     attachRepository(project: string, input: { connectionId: Id; externalId: string }): Promise<CicdRepository>;
-    /** DELETE /projects/{p}/cicd/repositories/{repoId} (cicd.manage) */
+    /** DELETE /projects/{p}/cicd/repositories/{repoId} (cicd.manage) — soft: detachedAt is set, the history stays; 404 "저장소를 찾을 수 없습니다." */
     detachRepository(project: string, repoId: Id): Promise<void>;
-    /** GET /work-packages/{n}/cicd — linked merge requests and commits (at most 50 commits) */
+    /**
+     * POST /projects/{p}/cicd/repositories/{repoId}/reattach (cicd.manage) — takes a detached repository of this project back without a call to the
+     * code host; 404 "저장소를 찾을 수 없습니다." (not detached or not this project's) / "연동을 찾을 수 없습니다." (the connection is off or no longer allows the project)
+     */
+    reattachRepository(project: string, repoId: Id): Promise<CicdRepository>;
+    /**
+     * GET /projects/{p}/cicd/pipelines/cleanup?before=YYYY-MM-DD (cicd.manage) — how many build records ended before 00:00 (Asia/Seoul) of that day;
+     * 422 before "날짜를 고르세요." / "오늘이나 그 앞 날짜를 고르세요."
+     */
+    cleanupCount(project: string, before: string): Promise<{ count: number }>;
+    /** POST /projects/{p}/cicd/pipelines/cleanup { before } (cicd.manage) — deletes those build records only; deployments and environments stay. Same 422s. */
+    cleanup(project: string, before: string): Promise<{ deleted: number }>;
+
+    /**
+     * 프로젝트 › CI/CD › 환경 — GET /projects/{p}/cicd/environments (cicd.view): environments in order (hidden ones too), the unassigned
+     * deployments by name, canManage. Changes need cicd.manage (403 "환경을 관리할 권한이 없습니다."); 404 "환경을 찾을 수 없습니다."
+     */
+    environments(project: string): Promise<CicdEnvironmentsView>;
+    /**
+     * POST /projects/{p}/cicd/environments — 201; name 1–50 characters (422 name "환경 이름은 1자에서 50자 사이여야 합니다."), aliases at most 20 of 1–100
+     * characters, lower-cased (422 aliases "별칭이 올바르지 않습니다."), a name or alias another environment answers to (422 name/aliases "다른 환경이 이미 쓰는 이름입니다: …");
+     * 409 "같은 이름의 환경이 있습니다." The project's unassigned deployments with that name or alias join the environment.
+     */
+    createEnvironment(project: string, input: CicdEnvironmentInput): Promise<CicdEnvironment>;
+    /** PATCH /projects/{p}/cicd/environments/{id} — the same rules; a new name or alias takes the matching unassigned deployments in; hidden: false shows it again */
+    updateEnvironment(project: string, id: Id, patch: CicdEnvironmentPatch): Promise<CicdEnvironment>;
+    /** PUT /projects/{p}/cicd/environments/order { ids } — every environment of the project (hidden ones too) in the new order; 422 ids "환경 순서가 올바르지 않습니다." */
+    reorderEnvironments(project: string, ids: Id[]): Promise<CicdEnvironmentsView>;
+    /** DELETE /projects/{p}/cicd/environments/{id} — deleted: false means it has deployment history and was hidden instead */
+    removeEnvironment(project: string, id: Id): Promise<{ deleted: boolean }>;
+    /**
+     * GET /work-packages/{n}/cicd — linked merge requests and commits (at most 50 commits), each with its build badge (build) and whether its
+     * repository is detached; commits also with the environments they are in; environments = how far the work went per environment
+     */
     devInfo(number: number): Promise<DevInfo>;
     /**
      * POST /work-packages/{n}/cicd/links (cicd.link) — 201; only a merge request already received for a repository of this project

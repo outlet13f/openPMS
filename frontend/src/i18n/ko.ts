@@ -1779,7 +1779,7 @@ const ko = {
     },
   },
   cicd: {
-    kinds: { gitlab: "GitLab", github: "GitHub" },
+    kinds: { gitlab: "GitLab", github: "GitHub", jenkins: "Jenkins", argocd: "Argo CD" },
     opensInNew: "새 창에서 열림",
     admin: {
       hint: "사내 GitLab·GitHub를 등록하면 프로젝트가 저장소를 붙여 MR·커밋을 작업에 이어 볼 수 있습니다. 도구 쪽 웹훅에는 만들 때 한 번 보이는 웹훅 주소와 비밀을 넣습니다.",
