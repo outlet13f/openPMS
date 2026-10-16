@@ -96,8 +96,7 @@ public class DevTabController {
      * attached to this work package's project or an ancestor (the repository's current project tree).
      */
     private static final String LINKED = """
-            with recursive anc(id) as (select ?::uuid union select p.parent_id from projects p join anc a on p.id = a.id where p.parent_id is not null),
-                 k(id) as (
+            with k(id) as (
                    select l.commit_id from work_package_cicd_links l
                     where l.work_package_id = ?::uuid and l.dismissed_at is null and l.commit_id is not null
                    union
@@ -107,7 +106,7 @@ public class DevTabController {
             select c.id, c.repository_id, c.committed_at, r.project_id, p.name
               from k join cicd_commits c on c.id = k.id join cicd_repositories r on r.id = c.repository_id
               join projects p on p.id = r.project_id
-             where r.project_id in (select id from anc)""";
+             where r.project_id = any (?::uuid[])""";
 
     /** The newest build of each workflow name per commit sha (or branch name): one row each. %1$s is sha or ref. */
     private static final String BUILDS = """
@@ -155,7 +154,7 @@ public class DevTabController {
         var mrBuilds = builds("ref", mrRows.stream().map(r -> key(r.get(CICD_REPOSITORIES.ID), r.get(CICD_MERGE_REQUESTS.SOURCE_BRANCH))).toList());
         var commitBuilds = builds("sha", commitRows.stream().map(r -> key(r.get(CICD_REPOSITORIES.ID), r.get(CICD_COMMITS.SHA))).toList());
         var mrs = mrRows.stream().map(r -> mrDto(r, users, mrBuilds)).toList();
-        var row = environments(found.project().id(), wpId, commitRows.stream().map(r -> r.get(CICD_COMMITS.ID)).toList());
+        var row = environments(visibleAncestors(found.project().id()), wpId, commitRows.stream().map(r -> r.get(CICD_COMMITS.ID)).toList());
         var commits = commitRows.stream().map(r -> new CommitDto(r.get(WORK_PACKAGE_CICD_LINKS.ID), r.get(CICD_REPOSITORIES.FULL_PATH),
                 r.get(CICD_COMMITS.SHA).substring(0, Math.min(7, r.get(CICD_COMMITS.SHA).length())), r.get(CICD_COMMITS.TITLE),
                 r.get(CICD_COMMITS.AUTHOR_NAME), users.get(r.get(CICD_COMMITS.USER_ID)), r.get(CICD_COMMITS.COMMITTED_AT),
@@ -171,11 +170,7 @@ public class DevTabController {
         var wpId = found.wp().getId();
         var url = normalize(in == null ? null : in.url());
         // only the ancestors whose repositories this person may see: a member of a private child is not shown the parent's MRs
-        var ctx = current.ctx();
-        var tree = linker.projectAncestors(found.project().id()).stream().filter(id -> {
-            var p = ctx.s().projects().get(id);
-            return p != null && ctx.can(p, "cicd.view");
-        }).toList();
+        var tree = visibleAncestors(found.project().id());
         var mrId = url.isEmpty() || tree.isEmpty() ? null : findMergeRequest(tree, url);
         if (mrId == null) throw ApiException.unprocessable("이 프로젝트에 붙은 저장소의 MR/PR 주소가 아니거나 아직 받지 않은 MR/PR입니다.", null);
         var me = current.ctx().userId();
@@ -193,7 +188,7 @@ public class DevTabController {
         var row = mrRows(WORK_PACKAGE_CICD_LINKS.WORK_PACKAGE_ID.eq(wpId).and(WORK_PACKAGE_CICD_LINKS.MERGE_REQUEST_ID.eq(mrId))).get(0);
         var ids = new HashSet<UUID>();
         if (row.get(CICD_MERGE_REQUESTS.USER_ID) != null) ids.add(row.get(CICD_MERGE_REQUESTS.USER_ID));
-        var builds = builds("ref", List.of(key(row.get(CICD_REPOSITORIES.ID), row.get(CICD_MERGE_REQUESTS.SOURCE_BRANCH))));
+        var builds = builds("ref", java.util.Collections.singletonList(key(row.get(CICD_REPOSITORIES.ID), row.get(CICD_MERGE_REQUESTS.SOURCE_BRANCH))));
         return ResponseEntity.status(HttpStatus.CREATED).body(mrDto(row, users(ids), builds));
     }
 
@@ -227,14 +222,24 @@ public class DevTabController {
                 r.get(CICD_REPOSITORIES.DETACHED_AT) != null);
     }
 
+    /** The project and its ancestors whose CI/CD this person may see (a member of a private child is not shown the parent's). */
+    private List<UUID> visibleAncestors(UUID projectId) {
+        var ctx = current.ctx();
+        return linker.projectAncestors(projectId).stream().filter(id -> {
+            var p = ctx.s().projects().get(id);
+            return p != null && ctx.can(p, "cicd.view");
+        }).toList();
+    }
+
+    /** null for a missing or empty sha/branch (nothing to look up); a branch literally named "null" is a name like any other. */
     private static String key(UUID repository, String sha) {
-        return repository + "|" + sha;
+        return sha == null || sha.isEmpty() ? null : repository + "|" + sha;
     }
 
     /** Badges for (repository, sha-or-ref) keys in one query. column: "sha" or "ref". Keys with no builds are absent. */
     private Map<String, BuildDto> builds(String column, List<String> keys) {
-        var wanted = keys.stream().filter(k -> !k.endsWith("|") && !k.endsWith("|null")).distinct().toList();
-        if (wanted.isEmpty()) return Map.of();
+        var wanted = keys.stream().filter(k -> k != null).distinct().toList();
+        if (wanted.isEmpty()) return new HashMap<>();
         var repositories = wanted.stream().map(k -> UUID.fromString(k.substring(0, k.indexOf('|')))).toArray(UUID[]::new);
         var names = wanted.stream().map(k -> k.substring(k.indexOf('|') + 1)).toArray(String[]::new);
         var rows = db.fetch(BUILDS.formatted(column), repositories, names);
@@ -262,8 +267,8 @@ public class DevTabController {
      * The environment row: for each project that has linked commits, its visible environments in order, with how many of those
      * commits are in. A fixed number of queries however many commits there are. shown: the commits of the list (their environments).
      */
-    private Row environments(UUID workPackageProject, UUID workPackage, List<UUID> shown) {
-        var linked = db.fetch(LINKED, workPackageProject, workPackage, workPackage).stream()
+    private Row environments(List<UUID> visibleProjects, UUID workPackage, List<UUID> shown) {
+        var linked = db.fetch(LINKED, workPackage, workPackage, visibleProjects.toArray(UUID[]::new)).stream()
                 .map(r -> new Linked(r.get(0, UUID.class), r.get(1, UUID.class), r.get(2, OffsetDateTime.class), r.get(3, UUID.class), r.get(4, String.class))).toList();
         if (linked.isEmpty()) return new Row(List.of(), Map.of());
         var projects = new HashMap<UUID, String>();

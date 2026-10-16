@@ -254,36 +254,109 @@ class DevTabBuildsIT {
         assertThat(names).containsExactly("개발", "운영");
     }
 
+    /** A private parent project (admin only) with the module on, and the project made its parent. Returns [id, name]. */
+    Object[] parentOf(UUID child) throws Exception {
+        var identifier = "pp-" + UUID.randomUUID().toString().substring(0, 8);
+        var name = "비공개 부모 " + identifier;
+        var id = f.body(f.send(admin, post("/api/v1/projects"), "{\"name\":\"" + name + "\",\"identifier\":\"" + identifier + "\"}")
+                .andExpect(status().isCreated()).andReturn()).get("id").asString();
+        f.send(admin, org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/v1/projects/" + id),
+                "{\"enabledModules\":[\"work_packages\",\"cicd\"]}").andExpect(status().isOk());
+        db.execute("update projects set parent_id = ? where id = ?", UUID.fromString(id), child);
+        return new Object[] {UUID.fromString(id), name};
+    }
+
+    UUID envIn(UUID project, String name) {
+        return db.fetchOne("select id from cicd_environments where project_id = ? and name = ?", project, name).get(0, UUID.class);
+    }
+
     @Test void commitsOutsideTheRepositoriesCurrentProjectTreeAreNotCounted() throws Exception {
         // the repository belongs to a sibling project now: a work package of this project is not in its tree
         var other = f.newProject(admin, "work_packages", "cicd");
         var otherId = UUID.fromString(f.projectId(admin, other));
         var b = sha();
         var c = commit(b, T0);
+        into("개발", c, deployment("개발", b, "success", "compared", T0.plusHours(1)));
         db.execute("update cicd_repositories set project_id = ? where id = ?", otherId, repo);
         var tab = tab();
         assertThat(tab.get("environments")).isEmpty();
-        assertThat(c).isNotNull();
+        assertThat(tab.at("/commits/0/environments")).isEmpty();
+        assertThat(tab.get("commits")).hasSize(1);
     }
 
     @Test void environmentsOfOtherProjectsAreNotShownAndTwoProjectsNameThemselves() throws Exception {
-        var child = f.newProject(admin, "work_packages", "cicd");
-        var childId = UUID.fromString(f.projectId(admin, child));
-        db.execute("update projects set parent_id = ? where id = ?", projectId, childId);
-        // a repository in the parent project and one in the child project; the work package is in the child
-        wp = newWp(child);
+        var unrelated = f.newProject(admin, "work_packages", "cicd");   // has environments, no linked commits: never shown
+        assertThat(unrelated).isNotBlank();
+        var parent = parentOf(projectId);
+        var parentId = (UUID) parent[0];
+        var parentName = (String) parent[1];
+        var childName = db.fetchOne("select name from projects where id = ?", projectId).get(0, String.class);
+        f.addMember(admin, parentId.toString(), CicdFixture.JUNHO, CicdFixture.ROLE_MEMBER);
         var connection = db.fetchOne("select connection_id from cicd_repositories where id = ?", repo).get(0, UUID.class);
-        var parentRepo = repo;
-        var childRepo = attach(connection, childId);
+        var parentRepo = attach(connection, parentId);
         var a = sha();
         db.execute("insert into cicd_commits (repository_id, sha, title, author_name, committed_at, web_url) values (?, ?, '부모', '박준호', ?::timestamptz, ?)", parentRepo, a, T0, HOST + "/c/a");
         db.execute("insert into work_package_cicd_links (work_package_id, commit_id, source) select (select id from work_packages where number = ?), id, 'message' from cicd_commits where repository_id = ? and sha = ?", wp, parentRepo, a);
-        var b = sha();
-        db.execute("insert into cicd_commits (repository_id, sha, title, author_name, committed_at, web_url) values (?, ?, '자식', '박준호', ?::timestamptz, ?)", childRepo, b, T0, HOST + "/c/b");
-        db.execute("insert into work_package_cicd_links (work_package_id, commit_id, source) select (select id from work_packages where number = ?), id, 'message' from cicd_commits where repository_id = ? and sha = ?", wp, childRepo, b);
+        commit(sha(), T0);   // and one in the child's own repository
         var tab = tab();
-        assertThat(tab.get("environments")).hasSize(6);
-        assertThat(tab.get("environments").valueStream().map(e -> e.get("project").asString()).distinct().count()).isEqualTo(2);
+        var pairs = tab.get("environments").valueStream().map(e -> e.get("project").asString() + "/" + e.get("name").asString()).toList();
+        var first = parentName.compareTo(childName) < 0 ? parentName : childName;
+        var second = first.equals(parentName) ? childName : parentName;
+        assertThat(pairs).containsExactly(first + "/개발", first + "/스테이징", first + "/운영", second + "/개발", second + "/스테이징", second + "/운영");
+    }
+
+    @Test void aMemberOfTheChildOnlyIsNotShownThePrivateParent() throws Exception {
+        var parent = parentOf(projectId);
+        var parentId = (UUID) parent[0];
+        var parentName = (String) parent[1];
+        var connection = db.fetchOne("select connection_id from cicd_repositories where id = ?", repo).get(0, UUID.class);
+        var parentRepo = attach(connection, parentId);
+        var a = sha();
+        db.execute("insert into cicd_commits (id, repository_id, sha, title, author_name, committed_at, web_url) values (gen_random_uuid(), ?, ?, '부모', '박준호', ?::timestamptz, ?)", parentRepo, a, T0, HOST + "/c/" + a);
+        db.execute("insert into work_package_cicd_links (work_package_id, commit_id, source) select (select id from work_packages where number = ?), id, 'message' from cicd_commits where repository_id = ? and sha = ?", wp, parentRepo, a);
+        var parentCommit = db.fetchOne("select id from cicd_commits where repository_id = ? and sha = ?", parentRepo, a).get(0, UUID.class);
+        var dep = UUID.randomUUID();
+        db.execute("insert into cicd_deployments (id, repository_id, environment_id, environment_name, external_id, sha, status, web_url, deployed_at, source, inclusion) "
+                + "values (?, ?, ?, '개발', 'pd', ?, 'success', ?, ?::timestamptz, 'gitlab', 'compared')", dep, parentRepo, envIn(parentId, "개발"), a, HOST + "/parent-job", T0);
+        db.execute("insert into cicd_environment_commits (environment_id, repository_id, commit_id, deployment_id) values (?, ?, ?, ?)", envIn(parentId, "개발"), parentRepo, parentCommit, dep);
+        var own = sha();
+        var ownCommit = commit(own, T0.plusMinutes(1));
+        into("개발", ownCommit, deployment("개발", own, "success", "compared", T0.plusHours(1)));
+
+        var asChild = f.mvc.perform(get("/api/v1/work-packages/" + wp + "/cicd").session(f.login(CicdFixture.JUNHO_EMAIL))).andExpect(status().isOk()).andReturn()
+                .getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        var seen = f.json.readTree(asChild);
+        assertThat(seen.get("environments")).hasSize(3);
+        assertThat(seen.get("environments").valueStream().allMatch(e -> e.get("project").isNull())).isTrue();
+        assertThat(asChild).doesNotContain(parentName).doesNotContain("parent-job");
+        // the administrator sees both
+        var all = tab(CicdFixture.ADMIN);
+        assertThat(all.get("environments")).hasSize(6);
+        assertThat(all.toString()).contains(parentName);
+    }
+
+    @Test void aMovedRepositoryDoesNotShowTheOldProjectsEnvironmentStates() throws Exception {
+        var parent = parentOf(projectId);   // the repository moves up to the parent: still in the work package's tree
+        var parentId = (UUID) parent[0];
+        var b = sha();
+        var c = commit(b, T0);
+        into("개발", c, deployment("개발", b, "success", "compared", T0.plusHours(1)));
+        deployment("스테이징", b, "success", "checking", T0.plusHours(2));
+        db.execute("update cicd_repositories set project_id = ? where id = ?", parentId, repo);
+        var tab = tab(CicdFixture.ADMIN);
+        assertThat(tab.get("environments")).hasSize(3);
+        for (var e : tab.get("environments")) {
+            assertThat(e.get("state").asString()).as(e.get("name").asString()).isEqualTo("none");
+            assertThat(e.get("included").asInt()).isZero();
+            assertThat(e.get("deployedAt").isNull()).isTrue();
+        }
+        assertThat(tab.at("/commits/0/environments")).isEmpty();
+    }
+
+    @Test void aBranchNamedNullStillGetsABadge() throws Exception {
+        mr("null", "open", null);
+        pipeline("build", sha(), "null", "success", T0.plusMinutes(1));
+        assertThat(tab().at("/mergeRequests/0/build/status").asString()).isEqualTo("success");
     }
 
     @Test void anObserverAlsoSeesTheRow() throws Exception {

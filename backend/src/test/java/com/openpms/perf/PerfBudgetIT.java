@@ -222,7 +222,7 @@ class PerfBudgetIT {
                 measure(new Budget("보드", "상태 보드 · 카드 1,000장", 600, 29, 3000), List.of(get("/api/v1/boards/" + boardId))),
                 measure(new Budget("작업 상세", "작업 · 이력 40건 · 관계 · 지켜보는 사람", 200, 45, 30),
                         List.of(get(n), get(n + "/activities"), get(n + "/relations"), get(n + "/watchers"))),
-                measure(new Budget("작업 상세", "개발 탭 · MR 20 · 커밋 50 · 환경 3 · 빌드 120", 150, 16, 56), List.of(get(n + "/cicd"))));
+                measure(new Budget("작업 상세", "개발 탭 · MR 20 · 커밋 50 · 환경 3 · 빌드 120", 150, 17, 56), List.of(get(n + "/cicd"))));
         var soft = new SoftAssertions();
         for (var m : measured) {
             var b = m.budget();
