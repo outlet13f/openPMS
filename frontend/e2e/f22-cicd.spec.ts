@@ -2,21 +2,21 @@
 // 서명한 웹훅으로 들어온 커밋이 작업의 개발 탭에 나타난다. 참관자는 보기만 하고, 모듈을 끄면 탭이 없고, 전역 역할
 // "CI/CD 연동 관리자"를 받은 사람은 관리 › CI/CD 연동만 열 수 있으며 토큰 평문은 어디에도 없다.
 // Needs the test code host (e2e/fake-git.mjs, see its header; the backend reaches it as http://openpms-cicd-git:18090);
-// skipped when it is not running. The webhook is posted straight to the API (API_URL, default this worktree's 8091).
+// skipped when it is not running (checked at FAKE_GIT_URL, its published port on the host). The webhook is posted to the
+// app's own address (the base URL: the dev servers proxy /api, the built app serves it), unsigned by any session.
 // 개발 데이터 V1010: web-platform #4 병합된 MR + 커밋 2, 개발용 GitLab 연동은 토큰이 없어 꺼져 있음.
 import crypto from "node:crypto";
 import type { Page } from "@playwright/test";
 import { test, expect, login, logout, resetDb, axe, panel } from "./support";
 
-const API_URL = process.env.API_URL ?? "http://127.0.0.1:8091";
-const GIT_CHECK = "http://127.0.0.1:18095/health";
+const GIT_CHECK = `${process.env.FAKE_GIT_URL ?? "http://127.0.0.1:18090"}/health`;
 const GIT_BASE = "http://openpms-cicd-git:18090";
 
 const ADMIN = "seoyeon.kim@openpms.local";
 const MINJI = "minji.choi@openpms.local"; // web-platform 참관자
 const JUNHO = "junho.park@openpms.local";
 const CONNECTION = "E2E GitHub";
-const TOKEN = "ghp_e2eFakeToken0123456789abcdefWXYZ";
+const TOKEN = "ghp_FAKE_E2E_not_a_real_token_WXYZ";
 const SHA = "e2e0c1d2e3f405162738495a6b7c8d9e0f1a2b3c";
 const TITLE = "로그인 화면 설계 반영 (#3)";
 
@@ -32,14 +32,23 @@ test.beforeAll(async () => {
 test.afterAll(resetDb);
 test.beforeEach(() => test.skip(!gitUp, "test code host (e2e/fake-git.mjs) is not running"));
 
-/** Runs a dev-profile job now, as the signed-in administrator (same CSRF handling as the app's client). */
+/** POST as the signed-in user, from the page (same CSRF handling as the app's client). */
+async function post(page: Page, path: string, body?: unknown) {
+  return page.evaluate(
+    async ([p, b]) => {
+      const xsrf = document.cookie.match(/(?:^|; )XSRF-TOKEN=([^;]+)/)?.[1];
+      const headers: Record<string, string> = xsrf ? { "X-XSRF-TOKEN": decodeURIComponent(xsrf) } : {};
+      if (b !== undefined) headers["Content-Type"] = "application/json";
+      const r = await fetch(p as string, { method: "POST", headers, body: b === undefined ? undefined : JSON.stringify(b) });
+      return { status: r.status, json: r.headers.get("content-type")?.includes("json") ? await r.json() : null };
+    },
+    [path, body] as const,
+  );
+}
+
+/** Runs a dev-profile job now, as the signed-in administrator. */
 async function runJob(page: Page, name: string) {
-  const status = await page.evaluate(async (job) => {
-    const xsrf = document.cookie.match(/(?:^|; )XSRF-TOKEN=([^;]+)/)?.[1];
-    const r = await fetch(`/api/v1/dev/jobs/${job}`, { method: "POST", headers: xsrf ? { "X-XSRF-TOKEN": decodeURIComponent(xsrf) } : {} });
-    return r.status;
-  }, name);
-  expect(status, `job ${name}`).toBe(200);
+  expect((await post(page, `/api/v1/dev/jobs/${name}`)).status, `job ${name}`).toBe(200);
 }
 
 test.describe("F22 CI/CD 연동", () => {
@@ -103,9 +112,9 @@ test.describe("F22 CI/CD 연동", () => {
     const sign = (s: string) => `sha256=${crypto.createHmac("sha256", s).update(body).digest("hex")}`;
     const headers = { "Content-Type": "application/json", "X-GitHub-Event": "push", "X-GitHub-Delivery": crypto.randomUUID() };
     // a wrong signature is the same 404 as an unknown address
-    const forged = await request.post(`${API_URL}/api/v1/hooks/cicd/${key}`, { data: body, headers: { ...headers, "X-Hub-Signature-256": sign("not-the-secret") } });
+    const forged = await request.post(`/api/v1/hooks/cicd/${key}`, { data: body, headers: { ...headers, "X-Hub-Signature-256": sign("not-the-secret") } });
     expect(forged.status()).toBe(404);
-    const hook = await request.post(`${API_URL}/api/v1/hooks/cicd/${key}`, { data: body, headers: { ...headers, "X-Hub-Signature-256": sign(secret) } });
+    const hook = await request.post(`/api/v1/hooks/cicd/${key}`, { data: body, headers: { ...headers, "X-Hub-Signature-256": sign(secret) } });
     expect(hook.status()).toBe(202);
     expect(await hook.json()).toEqual({ accepted: 1 });
     await runJob(page, "cicd-process");
@@ -156,6 +165,13 @@ test.describe("F22 CI/CD 연동", () => {
 
   test("F22-3 전역 역할 'CI/CD 연동 관리자'를 받으면 CI/CD 연동만 관리하고, 토큰 평문은 없다", async ({ page }) => {
     await login(page, ADMIN);
+    if (!secret) {
+      // run on its own (-g F22-3): make the connection F22-1 would have made
+      const made = await post(page, "/api/v1/admin/cicd/connections", { kind: "github", name: CONNECTION, baseUrl: GIT_BASE, apiToken: TOKEN });
+      expect(made.status).toBe(201);
+      secret = (made.json as { webhookSecret: string }).webhookSecret;
+    }
+    expect(secret.length).toBeGreaterThanOrEqual(20);
     await page.goto("/admin/users");
     await page.getByRole("button", { name: "박준호 메뉴" }).click();
     await page.getByRole("menuitem", { name: "전역 역할" }).click();

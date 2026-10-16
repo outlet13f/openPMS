@@ -1,9 +1,11 @@
 // Test-only GitHub Enterprise stand-in for f22-cicd.spec.ts. Never for real use: any bearer token is accepted.
 // The backend runs in a container, so this runs as one on the same network and the connection's address is
 // http://openpms-cicd-git:18090 (GitHubAdapter calls {address}/api/v3/...). The browser never talks to it.
-//   podman run -d --rm --name openpms-cicd-git --network openpms-dev -p 127.0.0.1:18095:18090 \
+//   podman run -d --rm --name openpms-cicd-git --network openpms-dev -p 127.0.0.1:18090:18090 \
 //     -v "$PWD/e2e:/e2e:ro" docker.io/library/node:24-alpine node /e2e/fake-git.mjs
-// (from frontend/; the published port only lets the spec check that it is up). Stop: podman stop openpms-cicd-git
+// (from frontend/; the published port only lets the spec check that it is up, at FAKE_GIT_URL, default
+// http://127.0.0.1:18090). If 18090 is taken on the host (e.g. colima on a Mac forwards it), publish another port,
+// -p 127.0.0.1:18095:18090, and run the spec with FAKE_GIT_URL=http://127.0.0.1:18095. Stop: podman stop openpms-cicd-git
 import http from "node:http";
 
 const PORT = Number(process.env.FAKE_GIT_PORT ?? 18090);
