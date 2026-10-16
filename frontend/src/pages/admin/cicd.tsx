@@ -4,7 +4,7 @@
 // The API token is never shown again (the last four characters only); a changed address clears it unless a new one comes along.
 // Each connection has a list of allowed projects (only those can search and attach through it): system administrators pick
 // them in the edit dialog; a delegated manager sees the projects visible to them by name and the rest as a count.
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Copy, GitMerge, KeyRound, MoreHorizontal, Pencil, Plus, PlugZap, Trash2 } from "lucide-react";
 import { isApiError, type CicdConnection, type CicdConnectionPatch, type CicdKind } from "@/api";
@@ -63,15 +63,39 @@ function useProjectsText() {
   };
 }
 
-/** System administrators pick the allowed projects (the active ones, plus any already on the list). */
+/**
+ * System administrators pick the allowed projects. The list asks the server as you type (a page holds 100 projects, so
+ * every active project is reachable by its name or identifier); the projects already picked stay in the list.
+ */
 function ProjectsPicker({ editing, value, onChange }: { editing: CicdConnection; value: string[]; onChange: (v: string[]) => void }) {
   const { t } = useTranslation();
-  const active = useProjects({ filter: "active", pageSize: 100 }).data?.items ?? [];
+  const [q, setQ] = useState("");
+  const [debounced, setDebounced] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(q.trim()), 300);
+    return () => clearTimeout(id);
+  }, [q]);
+  const found = useProjects({ filter: "active", q: debounced || undefined, pageSize: 100 }).data?.items;
+  // every name seen so far: a project picked from one search keeps its name when the search moves on
+  const [names, setNames] = useState<Record<string, string>>(() => Object.fromEntries(editing.projects.map((p) => [p.id, p.name])));
+  useEffect(() => {
+    if (!found?.length) return;
+    setNames((cur) => (found.every((p) => cur[p.id] === p.name) ? cur : { ...cur, ...Object.fromEntries(found.map((p) => [p.id, p.name])) }));
+  }, [found]);
   const options = [
-    ...active.map((p) => ({ value: p.id, label: p.name })),
-    ...editing.projects.filter((p) => !active.some((a) => a.id === p.id)).map((p) => ({ value: p.id, label: p.name })),
-  ].sort((a, b) => a.label.localeCompare(b.label, "ko"));
-  return <MultiSelect aria-label={t("cicd.admin.projects")} placeholder={t("cicd.admin.projectsPlaceholder")} options={options} value={value} onValueChange={onChange} />;
+    ...(found ?? []).map((p) => ({ value: p.id, label: p.name })),
+    ...value.filter((id) => !found?.some((p) => p.id === id)).map((id) => ({ value: id, label: names[id] ?? id })),
+  ];
+  return (
+    <MultiSelect
+      aria-label={t("cicd.admin.projects")}
+      placeholder={t("cicd.admin.projectsPlaceholder")}
+      options={options}
+      value={value}
+      onValueChange={onChange}
+      onSearchChange={setQ}
+    />
+  );
 }
 
 /** After making a connection or rotating its secret: the webhook address and secret, this once. */
@@ -108,7 +132,10 @@ function ConnectionDialog({ editing, onClose, onSecret }: { editing: CicdConnect
   const urlChanged = !!editing && baseUrl.trim().replace(/\/+$/, "") !== editing.baseUrl;
   const generalError = isApiError(mutation.error) && !mutation.error.fieldErrors.length ? mutation.error.message : undefined;
   // a 409 (a project with this connection's repositories) or a 422 from saving the list: shown here, the dialog stays open
-  const projectsError = isApiError(m.setProjects.error) ? (fieldErrorOf(m.setProjects.error, "projectIds") ?? m.setProjects.error.message) : undefined;
+  // the other fields may already be saved when only the list failed: say so
+  const [partial, setPartial] = useState(false);
+  const projectsReason = isApiError(m.setProjects.error) ? (fieldErrorOf(m.setProjects.error, "projectIds") ?? m.setProjects.error.message) : undefined;
+  const projectsError = projectsReason && partial ? t("cicd.admin.projectsPartial", { error: projectsReason }) : projectsReason;
   const projectsChanged =
     !!editing && isAdmin && (projectIds.length !== editing.projects.length || projectIds.some((id) => !editing.projects.some((p) => p.id === id)));
 
@@ -137,6 +164,7 @@ function ConnectionDialog({ editing, onClose, onSecret }: { editing: CicdConnect
       try {
         await m.setProjects.mutateAsync({ id: editing.id, projectIds });
       } catch {
+        setPartial(patched);
         return;
       }
     }

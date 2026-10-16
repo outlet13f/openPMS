@@ -21,7 +21,7 @@ const TOKEN = "ghp_FAKE_E2E_not_a_real_token_WXYZ";
 const SHA = "e2e0c1d2e3f405162738495a6b7c8d9e0f1a2b3c";
 const TITLE = "로그인 화면 설계 반영 (#3)";
 const WEB = "웹 플랫폼 개편";
-const NOT_ALLOWED = "이 프로젝트에 허용된 연동이 없습니다. 관리자에게 요청하세요.";
+const NOT_ALLOWED = "이 프로젝트에서 쓸 수 있는 연동이 없습니다. 관리자에게 요청하세요.";
 
 let gitUp = false;
 let hookUrl = "";
@@ -101,6 +101,9 @@ test.describe("F22 CI/CD 연동", () => {
     await page.goto("/admin/cicd");
     const edit = await editConnection(page, CONNECTION);
     await edit.getByRole("button", { name: /^허용 프로젝트/ }).click();
+    // the list asks the server for what is typed (by name or identifier), so every project is reachable
+    await page.getByRole("searchbox", { name: "목록에서 찾기" }).fill("web-plat");
+    await expect(page.getByRole("checkbox", { name: "모바일 앱 2.0" })).toHaveCount(0);
     await page.getByRole("checkbox", { name: WEB }).click();
     await page.keyboard.press("Escape"); // closes the list, not the dialog
     await expect(edit.getByRole("button", { name: `허용 프로젝트: ${WEB}` })).toBeVisible();

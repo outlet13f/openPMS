@@ -168,7 +168,9 @@ public class CicdConnections {
     @Transactional
     public ConnectionDto setProjects(Ctx ctx, UUID id, Map<String, Object> in) {
         if (!ctx.isAdmin()) throw ApiException.forbidden("허용 프로젝트는 시스템 관리자만 바꿀 수 있습니다.");
-        var r = find(id);
+        // two administrators saving the same connection's list at once: the second waits for the first (last writer wins)
+        var r = db.selectFrom(CICD_CONNECTIONS).where(CICD_CONNECTIONS.ID.eq(id)).forNoKeyUpdate().fetchOne();
+        if (r == null) throw ApiException.notFound("연동을 찾을 수 없습니다.");
         if (in == null || !(in.get("projectIds") instanceof List<?> raw)) throw ApiException.field("projectIds", "허용 프로젝트 목록이 올바르지 않습니다.");
         if (raw.size() > 1000) throw ApiException.field("projectIds", "허용 프로젝트가 너무 많습니다.");
         var wanted = new LinkedHashSet<>(In.uuids(in, "projectIds", "projectIds"));
@@ -259,9 +261,8 @@ public class CicdConnections {
                 });
         var out = new HashMap<UUID, Allowed>();
         // in Korean order (the database's en_US collation does not sort Hangul that way), as the screens sort
-        var korean = java.text.Collator.getInstance(java.util.Locale.KOREAN);
         names.forEach((k, v) -> {
-            v.sort(java.util.Comparator.comparing(ProjectRef::name, korean).thenComparing(ProjectRef::id));
+            v.sort(java.util.Comparator.comparing(ProjectRef::name, com.openpms.core.Text.KOREAN).thenComparing(ProjectRef::id));
             out.put(k, new Allowed(List.copyOf(v), hidden.getOrDefault(k, 0)));
         });
         hidden.forEach((k, v) -> out.putIfAbsent(k, new Allowed(List.of(), v)));
