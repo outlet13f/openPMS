@@ -63,7 +63,10 @@ public class GitLabAdapter implements CicdAdapter {
                 var a = root.path("object_attributes");
                 var iid = number(a.path("iid"));
                 if (iid == 0) return List.of();
-                return List.of(mergeRequest(repo, a, text(root.path("user").path("name")), text(root.path("user").path("email"))));
+                // "user" is whoever caused the event; only on "open" is that the author (an update by a reviewer is not)
+                boolean opened = text(a.path("action")).equals("open");
+                return List.of(mergeRequest(repo, a, opened ? text(root.path("user").path("name")) : "",
+                        opened ? text(root.path("user").path("email")) : ""));
             }
             default -> {
                 return List.of();
@@ -154,7 +157,8 @@ public class GitLabAdapter implements CicdAdapter {
             var items = getJson(remote, "/projects/" + id + "/merge_requests?" + mrQuery + "per_page=" + PAGE_SIZE + "&page=" + page);
             for (var m : items) {
                 if (number(m.path("iid")) == 0) continue;
-                out.add(mergeRequest(repoExternalId, m, text(m.path("author").path("name")), ""));
+                var author = text(m.path("author").path("name"));
+                out.add(mergeRequest(repoExternalId, m, author.isEmpty() ? text(m.path("author").path("username")) : author, ""));
             }
             if (items.size() < PAGE_SIZE) break;
             if (page == MAX_PAGES) { truncated = true; break; }

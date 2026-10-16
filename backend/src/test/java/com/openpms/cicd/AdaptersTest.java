@@ -71,6 +71,19 @@ class AdaptersTest {
         assertThat(e.deliveryKey()).isEqualTo("mr:4201:7:2026-10-15T01:30:00Z");
     }
 
+    @Test void gitlabNamesTheHookUserAsAuthorOnlyWhenTheMergeRequestOpens() throws Exception {
+        var opened = gitlab.parse(Map.of("x-gitlab-event", "Merge Request Hook"), res("gitlab-mr.json")).get(0);
+        assertThat(opened.mr().authorName()).isEqualTo("박준호");
+        assertThat(opened.mr().authorEmail()).isEqualTo("junho.park@openpms.local");
+        // an update: "user" is the reviewer who acted, not the author
+        var update = new String(res("gitlab-mr.json"), java.nio.charset.StandardCharsets.UTF_8).replace("\"action\": \"open\"", "\"action\": \"update\"")
+                .replace("\"name\": \"박준호\", \"email\": \"junho.park@openpms.local\"", "\"name\": \"최민지\", \"email\": \"minji.choi@openpms.local\"");
+        var e = gitlab.parse(Map.of("x-gitlab-event", "Merge Request Hook"), update.getBytes(java.nio.charset.StandardCharsets.UTF_8)).get(0);
+        assertThat(e.mr().authorName()).isEmpty();
+        assertThat(e.mr().authorEmail()).isEmpty();
+        assertThat(e.deliveryKey()).isEqualTo(opened.deliveryKey());
+    }
+
     @Test void unknownEventsAreIgnored() throws Exception {
         assertThat(github.parse(Map.of("x-github-event", "ping"), "{}".getBytes())).isEmpty();
         assertThat(gitlab.parse(Map.of("x-gitlab-event", "Note Hook"), "{}".getBytes())).isEmpty();

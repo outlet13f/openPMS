@@ -130,26 +130,59 @@ public class CicdProcessor {
             repo = db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(connectionId),
                     CICD_REPOSITORIES.EXTERNAL_ID.eq(event.repoExternalId())).fetchOne();
         if (repo == null) return false;
-        if (kind.equals("commit")) commit(repo.getId(), repo.getProjectId(), event.commit());
-        else mergeRequest(repo.getId(), repo.getProjectId(), event.mr());
+        if (kind.equals("commit")) commit(repo.getId(), repo.getProjectId(), repo.getWebUrl(), event.commit());
+        else mergeRequest(repo.getId(), repo.getProjectId(), repo.getWebUrl(), event.mr());
         return true;
     }
 
+    /** GitLab sends "[REDACTED]" where it hides an address: that is no address. */
+    static String email(String e) {
+        if (e == null) return "";
+        var s = e.strip();
+        return s.equalsIgnoreCase("[REDACTED]") || !s.contains("@") ? "" : s;
+    }
+
+    /**
+     * The link shown on the development tab: only an http(s) address on the repository's own host (scheme, host and port the
+     * same as its web_url, no user part); anything else from a payload becomes the repository's address.
+     */
+    static String safeUrl(String url, String repoWebUrl) {
+        var fallback = repoWebUrl == null ? "" : repoWebUrl;
+        if (url == null || url.isBlank()) return fallback;
+        try {
+            var u = java.net.URI.create(url.strip());
+            var r = java.net.URI.create(fallback);
+            var scheme = u.getScheme() == null ? "" : u.getScheme().toLowerCase();
+            if (!(scheme.equals("http") || scheme.equals("https")) || u.getHost() == null || u.getRawUserInfo() != null) return fallback;
+            if (!scheme.equals(r.getScheme() == null ? "" : r.getScheme().toLowerCase()) || !u.getHost().equalsIgnoreCase(r.getHost() == null ? "" : r.getHost())
+                    || port(u) != port(r)) return fallback;
+            return url.strip();
+        } catch (IllegalArgumentException e) {
+            return fallback;
+        }
+    }
+
+    private static int port(java.net.URI u) {
+        if (u.getPort() != -1) return u.getPort();
+        return "http".equalsIgnoreCase(u.getScheme()) ? 80 : 443;
+    }
+
     private UUID userByEmail(String email) {
-        if (email == null || email.isBlank()) return null;
+        email = email(email);
+        if (email.isEmpty()) return null;
         var r = db.select(USERS.ID).from(USERS).where(org.jooq.impl.DSL.lower(USERS.EMAIL).eq(email.toLowerCase()), USERS.STATUS.notIn("locked", "deleted")).fetchOne();
         return r == null ? null : r.value1();
     }
 
-    private void commit(UUID repoId, UUID projectId, CicdEvent.Commit c) {
+    private void commit(UUID repoId, UUID projectId, String repoWebUrl, CicdEvent.Commit c) {
         var id = db.insertInto(CICD_COMMITS)
                 .set(CICD_COMMITS.REPOSITORY_ID, repoId).set(CICD_COMMITS.SHA, c.sha())
                 .set(CICD_COMMITS.TITLE, c.title() == null ? "" : c.title())
                 .set(CICD_COMMITS.AUTHOR_NAME, c.authorName() == null ? "" : c.authorName())
-                .set(CICD_COMMITS.AUTHOR_EMAIL, c.authorEmail() == null ? "" : c.authorEmail())
+                .set(CICD_COMMITS.AUTHOR_EMAIL, email(c.authorEmail()))
                 .set(CICD_COMMITS.USER_ID, userByEmail(c.authorEmail()))
                 .set(CICD_COMMITS.COMMITTED_AT, c.committedAt())
-                .set(CICD_COMMITS.WEB_URL, c.webUrl() == null ? "" : c.webUrl())
+                .set(CICD_COMMITS.WEB_URL, safeUrl(c.webUrl(), repoWebUrl))
                 .onConflict(CICD_COMMITS.REPOSITORY_ID, CICD_COMMITS.SHA).doNothing()
                 .returning(CICD_COMMITS.ID).fetchOne();
         if (id == null) return;   // already known: its links were made then
@@ -166,7 +199,7 @@ public class CicdProcessor {
         };
     }
 
-    private void mergeRequest(UUID repoId, UUID projectId, CicdEvent.MergeRequest m) {
+    private void mergeRequest(UUID repoId, UUID projectId, String repoWebUrl, CicdEvent.MergeRequest m) {
         var branch = m.sourceBranch() == null ? "" : m.sourceBranch();
         // only a strictly newer updated_at changes the row: a late, older event must not roll the state back
         var row = db.insertInto(CICD_MERGE_REQUESTS)
@@ -177,14 +210,17 @@ public class CicdProcessor {
                 .set(CICD_MERGE_REQUESTS.AUTHOR_NAME, m.authorName() == null ? "" : m.authorName())
                 .set(CICD_MERGE_REQUESTS.USER_ID, userByEmail(m.authorEmail()))
                 .set(CICD_MERGE_REQUESTS.MERGED_AT, m.mergedAt()).set(CICD_MERGE_REQUESTS.UPDATED_AT, m.updatedAt())
-                .set(CICD_MERGE_REQUESTS.WEB_URL, m.webUrl() == null ? "" : m.webUrl())
+                .set(CICD_MERGE_REQUESTS.WEB_URL, safeUrl(m.webUrl(), repoWebUrl))
                 .onConflict(CICD_MERGE_REQUESTS.REPOSITORY_ID, CICD_MERGE_REQUESTS.IID).doUpdate()
                 .set(CICD_MERGE_REQUESTS.TITLE, org.jooq.impl.DSL.excluded(CICD_MERGE_REQUESTS.TITLE))
                 .set(CICD_MERGE_REQUESTS.STATE, org.jooq.impl.DSL.excluded(CICD_MERGE_REQUESTS.STATE))
                 .set(CICD_MERGE_REQUESTS.SOURCE_BRANCH, org.jooq.impl.DSL.excluded(CICD_MERGE_REQUESTS.SOURCE_BRANCH))
                 .set(CICD_MERGE_REQUESTS.TARGET_BRANCH, org.jooq.impl.DSL.excluded(CICD_MERGE_REQUESTS.TARGET_BRANCH))
-                .set(CICD_MERGE_REQUESTS.AUTHOR_NAME, org.jooq.impl.DSL.excluded(CICD_MERGE_REQUESTS.AUTHOR_NAME))
-                .set(CICD_MERGE_REQUESTS.USER_ID, org.jooq.impl.DSL.excluded(CICD_MERGE_REQUESTS.USER_ID))
+                // the author is the first one seen: a later event may only name who changed the MR, or no one
+                .set(CICD_MERGE_REQUESTS.AUTHOR_NAME, org.jooq.impl.DSL.when(CICD_MERGE_REQUESTS.AUTHOR_NAME.eq(""),
+                        org.jooq.impl.DSL.excluded(CICD_MERGE_REQUESTS.AUTHOR_NAME)).otherwise(CICD_MERGE_REQUESTS.AUTHOR_NAME))
+                .set(CICD_MERGE_REQUESTS.USER_ID, org.jooq.impl.DSL.coalesce(CICD_MERGE_REQUESTS.USER_ID,
+                        org.jooq.impl.DSL.excluded(CICD_MERGE_REQUESTS.USER_ID)))
                 .set(CICD_MERGE_REQUESTS.MERGED_AT, org.jooq.impl.DSL.excluded(CICD_MERGE_REQUESTS.MERGED_AT))
                 .set(CICD_MERGE_REQUESTS.UPDATED_AT, org.jooq.impl.DSL.excluded(CICD_MERGE_REQUESTS.UPDATED_AT))
                 .set(CICD_MERGE_REQUESTS.WEB_URL, org.jooq.impl.DSL.excluded(CICD_MERGE_REQUESTS.WEB_URL))

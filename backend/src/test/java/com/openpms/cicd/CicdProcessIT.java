@@ -246,6 +246,64 @@ class CicdProcessIT {
         assertThat(db.fetchCount(CICD_EVENTS, CICD_EVENTS.REPOSITORY_ID.eq(repo), CICD_EVENTS.STATUS.eq("done"))).isEqualTo(2);
     }
 
+    private CicdEvent mrBy(UUID repo, long iid, String title, String author, String email, OffsetDateTime updatedAt, String url) {
+        return new CicdEvent("merge_request", "merge_request:" + repo + ":" + iid + ":" + updatedAt, externalId(repo), null,
+                new CicdEvent.MergeRequest(iid, title, "", "open", "topic", "main", author, email, null, updatedAt, url));
+    }
+
+    @Test void theMergeRequestAuthorIsTheFirstOneSeen() throws Exception {
+        var p = newProject();
+        var repo = attach(p);
+        var t0 = OffsetDateTime.parse("2026-10-15T01:00:00Z");
+        events.store(connection, List.of(mrBy(repo, 31, "처음", "박준호", CicdFixture.JUNHO_EMAIL, t0, null)), "webhook");
+        processor.run(Instant.now());
+        // an update by someone else (a GitLab hook names whoever acted) and a poll without any address change nothing about the author
+        events.store(connection, List.of(mrBy(repo, 31, "고침", "최민지", CicdFixture.MINJI_EMAIL, t0.plusMinutes(5), null)), "webhook");
+        processor.run(Instant.now());
+        events.store(connection, List.of(mrBy(repo, 31, "또 고침", "박준호", "", t0.plusMinutes(9), null)), "poll");
+        processor.run(Instant.now());
+        var row = db.selectFrom(CICD_MERGE_REQUESTS).where(CICD_MERGE_REQUESTS.REPOSITORY_ID.eq(repo)).fetchOne();
+        assertThat(row.getTitle()).isEqualTo("또 고침");
+        assertThat(row.getAuthorName()).isEqualTo("박준호");
+        assertThat(row.getUserId()).isEqualTo(CicdFixture.JUNHO);
+
+        // an MR first seen without an author takes the first one named later; "[REDACTED]" is no address
+        events.store(connection, List.of(mrBy(repo, 32, "이름 없음", "", "", t0, null)), "webhook");
+        processor.run(Instant.now());
+        events.store(connection, List.of(mrBy(repo, 32, "이름 없음", "박준호", "[REDACTED]", t0.plusMinutes(1), null)), "poll");
+        processor.run(Instant.now());
+        var second = db.selectFrom(CICD_MERGE_REQUESTS).where(CICD_MERGE_REQUESTS.REPOSITORY_ID.eq(repo), CICD_MERGE_REQUESTS.IID.eq(32L)).fetchOne();
+        assertThat(second.getAuthorName()).isEqualTo("박준호");
+        assertThat(second.getUserId()).isNull();
+        assertThat(CicdProcessor.email("[REDACTED]")).isEmpty();
+        assertThat(CicdProcessor.email(" a@b.c ")).isEqualTo("a@b.c");
+    }
+
+    @Test void addressesOffTheRepositoryHostAreNotStored() throws Exception {
+        var p = newProject();
+        var repo = attach(p);
+        var repoUrl = "https://gitlab.example.com/g/" + repo;
+        var t0 = OffsetDateTime.parse("2026-10-15T02:00:00Z");
+        var evilSha = sha();
+        events.store(connection, List.of(
+                new CicdEvent("commit", "commit:" + repo + ":" + evilSha, externalId(repo),
+                        new CicdEvent.Commit(evilSha, "c", "c", "박준호", CicdFixture.JUNHO_EMAIL, t0, "https://evil.example.com/phish"), null),
+                mrBy(repo, 41, "자바스크립트", "박준호", "", t0, "javascript:alert(1)"),
+                mrBy(repo, 42, "다른 포트", "박준호", "", t0, "https://gitlab.example.com:8443/g/x/-/merge_requests/42"),
+                mrBy(repo, 43, "사용자 정보", "박준호", "", t0, "https://x@gitlab.example.com/g/x/-/merge_requests/43"),
+                mrBy(repo, 44, "정상", "박준호", "", t0, "https://GITLAB.example.com/g/x/-/merge_requests/44")), "webhook");
+        processor.run(Instant.now());
+        assertThat(db.select(CICD_COMMITS.WEB_URL).from(CICD_COMMITS).where(CICD_COMMITS.SHA.eq(evilSha)).fetchOne().value1()).isEqualTo(repoUrl);
+        var urls = db.select(CICD_MERGE_REQUESTS.IID, CICD_MERGE_REQUESTS.WEB_URL).from(CICD_MERGE_REQUESTS)
+                .where(CICD_MERGE_REQUESTS.REPOSITORY_ID.eq(repo)).fetchMap(CICD_MERGE_REQUESTS.IID, CICD_MERGE_REQUESTS.WEB_URL);
+        assertThat(urls.get(41L)).isEqualTo(repoUrl);
+        assertThat(urls.get(42L)).isEqualTo(repoUrl);
+        assertThat(urls.get(43L)).isEqualTo(repoUrl);
+        assertThat(urls.get(44L)).isEqualTo("https://GITLAB.example.com/g/x/-/merge_requests/44");
+        assertThat(CicdProcessor.safeUrl("https://gitlab.example.com:443/a", "https://gitlab.example.com/g")).isEqualTo("https://gitlab.example.com:443/a");
+        assertThat(CicdProcessor.safeUrl("http://gitlab.example.com/a", "https://gitlab.example.com/g")).isEqualTo("https://gitlab.example.com/g");
+    }
+
     @Test void lockedOrDeletedUsersAreNotMatched() throws Exception {
         var repo = attach(newProject());
         var suffix = UUID.randomUUID().toString().substring(0, 8);
