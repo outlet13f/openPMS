@@ -7,7 +7,6 @@ package com.openpms.db.tables;
 import com.openpms.db.Keys;
 import com.openpms.db.Public;
 import com.openpms.db.tables.Members.MembersPath;
-import com.openpms.db.tables.ServiceTickets.ServiceTicketsPath;
 import com.openpms.db.tables.UserGroupMembers.UserGroupMembersPath;
 import com.openpms.db.tables.Users.UsersPath;
 import com.openpms.db.tables.records.UserGroupsRecord;
@@ -171,19 +170,6 @@ public class UserGroups extends TableImpl<UserGroupsRecord> {
             _members = new MembersPath(this, null, Keys.MEMBERS__MEMBERS_GROUP_ID_FKEY.getInverseKey());
 
         return _members;
-    }
-
-    private transient ServiceTicketsPath _serviceTickets;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.service_tickets</code> table
-     */
-    public ServiceTicketsPath serviceTickets() {
-        if (_serviceTickets == null)
-            _serviceTickets = new ServiceTicketsPath(this, null, Keys.SERVICE_TICKETS__SERVICE_TICKETS_ASSIGNMENT_GROUP_ID_FKEY.getInverseKey());
-
-        return _serviceTickets;
     }
 
     private transient UserGroupMembersPath _userGroupMembers;

@@ -28,7 +28,6 @@ import com.openpms.db.tables.Queries.QueriesPath;
 import com.openpms.db.tables.QueryFavorites.QueryFavoritesPath;
 import com.openpms.db.tables.Relations.RelationsPath;
 import com.openpms.db.tables.Roles.RolesPath;
-import com.openpms.db.tables.ServiceTickets.ServiceTicketsPath;
 import com.openpms.db.tables.Settings.SettingsPath;
 import com.openpms.db.tables.TemporaryPasswords.TemporaryPasswordsPath;
 import com.openpms.db.tables.TimeEntries.TimeEntriesPath;
@@ -509,19 +508,6 @@ public class Users extends TableImpl<UsersRecord> {
             _relations = new RelationsPath(this, null, Keys.RELATIONS__RELATIONS_CREATED_BY_FKEY.getInverseKey());
 
         return _relations;
-    }
-
-    private transient ServiceTicketsPath _serviceTickets;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.service_tickets</code> table
-     */
-    public ServiceTicketsPath serviceTickets() {
-        if (_serviceTickets == null)
-            _serviceTickets = new ServiceTicketsPath(this, null, Keys.SERVICE_TICKETS__SERVICE_TICKETS_REQUESTER_ID_FKEY.getInverseKey());
-
-        return _serviceTickets;
     }
 
     private transient SettingsPath _settings;

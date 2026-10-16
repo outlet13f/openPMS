@@ -1,7 +1,6 @@
 package com.openpms.wp;
 
 import static com.openpms.db.Tables.NOTIFICATIONS;
-import static com.openpms.db.Tables.SERVICE_TICKETS;
 import static com.openpms.db.Tables.WORK_PACKAGES;
 
 import com.openpms.api.Dto;
@@ -36,11 +35,9 @@ public class WorkPackageTransfers {
     private final CustomFields customFields;
     private final com.openpms.webhook.Webhooks webhooks;
     private final Assignees assignees;
-    private final com.openpms.itsm.ServiceDesk serviceDesk;
 
     public WorkPackageTransfers(DSLContext db, WorkPackageService service, Assembler assembler, Journals journals, CustomFields customFields,
-                                com.openpms.webhook.Webhooks webhooks, Assignees assignees, com.openpms.itsm.ServiceDesk serviceDesk) {
-        this.serviceDesk = serviceDesk;
+                                com.openpms.webhook.Webhooks webhooks, Assignees assignees) {
         this.webhooks = webhooks;
         this.assignees = assignees;
         this.db = db;
@@ -116,8 +113,6 @@ public class WorkPackageTransfers {
         });
         in.put("customValues", values);
         var made = service.create(ctx, target.id().toString(), in);
-        // ITSM 1단계: a copied ticket keeps the original's requester and classification and sends no new receipt
-        serviceDesk.copied(ctx, target, w.getId(), db.selectFrom(WORK_PACKAGES).where(WORK_PACKAGES.NUMBER.eq(made.number())).fetchOne());
         if (w.getWorkHours() != null) {
             var patch = new HashMap<String, Object>();
             patch.put("lockVersion", made.lockVersion());
@@ -153,8 +148,6 @@ public class WorkPackageTransfers {
         var moving = new ArrayList<WorkPackagesRecord>();
         moving.add(root);
         moving.addAll(descendants(root.getId()));
-        if (db.fetchExists(SERVICE_TICKETS, SERVICE_TICKETS.WORK_PACKAGE_ID.in(moving.stream().map(WorkPackagesRecord::getId).toList())))
-            throw ApiException.unprocessable("서비스 데스크 티켓은 다른 프로젝트로 옮길 수 없습니다.", "필요하면 새 작업을 만들고 관계로 이으세요.");
         for (var w : moving.subList(1, moving.size()))
             if (!target.typeIds().contains(w.getTypeId())) {
                 var type = s.type(w.getTypeId()).map(Snapshot.TypeRow::name).orElse("?");

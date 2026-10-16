@@ -223,7 +223,7 @@ public class Webhooks extends TableImpl<WebhooksRecord> {
     @Override
     public List<Check<WebhooksRecord>> getChecks() {
         return Arrays.asList(
-            Internal.createCheck(this, DSL.name("webhooks_known_events"), "((events <@ ARRAY['work_package.created'::text, 'work_package.updated'::text, 'work_package.deleted'::text, 'work_package.commented'::text, 'service_ticket.sla_breached'::text]))", true),
+            Internal.createCheck(this, DSL.name("webhooks_known_events"), "((events <@ ARRAY['work_package.created'::text, 'work_package.updated'::text, 'work_package.deleted'::text, 'work_package.commented'::text]))", true),
             Internal.createCheck(this, DSL.name("webhooks_name_check"), "(((length(name) >= 1) AND (length(name) <= 100)))", true),
             Internal.createCheck(this, DSL.name("webhooks_url_check"), "((url ~ '^https?://'::text))", true)
         );

@@ -80,7 +80,7 @@ public class AdminController {
                             long workPackageCount, long projectCount, Dto.TypeForm form, String descriptionTemplateHtml) {}
 
     public record AdminStatus(UUID id, String name, String color, boolean isClosed, boolean isReadonly, int position, boolean isDefault,
-                              int defaultDoneRatio, boolean excludedFromTotals, boolean slaPause, long workPackageCount) {}
+                              int defaultDoneRatio, boolean excludedFromTotals, long workPackageCount) {}
 
     public record AdminPriority(UUID id, String name, String color, int position, boolean isDefault, boolean isActive, long workPackageCount) {}
 
@@ -122,7 +122,6 @@ public class AdminController {
         for (var k : List.of("query.save", "query.manage_public")) PERMISSIONS.add(new Permission(k, "project", "query"));
         for (var k : List.of("board.view", "board.manage")) PERMISSIONS.add(new Permission(k, "project", "board"));
         for (var k : List.of("time.log", "time.view", "time.manage")) PERMISSIONS.add(new Permission(k, "project", "time"));
-        for (var k : List.of("service.view", "service.handle", "service.manage")) PERMISSIONS.add(new Permission(k, "project", "service"));
         for (var k : List.of("cicd.view", "cicd.link", "cicd.manage")) PERMISSIONS.add(new Permission(k, "project", "cicd"));
         for (var k : List.of("global.create_projects", "global.manage_users", "global.manage_cicd")) PERMISSIONS.add(new Permission(k, "global", "global"));
     }
@@ -300,7 +299,7 @@ public class AdminController {
         var wp = db.select(WORK_PACKAGES.STATUS_ID, count()).from(WORK_PACKAGES).groupBy(WORK_PACKAGES.STATUS_ID).fetchMap(WORK_PACKAGES.STATUS_ID, count());
         return db.selectFrom(STATUSES).orderBy(STATUSES.POSITION).fetch().stream().filter(s -> only == null || s.getId().equals(only))
                 .map(s -> new AdminStatus(s.getId(), s.getName(), s.getColor(), s.getIsClosed(), s.getIsReadonly(), s.getPosition(), s.getIsDefault(),
-                        s.getDefaultDoneRatio(), s.getExcludedFromTotals(), s.getSlaPause(), wp.getOrDefault(s.getId(), 0)))
+                        s.getDefaultDoneRatio(), s.getExcludedFromTotals(), wp.getOrDefault(s.getId(), 0)))
                 .toList();
     }
 
@@ -329,8 +328,7 @@ public class AdminController {
         var s = db.insertInto(STATUSES).set(STATUSES.NAME, n).set(STATUSES.COLOR, c).set(STATUSES.POSITION, db.fetchCount(STATUSES) + 1)
                 .set(STATUSES.IS_DEFAULT, isDefault).set(STATUSES.IS_CLOSED, Boolean.TRUE.equals(In.bool(in, "isClosed")))
                 .set(STATUSES.IS_READONLY, Boolean.TRUE.equals(In.bool(in, "isReadonly"))).set(STATUSES.DEFAULT_DONE_RATIO, (short) (r == null ? 0 : r))
-                .set(STATUSES.EXCLUDED_FROM_TOTALS, Boolean.TRUE.equals(In.bool(in, "excludedFromTotals")))
-                .set(STATUSES.SLA_PAUSE, Boolean.TRUE.equals(In.bool(in, "slaPause"))).returning(STATUSES.ID).fetchOne();
+                .set(STATUSES.EXCLUDED_FROM_TOTALS, Boolean.TRUE.equals(In.bool(in, "excludedFromTotals"))).returning(STATUSES.ID).fetchOne();
         return ResponseEntity.status(HttpStatus.CREATED).body(statuses(s.getId()).get(0));
     }
 
@@ -356,8 +354,6 @@ public class AdminController {
         if (In.has(in, "isClosed")) s.setIsClosed(Boolean.TRUE.equals(In.bool(in, "isClosed")));
         if (In.has(in, "isReadonly")) s.setIsReadonly(Boolean.TRUE.equals(In.bool(in, "isReadonly")));
         if (In.has(in, "excludedFromTotals")) s.setExcludedFromTotals(Boolean.TRUE.equals(In.bool(in, "excludedFromTotals")));
-        // the SLA clock reads it from the snapshot, which every request loads afresh
-        if (In.has(in, "slaPause")) s.setSlaPause(Boolean.TRUE.equals(In.bool(in, "slaPause")));
         s.changed(STATUSES.IS_DEFAULT, true);
         s.store();
         return statuses(id).get(0);

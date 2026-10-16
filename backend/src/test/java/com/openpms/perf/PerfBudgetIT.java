@@ -73,10 +73,7 @@ class PerfBudgetIT {
 
     MockMvc mvc;
     MockHttpSession admin;
-    MockHttpSession requester;
     UUID projectId;
-    UUID deskId;
-    long requesterTicket;
     long detail;
     UUID boardId;
     ExecuteListenerProvider[] before;
@@ -98,20 +95,11 @@ class PerfBudgetIT {
         boardId = db.select(BOARDS.ID).from(BOARDS).where(BOARDS.PROJECT_ID.eq(projectId)).fetchSingle().value1();
         assertThat(db.fetchCount(WORK_PACKAGES, WORK_PACKAGES.PROJECT_ID.eq(projectId))).isEqualTo(1000);
         seedDevTab();
-        deskId = db.select(PROJECTS.ID).from(PROJECTS).where(PROJECTS.IDENTIFIER.eq("perf-sd")).fetchSingle().value1();
-        requesterTicket = db.select(WORK_PACKAGES.NUMBER).from(WORK_PACKAGES)
-                .where(WORK_PACKAGES.PROJECT_ID.eq(deskId), WORK_PACKAGES.SUBJECT.like("% (1)")).fetchSingle().value1();
-        assertThat(db.fetchCount(WORK_PACKAGES, WORK_PACKAGES.PROJECT_ID.eq(deskId))).isEqualTo(200);
 
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         admin = new MockHttpSession();
         mvc.perform(post("/api/v1/auth/login").session(admin).with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"email\":\"seoyeon.kim@openpms.local\",\"password\":\"openpms!\"}")).andExpect(status().isOk());
-
-        // the requester of the 200 desk tickets signs in through the portal (not a member of the project)
-        requester = new MockHttpSession();
-        mvc.perform(post("/api/v1/auth/login").session(requester).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"email\":\"minji.choi@openpms.local\",\"password\":\"openpms!\"}")).andExpect(status().isOk());
 
         // count statements without touching the application's own listeners
         before = db.configuration().executeListenerProviders();
@@ -148,23 +136,14 @@ class PerfBudgetIT {
     @AfterAll
     void cleanUp() throws Exception {
         if (before != null) db.configuration().set(before);
-        db.deleteFrom(PROJECTS).where(PROJECTS.IDENTIFIER.in("perf-1000", "perf-sd")).execute();
+        db.deleteFrom(PROJECTS).where(PROJECTS.IDENTIFIER.eq("perf-1000")).execute();
         db.execute("delete from cicd_connections where name = 'perf-cicd'");
         report();
     }
 
     MockHttpServletRequestBuilder query(int pageSize, String spec) {
-        return query(projectId, pageSize, spec);
-    }
-
-    MockHttpServletRequestBuilder query(UUID project, int pageSize, String spec) {
         return post("/api/v1/work-packages/query").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"projectId\":\"" + project + "\",\"page\":1,\"pageSize\":" + pageSize + ",\"spec\":" + spec + "}");
-    }
-
-    /** The service desk list: the open tickets of the desk project with the requester and the SLA columns. */
-    MockHttpServletRequestBuilder serviceDeskQuery(int pageSize) {
-        return query(deskId, pageSize, SERVICE_DESK);
+                .content("{\"projectId\":\"" + projectId + "\",\"page\":1,\"pageSize\":" + pageSize + ",\"spec\":" + spec + "}");
     }
 
     static final String COLUMNS = "[\"number\",\"subject\",\"type\",\"status\",\"assignee\",\"priority\",\"dueDate\"]";
@@ -174,10 +153,6 @@ class PerfBudgetIT {
     /** 모든 작업, grouped by status with sums */
     static final String GROUPED = "{\"v\":1,\"filters\":[],\"columns\":[\"number\",\"subject\",\"status\",\"assignee\",\"work\",\"remainingWork\"]"
             + ",\"sort\":[{\"field\":\"dueDate\",\"dir\":\"asc\"}],\"groupBy\":\"status\",\"hierarchy\":false,\"sums\":true}";
-    /** 서비스 데스크 목록: 열린 티켓, 요청자·해결 기한·SLA 열 */
-    static final String SERVICE_DESK = "{\"v\":1,\"filters\":[{\"field\":\"status\",\"op\":\"open\",\"values\":[]}]"
-            + ",\"columns\":[\"number\",\"subject\",\"status\",\"assignee\",\"requester\",\"slaDue\",\"slaState\"]"
-            + ",\"sort\":[{\"field\":\"number\",\"dir\":\"asc\"}],\"groupBy\":null,\"hierarchy\":false}";
     /** Gantt: every item, the tree, the timeline (relations come with it) */
     static final String GANTT = "{\"v\":1,\"filters\":[],\"columns\":[\"number\",\"subject\",\"startDate\",\"dueDate\"]"
             + ",\"sort\":[{\"field\":\"number\",\"dir\":\"asc\"}],\"groupBy\":null,\"hierarchy\":true,\"timeline\":{\"visible\":true,\"zoom\":\"auto\"}}";
@@ -186,10 +161,6 @@ class PerfBudgetIT {
             + ",\"sort\":[{\"field\":\"number\",\"dir\":\"asc\"}],\"groupBy\":null,\"hierarchy\":false,\"text\":\"API 연동\"}";
 
     Measured measure(Budget budget, List<MockHttpServletRequestBuilder> requests) throws Exception {
-        return measure(budget, requests, admin);
-    }
-
-    Measured measure(Budget budget, List<MockHttpServletRequestBuilder> requests, MockHttpSession session) throws Exception {
         long[] took = new long[RUNS];
         int statements = 0;
         int bytes = 0;
@@ -198,7 +169,7 @@ class PerfBudgetIT {
             int size = 0;
             long t0 = System.nanoTime();
             for (var r : requests) {
-                var res = mvc.perform(r.session(session).with(csrf())).andReturn().getResponse();
+                var res = mvc.perform(r.session(admin).with(csrf())).andReturn().getResponse();
                 assertThat(res.getStatus()).as(budget.what()).isBetween(200, 299);
                 size += res.getContentAsByteArray().length;
             }
@@ -228,12 +199,7 @@ class PerfBudgetIT {
                 measure(new Budget("보드", "상태 보드 · 카드 1,000장", 600, 29, 3000), List.of(get("/api/v1/boards/" + boardId))),
                 measure(new Budget("작업 상세", "작업 · 이력 40건 · 관계 · 지켜보는 사람", 200, 45, 30),
                         List.of(get(n), get(n + "/activities"), get(n + "/relations"), get(n + "/watchers"))),
-                measure(new Budget("작업 상세", "개발 탭 · MR 20 · 커밋 50", 150, 8, 40), List.of(get(n + "/cicd"))),
-                // SQL budgets are the measured count + 2 (desk list 20, portal list 6, portal detail 16): the first desk list is the
-                // ordinary list plus the ticket join, the portal list and detail are separate endpoints with their own lookups
-                measure(new Budget("서비스 데스크 목록", "티켓 20건 · SLA 열", 250, 22, 60), List.of(serviceDeskQuery(20))),
-                measure(new Budget("포털 내 요청", "요청자 티켓 200건", 200, 8, 80), List.of(get("/api/v1/portal/tickets")), requester),
-                measure(new Budget("포털 요청 상세", "공개 이력 · 첨부", 150, 18, 8), List.of(get("/api/v1/portal/tickets/" + requesterTicket)), requester));
+                measure(new Budget("작업 상세", "개발 탭 · MR 20 · 커밋 50", 150, 8, 40), List.of(get(n + "/cicd"))));
         var soft = new SoftAssertions();
         for (var m : measured) {
             var b = m.budget();
@@ -258,8 +224,7 @@ class PerfBudgetIT {
     void noRequestKeepsItsCarrierThreadWhileWaiting() throws Exception {
         var n = "/api/v1/work-packages/" + detail;
         var requests = List.of(query(20, OPEN), query(100, GROUPED), query(200, GANTT), get("/api/v1/boards/" + boardId),
-                get("/api/v1/work-packages/filters").param("projectId", projectId.toString()), get(n), get(n + "/activities"), get(n + "/relations"), serviceDeskQuery(20));
-        var portal = List.of(get("/api/v1/portal/tickets"), get("/api/v1/portal/tickets/" + requesterTicket));
+                get("/api/v1/work-packages/filters").param("projectId", projectId.toString()), get(n), get(n + "/activities"), get(n + "/relations"));
         var pinned = new CopyOnWriteArrayList<RecordedEvent>();
         try (var rs = new RecordingStream()) {
             rs.enable("jdk.VirtualThreadPinned").withThreshold(java.time.Duration.ZERO).withStackTrace();
@@ -270,10 +235,6 @@ class PerfBudgetIT {
                     pool.submit(() -> {
                         for (var r : requests) {
                             var res = mvc.perform(r.session(admin).with(csrf())).andReturn().getResponse();
-                            assertThat(res.getStatus()).isBetween(200, 299);
-                        }
-                        for (var r : portal) {
-                            var res = mvc.perform(r.session(requester).with(csrf())).andReturn().getResponse();
                             assertThat(res.getStatus()).isBetween(200, 299);
                         }
                         return null;

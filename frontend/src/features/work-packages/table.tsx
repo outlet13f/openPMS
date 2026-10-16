@@ -7,27 +7,24 @@ import { ContextMenu, Menu, type MenuEntry } from "@/components/ui/overlay";
 import type { ColumnKey, FilterOptions, QueryGroup, QueryRow, QuerySpec, WorkPackage } from "@/api";
 import { useCreateWorkPackage } from "@/api/hooks";
 import { Avatar, Principal } from "@/components/ui/avatar";
-import { Badge, Priority, TypeLabel } from "@/components/ui/badges";
+import { Priority, TypeLabel } from "@/components/ui/badges";
 import { Input } from "@/components/ui/field";
 import { useToast } from "@/components/ui/feedback";
 import { WorkPackageCard } from "@/components/domain/work-package-card";
 import { cn } from "@/lib/cn";
-import { formatDate, formatDateTime, relativeTime, todayIso } from "@/lib/dates";
+import { formatDate, relativeTime, todayIso } from "@/lib/dates";
 import { isApiError } from "@/api";
 import { StatusMenu } from "./status-menu";
 import { InlinePick } from "./inline-pick";
 import { useSaveWorkPackage } from "./use-save";
 import { CustomValueView, cfIdOf, useColumnLabel } from "./custom-fields";
 import { MoreAssignees } from "./assignees";
-import { remainingLabel, slaState } from "@/features/service-desk/sla";
-import { SLA_TONE } from "@/features/service-desk/sla-panel";
 
 const WIDTH: Partial<Record<ColumnKey, string>> = {
   number: "w-16", type: "w-24", status: "w-32", assignee: "w-40", responsible: "w-40", author: "w-36", priority: "w-24",
   startDate: "w-28", dueDate: "w-28", updatedAt: "w-28", version: "w-32", project: "w-40", duration: "w-20", doneRatio: "w-20", work: "w-24", remainingWork: "w-24",
-  requester: "w-36", assignmentGroup: "w-32", slaDue: "w-32", slaState: "w-28",
 };
-const SORTABLE: ColumnKey[] = ["number", "subject", "type", "status", "priority", "assignee", "responsible", "author", "version", "startDate", "dueDate", "work", "remainingWork", "updatedAt", "project", "slaDue"];
+const SORTABLE: ColumnKey[] = ["number", "subject", "type", "status", "priority", "assignee", "responsible", "author", "version", "startDate", "dueDate", "work", "remainingWork", "updatedAt", "project"];
 
 /** A colour at a low strength, for a tinted cell or row (readable in light and dark themes). */
 export const tint = (color: string, percent = 14) => `color-mix(in srgb, ${color} ${percent}%, transparent)`;
@@ -131,25 +128,6 @@ function Cell({ wp, column, options, inline }: { wp: WorkPackage; column: Column
       return wp.version?.name ?? <span className="text-fg-muted">-</span>;
     case "project":
       return <span className="truncate">{wp.project.name}</span>;
-    case "requester":
-      return wp.serviceTicket ? <Principal id={wp.serviceTicket.requester.id} name={wp.serviceTicket.requester.name} size="xs" /> : null;
-    case "assignmentGroup":
-      return <>{wp.serviceTicket?.assignmentGroup?.name ?? ""}</>;
-    case "slaDue": {
-      const due = wp.serviceTicket?.sla.resolveDueAt;
-      if (!due) return null;
-      const st = slaState(wp.serviceTicket!.sla, Date.now());
-      return (
-        <span title={formatDateTime(due)} className={cn("tabular-nums", st === "breached" && "font-semibold text-danger")}>
-          {st === "met" || st === "paused" ? formatDateTime(due) : remainingLabel(due, Date.now())}
-        </span>
-      );
-    }
-    case "slaState": {
-      if (!wp.serviceTicket) return null;
-      const st = slaState(wp.serviceTicket.sla, Date.now());
-      return st === "none" ? null : <Badge tone={SLA_TONE[st]}>{t(`serviceDesk.state.${st}`)}</Badge>;
-    }
     default: {
       const id = cfIdOf(column);
       if (!id) return null;

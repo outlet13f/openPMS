@@ -1,6 +1,5 @@
 package com.openpms.wp;
 
-import static com.openpms.db.Tables.CUSTOM_FIELDS;
 import static com.openpms.db.Tables.JOURNALS;
 import static com.openpms.db.Tables.RELATIONS;
 import static com.openpms.db.Tables.TYPES;
@@ -17,7 +16,6 @@ import com.openpms.core.Ctx;
 import com.openpms.core.Refs;
 import com.openpms.core.Snapshot;
 import com.openpms.core.Snapshot.ProjectRow;
-import com.openpms.db.tables.records.JournalsRecord;
 import com.openpms.db.tables.records.WorkPackageSharesRecord;
 import com.openpms.db.tables.records.WorkPackagesRecord;
 import java.math.BigDecimal;
@@ -50,11 +48,9 @@ public class WorkPackageService {
     private final CustomFields customFields;
     private final com.openpms.webhook.Webhooks webhooks;
     private final Assignees assignees;
-    private final com.openpms.itsm.ServiceDesk serviceDesk;
 
     public WorkPackageService(DSLContext db, Assembler assembler, Journals journals, ScheduleStore schedules, CustomFields customFields,
-                              com.openpms.webhook.Webhooks webhooks, Assignees assignees, com.openpms.itsm.ServiceDesk serviceDesk) {
-        this.serviceDesk = serviceDesk;
+                              com.openpms.webhook.Webhooks webhooks, Assignees assignees) {
         this.webhooks = webhooks;
         this.customFields = customFields;
         this.db = db;
@@ -162,31 +158,16 @@ public class WorkPackageService {
 
     /* ---------- create ---------- */
 
-    /** Who acts: a project member (permissions checked by the caller) or a requester at the portal (PortalService decided). */
-    public enum Acting { MEMBER, PORTAL }
-
     @Transactional
     public Dto.WorkPackage create(Ctx ctx, String projectId, Map<String, Object> in) {
+        var s = ctx.s();
         var p = ctx.findProject(projectId);
         ctx.require(p, "wp.create", "이 프로젝트에 작업을 만들 권한이 없습니다.");
-        return assembler.one(ctx, reload(insert(ctx, p, in, Acting.MEMBER).getId()));
-    }
-
-    /** A requester's ticket from the portal: PortalService decided who may and passes only portal fields. */
-    @Transactional
-    public WorkPackagesRecord createForPortal(Ctx ctx, Snapshot.ProjectRow p, Map<String, Object> in) {
-        return insert(ctx, p, in, Acting.PORTAL);
-    }
-
-    private WorkPackagesRecord insert(Ctx ctx, Snapshot.ProjectRow p, Map<String, Object> in, Acting acting) {
-        var s = ctx.s();
         var subject = In.str(in, "subject") == null ? "" : In.str(in, "subject").trim();
         if (subject.isEmpty()) throw ApiException.field("subject", "제목을 입력하세요.");
         if (subject.length() > 255) throw ApiException.field("subject", "제목은 255자 이하로 입력하세요.");
         var typeId = In.uuid(in, "typeId", "type");
         if (typeId == null || !p.typeIds().contains(typeId)) throw ApiException.field("type", "이 프로젝트에서 쓰지 않는 유형입니다.");
-        // ITSM 1단계: a ticket in a service desk starts as 접수 with the matrix priority and gets its service_tickets row
-        var ticket = serviceDesk.applies(p, typeId) ? serviceDesk.draft(ctx, p, in, acting == Acting.PORTAL ? "portal" : "agent") : null;
         // 공동 담당자: "assignees" (everyone, in order, with hours) or the older single "assigneeId"
         var team = In.has(in, "assignees") ? Assignees.read(in.get("assignees"), s, p.id()) : null;
         var assigneeId = team != null ? (team.isEmpty() ? null : team.get(0).userId()) : In.uuid(in, "assigneeId", "assignee");
@@ -205,8 +186,6 @@ public class WorkPackageService {
             ctx.require(p, "wp.assign_versions");
             if (s.version(versionId).filter(v -> v.projectId().equals(p.id())).isEmpty()) throw ApiException.field("version", "이 프로젝트의 버전이 아닙니다.");
         }
-        if (ticket != null && statusId == null) statusId = com.openpms.itsm.ItsmIds.STATUS_RECEIVED;
-        if (ticket != null && priorityId == null) priorityId = serviceDesk.priorityFor(p, ticket);
         // a category's default assignee fills an empty assignee (S25)
         if (assigneeId == null && category != null && category.defaultAssigneeId() != null && s.isMember(category.defaultAssigneeId(), p.id())) {
             assigneeId = category.defaultAssigneeId();
@@ -220,13 +199,7 @@ public class WorkPackageService {
             parentId = parent.getId();
         }
 
-        // portal: a required field the requester cannot see must not block (or reveal itself in) the submission. User and
-        // version fields are never on the portal form (PortalService.NOT_ON_PORTAL), whatever their portal flag says.
-        var hidden = acting == Acting.PORTAL
-                ? new java.util.HashSet<>(db.select(CUSTOM_FIELDS.ID).from(CUSTOM_FIELDS)
-                        .where(CUSTOM_FIELDS.PORTAL_VISIBLE.isFalse().or(CUSTOM_FIELDS.FORMAT.in("user", "version"))).fetch(CUSTOM_FIELDS.ID))
-                : java.util.Set.<UUID>of();
-        var custom = customFields.initial(s, p.id(), typeId, customInput(in), hidden);
+        var custom = customFields.initial(s, p.id(), typeId, customInput(in));
 
         schedules.lock();
         var graph = schedules.load(ctx);
@@ -269,13 +242,12 @@ public class WorkPackageService {
         if (team != null && !team.isEmpty()) assignees.write(w.getId(), team);
         else if (assigneeId != null) assignees.write(w.getId(), List.of(new Assignees.Entry(assigneeId, null)));
 
-        if (ticket != null) serviceDesk.created(ctx, w, ticket);
         var j = journals.write(ctx, w, new LinkedHashMap<>(Map.of(Journals.CREATED, Journals.listOf(null, true))), "", null, false);
         journals.fanOut(ctx, w, j, List.of());
         webhooks.enqueue(ctx, w, "work_package.created", null);
         var g = schedules.load(ctx);
         schedules.apply(ctx, g.propagate(List.of(w.getId()), null, false));
-        return w;
+        return assembler.one(ctx, reload(w.getId()));
     }
 
     /** The request's customValues object ({fieldId: value}), or 400 when it is something else. */
@@ -304,29 +276,15 @@ public class WorkPackageService {
 
     @Transactional
     public Dto.WorkPackage update(Ctx ctx, long number, Map<String, Object> patch) {
-        var f = find(ctx, number);
-        ctx.require(f.project(), f.wp().getId(), "wp.edit", "이 작업을 수정할 권한이 없습니다.");
-        return assembler.one(ctx, apply(ctx, f, patch, Acting.MEMBER));
-    }
-
-    /** The requester moves their own ticket (answered, confirmed, reopened, cancelled) under the 요청자 role's workflow. */
-    @Transactional
-    public WorkPackagesRecord statusForPortal(Ctx ctx, Found f, UUID statusId, int lockVersion) {
-        var patch = new java.util.HashMap<String, Object>();
-        patch.put("lockVersion", lockVersion);
-        patch.put("statusId", statusId.toString());
-        return apply(ctx, f, patch, Acting.PORTAL);
-    }
-
-    /** The saved record (f.wp() when nothing changed). A portal conflict carries no body: a requester never gets the assembled work package. */
-    private WorkPackagesRecord apply(Ctx ctx, Found f, Map<String, Object> patch, Acting acting) {
         var s = ctx.s();
+        var f = find(ctx, number);
         var wp = f.wp();
         var project = f.project();
         var lockVersion = In.integer(patch, "lockVersion", "lockVersion");
         if (lockVersion == null || lockVersion != wp.getLockVersion()) {
-            throw ApiException.conflict("다른 사람이 먼저 수정했습니다.", "최신 내용을 불러온 뒤 다시 저장하세요.", acting == Acting.PORTAL ? null : assembler.one(ctx, wp));
+            throw ApiException.conflict("다른 사람이 먼저 수정했습니다.", "최신 내용을 불러온 뒤 다시 저장하세요.", assembler.one(ctx, wp));
         }
+        ctx.require(project, wp.getId(), "wp.edit", "이 작업을 수정할 권한이 없습니다.");
         var status = s.status(wp.getStatusId()).orElseThrow();
         var given = patch.keySet().stream().filter(k -> !k.equals("lockVersion") && !k.equals("touched")).toList();
         if (status.isReadonly() && given.stream().anyMatch(k -> !k.equals("statusId"))) {
@@ -347,10 +305,7 @@ public class WorkPackageService {
         if (In.has(patch, "statusId")) {
             var next = In.uuid(patch, "statusId", "status");
             if (next != null && !next.equals(wp.getStatusId())) {
-                var allowed = acting == Acting.PORTAL
-                        ? Assembler.allowedFor(ctx.s(), java.util.Set.of(com.openpms.itsm.ItsmIds.ROLE_REQUESTER), ctx.userId(), wp.getTypeId(), wp.getStatusId(),
-                                ctx.userId(), Assignees.ids(team))
-                        : Assembler.allowedStatusIds(ctx, wp.getTypeId(), wp.getStatusId(), wp.getProjectId(), wp.getAuthorId(), Assignees.ids(team));
+                var allowed = Assembler.allowedStatusIds(ctx, wp.getTypeId(), wp.getStatusId(), wp.getProjectId(), wp.getAuthorId(), Assignees.ids(team));
                 if (!allowed.contains(next)) {
                     var to = s.status(next).map(Snapshot.StatusRow::name).orElse("?");
                     throw ApiException.unprocessable("허용되지 않는 상태 전환입니다.", "내 역할로는 '" + status.name() + "'에서 '" + to + "'(으)로 바꿀 수 없습니다.");
@@ -457,17 +412,14 @@ public class WorkPackageService {
             }
         }
 
-        if (changes.isEmpty()) return wp;
+        if (changes.isEmpty()) return assembler.one(ctx, wp);
 
         wp.setLockVersion(before.getLockVersion() + 1);
         wp.setUpdatedAt(OffsetDateTime.now());
         int n = db.executeUpdate(wp, WORK_PACKAGES.ID.eq(wp.getId()).and(WORK_PACKAGES.LOCK_VERSION.eq(before.getLockVersion())));
-        if (n == 0) {
-            throw ApiException.conflict("다른 사람이 먼저 수정했습니다.", "최신 내용을 불러온 뒤 다시 저장하세요.", acting == Acting.PORTAL ? null : assembler.one(ctx, reload(wp.getId())));
-        }
+        if (n == 0) throw ApiException.conflict("다른 사람이 먼저 수정했습니다.", "최신 내용을 불러온 뒤 다시 저장하세요.", assembler.one(ctx, reload(wp.getId())));
         if (nextTeam != null) assignees.write(wp.getId(), nextTeam);
         var saved = reload(wp.getId());
-        serviceDesk.updated(ctx, before, saved);
         var j = journals.write(ctx, saved, changes, "", null, false);
         journals.fanOut(ctx, saved, j, List.of());
         webhooks.enqueue(ctx, saved, "work_package.updated", Map.of("changes", com.openpms.webhook.Webhooks.changes(journals.toDto(ctx, j, ctx.s().project(saved.getProjectId()).orElseThrow(), changes))));
@@ -481,7 +433,7 @@ public class WorkPackageService {
             if (oldParent != null && !oldParent.equals(saved.getParentId())) g.kids(oldParent).stream().findFirst().ifPresent(k -> seeds.add(k.id));
             schedules.apply(ctx, g.propagate(seeds, null, false));
         }
-        return reload(wp.getId());
+        return assembler.one(ctx, reload(wp.getId()));
     }
 
     @FunctionalInterface
@@ -581,24 +533,13 @@ public class WorkPackageService {
             if (!f.project().internalComments()) throw ApiException.unprocessable("이 프로젝트는 내부 코멘트를 쓰지 않습니다.", "프로젝트 설정 · 작업 설정에서 켤 수 있습니다.");
             ctx.require(f.project(), "wp.add_internal_comments", "내부 코멘트를 쓸 권한이 없습니다.");
         }
-        return journals.toDto(ctx, addComment(ctx, f, bodyHtml, internal), f.project());
-    }
-
-    /** A requester's public comment on their own ticket. */
-    @Transactional
-    public JournalsRecord commentForPortal(Ctx ctx, Found f, String bodyHtml) {
-        return addComment(ctx, f, bodyHtml, false);
-    }
-
-    private JournalsRecord addComment(Ctx ctx, Found f, String bodyHtml, boolean internal) {
         var html = Html.sanitize(bodyHtml);
         if (Html.text(html).isEmpty()) throw ApiException.field("comment", "코멘트를 입력하세요.");
         var j = journals.write(ctx, f.wp(), new LinkedHashMap<>(), html, null, internal);
         journals.fanOut(ctx, f.wp(), j, Html.mentions(html));
-        serviceDesk.commented(ctx, f.wp(), internal);
         // internal comments stay inside openPMS
         if (!internal) webhooks.enqueue(ctx, f.wp(), "work_package.commented", Map.of("comment", Map.of("text", Html.text(html), "journalId", j.getId())));
-        return j;
+        return journals.toDto(ctx, j, f.project());
     }
 
     @Transactional

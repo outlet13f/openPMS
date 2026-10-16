@@ -235,28 +235,6 @@ export const httpApi: Api = {
     report: (params) => get("/time-entries/report", { ...params }),
     exportFile: (params) => fetchFile("/time-entries/export", { ...params }),
   },
-  serviceDesk: {
-    calendars: () => get("/service-calendars"),
-    createCalendar: (input) => create("/service-calendars", input),
-    updateCalendar: (id, p) => patch(`/service-calendars/${id}`, p),
-    deleteCalendar: (id) => del(`/service-calendars/${id}`),
-    settings: (project) => get(`/projects/${encodeURIComponent(project)}/service-desk/settings`),
-    saveSettings: (project, s) => put(`/projects/${encodeURIComponent(project)}/service-desk/settings`, s),
-    groups: (project) => get(`/projects/${encodeURIComponent(project)}/service-desk/groups`),
-    updateTicket: (number, p) => patch(`/work-packages/${number}/service-ticket`, p),
-    summary: (project) => get(`/projects/${encodeURIComponent(project)}/service-desk/summary`),
-  },
-  portal: {
-    desks: () => get("/portal/desks"),
-    submit: (identifier, input) => create(`/portal/desks/${encodeURIComponent(identifier)}/tickets`, input),
-    tickets: (state) => get("/portal/tickets", { state }),
-    ticket: (number) => get(`/portal/tickets/${number}`),
-    // both answer 200 with the ticket, not 201
-    comment: (number, bodyHtml) => post(`/portal/tickets/${number}/comments`, { bodyHtml }),
-    setStatus: (number, statusId, lockVersion) => post(`/portal/tickets/${number}/status`, { statusId, lockVersion }),
-    attach: (number, file) => upload(`/portal/tickets/${number}/attachments`, file),
-    fileUrl: (number, id) => `${BASE}/portal/tickets/${number}/attachments/${id}/content`,
-  },
   cicd: {
     connections: () => get("/admin/cicd/connections"),
     createConnection: (input) => create("/admin/cicd/connections", input),

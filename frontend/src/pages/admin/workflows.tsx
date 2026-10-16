@@ -18,13 +18,11 @@ import { ConfirmDialog, useRunWithToast } from "@/features/admin/common";
 import { AdminGuard } from "./index";
 
 const key = (from: string, to: string) => `${from}>${to}`;
-/** Project roles whose workflow can be edited: the built-in 요청자 too (the portal checks it), not 비멤버 (never used for status changes). */
-const workflowRole = (r: { scope: string; builtin: string | null }) => r.scope === "project" && r.builtin !== "non_member";
 
 function CopyDialog({ open, onOpenChange, typeId, roleId }: { open: boolean; onOpenChange: (o: boolean) => void; typeId: string; roleId: string }) {
   const { t } = useTranslation();
   const types = useAdminTypes().data ?? [];
-  const roles = (useAdminRoles().data ?? []).filter(workflowRole);
+  const roles = (useAdminRoles().data ?? []).filter((r) => r.scope === "project" && !r.builtin);
   const { copy } = useWorkflowMutations();
   const runToast = useRunWithToast();
   const [toTypes, setToTypes] = useState<string[]>([typeId]);
@@ -78,7 +76,7 @@ export function AdminWorkflowsPage() {
   const types = useAdminTypes();
   const roles = useAdminRoles();
   const statuses = useAdminStatuses();
-  const projectRoles = (roles.data ?? []).filter(workflowRole);
+  const projectRoles = (roles.data ?? []).filter((r) => r.scope === "project" && !r.builtin);
   const typeId = params.get("type") ?? types.data?.[0]?.id;
   const roleId = params.get("role") ?? projectRoles.find((r) => r.name === "멤버")?.id ?? projectRoles[0]?.id;
   const wf = useWorkflow(typeId, roleId);

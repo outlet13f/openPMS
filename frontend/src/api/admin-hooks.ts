@@ -1,7 +1,7 @@
 // Query hooks for administration (S27–S36) and project settings (S24–S26).
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { DisplaySettings, OidcProviderInput, AuthSettings, CalendarSettings, CustomFieldInput, Id, ProgressSettings, PriorityInput, RoleInput, StatusInput, Transition, TypeInput, UserInput, VersionInput, ServiceCalendar, CicdConnectionInput, CicdConnectionPatch } from "./types";
+import type { DisplaySettings, OidcProviderInput, AuthSettings, CalendarSettings, CustomFieldInput, Id, ProgressSettings, PriorityInput, RoleInput, StatusInput, Transition, TypeInput, UserInput, VersionInput, CicdConnectionInput, CicdConnectionPatch } from "./types";
 
 export const ak = {
   customFields: ["admin", "custom-fields"] as const,
@@ -232,23 +232,6 @@ export function useBackupNow() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: () => api.admin.system.backup(), onSettled: () => qc.invalidateQueries({ queryKey: ["admin", "system"] }) });
 }
-
-/* ---------- 서비스 달력 (ITSM) ---------- */
-
-/** A calendar change moves SLA deadlines of the next saves and the settings screens' choices. */
-export function useServiceCalendarMutations() {
-  const qc = useQueryClient();
-  const done = () => (qc.invalidateQueries({ queryKey: ["service-calendars"] }), qc.invalidateQueries({ queryKey: ["serviceDesk"] }));
-  return {
-    create: useMutation({ mutationFn: (input: Omit<ServiceCalendar, "id">) => api.serviceDesk.createCalendar(input), onSuccess: done }),
-    update: useMutation({
-      mutationFn: (v: { id: Id; patch: Partial<Omit<ServiceCalendar, "id">> }) => api.serviceDesk.updateCalendar(v.id, v.patch),
-      onSuccess: done,
-    }),
-    remove: useMutation({ mutationFn: (id: Id) => api.serviceDesk.deleteCalendar(id), onSuccess: done }),
-  };
-}
-
 /* ---------- CI/CD 연동 ---------- */
 
 export const useCicdConnections = (enabled = true) => useQuery({ queryKey: ["cicd", "connections"], queryFn: () => api.cicd.connections(), enabled });

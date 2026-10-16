@@ -4,7 +4,7 @@ import { ApiError } from "../errors";
 import { addDays, isoWeekday, todayIso, weekStart } from "@/lib/dates";
 import { db, type DbProject, type DbUser, type DbWp } from "./db";
 import { can, memberRoleIds } from "./permissions";
-import { ticketOf, toWp } from "./dto";
+import { toWp } from "./dto";
 import { cfText, findField, opsFor, sortKey, valueOn } from "./custom-fields";
 import { progressSettings } from "./progress";
 import { teamOf } from "./assignees";
@@ -44,8 +44,6 @@ const OPS: Record<QueryFilter["field"], readonly QueryFilter["op"][]> = (() => {
     startDate: date, dueDate: date, createdAt: date, updatedAt: date, dates: ["overlaps", "between", "any", "none"],
     duration: num, doneRatio: num, work: num, remainingWork: num,
     isMilestone: ["eq"], scheduleManually: ["eq"], blocked: ["eq"],
-    // 서비스 데스크 티켓: facts of the ticket now (QueryEngine)
-    requester: ["eq", "neq"], assignmentGroup: ["eq", "neq"], channel: ["eq"], slaBreached: ["eq"],
   };
 })();
 
@@ -223,18 +221,6 @@ export function matches(w: DbWp, f: QueryFilter, user: DbUser): boolean {
       return num(w.workHours);
     case "remainingWork":
       return num(w.remainingHours);
-    case "requester":
-    case "assignmentGroup":
-    case "channel": {
-      const t = ticketOf(w);
-      const v = !t ? null : f.field === "requester" ? t.requesterId : f.field === "assignmentGroup" ? t.assignmentGroupId : t.channel;
-      const hit = v !== null && vals.includes(v);
-      return f.op === "neq" ? !hit : hit;
-    }
-    case "slaBreached": {
-      const t = ticketOf(w);
-      return bool(!!t && (t.responseBreached || t.resolveBreached));
-    }
     case "dates": {
       const s = w.startDate ?? w.dueDate;
       const e = w.dueDate ?? w.startDate;
@@ -282,8 +268,6 @@ function sortValue(w: DbWp, field: ColumnKey): string | number {
       return w.workHours ?? Number.MAX_VALUE;
     case "remainingWork":
       return w.remainingHours ?? Number.MAX_VALUE;
-    case "slaDue":
-      return ticketOf(w)?.resolveDueAt ?? "9999";
     default:
       if (field.startsWith("cf:")) {
         const f = db.customFields.find((x) => `cf:${x.id}` === field);

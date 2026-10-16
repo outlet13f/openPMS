@@ -247,18 +247,12 @@ public class CustomFields {
 
     /** New items: defaults for fields not given, then the required check for every active field. */
     public Map<String, Object> initial(Snapshot s, UUID projectId, UUID typeId, Map<String, Object> input) {
-        return initial(s, projectId, typeId, input, java.util.Set.of());
-    }
-
-    /** skipRequired: fields whose required check is waived when left empty (portal: fields the requester cannot see). Defaults still apply. */
-    public Map<String, Object> initial(Snapshot s, UUID projectId, UUID typeId, Map<String, Object> input, java.util.Set<UUID> skipRequired) {
         var out = new LinkedHashMap<String, Object>();
         var active = s.activeCustomFields(projectId, typeId);
         for (var id : input.keySet())
             if (active.stream().noneMatch(f -> f.id().toString().equals(id))) throw ApiException.field("cf:" + id, "이 작업에서 쓰지 않는 사용자 정의 필드입니다.");
         for (var f : active) {
             var raw = input.containsKey(f.id().toString()) ? input.get(f.id().toString()) : f.defaultValue();
-            if (skipRequired.contains(f.id()) && empty(raw)) continue;
             var v = check(s, f, raw, projectId);
             if (v != null) out.put(f.id().toString(), v);
         }

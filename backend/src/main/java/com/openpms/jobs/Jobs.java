@@ -46,8 +46,6 @@ public class Jobs implements SmartLifecycle {
                 Map.entry("file-sweep", Schedules.cron("0 0 4 * * SUN", KST)),
                 // webhooks: what is due, every 15 seconds
                 Map.entry("webhook-delivery", Schedules.fixedDelay(Duration.ofSeconds(15))),
-                Map.entry("sla-check", Schedules.fixedDelay(Duration.ofMinutes(1))),
-                Map.entry("portal-mail", Schedules.fixedDelay(Duration.ofMinutes(1))),
                 // CI/CD events from the code hosts: what is pending, every 15 seconds
                 Map.entry("cicd-process", Schedules.fixedDelay(Duration.ofSeconds(15))),
                 // CI/CD: fill what webhooks missed every 5 minutes, drop old events at night

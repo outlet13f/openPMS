@@ -29,10 +29,9 @@ import { TimeTab } from "./time-tab";
 import { StatusMenu } from "./status-menu";
 import { InlineText } from "./inline-text";
 import { useSaveWorkPackage } from "./use-save";
-import { ServiceTab } from "@/features/service-desk/service-tab";
 import { DevTab } from "@/features/cicd/dev-tab";
 
-export const DETAIL_TABS = ["overview", "service", "dev", "activity", "files", "relations", "watchers", "time"] as const;
+export const DETAIL_TABS = ["overview", "dev", "activity", "files", "relations", "watchers", "time"] as const;
 export type DetailTab = (typeof DETAIL_TABS)[number];
 /** A route's ":tab" segment, or the fallback when it is missing or unknown. */
 export const asDetailTab = (s: string | undefined, fallback: DetailTab): DetailTab => (DETAIL_TABS.includes(s as DetailTab) ? (s as DetailTab) : fallback);
@@ -267,8 +266,6 @@ export function WorkPackageDetail({
   const timeProject = project.data;
   const timeOn = !!timeProject?.enabledModules.includes("time_tracking") && (timeProject.myPermissions.includes("time.log") || timeProject.myPermissions.includes("time.view"));
   const canLogTime = !!timeProject?.myPermissions.includes("time.log");
-  // 서비스 tab: a ticket of a project with the service desk on, for people who may see it
-  const serviceOn = !!timeProject?.enabledModules.includes("service_desk") && !!wp.serviceTicket && timeProject.myPermissions.includes("service.view");
   // 개발 tab: the CI/CD module on and cicd.view (the API answers 404 otherwise)
   const devOn = !!timeProject?.enabledModules.includes("cicd") && timeProject.myPermissions.includes("cicd.view");
 
@@ -283,7 +280,7 @@ export function WorkPackageDetail({
 
   const tabs = (all: DetailTab[]) => {
     // the watcher list needs wp.view_watchers, the time tab the time tracking module and a time permission; a link to a hidden tab falls back to the first
-    const items = all.filter((k) => (k !== "watchers" || wp._meta.allowedActions.viewWatchers) && (k !== "time" || timeOn) && (k !== "service" || serviceOn) && (k !== "dev" || devOn));
+    const items = all.filter((k) => (k !== "watchers" || wp._meta.allowedActions.viewWatchers) && (k !== "time" || timeOn) && (k !== "dev" || devOn));
     return (
       <Tabs
         aria-label={t("wp.listTitle")}
@@ -299,7 +296,6 @@ export function WorkPackageDetail({
             : k === "files" ? <FilesTab wp={wp} />
             : k === "watchers" ? <WatchersTab wp={wp} />
             : k === "time" ? <TimeTab wp={wp} canLog={canLogTime} />
-            : k === "service" ? <ServiceTab wp={wp} />
             : k === "dev" ? <DevTab wp={wp} />
             : <RelationsTab wp={wp} />,
         }))}
@@ -311,11 +307,11 @@ export function WorkPackageDetail({
     <article ref={articleRef} tabIndex={-1} aria-label={`#${wp.number} ${wp.subject}`} className="flex min-h-0 flex-col outline-none">
       {header}
       {mode === "panel" ? (
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8">{tabs(["overview", "service", "dev", "activity", "files", "relations", "watchers", "time"])}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8">{tabs(["overview", "dev", "activity", "files", "relations", "watchers", "time"])}</div>
       ) : (
         <div className="grid grid-cols-1 gap-8 pb-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div className="pt-2">{summary}</div>
-          <div>{tabs(["activity", "service", "dev", "files", "relations", "watchers", "time"])}</div>
+          <div>{tabs(["activity", "dev", "files", "relations", "watchers", "time"])}</div>
         </div>
       )}
       {sharing && <ShareDialog wp={wp} open onOpenChange={setSharing} />}

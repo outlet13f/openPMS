@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useMatch, useNavigate, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { applyTheme } from "@/lib/theme";
-import { ArrowLeft, Bell, BookOpen, CalendarDays, CalendarRange, ChevronDown, Clock, Code2, FolderKanban, GanttChart, GitMerge, Home, KanbanSquare, Keyboard, LayoutDashboard, LifeBuoy, ListTodo, Palette, PanelLeftOpen, Settings, Shield, Star, UserRound, Users } from "lucide-react";
+import { ArrowLeft, Bell, BookOpen, CalendarDays, CalendarRange, ChevronDown, Clock, Code2, FolderKanban, GanttChart, GitMerge, Home, KanbanSquare, Keyboard, LayoutDashboard, ListTodo, Palette, PanelLeftOpen, Settings, Shield, Star, UserRound, Users } from "lucide-react";
 import type { Me, Project } from "@/api";
 import { API_MODE } from "@/api";
 import { resetFakeDb } from "@/api/fake";
@@ -38,7 +38,6 @@ function GlobalSidebar({ me, onNavigate, unread, onCollapse }: { me: Me; onNavig
         { label: t("nav.workPackages"), to: "/work-packages", icon: <ListTodo /> },
         { label: t("nav.gantt"), to: "/gantt", icon: <GanttChart /> },
         { label: t("nav.notifications"), to: "/notifications", icon: <Bell />, badge: unread ? <Counter tone="accent">{unread}</Counter> : undefined },
-        { label: t("portal.title"), to: "/portal", icon: <LifeBuoy /> },
       ],
     },
   ];
@@ -131,9 +130,7 @@ function ProjectSidebar({ identifier, onNavigate, onCollapse }: { identifier: st
     mod("time_tracking") && can(p, "time.view") && { label: t("nav.timeReport"), to: `${base}/time`, icon: <Clock /> },
     can(p, "project.view_members") && { label: t("nav.members"), to: `${base}/members`, icon: <Users /> },
     can(p, "project.edit") ? { label: t("nav.settings"), to: `${base}/settings/general`, icon: <Settings /> }
-    // agents without project.edit still reach the service desk settings (read-only below service.manage)
-    : mod("service_desk") && can(p, "service.view") ? { label: t("nav.settings"), to: `${base}/settings/service-desk`, icon: <Settings /> }
-    // and people who may see the attached repositories (참관자 included) reach 저장소
+    // people who may see the attached repositories (참관자 included) reach 저장소
     : mod("cicd") && can(p, "cicd.view") && { label: t("nav.settings"), to: `${base}/settings/repositories`, icon: <Settings /> },
   ].filter(Boolean) as SidebarSection["items"];
   return <Sidebar label={t("nav.projectMenu")} header={<ProjectSwitcher project={p} />} sections={[{ items }]} onNavigate={onNavigate} onCollapse={onCollapse} />;
@@ -144,7 +141,7 @@ function AdminSidebar({ me, onNavigate, onCollapse }: { me: Me; onNavigate?: () 
   const groups: { title: string; keys: string[] }[] = [
     { title: t("admin.groupTitles.workPackages"), keys: ["types", "statuses", "workflows", "priorities", "customFields", "progress"] },
     { title: t("admin.groupTitles.people"), keys: ["users", "groups", "roles", "authentication"] },
-    { title: t("admin.groupTitles.calendar"), keys: ["calendar", "serviceCalendars"] },
+    { title: t("admin.groupTitles.calendar"), keys: ["calendar"] },
     { title: t("admin.groupTitles.integrations"), keys: ["integrations", "cicd"] },
     { title: t("admin.groupTitles.system"), keys: ["system"] },
   ];
@@ -240,7 +237,6 @@ export function AppLayout({ me }: { me: Me }) {
     { label: t("nav.workPackages"), icon: <ListTodo />, onSelect: () => navigate("/work-packages") },
     { label: t("nav.gantt"), icon: <GanttChart />, onSelect: () => navigate("/gantt") },
     { label: t("nav.notifications"), icon: <Bell />, onSelect: () => navigate("/notifications") },
-    { label: t("portal.title"), icon: <LifeBuoy />, onSelect: () => navigate("/portal") },
     ...(me.isAdmin ? [{ kind: "separator" as const }, { label: t("nav.admin"), icon: <Shield />, onSelect: () => navigate("/admin") }] : []),
     ...(cicdManagerOnly(me) ? [{ kind: "separator" as const }, { label: t("admin.sections.cicd"), icon: <GitMerge />, onSelect: () => navigate("/admin/cicd") }] : []),
   ];

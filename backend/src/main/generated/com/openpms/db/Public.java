@@ -28,7 +28,6 @@ import com.openpms.db.tables.NotificationSettings;
 import com.openpms.db.tables.Notifications;
 import com.openpms.db.tables.OidcProviders;
 import com.openpms.db.tables.Priorities;
-import com.openpms.db.tables.PriorityMatrix;
 import com.openpms.db.tables.ProjectCustomFields;
 import com.openpms.db.tables.ProjectFavorites;
 import com.openpms.db.tables.ProjectTypes;
@@ -37,10 +36,7 @@ import com.openpms.db.tables.Queries;
 import com.openpms.db.tables.QueryFavorites;
 import com.openpms.db.tables.Relations;
 import com.openpms.db.tables.Roles;
-import com.openpms.db.tables.ServiceCalendars;
-import com.openpms.db.tables.ServiceTickets;
 import com.openpms.db.tables.Settings;
-import com.openpms.db.tables.SlaPolicies;
 import com.openpms.db.tables.Statuses;
 import com.openpms.db.tables.TemporaryPasswords;
 import com.openpms.db.tables.TimeActivities;
@@ -206,11 +202,6 @@ public class Public extends SchemaImpl {
     public final Priorities PRIORITIES = Priorities.PRIORITIES;
 
     /**
-     * The table <code>public.priority_matrix</code>.
-     */
-    public final PriorityMatrix PRIORITY_MATRIX = PriorityMatrix.PRIORITY_MATRIX;
-
-    /**
      * The table <code>public.project_custom_fields</code>.
      */
     public final ProjectCustomFields PROJECT_CUSTOM_FIELDS = ProjectCustomFields.PROJECT_CUSTOM_FIELDS;
@@ -251,24 +242,9 @@ public class Public extends SchemaImpl {
     public final Roles ROLES = Roles.ROLES;
 
     /**
-     * The table <code>public.service_calendars</code>.
-     */
-    public final ServiceCalendars SERVICE_CALENDARS = ServiceCalendars.SERVICE_CALENDARS;
-
-    /**
-     * The table <code>public.service_tickets</code>.
-     */
-    public final ServiceTickets SERVICE_TICKETS = ServiceTickets.SERVICE_TICKETS;
-
-    /**
      * The table <code>public.settings</code>.
      */
     public final Settings SETTINGS = Settings.SETTINGS;
-
-    /**
-     * The table <code>public.sla_policies</code>.
-     */
-    public final SlaPolicies SLA_POLICIES = SlaPolicies.SLA_POLICIES;
 
     /**
      * The table <code>public.statuses</code>.
@@ -417,7 +393,6 @@ public class Public extends SchemaImpl {
             Notifications.NOTIFICATIONS,
             OidcProviders.OIDC_PROVIDERS,
             Priorities.PRIORITIES,
-            PriorityMatrix.PRIORITY_MATRIX,
             ProjectCustomFields.PROJECT_CUSTOM_FIELDS,
             ProjectFavorites.PROJECT_FAVORITES,
             ProjectTypes.PROJECT_TYPES,
@@ -426,10 +401,7 @@ public class Public extends SchemaImpl {
             QueryFavorites.QUERY_FAVORITES,
             Relations.RELATIONS,
             Roles.ROLES,
-            ServiceCalendars.SERVICE_CALENDARS,
-            ServiceTickets.SERVICE_TICKETS,
             Settings.SETTINGS,
-            SlaPolicies.SLA_POLICIES,
             Statuses.STATUSES,
             TemporaryPasswords.TEMPORARY_PASSWORDS,
             TimeActivities.TIME_ACTIVITIES,

@@ -3,9 +3,9 @@ import type { Api } from "../api";
 import { adminTimeActivities } from "./time";
 import type { AdminCustomField, AdminOidcProvider, OidcProviderInput, AuthSettings, CustomField, CustomFieldInput, CustomValue, ProjectCustomFields, TypeForm, AdminGroup, AdminPriority, AdminRole, AdminStatus, AdminType, AdminUser, Category, TemporaryPassword, UserInput, Version } from "../types";
 import { ApiError } from "../errors";
-import { DATE_FORMATS, NOT_ON_PORTAL } from "../types";
+import { DATE_FORMATS } from "../types";
 import { nowIso } from "@/lib/dates";
-import { db, newId, type DbCustomField, type DbUser } from "./db";
+import { db, newId, type DbUser } from "./db";
 import { findProject, globalPermissions, memberRoleIds, requirePerm, sessionUser } from "./permissions";
 import { clone, toProject, userRef } from "./dto";
 import { rescheduleAll } from "./scheduling";
@@ -88,7 +88,7 @@ function applyCalendarChange(actor: DbUser) {
 
 const toType = (t: (typeof db.types)[number]): AdminType =>
   clone({ ...t, form: t.form ?? null, descriptionTemplateHtml: t.descriptionTemplateHtml ?? "", workPackageCount: db.workPackages.filter((w) => w.typeId === t.id).length, projectCount: db.projects.filter((p) => p.typeIds.includes(t.id)).length });
-const toStatus = (s: (typeof db.statuses)[number]): AdminStatus => clone({ ...s, slaPause: !!s.slaPause, workPackageCount: db.workPackages.filter((w) => w.statusId === s.id).length });
+const toStatus = (s: (typeof db.statuses)[number]): AdminStatus => clone({ ...s, workPackageCount: db.workPackages.filter((w) => w.statusId === s.id).length });
 const toPriority = (p: (typeof db.priorities)[number]): AdminPriority => clone({ ...p, workPackageCount: db.workPackages.filter((w) => w.priorityId === p.id).length });
 const toRole = (r: (typeof db.roles)[number]): AdminRole =>
   clone({ ...r, memberCount: r.scope === "project" ? db.members.filter((m) => m.roleIds.includes(r.id)).length : 0 });
@@ -111,8 +111,6 @@ const toVersion = (v: (typeof db.versions)[number]): Version => {
   });
 };
 
-const always = (w: { appliesTo?: string }) => (w.appliesTo ?? "always") === "always";
-
 /** Every permission key the app knows, grouped for the role editor (architecture.md "권한 키"). */
 const PERMISSIONS: { key: string; scope: "project" | "global"; group: string }[] = [
   ...["project.view", "project.edit", "project.archive", "project.manage_modules", "project.manage_members", "project.view_members", "project.manage_versions", "project.manage_categories", "project.manage_types", "project.manage_custom_fields"].map((key) => ({ key, scope: "project" as const, group: "project" })),
@@ -120,7 +118,6 @@ const PERMISSIONS: { key: string; scope: "project" | "global"; group: string }[]
   ...["query.save", "query.manage_public"].map((key) => ({ key, scope: "project" as const, group: "query" })),
   ...["board.view", "board.manage"].map((key) => ({ key, scope: "project" as const, group: "board" })),
   ...["time.log", "time.view", "time.manage"].map((key) => ({ key, scope: "project" as const, group: "time" })),
-  ...["service.view", "service.handle", "service.manage"].map((key) => ({ key, scope: "project" as const, group: "service" })),
   ...["cicd.view", "cicd.link", "cicd.manage"].map((key) => ({ key, scope: "project" as const, group: "cicd" })),
   ...["global.create_projects", "global.manage_users", "global.manage_cicd"].map((key) => ({ key, scope: "global" as const, group: "global" })),
 ];
@@ -166,9 +163,7 @@ function checkForm(form: TypeForm): TypeForm {
 /* ---------- custom fields (S34, S25) ---------- */
 
 const FORMATS: CustomField["format"][] = ["string", "text", "integer", "float", "list", "date", "bool", "user", "link"];
-const toAdminField = (f: DbCustomField): AdminCustomField => ({
-  ...toField(f), projectCount: db.projectCustomFields.filter((x) => x.customFieldId === f.id).length, portalVisible: !!f.portalVisible,
-});
+const toAdminField = (f: CustomField): AdminCustomField => ({ ...toField(f), projectCount: db.projectCustomFields.filter((x) => x.customFieldId === f.id).length });
 
 /**
  * Checks a definition (create, or an update merged onto the stored one) and returns the field to store.
@@ -251,16 +246,12 @@ function forgetInQueries(id: string) {
   }
 }
 
-/** User and version fields never go on the portal (like the server's CustomFieldController), so they are never marked for it. */
-const portalCapable = (f: DbCustomField) => !NOT_ON_PORTAL.includes(f.format);
-
 export const customFieldsAdmin: Api["admin"]["customFields"] = {
   list: () => run(() => (requireAdmin(sessionUser()), db.customFields.slice().sort((a, b) => a.position - b.position).map(toAdminField))),
   create: (input) =>
     run(() => {
       requireAdmin(sessionUser());
-      const f: DbCustomField = { ...buildField(input), portalVisible: !!input.portalVisible };
-      if (!portalCapable(f)) f.portalVisible = false;
+      const f = buildField(input);
       db.customFields.push(f);
       return toAdminField(f);
     }),
@@ -271,8 +262,6 @@ export const customFieldsAdmin: Api["admin"]["customFields"] = {
       if (!f) throw notFound("사용자 정의 필드");
       const next = buildField({ ...f, ...patch }, f);
       Object.assign(f, next);
-      if (patch.portalVisible !== undefined) f.portalVisible = !!patch.portalVisible;
-      if (!portalCapable(f)) f.portalVisible = false;
       migrateValues(f);
       return toAdminField(f);
     }),
@@ -361,9 +350,6 @@ export const projectExtras: Pick<Api["projects"], "setTypes" | "archive" | "unar
       db.attachments = db.attachments.filter((x) => !wps.has(x.wpId));
       db.shares = db.shares.filter((x) => !wps.has(x.wpId));
       db.notifications = db.notifications.filter((x) => !wps.has(x.wpId));
-      db.serviceTickets = db.serviceTickets.filter((x) => !wps.has(x.workPackageId));
-      db.slaPolicies = db.slaPolicies.filter((x) => x.projectId !== p.id);
-      db.priorityMatrix = db.priorityMatrix.filter((x) => x.projectId !== p.id);
       const versions = new Set(db.versions.filter((v) => v.projectId === p.id).map((v) => v.id));
       const categories = new Set(db.categories.filter((c) => c.projectId === p.id).map((c) => c.id));
       db.workPackages.forEach((w) => {
@@ -633,7 +619,6 @@ export const adminApi: Api["admin"] = {
         if (n) throw new ApiError(409, "쓰고 있는 유형입니다.", `이 유형의 작업 ${n}개를 다른 유형으로 바꾼 뒤 삭제하세요.`);
         db.types = db.types.filter((t) => t.id !== id);
         db.workflows = db.workflows.filter((w) => w.typeId !== id);
-        db.slaPolicies = db.slaPolicies.filter((x) => x.typeId !== id);
         db.projects.forEach((p) => (p.typeIds = p.typeIds.filter((x) => x !== id)));
         db.types.sort((a, b) => a.position - b.position).forEach((t, i) => (t.position = i + 1));
       }),
@@ -720,8 +705,6 @@ export const adminApi: Api["admin"] = {
         const n = db.workPackages.filter((w) => w.priorityId === id).length;
         if (n) throw new ApiError(409, "쓰고 있는 우선순위입니다.", `이 우선순위의 작업 ${n}개를 바꾼 뒤 삭제하세요. 숨기기를 쓰면 새 작업에서만 빠집니다.`);
         db.priorities = db.priorities.filter((x) => x.id !== id);
-        db.slaPolicies = db.slaPolicies.filter((x) => x.priorityId !== id);
-        db.priorityMatrix = db.priorityMatrix.filter((x) => x.priorityId !== id);
         db.priorities.sort((a, b) => a.position - b.position).forEach((x, i) => (x.position = i + 1));
       }),
     reorder: (ids) => run(() => (requireAdmin(sessionUser()), reorderBy(db.priorities, ids))),
@@ -731,8 +714,7 @@ export const adminApi: Api["admin"] = {
     get: (typeId, roleId) =>
       run(() => {
         requireAdmin(sessionUser());
-        // the screen shows and saves the "always" rows; author / assignee rows (요청자) stay as they are, like the server
-        return db.workflows.filter((w) => w.typeId === typeId && w.roleId === roleId && always(w)).map((w) => [w.from, w.to] as [string, string]);
+        return db.workflows.filter((w) => w.typeId === typeId && w.roleId === roleId).map((w) => [w.from, w.to] as [string, string]);
       }),
     save: (typeId, roleId, transitions) =>
       run(() => {
@@ -740,7 +722,7 @@ export const adminApi: Api["admin"] = {
         if (!db.types.some((t) => t.id === typeId) || !db.roles.some((r) => r.id === roleId && r.scope === "project")) throw notFound("유형 또는 역할");
         const ids = new Set(db.statuses.map((s) => s.id));
         const clean = transitions.filter(([a, b]) => a !== b && ids.has(a) && ids.has(b));
-        db.workflows = db.workflows.filter((w) => !(w.typeId === typeId && w.roleId === roleId && always(w)));
+        db.workflows = db.workflows.filter((w) => !(w.typeId === typeId && w.roleId === roleId));
         const seen = new Set<string>();
         for (const [from, to] of clean) {
           if (seen.has(`${from}>${to}`)) continue;
@@ -756,7 +738,7 @@ export const adminApi: Api["admin"] = {
           for (const roleId of to.roleIds) {
             if (typeId === from.typeId && roleId === from.roleId) continue;
             db.workflows = db.workflows.filter((w) => !(w.typeId === typeId && w.roleId === roleId));
-            db.workflows.push(...src.map((w) => ({ typeId, roleId, from: w.from, to: w.to, ...(w.appliesTo ? { appliesTo: w.appliesTo } : {}) })));
+            db.workflows.push(...src.map((w) => ({ typeId, roleId, from: w.from, to: w.to })));
           }
       }),
   },
@@ -1013,7 +995,6 @@ export const adminApi: Api["admin"] = {
         requireUserManager(sessionUser());
         db.groups = db.groups.filter((x) => x.id !== id);
         db.members = db.members.filter((m) => m.groupId !== id);
-        db.serviceTickets.forEach((t) => t.assignmentGroupId === id && (t.assignmentGroupId = null));
       }),
     setMembers: (id, userIds) =>
       run(() => {

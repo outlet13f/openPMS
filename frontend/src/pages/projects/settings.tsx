@@ -21,23 +21,20 @@ import { htmlToText, textToHtml } from "@/lib/text";
 import { ErrorState, PageBody, PageHeader, useDocumentTitle } from "@/app/page";
 import { can, useCurrentProject } from "@/app/project";
 import { AdminTable, ConfirmDialog, fieldErrorOf, tbodyRow, th, theadRow, useRunWithToast } from "@/features/admin/common";
-import { ServiceDeskSection } from "@/features/service-desk/settings-section";
 import { RepositoriesSection } from "@/features/cicd/repositories-section";
 
-/** 서비스 데스크 settings: the module on and service.view. */
-const serviceOn = (p: Project) => p.enabledModules.includes("service_desk") && can(p, "service.view");
-/** The 정보·모듈·작업 설정·버전 sections: people with none of these (service desk agents) see only 서비스 데스크. */
+/** The 정보·모듈·작업 설정·버전 sections. */
 const projectSettingsOn = (p: Project) =>
   can(p, "project.edit") || can(p, "project.manage_versions") || can(p, "project.manage_types") || can(p, "project.manage_custom_fields");
 
 /** 저장소 (CI/CD): the module on and cicd.view (참관자 see the list; cicd.manage attaches and detaches). */
 const repositoriesOn = (p: Project) => p.enabledModules.includes("cicd") && can(p, "cicd.view");
 
-const SECTIONS = ["general", "modules", "work-packages", "versions", "service-desk", "repositories"] as const;
+const SECTIONS = ["general", "modules", "work-packages", "versions", "repositories"] as const;
 type Section = (typeof SECTIONS)[number];
 /** The sections this person may open, in menu order. */
 const visibleSections = (p: Project): Section[] =>
-  SECTIONS.filter((s) => (s === "service-desk" ? serviceOn(p) : s === "repositories" ? repositoriesOn(p) : projectSettingsOn(p)));
+  SECTIONS.filter((s) => (s === "repositories" ? repositoriesOn(p) : projectSettingsOn(p)));
 
 function SettingsNav({ base }: { base: string }) {
   const { t } = useTranslation();
@@ -253,7 +250,7 @@ function GeneralSection() {
 
 /* ---------- 모듈 ---------- */
 
-const MODULES: ModuleKey[] = ["work_packages", "gantt", "boards", "calendar", "team_planner", "time_tracking", "service_desk", "cicd"];
+const MODULES: ModuleKey[] = ["work_packages", "gantt", "boards", "calendar", "team_planner", "time_tracking", "cicd"];
 
 function ModulesSection() {
   const { t } = useTranslation();
@@ -658,7 +655,7 @@ export function ProjectSettingsPage() {
   useDocumentTitle(`${t("nav.settings")} · ${project.name}`);
   const base = `/projects/${project.identifier}/settings`;
   const visible = visibleSections(project);
-  // a section I may not open (or an unknown one) goes to the first I may: 정보, or 서비스 데스크 for an agent, or 저장소
+  // a section I may not open (or an unknown one) goes to the first I may: 정보, or 저장소
   if (visible.length && !visible.includes(section as Section)) return <Navigate to={`${base}/${visible[0]}`} replace />;
   if (!visible.length)
     return (
@@ -675,7 +672,6 @@ export function ProjectSettingsPage() {
       {section === "modules" && <ModulesSection key={project.updatedAt} />}
       {section === "work-packages" && <WorkPackagesSection />}
       {section === "versions" && <VersionsSection />}
-      {section === "service-desk" && <ServiceDeskSection />}
       {section === "repositories" && <RepositoriesSection />}
     </PageBody>
   );

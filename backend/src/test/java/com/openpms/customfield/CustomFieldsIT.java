@@ -128,31 +128,4 @@ class CustomFieldsIT {
         assertThat(row.value1()).isEqualTo(before);
         assertThat(row.value2().data()).doesNotContain(id);
     }
-
-    @Test
-    void portalVisibleIsSetAndReadBackAndDefaultsToOff() throws Exception {
-        var admin = login("seoyeon.kim@openpms.local");
-        var typeId = json.readTree(mvc.perform(get("/api/v1/work-packages/9").session(admin)).andReturn().getResponse().getContentAsString())
-                .get("type").get("id").asString();
-        var created = mvc.perform(post("/api/v1/admin/custom-fields").session(admin).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"포털 공개 시험\",\"format\":\"string\",\"isForAll\":true,\"typeIds\":[\"" + typeId + "\"],\"portalVisible\":true}"))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.portalVisible").value(true))
-                .andReturn().getResponse().getContentAsString();
-        var id = json.readTree(created).get("id").asString();
-        try {
-            mvc.perform(get("/api/v1/admin/custom-fields").session(admin))
-                    .andExpect(jsonPath("$[?(@.id == '" + id + "')].portalVisible").value(org.hamcrest.Matchers.contains(true)));
-            // a PATCH without the key keeps it; with false turns it off
-            mvc.perform(patch("/api/v1/admin/custom-fields/" + id).session(admin).with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"포털 공개 시험 2\"}"))
-                    .andExpect(status().isOk()).andExpect(jsonPath("$.portalVisible").value(true));
-            mvc.perform(patch("/api/v1/admin/custom-fields/" + id).session(admin).with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{\"portalVisible\":false}"))
-                    .andExpect(status().isOk()).andExpect(jsonPath("$.portalVisible").value(false));
-        } finally {
-            mvc.perform(delete("/api/v1/admin/custom-fields/" + id).session(admin).with(csrf()));
-        }
-        // fields of the dev data stay off the portal
-        mvc.perform(get("/api/v1/admin/custom-fields").session(admin))
-                .andExpect(jsonPath("$[?(@.name == '고객사')].portalVisible").value(org.hamcrest.Matchers.contains(false)));
-    }
 }

@@ -70,7 +70,7 @@ public final class Snapshot {
     public record TypeRow(UUID id, String name, String color, int position, boolean isMilestone, boolean isDefault, boolean isInRoadmap) {}
 
     public record StatusRow(UUID id, String name, String color, int position, boolean isDefault, boolean isClosed, boolean isReadonly,
-                            int defaultDoneRatio, boolean excludedFromTotals, boolean slaPause) {}
+                            int defaultDoneRatio, boolean excludedFromTotals) {}
 
     public record PriorityRow(UUID id, String name, String color, int position, boolean isDefault, boolean isActive) {}
 
@@ -166,7 +166,7 @@ public final class Snapshot {
 
     private final Supplier<List<StatusRow>> statuses = lazy(() -> this.db.selectFrom(STATUSES).orderBy(STATUSES.POSITION, STATUSES.NAME).fetch().stream()
             .map(r -> new StatusRow(r.getId(), r.getName(), r.getColor(), r.getPosition(), r.getIsDefault(), r.getIsClosed(), r.getIsReadonly(),
-                    r.getDefaultDoneRatio(), r.getExcludedFromTotals(), r.getSlaPause()))
+                    r.getDefaultDoneRatio(), r.getExcludedFromTotals()))
             .toList());
 
     private final Supplier<List<PriorityRow>> priorities = lazy(() -> this.db.selectFrom(PRIORITIES).orderBy(PRIORITIES.POSITION, PRIORITIES.NAME).fetch().stream()

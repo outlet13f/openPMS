@@ -2,7 +2,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
-import { CalendarClock, CalendarDays, CircleDot, Flag, Gauge, GitBranch, GitMerge, KeyRound, ListPlus, Lock, Plug, Server, Shapes, ShieldCheck, Users, UsersRound } from "lucide-react";
+import { CalendarDays, CircleDot, Flag, Gauge, GitBranch, GitMerge, KeyRound, ListPlus, Lock, Plug, Server, Shapes, ShieldCheck, Users, UsersRound } from "lucide-react";
 import { useMe } from "@/api/hooks";
 import { EmptyState } from "@/components/ui/feedback";
 import { PageBody, PageHeader, useDocumentTitle } from "@/app/page";
@@ -39,7 +39,6 @@ export const ADMIN_SECTIONS = [
   { to: "/admin/roles", key: "roles", icon: <ShieldCheck /> },
   { to: "/admin/authentication", key: "authentication", icon: <KeyRound /> },
   { to: "/admin/calendar", key: "calendar", icon: <CalendarDays /> },
-  { to: "/admin/service-calendars", key: "serviceCalendars", icon: <CalendarClock /> },
   { to: "/admin/integrations", key: "integrations", icon: <Plug /> },
   { to: "/admin/cicd", key: "cicd", icon: <GitMerge /> },
   { to: "/admin/system", key: "system", icon: <Server /> },

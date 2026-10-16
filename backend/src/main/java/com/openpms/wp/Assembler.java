@@ -33,10 +33,8 @@ public class Assembler {
     private final DSLContext db;
     private final CustomFields customFields;
     private final Assignees assignees;
-    private final com.openpms.itsm.ServiceTickets serviceTickets;
 
-    public Assembler(DSLContext db, CustomFields customFields, Assignees assignees, com.openpms.itsm.ServiceTickets serviceTickets) {
-        this.serviceTickets = serviceTickets;
+    public Assembler(DSLContext db, CustomFields customFields, Assignees assignees) {
         this.db = db;
         this.customFields = customFields;
         this.assignees = assignees;
@@ -61,18 +59,13 @@ public class Assembler {
     public static List<UUID> allowedStatusIds(Ctx ctx, UUID typeId, UUID statusId, UUID projectId, UUID authorId, java.util.Collection<UUID> assigneeIds) {
         var s = ctx.s();
         if (ctx.isAdmin()) return s.statuses().stream().map(Snapshot.StatusRow::id).filter(id -> !id.equals(statusId)).toList();
-        return allowedFor(s, s.memberRoleIds(ctx.userId(), projectId), ctx.userId(), typeId, statusId, authorId, assigneeIds);
-    }
-
-    /** The same for given roles, without the administrator's shortcut: the portal checks the built-in 요청자 role (ITSM 1단계). */
-    public static List<UUID> allowedFor(Snapshot s, java.util.Collection<UUID> roleIds, UUID userId, UUID typeId, UUID statusId, UUID authorId,
-                                        java.util.Collection<UUID> assigneeIds) {
+        var roleIds = s.memberRoleIds(ctx.userId(), projectId);
         var out = new ArrayList<UUID>();
         for (var w : s.workflows()) {
             if (!w.typeId().equals(typeId) || !w.from().equals(statusId) || !roleIds.contains(w.roleId())) continue;
             boolean applies = switch (w.appliesTo()) {
-                case "author" -> userId.equals(authorId);
-                case "assignee" -> assigneeIds.contains(userId);
+                case "author" -> ctx.userId().equals(authorId);
+                case "assignee" -> assigneeIds.contains(ctx.userId());
                 default -> true;
             };
             if (applies && !out.contains(w.to())) out.add(w.to());
@@ -139,7 +132,6 @@ public class Assembler {
 
         var totals = totals(s, rows.stream().filter(w -> childCount.getOrDefault(w.getId(), 0) > 0).map(WorkPackagesRecord::getId).toList());
         var teams = assignees.of(ids);
-        var tickets = serviceTickets.of(ids);
         var out = new ArrayList<Dto.WorkPackage>(rows.size());
         for (var w : rows) {
             var project = s.project(w.getProjectId()).orElseThrow();
@@ -177,8 +169,7 @@ public class Assembler {
                     w.getScheduleManually(), num(w.getWorkHours()), num(w.getRemainingHours()), w.getDoneRatio() == null ? null : w.getDoneRatio().intValue(),
                     watching.contains(w.getId()), watcherCount.getOrDefault(w.getId(), 0),
                     relationCount.getOrDefault(w.getId(), 0) + kids + (parent != null ? 1 : 0), attachmentCount.getOrDefault(w.getId(), 0),
-                    customFields.values(s, w), totals.get(w.getId()), w.getLockVersion(), w.getCreatedAt(), w.getUpdatedAt(),
-                    ctx.can(project, "service.view") ? com.openpms.itsm.ServiceTickets.dto(s, tickets.get(w.getId())) : null, meta));
+                    customFields.values(s, w), totals.get(w.getId()), w.getLockVersion(), w.getCreatedAt(), w.getUpdatedAt(), meta));
         }
         return out;
     }

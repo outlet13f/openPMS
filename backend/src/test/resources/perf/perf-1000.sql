@@ -3,7 +3,7 @@
 -- 상태 보드 하나(카드 1,000장). 유형·상태·우선순위·역할은 스키마 시드(V3), 사람 6명은 개발 데이터와 같은 id(없으면 비밀번호 없이
 -- 만듦)라 개발 DB에도 새로 설치한 시험용 DB에도 들어갑니다. 몇 번 실행해도 같은 모양이 됩니다.
 --   JUnit: PerfBudgetIT가 읽어 실행   e2e: perf.spec.ts가 dev.sh perf-seed로 실행   부하 측정(scripts/perf_load.py) 전: 시험용 설치의 db에 psql로
-delete from projects where identifier in ('perf-1000', 'perf-sd');
+delete from projects where identifier = 'perf-1000';
 
 -- The six people the items are assigned to. The dev data has them already; on a fresh installation (a test one) they are
 -- made here without a password, so nobody can sign in as them — measure with your own administrator account, which sees
@@ -175,57 +175,3 @@ insert into board_columns (board_id, position, status_id)
 select b.id, s.position, s.id from b cross join statuses s;
 
 drop table perf_wp;
-
--- 서비스 데스크(ITSM 1단계) 예산용 두 번째 프로젝트 perf-sd: 장애 티켓 200건(요청자는 최민지 한 사람, 정책 하나).
--- 작업 1,000건짜리 perf-1000과 섞지 않는다(그 프로젝트의 건수·목록·보드 예산이 그대로여야 해서). 최민지는 멤버가 아니라 포털로만 본다.
--- 개발 DB에서는 최민지가 비밀번호를 가지고 있어(PerfBudgetIT가 로그인) 포털 목록을 잴 수 있다.
-insert into projects (identifier, name, description_html, description_text, is_public, enabled_modules, created_by)
-values ('perf-sd', '성능 측정 (서비스 데스크 티켓 200건)', '<p>서비스 데스크 목록과 포털 응답 시간 예산을 재는 데 쓰는 프로젝트입니다.</p>', '서비스 데스크 목록과 포털 응답 시간 예산을 재는 데 쓰는 프로젝트입니다.', false,
-        array['work_packages', 'boards', 'service_desk']::text[], '1976e561-6423-589e-aa23-3ceab10de751');
-insert into project_types (project_id, type_id)
-select p.id, t.id from projects p cross join types t where p.identifier = 'perf-sd' and t.id in ('2dcd4691-d4a9-5bf0-8908-e4740b42616e', 'a3af2ccf-05c6-5b1c-84bc-4d815791e4eb');
-with m as (
-  insert into members (project_id, user_id)
-  select p.id, '1976e561-6423-589e-aa23-3ceab10de751' from projects p where p.identifier = 'perf-sd'
-  returning id
-)
-insert into member_roles (member_id, role_id) select id, '0329397e-d933-5ac1-b27c-95889ba1a893' from m;
-insert into sla_policies (project_id, type_id, priority_id, calendar_id, first_response_minutes, resolve_minutes)
-select p.id, '2dcd4691-d4a9-5bf0-8908-e4740b42616e', 'e2513703-c41d-5575-aca0-fd084ec26e06', '27ee2635-3f4b-5407-8498-78ce0dbf371c', 60, 480
-from projects p where p.identifier = 'perf-sd';
-
-drop table if exists perf_sd;
-create temp table perf_sd (n int primary key, id uuid not null default gen_random_uuid());
-insert into perf_sd (n) select n from generate_series(1, 200) n;
-insert into work_packages (id, project_id, type_id, status_id, priority_id, subject, description_html, description_text, author_id, assignee_id, created_at, updated_at)
-select s.id, p.id, '2dcd4691-d4a9-5bf0-8908-e4740b42616e',
-       (array['198d200e-a1ba-5692-ae3c-6ba0bc4319ad', 'd34fe673-69b6-56f9-85fd-2cb8198cfba5', 'b42e3256-ffde-5d57-a323-43c8be0d70bd',
-              '8201e445-a46a-5135-a972-3f83ee10c3ba']::uuid[])[1 + s.n % 4],
-       'e2513703-c41d-5575-aca0-fd084ec26e06',
-       (array['VPN', '메일', '프린터', '위키', '회계 서버', '와이파이'])[1 + s.n % 6] || ' 장애 신고 (' || s.n || ')',
-       '<p>' || s.n || '번 장애 신고입니다. 증상과 발생 시각을 적습니다.</p>', s.n || '번 장애 신고입니다. 증상과 발생 시각을 적습니다.',
-       '1fe0bccd-f730-556b-bc23-09b76271d5ab',
-       case when s.n % 4 = 0 then null else (array['c48ce4ad-3a64-55ab-a95c-2902395dbb46', 'f0712dee-a7e4-5b9a-a9c5-7d3682ce763a'])[1 + s.n % 2]::uuid end,
-       now() - s.n * interval '30 minutes', now() - s.n * interval '30 minutes'
-from perf_sd s cross join projects p where p.identifier = 'perf-sd';
-insert into service_tickets (work_package_id, requester_id, channel, sla_policy_id, first_response_due_at, first_responded_at, resolve_due_at, resolved_at,
-                             requester_mailed_at, requester_mailed_status_id, created_at, updated_at)
-select w.id, '1fe0bccd-f730-556b-bc23-09b76271d5ab', 'portal', (select sp.id from sla_policies sp where sp.project_id = p.id),
-       w.created_at + interval '1 hour', case when w.status_id <> '198d200e-a1ba-5692-ae3c-6ba0bc4319ad' then w.created_at + interval '20 minutes' end,
-       w.created_at + interval '8 hours', case when w.status_id = '8201e445-a46a-5135-a972-3f83ee10c3ba' then w.created_at + interval '3 hours' end,
-       now(), w.status_id, w.created_at, w.created_at
-from work_packages w join projects p on p.id = w.project_id where p.identifier = 'perf-sd';
-insert into work_package_assignees (work_package_id, user_id, position)
-select id, assignee_id, 0 from work_packages w where project_id = (select id from projects where identifier = 'perf-sd') and assignee_id is not null
-on conflict (work_package_id, user_id) do nothing;
--- 이력: 모두 만든 기록 1건, 측정용 티켓(첫 번째)에는 공개 답변 8건과 내부 코멘트 2건
-insert into journals (work_package_id, version, user_id, changes, created_at, updated_at)
-select w.id, 1, w.author_id, '{"_created": [null, true]}'::jsonb, w.created_at, w.created_at
-from work_packages w join projects p on p.id = w.project_id where p.identifier = 'perf-sd';
-insert into journals (work_package_id, version, user_id, notes_html, notes_text, is_internal, changes, created_at, updated_at)
-select w.id, v.v, case when v.v % 2 = 0 then 'c48ce4ad-3a64-55ab-a95c-2902395dbb46'::uuid else w.author_id end,
-       '<p>' || v.v || '번째 답변입니다.</p>', v.v || '번째 답변입니다.', v.v in (4, 7), '{}'::jsonb,
-       w.created_at + v.v * interval '10 minutes', w.created_at + v.v * interval '10 minutes'
-from work_packages w join projects p on p.id = w.project_id and p.identifier = 'perf-sd' join perf_sd s on s.id = w.id
-cross join generate_series(2, 11) v(v) where s.n = 1;
-drop table perf_sd;
