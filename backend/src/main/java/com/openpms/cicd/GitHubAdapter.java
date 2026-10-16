@@ -133,11 +133,16 @@ public class GitHubAdapter implements CicdAdapter {
     @Override public List<RemoteRepo> listRepositories(Remote remote, String query) throws IOException {
         var q = query == null ? "" : query.strip().toLowerCase();
         var out = new ArrayList<RemoteRepo>();
-        for (var p : getJson(remote, "/user/repos?per_page=100")) {
-            var name = text(p.path("full_name"));
-            if (!name.toLowerCase().contains(q)) continue;
-            out.add(new RemoteRepo(text(p.path("id")), name, text(p.path("html_url"))));
-            if (out.size() == 20) break;
+        // /user/repos has no name filter: walk up to 10 pages of 100, stop at 20 matches or a short page
+        for (int page = 1; page <= MAX_PAGES; page++) {
+            var items = getJson(remote, "/user/repos?per_page=" + PAGE_SIZE + "&page=" + page);
+            for (var p : items) {
+                var name = text(p.path("full_name"));
+                if (!name.toLowerCase().contains(q)) continue;
+                out.add(new RemoteRepo(text(p.path("id")), name, text(p.path("html_url"))));
+                if (out.size() == 20) return out;
+            }
+            if (items.size() < PAGE_SIZE) break;
         }
         return out;
     }

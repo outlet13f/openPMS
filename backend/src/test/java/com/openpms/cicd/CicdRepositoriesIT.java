@@ -203,6 +203,36 @@ class CicdRepositoriesIT {
         assertThat(git.requests()).anyMatch(r -> r.path().equals("/api/v3/repositories/9333") && "Bearer tok".equals(r.headers().get("authorization")));
     }
 
+    private static String githubRepos(int from, int to, String prefix) {
+        var out = new StringBuilder("[");
+        for (int i = from; i < to; i++)
+            out.append(i == from ? "" : ",").append("{\"id\":").append(i).append(",\"full_name\":\"").append(prefix).append(i)
+                    .append("\",\"html_url\":\"https://github.com/").append(prefix).append(i).append("\"}");
+        return out.append("]").toString();
+    }
+
+    @Test void githubSearchLooksPastTheFirstHundredRepositories() throws Exception {
+        var gh = new GitHubAdapter(new CicdHttp(), tools.jackson.databind.json.JsonMapper.builder().build());
+        var remote = new CicdAdapter.Remote(git.baseUrl(), "tok");
+        // two full pages without a match, then a short page with one
+        git.respondPage("/api/v3/user/repos", 1, 200, githubRepos(1, 101, "other/repo-"));
+        git.respondPage("/api/v3/user/repos", 2, 200, githubRepos(101, 201, "other/repo-"));
+        git.respondPage("/api/v3/user/repos", 3, 200, githubRepos(201, 203, "team/target-"));
+        var found = gh.listRepositories(remote, "TARGET");
+        assertThat(found).extracting(CicdAdapter.RemoteRepo::fullPath).containsExactly("team/target-201", "team/target-202");
+        assertThat(git.requests()).filteredOn(r -> r.path().equals("/api/v3/user/repos")).hasSize(3);
+
+        // twenty matches end the walk early
+        try (var busy = new FakeGitServer()) {
+            busy.respondPage("/api/v3/user/repos", 1, 200, githubRepos(1, 101, "other/repo-"));
+            busy.respondPage("/api/v3/user/repos", 2, 200, githubRepos(101, 201, "team/target-"));
+            busy.respondPage("/api/v3/user/repos", 3, 200, githubRepos(201, 301, "team/target-"));
+            var many = gh.listRepositories(new CicdAdapter.Remote(busy.baseUrl(), "tok"), "target");
+            assertThat(many).hasSize(20);
+            assertThat(busy.requests()).filteredOn(r -> r.path().equals("/api/v3/user/repos")).hasSize(2);
+        }
+    }
+
     @Test void detachOnlyWorksThroughTheOwningProject() throws Exception {
         var a = leaderProject("cicd");
         var b = leaderProject("cicd");
