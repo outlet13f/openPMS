@@ -3,7 +3,7 @@
   "repository": { "id": 9001, "full_name": "openpms-test/web" },
   "pull_request": {
     "number": 7, "title": "로그인 오류 고침 #12", "body": "세션 만료 처리", "state": "open", "draft": false,
-    "merged_at": null, "updated_at": "2026-10-15T10:30:00+09:00",
+    "merged_at": null, "merge_commit_sha": "e4c3a2b1d0f9e8d7c6b5a4938271605f4e3d2c1b", "updated_at": "2026-10-15T10:30:00+09:00",
     "html_url": "https://github.com/openpms-test/web/pull/7",
     "head": { "ref": "feature/12-login" }, "base": { "ref": "main" },
     "user": { "login": "junho" }

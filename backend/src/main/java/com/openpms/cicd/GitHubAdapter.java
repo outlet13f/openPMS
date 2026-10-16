@@ -16,8 +16,11 @@ import java.security.GeneralSecurityException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.stereotype.Component;
@@ -28,6 +31,10 @@ import tools.jackson.databind.json.JsonMapper;
 /** GitHub (Cloud and Enterprise Server): webhooks are signed (X-Hub-Signature-256); polling uses the REST API with a bearer token. */
 @Component
 public class GitHubAdapter implements CicdAdapter {
+    private static final Pattern HEX = Pattern.compile("[0-9a-f]{7,64}");
+    /** Deployments whose latest status one poll run reads (one request each). */
+    private static final int MAX_DEPLOYMENT_STATUS_READS = 30;
+
     private final CicdHttp http;
     private final JsonMapper json;
 
@@ -52,7 +59,8 @@ public class GitHubAdapter implements CicdAdapter {
 
     @Override public List<CicdEvent> parse(Map<String, String> headers, byte[] body) {
         var event = headers.get("x-github-event");
-        if (event == null || !(event.equals("push") || event.equals("pull_request"))) return List.of();
+        if (event == null || !(event.equals("push") || event.equals("pull_request") || event.equals("workflow_run")
+                || event.equals("deployment_status"))) return List.of();
         JsonNode root;
         try {
             root = json.readTree(body);
@@ -61,6 +69,10 @@ public class GitHubAdapter implements CicdAdapter {
         }
         var repo = text(root.path("repository").path("id"));
         if (repo.isEmpty()) return List.of();
+        if (event.equals("workflow_run")) return pipeline(repo, root.path("workflow_run"));
+        if (event.equals("deployment_status")) {
+            return deployment(repo, root.path("deployment"), root.path("deployment_status"));
+        }
         if (event.equals("push")) {
             var out = new ArrayList<CicdEvent>();
             for (var c : root.path("commits")) {
@@ -74,6 +86,61 @@ public class GitHubAdapter implements CicdAdapter {
         var pr = root.path("pull_request");
         if (number(pr.path("number")) == 0) return List.of();
         return List.of(pull(repo, pr));
+    }
+
+    /** running | success | failed | canceled, or null for a finished run whose conclusion we do not know. */
+    private static String runStatus(String status, String conclusion) {
+        if (!status.equals("completed")) return "running";
+        return switch (conclusion) {
+            case "success" -> "success";
+            case "failure", "timed_out", "startup_failure", "action_required" -> "failed";
+            case "cancelled", "skipped", "stale", "neutral" -> "canceled";
+            default -> null;
+        };
+    }
+
+    /** running | success | failed, or null (inactive and states we do not know give no event). */
+    private static String deploymentState(String state) {
+        return switch (state) {
+            case "success" -> "success";
+            case "failure", "error" -> "failed";
+            case "pending", "queued", "in_progress" -> "running";
+            default -> null;
+        };
+    }
+
+    private static String hexOrNull(String sha) {
+        var s = sha == null ? "" : sha.toLowerCase(Locale.ROOT);
+        return HEX.matcher(s).matches() ? s : null;
+    }
+
+    /** run: a workflow run as the webhook or the REST list shows it (same field names). No event without an id, a hex sha or a known state. */
+    private static List<CicdEvent> pipeline(String repo, JsonNode run) {
+        var id = text(run.path("id"));
+        var status = runStatus(text(run.path("status")), text(run.path("conclusion")));
+        var sha = hexOrNull(text(run.path("head_sha")));
+        if (id.isEmpty() || status == null || sha == null) return List.of();
+        var updated = time(text(run.path("updated_at")));
+        var attempt = Math.max(1, number(run.path("run_attempt")));
+        var p = new CicdEvent.Pipeline(id, text(run.path("name")), sha, text(run.path("head_branch")), status, text(run.path("html_url")),
+                time(text(run.path("run_started_at"))), status.equals("running") ? null : updated, updated);
+        return List.of(new CicdEvent("pipeline", "pipeline:" + repo + ":" + id + ":" + status + ":" + attempt + ":" + instant(updated),
+                repo, null, null, p, null, null));
+    }
+
+    /** deployment and status as the webhook or the REST lists show them (same field names). */
+    private static List<CicdEvent> deployment(String repo, JsonNode deployment, JsonNode status) {
+        var id = text(deployment.path("id"));
+        var statusId = text(status.path("id"));
+        var state = deploymentState(text(status.path("state")));
+        if (id.isEmpty() || statusId.isEmpty() || state == null) return List.of();
+        var environment = text(status.path("environment"));
+        if (environment.isEmpty()) environment = text(deployment.path("environment"));
+        var url = text(status.path("log_url"));
+        if (url.isEmpty()) url = text(status.path("target_url"));
+        var at = time(text(status.path("created_at")));
+        var d = new CicdEvent.Deployment(id, hexOrNull(text(deployment.path("sha"))), null, environment, state, url, at);
+        return List.of(new CicdEvent("deployment", "deployment:" + repo + ":" + id + ":" + statusId + ":" + instant(at), repo, null, null, null, d, null));
     }
 
     private static CicdEvent commit(String repo, String sha, String message, String name, String email, OffsetDateTime at, String url) {
@@ -91,7 +158,7 @@ public class GitHubAdapter implements CicdAdapter {
         else if (state.equals("open") && flag(pr.path("draft"))) state = "draft";
         var mr = new CicdEvent.MergeRequest(number, text(pr.path("title")), text(pr.path("body")), state,
                 text(pr.path("head").path("ref")), text(pr.path("base").path("ref")), text(pr.path("user").path("login")), "",
-                merged, updated, text(pr.path("html_url")));
+                merged, updated, text(pr.path("html_url")), state.equals("merged") ? hexOrNull(text(pr.path("merge_commit_sha"))) : null);
         return new CicdEvent("merge_request", "mr:" + repo + ":" + number + ":" + instant(updated), repo, null, mr);
     }
 
@@ -176,7 +243,102 @@ public class GitHubAdapter implements CicdAdapter {
             if (items.size() < PAGE_SIZE) break;
             if (page == MAX_PAGES) { truncated = true; break; }
         }
+        // runs are listed by creation time, so one that started before since and ended after it needs the one-day margin
+        var lookBack = since == null ? null : since.toInstant().minus(java.time.Duration.ofDays(1));
+        var createdQuery = lookBack == null ? "" : "created=" + enc(">=" + lookBack) + "&";
+        for (int page = 1; ; page++) {
+            var items = optionalList(remote, "/repositories/" + id + "/actions/runs?" + createdQuery + "per_page=" + PAGE_SIZE + "&page=" + page).path("workflow_runs");
+            for (var run : items) out.addAll(pipeline(repoExternalId, run));
+            if (items.size() < PAGE_SIZE) break;
+            if (page == MAX_PAGES) { truncated = true; break; }
+        }
+        int statusReads = 0;
+        deployments:
+        for (int page = 1; ; page++) {
+            var items = optionalList(remote, "/repositories/" + id + "/deployments?per_page=" + PAGE_SIZE + "&page=" + page);
+            for (var d : items) {
+                var created = time(text(d.path("created_at")));
+                if (lookBack != null && created != null && created.toInstant().isBefore(lookBack)) break deployments;   // newest first: the rest are older
+                var depId = text(d.path("id"));
+                if (depId.isEmpty()) continue;
+                if (statusReads == MAX_DEPLOYMENT_STATUS_READS) { truncated = true; break deployments; }
+                statusReads++;
+                // only the latest status counts (an older one never overrides it)
+                var latest = optionalList(remote, "/repositories/" + id + "/deployments/" + enc(depId) + "/statuses?per_page=1");
+                if (latest.size() == 0) continue;
+                out.addAll(deployment(repoExternalId, d, latest.get(0)));
+            }
+            if (items.size() < PAGE_SIZE) break;
+            if (page == MAX_PAGES) { truncated = true; break; }
+        }
         return new Polled(out, truncated);
+    }
+
+    /** A list the token may not read (403) or the repository does not offer (404) counts as empty, so commits and pull requests still come through. */
+    private JsonNode optionalList(Remote r, String path) throws IOException {
+        try {
+            return getJson(r, path);
+        } catch (IOException e) {
+            if ("unexpected status 403".equals(e.getMessage()) || "unexpected status 404".equals(e.getMessage())) return json.createArrayNode();
+            throw e;
+        }
+    }
+
+    private static CicdEvent.Commit commitOf(JsonNode c) {
+        var meta = c.path("commit");
+        var author = meta.path("author");
+        var at = time(text(author.path("date")));
+        if (at == null) at = time(text(meta.path("committer").path("date")));
+        var message = text(meta.path("message"));
+        return new CicdEvent.Commit(text(c.path("sha")), title(message), message, text(author.path("name")), text(author.path("email")),
+                at, text(c.path("html_url")));
+    }
+
+    private static String compareSpec(String base, String head) {
+        return enc(base) + "..." + enc(head);
+    }
+
+    private JsonNode compareJson(Remote remote, String path) throws IOException {
+        var res = http.get(api(remote) + path, auth(remote), CicdHttp.MAX_COMPARE_BODY);
+        if (res.status() / 100 != 2) throw new IOException("unexpected status " + res.status());
+        try {
+            return json.readTree(res.body());
+        } catch (JacksonException e) {
+            throw new IOException("unreadable response");
+        }
+    }
+
+    /** GitHub lists a comparison's commits oldest first: page 1 tells the total, then only the pages holding the newest ones are read. */
+    @Override public Comparison compare(Remote remote, String repoExternalId, String base, String head, int limit) throws IOException {
+        var path = "/repositories/" + enc(repoExternalId) + "/compare/" + compareSpec(base, head) + "?per_page=" + PAGE_SIZE + "&page=";
+        var first = compareJson(remote, path + 1);
+        var firstItems = first.path("commits");
+        long total = first.path("total_commits").isNumber() ? first.path("total_commits").longValue() : firstItems.size();
+        total = Math.max(total, firstItems.size());
+        int keep = (int) Math.min(Math.min(limit, (long) MAX_PAGES * PAGE_SIZE), total);
+        int firstPage = (int) ((total - keep) / PAGE_SIZE) + 1;
+        int lastPage = (int) ((total + PAGE_SIZE - 1) / PAGE_SIZE);
+        var found = new ArrayList<CicdEvent.Commit>();
+        for (int page = firstPage; page <= lastPage; page++) {
+            var items = page == 1 ? firstItems : compareJson(remote, path + page).path("commits");
+            for (var c : items) {
+                if (!text(c.path("sha")).isEmpty()) found.add(commitOf(c));
+            }
+            if (items.size() < PAGE_SIZE) break;
+        }
+        var newest = found.size() > keep ? found.subList(found.size() - keep, found.size()) : found;
+        var sorted = new ArrayList<>(newest);
+        sorted.sort(Comparator.comparing(CicdEvent.Commit::committedAt, Comparator.nullsLast(Comparator.reverseOrder())));
+        return new Comparison(List.copyOf(sorted), total > keep);
+    }
+
+    @Override public boolean contains(Remote remote, String repoExternalId, String head, String commit) throws IOException {
+        var status = text(compareJson(remote, "/repositories/" + enc(repoExternalId) + "/compare/" + compareSpec(commit, head) + "?per_page=1").path("status"));
+        return switch (status) {
+            case "ahead", "identical" -> true;
+            case "behind", "diverged" -> false;
+            default -> throw new IOException("unreadable response");
+        };
     }
 
     @Override public int check(Remote remote) throws IOException {

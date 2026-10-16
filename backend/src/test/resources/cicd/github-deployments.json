@@ -1,0 +1,10 @@
+[
+  {
+    "id": 710692, "sha": "a91957a858320c0e17f3a0eca7cfacbff50e4b3c", "ref": "main", "task": "deploy", "environment": "staging",
+    "created_at": "2026-10-15T10:10:00Z", "updated_at": "2026-10-15T10:12:00Z"
+  },
+  {
+    "id": 710600, "sha": "bcbb5ec396a2c0f828686f14fac9b80b780504f2", "ref": "main", "task": "deploy", "environment": "staging",
+    "created_at": "2026-10-15T09:30:00Z", "updated_at": "2026-10-15T10:12:00Z"
+  }
+]

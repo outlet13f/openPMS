@@ -122,6 +122,11 @@ final class CommitGraph {
 
     /** GitHub compare/{base}...{head}: status ahead, behind, identical or diverged; commits oldest first. */
     FakeGitServer.Reply githubCompare(String path) {
+        return githubCompare(path, null);
+    }
+
+    /** The same with paging: per_page= and page= in the raw query cut the commits list (total_commits stays the whole count). */
+    FakeGitServer.Reply githubCompare(String path, String rawQuery) {
         var spec = path.substring(path.lastIndexOf("/compare/") + "/compare/".length());
         var dots = spec.indexOf("...");
         if (dots < 0) return NOT_FOUND;
@@ -133,8 +138,13 @@ final class CommitGraph {
         String status = base.equals(head) ? "identical" : removed.isEmpty() ? "ahead" : added.isEmpty() ? "behind" : "diverged";
         var oldestFirst = new ArrayList<>(added);
         java.util.Collections.reverse(oldestFirst);
+        var perPage = param(rawQuery, "per_page");
+        var pageNo = param(rawQuery, "page");
+        int size = perPage == null ? Integer.MAX_VALUE : Integer.parseInt(perPage);
+        int from = pageNo == null || perPage == null ? 0 : (Integer.parseInt(pageNo) - 1) * size;
+        var pageOfCommits = oldestFirst.subList(Math.min(from, oldestFirst.size()), (int) Math.min((long) from + size, oldestFirst.size()));
         var items = new ArrayList<String>();
-        for (var sha : oldestFirst) {
+        for (var sha : pageOfCommits) {
             var n = nodes.get(sha);
             var when = quote(timeOf(sha).toString());
             items.add("{\"sha\":" + quote(sha) + ",\"html_url\":" + quote("https://github.com/g/r/commit/" + sha)

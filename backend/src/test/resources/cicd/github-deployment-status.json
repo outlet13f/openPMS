@@ -1,0 +1,23 @@
+{
+  "action": "created",
+  "deployment_status": {
+    "id": 1115122,
+    "state": "success",
+    "environment": "staging",
+    "description": "배포 끝",
+    "target_url": "https://staging.example.com",
+    "log_url": "https://github.com/openpms-test/web/actions/runs/30433642/jobs/5",
+    "created_at": "2026-10-15T10:12:00Z",
+    "updated_at": "2026-10-15T10:12:00Z"
+  },
+  "deployment": {
+    "id": 710692,
+    "sha": "a91957a858320c0e17f3a0eca7cfacbff50e4b3c",
+    "ref": "main",
+    "task": "deploy",
+    "environment": "staging",
+    "created_at": "2026-10-15T10:10:00Z",
+    "updated_at": "2026-10-15T10:10:00Z"
+  },
+  "repository": { "id": 9001, "full_name": "openpms-test/web", "html_url": "https://github.com/openpms-test/web" }
+}

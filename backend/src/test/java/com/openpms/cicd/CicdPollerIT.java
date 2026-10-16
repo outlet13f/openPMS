@@ -131,9 +131,15 @@ class CicdPollerIT {
                 .execute();
         git.respond("/api/v3/repositories/9001/commits", 200, "cicd/github-commits.json");
         git.respond("/api/v3/repositories/9001/pulls", 200, "cicd/github-pulls.json");
+        git.respond("/api/v3/repositories/9001/actions/runs", 200, "cicd/github-runs.json");
+        git.respond("/api/v3/repositories/9001/deployments", 200, "cicd/github-deployments.json");
+        git.respond("/api/v3/repositories/9001/deployments/710692/statuses", 200, "cicd/github-deployment-statuses.json");
+        git.respond("/api/v3/repositories/9001/deployments/710600/statuses", 200, "[]");
         poller.poll(Instant.now());
-        assertThat(git.requests()).extracting(FakeGitServer.Recorded::path).contains("/api/v3/repositories/9001/commits");
+        assertThat(git.requests()).extracting(FakeGitServer.Recorded::path).contains("/api/v3/repositories/9001/commits",
+                "/api/v3/repositories/9001/actions/runs", "/api/v3/repositories/9001/deployments");
         assertThat(eventsOf(c)).isGreaterThanOrEqualTo(1);
+        assertThat(db.fetchCount(CICD_EVENTS, CICD_EVENTS.CONNECTION_ID.eq(c).and(CICD_EVENTS.KIND.eq("pipeline")))).isEqualTo(2);   // deployments are cut by the clock, so only the runs are counted
     }
 
     @Test void oneFailingRepositoryDoesNotStopOthers() throws Exception {

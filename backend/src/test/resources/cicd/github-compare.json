@@ -1,0 +1,28 @@
+{
+  "status": "ahead",
+  "ahead_by": 2,
+  "behind_by": 0,
+  "total_commits": 2,
+  "commits": [
+    {
+      "sha": "b000000000000000000000000000000000000002",
+      "html_url": "https://github.com/openpms-test/web/commit/b000000000000000000000000000000000000002",
+      "commit": {
+        "message": "로그인 #12\n\n세션 만료 처리",
+        "author": { "name": "박준호", "email": "junho.park@openpms.local", "date": "2026-10-15T10:01:00Z" },
+        "committer": { "name": "GitHub", "email": "noreply@github.com", "date": "2026-10-15T10:01:30Z" }
+      }
+    },
+    {
+      "sha": "c000000000000000000000000000000000000003",
+      "html_url": "https://github.com/openpms-test/web/commit/c000000000000000000000000000000000000003",
+      "commit": {
+        "message": "결제",
+        "author": { "name": "박준호", "email": "junho.park@openpms.local", "date": "2026-10-15T10:02:00Z" }
+      }
+    }
+  ],
+  "files": [
+    { "filename": "src/login.ts", "status": "modified", "additions": 3, "deletions": 1, "changes": 4 }
+  ]
+}
