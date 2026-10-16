@@ -29,6 +29,8 @@ public class CicdProcessor {
     static final int BATCH = 200;
     /** Upper bound of events per run, so one run cannot go on forever under a steady flow. */
     private static final int MAX_PER_RUN = 5000;
+    /** The kinds this processor handles; others (pipeline, deployment) stay pending until their handler exists. */
+    static final java.util.List<String> HANDLED_KINDS = java.util.List.of("commit", "merge_request");
 
     private final DSLContext db;
     private final JsonMapper json;
@@ -46,7 +48,7 @@ public class CicdProcessor {
     public int run(Instant now) {
         int handled = 0;
         while (handled < MAX_PER_RUN) {
-            var ids = db.select(CICD_EVENTS.ID).from(CICD_EVENTS).where(CICD_EVENTS.STATUS.eq("pending"))
+            var ids = db.select(CICD_EVENTS.ID).from(CICD_EVENTS).where(CICD_EVENTS.STATUS.eq("pending"), CICD_EVENTS.KIND.in(HANDLED_KINDS))
                     .orderBy(CICD_EVENTS.RECEIVED_AT, CICD_EVENTS.ID).limit(BATCH).fetch(CICD_EVENTS.ID);
             int progress = 0;
             for (var id : ids) {

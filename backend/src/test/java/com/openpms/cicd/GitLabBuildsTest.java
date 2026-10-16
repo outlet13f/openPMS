@@ -23,7 +23,7 @@ class GitLabBuildsTest {
         var e = gitlab.parse(Map.of("x-gitlab-event", "Pipeline Hook"), res("gitlab-pipeline.json")).get(0);
         assertThat(e.kind()).isEqualTo("pipeline");
         assertThat(e.repoExternalId()).isEqualTo("101");
-        assertThat(e.deliveryKey()).isEqualTo("pipeline:101:31:success");
+        assertThat(e.deliveryKey()).isEqualTo("pipeline:101:31:success:2026-10-15T10:07:30Z");
         var p = e.pipeline();
         assertThat(p.externalId()).isEqualTo("31");
         assertThat(p.name()).isEqualTo("CI");
@@ -65,6 +65,13 @@ class GitLabBuildsTest {
         assertThat(p.webUrl()).isEqualTo("https://gitlab.example.com/web/portal/-/pipelines/31");
     }
 
+    @Test void aRepeatedStateAtALaterTimeIsAnotherEvent() throws Exception {
+        var again = text("gitlab-pipeline.json").replace("10:07:30 UTC", "10:19:30 UTC");
+        var first = gitlab.parse(Map.of("x-gitlab-event", "Pipeline Hook"), res("gitlab-pipeline.json")).get(0);
+        var second = gitlab.parse(Map.of("x-gitlab-event", "Pipeline Hook"), again.getBytes(StandardCharsets.UTF_8)).get(0);
+        assertThat(second.deliveryKey()).isNotEqualTo(first.deliveryKey());
+    }
+
     @Test void pipelineWithoutAShaMakesNoEvent() throws Exception {
         var body = text("gitlab-pipeline.json").replace("bcbb5ec396a2c0f828686f14fac9b80b780504f2", "");
         assertThat(gitlab.parse(Map.of("x-gitlab-event", "Pipeline Hook"), body.getBytes(StandardCharsets.UTF_8))).isEmpty();
@@ -74,7 +81,7 @@ class GitLabBuildsTest {
         var e = gitlab.parse(Map.of("x-gitlab-event", "Deployment Hook"), res("gitlab-deployment.json")).get(0);
         assertThat(e.kind()).isEqualTo("deployment");
         assertThat(e.repoExternalId()).isEqualTo("101");
-        assertThat(e.deliveryKey()).isEqualTo("deployment:101:15:success");
+        assertThat(e.deliveryKey()).isEqualTo("deployment:101:15:success:2026-10-15T02:20:00Z");
         var d = e.deployment();
         assertThat(d.externalId()).isEqualTo("15");
         assertThat(d.sha()).isEqualTo("bcbb5ec396a2c0f828686f14fac9b80b780504f2");
@@ -97,7 +104,7 @@ class GitLabBuildsTest {
             var body = text.replace("\"status\": \"success\"", "\"status\": \"" + s.getKey() + "\"").getBytes(StandardCharsets.UTF_8);
             var e = gitlab.parse(Map.of("x-gitlab-event", "Deployment Hook"), body).get(0);
             assertThat(e.deployment().status()).as(s.getKey()).isEqualTo(s.getValue());
-            assertThat(e.deliveryKey()).as(s.getKey()).isEqualTo("deployment:101:15:" + s.getKey());
+            assertThat(e.deliveryKey()).as(s.getKey()).isEqualTo("deployment:101:15:" + s.getKey() + ":2026-10-15T02:20:00Z");
         }
         var odd = text.replace("\"status\": \"success\"", "\"status\": \"blocked\"").getBytes(StandardCharsets.UTF_8);
         assertThat(gitlab.parse(Map.of("x-gitlab-event", "Deployment Hook"), odd)).isEmpty();

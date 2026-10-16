@@ -131,6 +131,7 @@ class GitLabCompareTest {
         assertThat(git.requests()).anyMatch(r -> r.path().endsWith("/deployments") && r.query().contains("updated_after=") && r.query().contains("order_by=updated_at"));
         List<String> keys = polled.events().stream().map(CicdEvent::deliveryKey).toList();
         assertThat(keys).allMatch(k -> k.startsWith("commit:") || k.startsWith("mr:") || k.startsWith("pipeline:77:") || k.startsWith("deployment:77:"));
+        assertThat(keys).contains("pipeline:77:47:success:2026-10-15T10:00:30Z", "deployment:77:41:success:2026-10-15T10:12:00Z");
         var done = polled.events().get(0).pipeline();
         assertThat(done.externalId()).isEqualTo("47");
         assertThat(done.name()).isEqualTo("CI");
@@ -148,6 +149,17 @@ class GitLabCompareTest {
         assertThat(deployed.webUrl()).endsWith("/-/jobs/796");
         assertThat(deployed.deployedAt()).isEqualTo(OffsetDateTime.parse("2026-10-15T10:12:00.250Z"));
         assertThat(polled.events().get(3).deployment().status()).isEqualTo("failed");
+    }
+
+    @Test void pipelinesAndDeploymentsThatAnswer403Or404CountAsEmpty() throws Exception {
+        git.respond("/api/v4/projects/77/repository/commits", 200, "cicd/gitlab-commits.json");
+        git.respond("/api/v4/projects/77/merge_requests", 200, "[]");
+        git.respond("/api/v4/projects/77/pipelines", 403, "{}");
+        git.respond("/api/v4/projects/77/deployments", 404, "{}");
+        var polled = gitlab.poll(remote, "77", null);
+        assertThat(polled.events()).isNotEmpty().allMatch(e -> e.kind().equals("commit"));
+        git.respond("/api/v4/projects/77/pipelines", 500, "{}");
+        assertThatThrownBy(() -> gitlab.poll(remote, "77", null)).isInstanceOf(java.io.IOException.class).hasMessage("unexpected status 500");
     }
 
     @Test void pollWithoutASinceAsksForNoUpdatedAfter() throws Exception {

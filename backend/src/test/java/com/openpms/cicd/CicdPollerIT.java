@@ -101,6 +101,16 @@ class CicdPollerIT {
         assertThat(second.query()).contains("since=2026-10-15T01%3A20%3A00.123Z");
     }
 
+    @Test void aPipelinesListTheTokenMayNotReadStillStoresCommitsAndMovesTheCursor() throws Exception {
+        var c = connection("gitlab", "glpat-403");
+        var ext = repo(c);
+        gitlabServes(ext);
+        git.respond("/api/v4/projects/" + ext + "/pipelines", 403, "{}");
+        poller.poll(Instant.now());
+        assertThat(eventsOf(c)).isEqualTo(3);
+        assertThat(db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(c)).fetchOne().getPollCursor()).isNotNull();
+    }
+
     @Test void secondPollStoresNothingNew() throws Exception {
         var c = connection("gitlab", "glpat-t2");
         var ext = repo(c);

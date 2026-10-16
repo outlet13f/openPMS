@@ -94,7 +94,7 @@ public class GitLabAdapter implements CicdAdapter {
                 var sha = FULL_SHA.matcher(last).matches() ? last : hexOrNull(text(root.path("short_sha")));
                 var d = new CicdEvent.Deployment(id, sha, null, text(root.path("environment")), normalized,
                         text(root.path("deployable_url")), time(text(root.path("status_changed_at"))));
-                return List.of(new CicdEvent("deployment", "deployment:" + repo + ":" + id + ":" + status, repo, null, null, null, d, null));
+                return List.of(new CicdEvent("deployment", "deployment:" + repo + ":" + id + ":" + status + ":" + instant(d.deployedAt()), repo, null, null, null, d, null));
             }
             default -> {
                 return List.of();
@@ -135,7 +135,7 @@ public class GitLabAdapter implements CicdAdapter {
         var lower = hexOrNull(sha);
         if (id.isEmpty() || status == null || lower == null) return List.of();
         var p = new CicdEvent.Pipeline(id, name, lower, ref, status, url, started, finished, updated);
-        return List.of(new CicdEvent("pipeline", "pipeline:" + repo + ":" + id + ":" + rawStatus, repo, null, null, p, null, null));
+        return List.of(new CicdEvent("pipeline", "pipeline:" + repo + ":" + id + ":" + rawStatus + ":" + instant(updated), repo, null, null, p, null, null));
     }
 
     private static CicdEvent commit(String repo, String sha, String title, String message, String name, String email,
@@ -239,7 +239,7 @@ public class GitLabAdapter implements CicdAdapter {
         var updatedQuery = since == null ? "" : "updated_after=" + enc(since.toInstant().toString()) + "&";
         var listQuery = updatedQuery + "order_by=updated_at&sort=desc&per_page=" + PAGE_SIZE + "&page=";
         for (int page = 1; ; page++) {
-            var items = getJson(remote, "/projects/" + id + "/pipelines?" + listQuery + page);
+            var items = optionalList(remote, "/projects/" + id + "/pipelines?" + listQuery + page);
             for (var p : items) {
                 var updated = time(text(p.path("updated_at")));
                 var rawStatus = text(p.path("status"));
@@ -252,7 +252,7 @@ public class GitLabAdapter implements CicdAdapter {
             if (page == MAX_PAGES) { truncated = true; break; }
         }
         for (int page = 1; ; page++) {
-            var items = getJson(remote, "/projects/" + id + "/deployments?" + listQuery + page);
+            var items = optionalList(remote, "/projects/" + id + "/deployments?" + listQuery + page);
             for (var d : items) {
                 var depId = text(d.path("id"));
                 var rawStatus = text(d.path("status"));
@@ -260,12 +260,22 @@ public class GitLabAdapter implements CicdAdapter {
                 if (depId.isEmpty() || status == null) continue;
                 var dep = new CicdEvent.Deployment(depId, hexOrNull(text(d.path("sha"))), null, text(d.path("environment").path("name")),
                         status, text(d.path("deployable").path("web_url")), time(text(d.path("updated_at"))));
-                out.add(new CicdEvent("deployment", "deployment:" + repoExternalId + ":" + depId + ":" + rawStatus, repoExternalId, null, null, null, dep, null));
+                out.add(new CicdEvent("deployment", "deployment:" + repoExternalId + ":" + depId + ":" + rawStatus + ":" + instant(dep.deployedAt()), repoExternalId, null, null, null, dep, null));
             }
             if (items.size() < PAGE_SIZE) break;
             if (page == MAX_PAGES) { truncated = true; break; }
         }
         return new Polled(out, truncated);
+    }
+
+    /** A list the token may not read (403) or the project does not offer (404) counts as empty, so commits and merge requests still come through. */
+    private JsonNode optionalList(Remote r, String path) throws IOException {
+        try {
+            return getJson(r, path);
+        } catch (IOException e) {
+            if ("unexpected status 403".equals(e.getMessage()) || "unexpected status 404".equals(e.getMessage())) return json.createArrayNode();
+            throw e;
+        }
     }
 
     private static List<CicdEvent.Commit> commitsOf(JsonNode items) {
