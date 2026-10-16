@@ -26,6 +26,12 @@ class ImageTagsTest {
         assertThat(ImageTags.sha("web/portal", null)).isEmpty();
     }
 
+    @Test void laterMatchIsTriedWhenTheFirstIsNoCommit() {
+        assertThat(ImageTags.sha("app:20261015-1a2b3c4", null)).contains("1a2b3c4");            // a date first
+        assertThat(ImageTags.sha("app:20261015-1a2b3c4-9f8e7d6a", null)).contains("1a2b3c4");   // two hex runs: the first valid one
+        assertThat(ImageTags.sha("app:20261015-20261016", null)).isEmpty();
+    }
+
     @Test void ownPatternUsesTheFirstGroup() {
         assertThat(ImageTags.sha("api:release-2026.10-g9f8e7d6", "-g([0-9a-f]{7,40})$")).contains("9f8e7d6");
         assertThat(ImageTags.sha("api:release-2026.10", "-g([0-9a-f]{7,40})$")).isEmpty();

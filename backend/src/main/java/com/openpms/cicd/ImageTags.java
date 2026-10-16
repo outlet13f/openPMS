@@ -58,10 +58,12 @@ final class ImageTags {
         }
         try {
             var m = p.matcher(new Bounded(tag, new long[] {STEP_BUDGET}));
-            if (!m.find()) return Optional.empty();
-            var g = m.groupCount() >= 1 && m.group(1) != null ? m.group(1) : m.group();
-            var found = g.toLowerCase(Locale.ROOT);
-            return HEX.matcher(found).matches() && !DIGITS.matcher(found).matches() ? Optional.of(found) : Optional.empty();
+            while (m.find()) {
+                var g = m.groupCount() >= 1 && m.group(1) != null ? m.group(1) : m.group();
+                var found = g.toLowerCase(Locale.ROOT);
+                if (HEX.matcher(found).matches() && !DIGITS.matcher(found).matches()) return Optional.of(found);
+            }
+            return Optional.empty();
         } catch (TooSlow e) {
             return Optional.empty();
         }
