@@ -12,7 +12,7 @@ const TOPICS: [RegExp, ManualId, string][] = [
   // work packages: one item, a new one, the list
   [new RegExp(`${P}/work-packages/new`), "user", "5.1"],
   // the 개발 tab (MR/PR and commits) of any detail view
-  [/\/(work-packages|details)\/\d+\/dev$/, "user", "18.2"],
+  [/\/(work-packages|details)\/\d+\/dev$/, "user", "16.2"],
   [new RegExp(`(${P})?/(work-packages|gantt|boards/[^/]+|calendar/[^/]+|team-planner/[^/]+|notifications)/details/\\d+`), "user", "5.2"],
   [new RegExp(`${P}/work-packages/\\d+`), "user", "5.2"],
   [new RegExp(`(${P})?/work-packages/?$`), "user", "6"],
@@ -25,7 +25,7 @@ const TOPICS: [RegExp, ManualId, string][] = [
   [new RegExp(`${P}/settings/modules`), "user", "11.4"],
   [new RegExp(`${P}/settings/work-packages`), "user", "11.6"],
   [new RegExp(`${P}/settings/versions`), "user", "11.7"],
-  [new RegExp(`${P}/settings/repositories`), "user", "18.3"],
+  [new RegExp(`${P}/settings/repositories`), "user", "16.3"],
   [new RegExp(`${P}/settings`), "user", "11.3"],
   [/^\/projects\/new/, "user", "11.1"],
   [new RegExp(`${P}/?$`), "user", "4.3"],
@@ -51,7 +51,7 @@ const TOPICS: [RegExp, ManualId, string][] = [
   [/^\/admin\/calendar/, "admin", "9.11"],
   [/^\/admin\/authentication/, "admin", "9.12"],
   [/^\/admin\/integrations/, "admin", "9.15"],
-  [/^\/admin\/cicd/, "admin", "9.21"],
+  [/^\/admin\/cicd/, "admin", "9.18"],
   [/^\/admin\/system/, "admin", "9.17"],
   [/^\/admin\/?$/, "admin", "9.1"],
 ];

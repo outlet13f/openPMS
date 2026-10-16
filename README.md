@@ -31,7 +31,7 @@ git clone <이 저장소 주소> openPMS && cd openPMS
 
 # 백엔드: DB와 메일을 띄우고(처음이면 backend/.env.local에 개발 DB 비밀번호를 새로 만듦), 앱을 빌드해 실행
 bash backend/scripts/dev.sh up
-bash backend/scripts/dev.sh run          # http://127.0.0.1:8090 — 첫 실행에 마이그레이션(V1–V19)과 개발 데이터(V1000–V1003)가 들어감
+bash backend/scripts/dev.sh run          # http://127.0.0.1:8090 — 첫 실행에 마이그레이션(V1–V19, V26)과 개발 데이터(V1000–V1003, V1010)가 들어감
 
 # 복원 지점 만들기: JUnit과 e2e가 매번 이 상태로 되돌린 DB에서 돕니다(앱을 멈춘 채로 만들어야 함)
 podman stop openpms-app
@@ -56,6 +56,15 @@ podman run -d --name openpms-idp --network openpms-dev -p 127.0.0.1:18081:18080 
 
 SSO e2e(`f00-sso`)는 OIDC 콜백이 `OPENPMS_BASE_URL`(개발 환경은 `http://localhost:5173`)을 따라가므로, 5174와 8090에 더해 **5173 개발 서버(`npm run dev`)도 떠 있어야** 합니다. 없으면 SSO 케이스가 로그인 뒤 돌아올 곳을 찾지 못합니다.
 
+e2e의 CI/CD 테스트(`f22-cicd`)에는 가짜 Git 서버 컨테이너가 필요합니다(`frontend/` 폴더에서). 없으면 3건을 건너뜁니다. 호스트의 18090이 다른 프로그램에 잡혀 있으면(예: colima) `-p 127.0.0.1:18095:18090`으로 띄우고 e2e에 `FAKE_GIT_URL=http://127.0.0.1:18095`를 줍니다.
+
+```bash
+podman run -d --rm --name openpms-cicd-git --network openpms-dev -p 127.0.0.1:18090:18090 \
+  -v "$PWD/e2e:/e2e:ro" docker.io/library/node:24-alpine node /e2e/fake-git.mjs
+```
+
+같은 PC에서 두 번째 작업 트리를 따로 띄울 때는 `dev.sh`에 `OPENPMS_DEV_NAME`·`OPENPMS_DEV_DB_PORT`·`OPENPMS_DEV_APP_PORT`를 줍니다(예: `openpms-cicd`·55433·8091, 기본은 `openpms`·55432·8090). 그 작업 트리의 git에서 빠진 `backend/.env.local`에 적어 두면 잊지 않습니다. 화면은 `OPENPMS_API_URL=http://127.0.0.1:8091 npm run dev:api -- --port 5184 --strictPort`처럼 다른 포트로 띄웁니다.
+
 ### 3. 자주 쓰는 명령
 
 ```bash
@@ -69,7 +78,7 @@ bash backend/scripts/dev.sh logs | down
 
 cd frontend
 npx tsc -b --noEmit                       # 타입 검사
-npx playwright test                       # e2e 전체 (5174 + 8090 + openpms-idp 필요, SSO 케이스는 5173도, 파일마다 DB를 되돌림)
+npx playwright test                       # e2e 전체 (5174 + 8090 + openpms-idp + openpms-cicd-git 필요, SSO 케이스는 5173도, 파일마다 DB를 되돌림)
 npx playwright test e2e/f18-co-assignees.spec.ts
 npm run build                             # 운영용 화면 → backend/src/main/resources/static (dev.sh run이 jar에 넣음)
 ```
@@ -78,9 +87,11 @@ npm run build                             # 운영용 화면 → backend/src/mai
 
 ### 4. 지금 상태 (2026-10-16)
 
-- 원본 기능 패리티 100 (기능 142개, 필수 64/64), 스키마 V1–V19, JUnit 121건, e2e 137건 중 132 통과 + 5건 건너뜀(PERF-5와 테스트 IdP 없이 건너뜀 SSO 4건, 2026-10-16 ITSM 제거 뒤 전체). 이전: e2e 136건 통과 + 1건 의도적 건너뜀(느린 망 측정은 빌드된 화면에서만. 2.3 보안 수정 뒤 b34418b에서 전체 132 통과·5 건너뜀(SSO 4건은 IdP 포트 18081 충돌로 건너뜀)이었고 IdP를 띄워 SSO 4/4를 통과해 합계 136 통과·1 건너뜀)
+- CI/CD 연동 1단계 2.7(2026-10-16, 브랜치 feat/cicd-phase1): 사내 GitLab·GitHub의 커밋·MR/PR을 `#번호`로 작업의 **개발** 탭에 잇기(관리 › CI/CD 연동, 프로젝트 설정 › 저장소, 서명한 웹훅 `POST /api/v1/hooks/cicd/{hookKey}`, 5분 보완 폴링). 스키마 V1–V19·V26(V20–V25는 비워 둠), 개발 데이터 V1000–V1003·V1010, 새 환경 변수 `OPENPMS_SECRET_KEY`(CI/CD 연동을 쓸 때만, `docs/deliverables/10-운영자매뉴얼.md` 9.18). JUnit 212/212(c8896eb), e2e 147건(병합 전 8e6b00b에서 CI/CD 10건 통과, ITSM 제거 병합 뒤 전체 재실행은 Podman 복구 뒤). 설계서의 2–4단계는 설계서만 있고 5단계는 보류
+- 2.6까지: 원본 기능 패리티 100 (기능 142개, 필수 64/64), 스키마 V1–V19, JUnit 121건, e2e 137건 중 132 통과 + 5건 건너뜀(PERF-5와 테스트 IdP 없이 건너뜀 SSO 4건, 2026-10-16 ITSM 제거 뒤 전체). 이전: e2e 136건 통과 + 1건 의도적 건너뜀(느린 망 측정은 빌드된 화면에서만. 2.3 보안 수정 뒤 b34418b에서 전체 132 통과·5 건너뜀(SSO 4건은 IdP 포트 18081 충돌로 건너뜀)이었고 IdP를 띄워 SSO 4/4를 통과해 합계 136 통과·1 건너뜀)
 - 개선 계획 `replica/fixes.md` 1–6번 완료, 7번(반복 작업) 보류
-- ITSM 제거 2.6(2026-10-16): 사용자 결정으로 ITSM 전체 제거(코드는 3cb9acd로 되돌림, V20·V21·V1004–V1006과 설계 문서 삭제). 매뉴얼 16–18장 등 ITSM 절은 이때 지움. 다음 빈 번호는 V20 / V1004(동료 세션의 CI/CD 계획이 쓸 수 있음)
+- ITSM 제거 2.6(2026-10-16): 사용자 결정으로 ITSM 전체 제거(코드는 3cb9acd로 되돌림, V20·V21·V1004–V1006과 설계 문서 삭제). 매뉴얼 16–18장 등 ITSM 절은 이때 지움. CI/CD는 한때 ITSM V20·V21을 돌린 DB와 부딪치지 않게 V26 / V1010을 씀
+- 산출물 2.7: CI/CD 연동 1단계 반영(요구사항 3.24 REQ-CICD, 화면 X14–X16, 07 16장, 10 6.12·9.18. `docs/deliverables/README.md`의 개정 이력)
 - 산출물 2.6: ITSM 제거 반영. 2.4·2.5의 ITSM 내용은 이 판에서 모두 지움(`docs/deliverables/README.md`의 개정 이력)
 - 산출물 2.3: 2.2 뒤 보안 점검에서 찾아 고친 BUG-015(API 토큰의 퍼센트 인코딩 우회)·BUG-016(사용자 관리자가 관리자 계정을 잠그거나 삭제)·BUG-017(로그인 응답 시간으로 계정 유무가 드러남)과 임시 비밀번호 후속 보강을 반영(`docs/deliverables/README.md`의 개정 이력, `replica/bugs.md`)
 - 사내 개선 '임시 비밀번호'(관리자가 메일 없이 사용자를 만들거나 다시 발급하고 첫 로그인에서 새 비밀번호를 정하게 함, REQ-AUTH-005) 완료. 평문이 사용자가 바꾸거나 기한이 지난 뒤 다음 로그인 시도나 매일 03:30 정리 작업이 지울 때까지 DB에 남으므로 운영에서 `org.jooq` 로그를 DEBUG로 올리지 않습니다(`docs/deliverables/10-운영자매뉴얼.md` 9.2.7)
