@@ -50,10 +50,12 @@ public class CicdProcessor {
     private final CicdCommitStore commits;
     private final CicdBuilds builds;
     private final CicdDeployments deployments;
+    private final CicdFirstDeploy firstDeploy;
 
     public CicdProcessor(DSLContext db, JsonMapper json, CicdLinker linker, TransactionTemplate tx, CicdCommitStore commits, CicdBuilds builds,
-            CicdDeployments deployments) {
+            CicdDeployments deployments, CicdFirstDeploy firstDeploy) {
         this.db = db;
+        this.firstDeploy = firstDeploy;
         this.json = json;
         this.linker = linker;
         this.tx = tx;
@@ -82,6 +84,9 @@ public class CicdProcessor {
             handled += n;
             if (n == 0) break;
         }
+        // first deployments: once per run, after the passes, so each repository is asked at most 50 times per run; a deployment
+        // waiting behind a first deployment that is done now goes in on the next run
+        handled += firstDeploy.check(now);
         return handled;
     }
 
