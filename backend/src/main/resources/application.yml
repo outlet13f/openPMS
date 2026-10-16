@@ -100,6 +100,8 @@ openpms:
   cicd:
     # 웹훅 본문 상한(바이트)
     max-hook-bytes: 1048576
+    # 웹훅 요청 상한(보내는 주소 하나당 1분에). 큰 저장소의 대량 push로 429가 나면 올린다.
+    hook-requests-per-minute: ${OPENPMS_CICD_HOOK_REQUESTS_PER_MINUTE:600}
 
 ---
 # Development: dev data set (scripts/gen_dev_data.py), plain-http cookies.

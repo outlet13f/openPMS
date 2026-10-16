@@ -230,6 +230,37 @@ class CicdPollerIT {
         assertThat(git.requests().stream().filter(r -> r.path().startsWith("/api/v4/projects/" + a + "/"))).isEmpty();
     }
 
+    @Test void anUnreachableHostIsAskedOncePerRun() throws Exception {
+        int dead;
+        try (var socket = new java.net.ServerSocket(0, 1, java.net.InetAddress.getLoopbackAddress())) {
+            dead = socket.getLocalPort();   // closed again below: connections are refused
+        }
+        var down = UUID.fromString(f.newConnection(admin, "gitlab", "http://127.0.0.1:" + dead, "glpat-t13")[0]);
+        var up = connection("gitlab", "glpat-t14");
+        repo(down);
+        repo(down);
+        repo(down);
+        var b = repo(up);
+        gitlabServes(b);
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(CicdPoller.class);
+        var appender = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            poller.poll(Instant.now());
+        } finally {
+            logger.detachAppender(appender);
+        }
+        var aboutDown = appender.list.stream().map(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage)
+                .filter(m -> m.contains(down.toString())).toList();
+        assertThat(aboutDown).hasSize(1);
+        assertThat(aboutDown.get(0)).contains("unreachable").doesNotContain("127.0.0.1").doesNotContain("glpat");
+        // the other connection is polled as usual
+        assertThat(eventsOf(up)).isEqualTo(3);
+        assertThat(CicdPoller.unreachable(new java.io.IOException("request timed out"))).isTrue();
+        assertThat(CicdPoller.unreachable(new java.io.IOException("unexpected status 500"))).isFalse();
+    }
+
     private UUID insertEvent(UUID connection, String status, Instant receivedAt) {
         var id = UUID.randomUUID();
         db.insertInto(CICD_EVENTS).set(CICD_EVENTS.ID, id).set(CICD_EVENTS.CONNECTION_ID, connection).set(CICD_EVENTS.KIND, "commit")

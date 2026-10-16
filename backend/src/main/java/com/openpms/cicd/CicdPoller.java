@@ -18,7 +18,8 @@ import org.springframework.stereotype.Component;
  * Jobs "cicd-poll" and "cicd-cleanup". Polling fills the gaps a webhook may have left: for each repository of an active
  * connection with an API token it asks the host what changed since the cursor (less an overlap, the unique delivery key
  * drops what is already stored). The host is called outside any transaction. A failing repository is logged by ids and
- * status only (never the URL, query or token) and the run goes on.
+ * status only (never the URL, query or token) and the run goes on; a host that does not answer at all (refused, timed out)
+ * is not asked again for its other repositories in the same run, so one dead server cannot hold the job for minutes.
  */
 @Component
 public class CicdPoller {
@@ -47,9 +48,11 @@ public class CicdPoller {
                 .where(CICD_CONNECTIONS.ACTIVE.isTrue().and(CICD_CONNECTIONS.API_TOKEN_ENC.isNotNull()).and(CICD_CONNECTIONS.API_TOKEN_ENC.ne("")))
                 .orderBy(CICD_REPOSITORIES.CREATED_AT, CICD_REPOSITORIES.ID).fetch();
         int stored = 0;
+        var unreachable = new java.util.HashSet<java.util.UUID>();
         for (var r : rows) {
             var repoId = r.get(CICD_REPOSITORIES.ID);
             var connectionId = r.get(CICD_REPOSITORIES.CONNECTION_ID);
+            if (unreachable.contains(connectionId)) continue;   // the host did not answer: its other repositories wait for the next run
             try {
                 var cursor = r.get(CICD_REPOSITORIES.POLL_CURSOR);
                 var since = cursor != null ? cursor.minus(OVERLAP) : now.minus(FIRST_LOOK_BACK).atOffset(ZoneOffset.UTC);
@@ -70,7 +73,12 @@ public class CicdPoller {
                         .set(CICD_REPOSITORIES.LAST_POLLED_AT, now.atOffset(ZoneOffset.UTC))
                         .where(CICD_REPOSITORIES.ID.eq(repoId)).execute();
             } catch (IOException | RuntimeException e) {
-                log.warn("cicd-poll: connection {} repository {} failed: {}", connectionId, repoId, describe(e));
+                if (unreachable(e)) {
+                    unreachable.add(connectionId);
+                    log.warn("cicd-poll: connection {} unreachable ({}), its other repositories are skipped in this run", connectionId, describe(e));
+                } else {
+                    log.warn("cicd-poll: connection {} repository {} failed: {}", connectionId, repoId, describe(e));
+                }
             }
         }
         return stored;
@@ -81,6 +89,12 @@ public class CicdPoller {
         return db.deleteFrom(CICD_EVENTS)
                 .where(CICD_EVENTS.RECEIVED_AT.lt(now.minus(KEEP).atOffset(ZoneOffset.UTC)).and(CICD_EVENTS.STATUS.ne("pending")))
                 .execute();
+    }
+
+    /** No answer at all (refused, reset, timed out), as opposed to an answer with a bad status or body. */
+    static boolean unreachable(Exception e) {
+        if (!(e instanceof IOException) || e.getMessage() == null) return false;
+        return e.getMessage().equals("request timed out") || e.getMessage().startsWith("request failed");
     }
 
     /** The adapters' IOExceptions carry fixed messages ("unexpected status 500", "request timed out"): no URL, query or token. */

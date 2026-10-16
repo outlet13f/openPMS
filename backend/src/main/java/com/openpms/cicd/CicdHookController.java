@@ -39,21 +39,24 @@ public class CicdHookController {
     private final CicdEvents events;
     private final RateLimiter limiter;
     private final int maxBytes;
+    private final int perMinute;
     private final ConcurrentHashMap<UUID, Instant> warned = new ConcurrentHashMap<>();
 
     public CicdHookController(DSLContext db, SecretBox box, Adapters adapters, CicdEvents events, RateLimiter limiter,
-                              @Value("${openpms.cicd.max-hook-bytes:1048576}") int maxBytes) {
+                              @Value("${openpms.cicd.max-hook-bytes:1048576}") int maxBytes,
+                              @Value("${openpms.cicd.hook-requests-per-minute:600}") int perMinute) {
         this.db = db;
         this.box = box;
         this.adapters = adapters;
         this.events = events;
         this.limiter = limiter;
         this.maxBytes = maxBytes;
+        this.perMinute = perMinute;
     }
 
     @PostMapping("/api/v1/hooks/cicd/{hookKey}")
     public ResponseEntity<Map<String, Integer>> receive(@PathVariable String hookKey, HttpServletRequest req) throws IOException {
-        limiter.check("cicd-hook:" + req.getRemoteAddr(), 600);
+        limiter.check("cicd-hook:" + req.getRemoteAddr(), perMinute);
         if (req.getContentLengthLong() > maxBytes) throw new ApiException(413, "본문이 너무 큽니다.");
         byte[] body = req.getInputStream().readNBytes(maxBytes + 1);
         if (body.length > maxBytes) throw new ApiException(413, "본문이 너무 큽니다.");

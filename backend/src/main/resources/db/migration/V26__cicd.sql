@@ -2,6 +2,11 @@
 -- 저장소가 붙은 프로젝트(와 하위 프로젝트)의 작업 패키지에 #번호로 잇는다. CMDB의 CI(구성 항목)와 다른 말이라 이름은 cicd_.
 
 alter table projects drop constraint projects_known_modules;
+-- 이전 판에서 쓰다 없앤 모듈(예: service_desk)이 남은 프로젝트가 있으면 새 제약을 걸 수 없으므로 먼저 걷어 낸다.
+update projects set enabled_modules = array(
+    select m from unnest(enabled_modules) with ordinality as e(m, n)
+    where m = any(array['work_packages', 'gantt', 'boards', 'calendar', 'team_planner', 'time_tracking', 'cicd']::text[]) order by n)
+  where not enabled_modules <@ array['work_packages', 'gantt', 'boards', 'calendar', 'team_planner', 'time_tracking', 'cicd']::text[];
 alter table projects add constraint projects_known_modules check (
   enabled_modules <@ array['work_packages', 'gantt', 'boards', 'calendar', 'team_planner', 'time_tracking', 'cicd']::text[]);
 
