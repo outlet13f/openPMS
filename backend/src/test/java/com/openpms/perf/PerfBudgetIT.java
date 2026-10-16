@@ -131,6 +131,29 @@ class PerfBudgetIT {
                 + "where w.project_id = ? and w.subject = '상세 화면 측정용 작업' and m.repository_id in (select id from cicd_repositories where project_id = ?)", projectId, projectId);
         db.execute("insert into work_package_cicd_links (work_package_id, commit_id, source) select w.id, c.id, 'message' from work_packages w, cicd_commits c "
                 + "where w.project_id = ? and w.subject = '상세 화면 측정용 작업' and c.repository_id in (select id from cicd_repositories where project_id = ?)", projectId, projectId);
+        // the default environments (insert again is harmless: the unique index on project and lower(name))
+        db.execute("insert into cicd_environments (project_id, name, position, production) select ?, e.name, e.position, e.production "
+                + "from (values ('개발', 1, false), ('스테이징', 2, false), ('운영', 3, true)) as e(name, position, production) "
+                + "on conflict (project_id, lower(name)) do nothing", projectId);
+        // builds: two workflows per commit, one per merge request branch
+        db.execute("insert into cicd_pipelines (repository_id, external_id, name, sha, ref, status, web_url, finished_at, source, updated_at) "
+                + "select c.repository_id, 'c-' || n.name || '-' || c.sha, n.name, c.sha, 'main', 'success', r.web_url || '/-/pipelines/1', now(), 'gitlab', now() "
+                + "from cicd_commits c join cicd_repositories r on r.id = c.repository_id, (values ('build'), ('lint')) as n(name) where r.external_id = 'perf-1'");
+        db.execute("insert into cicd_pipelines (repository_id, external_id, name, sha, ref, status, web_url, source, updated_at) "
+                + "select m.repository_id, 'mr-' || m.iid, 'build', lpad(to_hex(1000 + m.iid::int), 40, '0'), m.source_branch, 'running', r.web_url || '/-/pipelines/2', 'gitlab', now() "
+                + "from cicd_merge_requests m join cicd_repositories r on r.id = m.repository_id where r.external_id = 'perf-1'");
+        // two deployments: 개발 holds all 50 commits, 스테이징 the oldest 30
+        db.execute("insert into cicd_deployments (repository_id, environment_id, environment_name, external_id, sha, status, web_url, deployed_at, source, inclusion) "
+                + "select r.id, e.id, e.name, 'perf-' || e.position, lpad(to_hex(1), 40, '0'), 'success', r.web_url || '/-/jobs/' || e.position, now(), 'gitlab', 'compared' "
+                + "from cicd_repositories r join cicd_environments e on e.project_id = r.project_id and e.name in ('개발', '스테이징') where r.external_id = 'perf-1'");
+        db.execute("insert into cicd_environment_commits (environment_id, repository_id, commit_id, deployment_id) "
+                + "select d.environment_id, d.repository_id, c.id, d.id from cicd_deployments d join cicd_commits c on c.repository_id = d.repository_id "
+                + "where d.external_id like 'perf-%' and d.repository_id in (select id from cicd_repositories where external_id = 'perf-1') "
+                + "and (d.environment_name = '개발' or c.committed_at <= (select min(committed_at) + interval '29 minutes' from cicd_commits where repository_id = d.repository_id)) "
+                + "on conflict do nothing");
+        db.execute("insert into cicd_environment_heads (repository_id, environment_id, sha, deployment_id, deployed_at) "
+                + "select d.repository_id, d.environment_id, d.sha, d.id, d.deployed_at from cicd_deployments d "
+                + "where d.external_id like 'perf-%' and d.repository_id in (select id from cicd_repositories where external_id = 'perf-1') on conflict do nothing");
     }
 
     @AfterAll
@@ -199,7 +222,7 @@ class PerfBudgetIT {
                 measure(new Budget("보드", "상태 보드 · 카드 1,000장", 600, 29, 3000), List.of(get("/api/v1/boards/" + boardId))),
                 measure(new Budget("작업 상세", "작업 · 이력 40건 · 관계 · 지켜보는 사람", 200, 45, 30),
                         List.of(get(n), get(n + "/activities"), get(n + "/relations"), get(n + "/watchers"))),
-                measure(new Budget("작업 상세", "개발 탭 · MR 20 · 커밋 50", 150, 8, 40), List.of(get(n + "/cicd"))));
+                measure(new Budget("작업 상세", "개발 탭 · MR 20 · 커밋 50 · 환경 3 · 빌드 120", 150, 16, 56), List.of(get(n + "/cicd"))));
         var soft = new SoftAssertions();
         for (var m : measured) {
             var b = m.budget();
