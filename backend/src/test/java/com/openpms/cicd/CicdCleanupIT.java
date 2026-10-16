@@ -18,7 +18,6 @@ import java.time.ZoneId;
 import java.util.UUID;
 import org.jooq.DSLContext;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -183,7 +182,6 @@ class CicdCleanupIT {
         f.send(admin, get(cleanupUrl(p) + "?before=" + today()), "").andExpect(status().isOk());
     }
 
-    @Disabled("ApiTokenFilter in Task 8")
     @Test void apiTokenIsRefused() throws Exception {
         db.deleteFrom(com.openpms.db.Tables.SETTINGS).where(com.openpms.db.Tables.SETTINGS.KEY.eq("api.tokens_enabled")).execute();
         var p = f.newProject(admin, "cicd");

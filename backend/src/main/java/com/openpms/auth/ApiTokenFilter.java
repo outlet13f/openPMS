@@ -24,6 +24,8 @@ public class ApiTokenFilter extends OncePerRequestFilter {
     /** Sign-in, passwords, tokens, and the integration settings themselves (token switch, webhooks, CI/CD) stay with a signed-in person. */
     private static final List<String> CLOSED = List.of("/api/v1/auth/", "/api/v1/me/password", "/api/v1/me/api-tokens", "/api/v1/admin/api-tokens",
             "/api/v1/admin/settings/api", "/api/v1/admin/webhooks", "/api/v1/admin/webhook-deliveries", "/api/v1/admin/cicd/");
+    /** A project's CI/CD environments and build history cleanup are settings too. */
+    private static final java.util.regex.Pattern CLOSED_PROJECT = java.util.regex.Pattern.compile("^/api/v1/projects/[^/]+/cicd/(environments|pipelines)(/.*)?$");
     private static final UrlPathHelper PATHS = new UrlPathHelper();
 
     private final ApiTokens tokens;
@@ -58,7 +60,7 @@ public class ApiTokenFilter extends OncePerRequestFilter {
             SecurityConfig.problem(res, json, 401, "API 토큰이 올바르지 않거나 만료되었습니다.");
             return;
         }
-        if ((CLOSED.stream().anyMatch(path::startsWith) || path.endsWith("/temporary-password")) && !path.equals("/api/v1/auth/me")) {
+        if ((CLOSED.stream().anyMatch(path::startsWith) || path.endsWith("/temporary-password") || CLOSED_PROJECT.matcher(path).matches()) && !path.equals("/api/v1/auth/me")) {
             SecurityConfig.problem(res, json, 403, "API 토큰으로는 로그인·비밀번호·토큰·연동 설정을 다룰 수 없습니다.");
             return;
         }

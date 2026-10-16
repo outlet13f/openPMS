@@ -47,8 +47,11 @@ public class ProjectCopy {
     private final Journals journals;
     private final com.openpms.webhook.Webhooks webhooks;
     private final com.openpms.wp.Assignees assignees;
+    private final com.openpms.cicd.CicdEnvironments environments;
 
-    public ProjectCopy(DSLContext db, Journals journals, com.openpms.webhook.Webhooks webhooks, com.openpms.wp.Assignees assignees) {
+    public ProjectCopy(DSLContext db, Journals journals, com.openpms.webhook.Webhooks webhooks, com.openpms.wp.Assignees assignees,
+                       com.openpms.cicd.CicdEnvironments environments) {
+        this.environments = environments;
         this.webhooks = webhooks;
         this.assignees = assignees;
         this.db = db;
@@ -102,6 +105,7 @@ public class ProjectCopy {
                 .set(PROJECTS.OVERVIEW_WIDGETS, src.getOverviewWidgets()).set(PROJECTS.INTERNAL_COMMENTS, src.getInternalComments());
         if (!keepDescription) update = update.set(PROJECTS.DESCRIPTION_HTML, src.getDescriptionHtml()).set(PROJECTS.DESCRIPTION_TEXT, src.getDescriptionText());
         update.where(PROJECTS.ID.eq(target)).execute();
+        if (java.util.Arrays.asList(src.getEnabledModules()).contains("cicd")) environments.ensureDefaults(target);   // the template's own environments are not copied
         db.deleteFrom(PROJECT_TYPES).where(PROJECT_TYPES.PROJECT_ID.eq(target)).execute();
         db.insertInto(PROJECT_TYPES, PROJECT_TYPES.PROJECT_ID, PROJECT_TYPES.TYPE_ID)
                 .select(db.select(org.jooq.impl.DSL.val(target), PROJECT_TYPES.TYPE_ID).from(PROJECT_TYPES).where(PROJECT_TYPES.PROJECT_ID.eq(template.id())))

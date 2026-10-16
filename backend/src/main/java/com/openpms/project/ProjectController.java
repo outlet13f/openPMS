@@ -13,6 +13,7 @@ import static org.jooq.impl.DSL.count;
 import static org.jooq.impl.DSL.max;
 
 import com.openpms.api.Dto;
+import com.openpms.cicd.CicdEnvironments;
 import com.openpms.common.ApiException;
 import com.openpms.common.Html;
 import com.openpms.common.In;
@@ -69,9 +70,11 @@ public class ProjectController {
     private final Current current;
     private final DSLContext db;
     private final ProjectCopy copier;
+    private final CicdEnvironments environments;
 
-    public ProjectController(Current current, DSLContext db, ProjectCopy copier) {
+    public ProjectController(Current current, DSLContext db, ProjectCopy copier, CicdEnvironments environments) {
         this.copier = copier;
+        this.environments = environments;
         this.current = current;
         this.db = db;
     }
@@ -209,6 +212,7 @@ public class ProjectController {
         ctx.require(p, In.has(patch, "enabledModules") ? "project.manage_modules" : "project.edit");
         if (In.has(patch, "enabledModules") && patch.keySet().stream().anyMatch(k -> !k.equals("enabledModules"))) ctx.require(p, "project.edit");
         var u = db.update(PROJECTS).set(PROJECTS.UPDATED_AT, OffsetDateTime.now());
+        boolean turnedOnCicd = false;
         if (In.has(patch, "name")) {
             var name = In.str(patch, "name") == null ? "" : In.str(patch, "name").trim();
             if (name.isEmpty()) throw ApiException.field("name", "프로젝트 이름을 입력하세요.");
@@ -251,8 +255,10 @@ public class ProjectController {
             var mods = In.strings(patch, "enabledModules");
             if (mods == null || !MODULES.containsAll(mods)) throw ApiException.field("enabledModules", "알 수 없는 모듈입니다.");
             u = u.set(PROJECTS.ENABLED_MODULES, mods.stream().distinct().toArray(String[]::new));
+            turnedOnCicd = mods.contains("cicd") && !p.enabledModules().contains("cicd");
         }
         u.where(PROJECTS.ID.eq(p.id())).execute();
+        if (turnedOnCicd) environments.ensureDefaults(p.id());
         ctx.refresh();
         return toDto(ctx, ctx.findProject(p.id()));
     }
