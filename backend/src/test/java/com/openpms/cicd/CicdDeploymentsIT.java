@@ -2,9 +2,11 @@ package com.openpms.cicd;
 
 import static com.openpms.db.Tables.CICD_COMMITS;
 import static com.openpms.db.Tables.CICD_DEPLOYMENTS;
+import static com.openpms.db.Tables.CICD_DEPLOYMENT_COMMITS;
 import static com.openpms.db.Tables.CICD_ENVIRONMENTS;
 import static com.openpms.db.Tables.CICD_ENVIRONMENT_COMMITS;
 import static com.openpms.db.Tables.CICD_ENVIRONMENT_HEADS;
+import static com.openpms.db.Tables.CICD_FIRST_DEPLOY_CHECKS;
 import static com.openpms.db.Tables.CICD_REPOSITORIES;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -196,14 +198,40 @@ class CicdDeploymentsIT {
         for (var x : List.of(new Object[] {"2", C, 2}, new Object[] {"3", B, 3}))
             events.store(connection, List.of(new CicdEvent("deployment", "deployment:" + ext + ":" + x[0] + ":success", ext, null, null, null,
                     new CicdEvent.Deployment((String) x[0], (String) x[1], null, "prod", "success", "", T0.plusHours((int) x[2])), null)), "webhook");
+        // both runners plan deployment 2 against the same head and are inside the compare call at the same time
+        var inside = new java.util.concurrent.CountDownLatch(2);
+        git.respondWith("/api/v4/projects/" + ext + "/repository/compare", r -> {
+            inside.countDown();
+            try {
+                inside.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return graph.gitlabCompare(r.query());
+        });
         var error = new AtomicReference<Throwable>();
+        long deadline = System.nanoTime() + java.time.Duration.ofSeconds(20).toNanos();
         try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
-            for (int i = 0; i < 2; i++) pool.submit(() -> { try { processor.run(clock); } catch (Throwable t) { error.set(t); } });
+            for (int i = 0; i < 2; i++)
+                pool.submit(() -> {
+                    try {
+                        // a runner that came before the events were stored as deployments tries again until both met
+                        do processor.run(clock); while (inside.getCount() > 0 && System.nanoTime() < deadline);
+                    } catch (Throwable t) {
+                        error.set(t);
+                    }
+                });
         }
         run();
         assertThat(error.get()).isNull();
+        assertThat(inside.getCount()).isZero();   // the two runners really overlapped
+        var second = db.select(CICD_DEPLOYMENTS.ID).from(CICD_DEPLOYMENTS).where(CICD_DEPLOYMENTS.REPOSITORY_ID.eq(repo), CICD_DEPLOYMENTS.EXTERNAL_ID.eq("2")).fetchOne().value1();
+        assertThat(inclusion(second)).isEqualTo("compared");
+        assertThat(db.select(CICD_COMMITS.SHA).from(CICD_DEPLOYMENT_COMMITS).join(CICD_COMMITS).on(CICD_COMMITS.ID.eq(CICD_DEPLOYMENT_COMMITS.COMMIT_ID))
+                .where(CICD_DEPLOYMENT_COMMITS.DEPLOYMENT_ID.eq(second)).fetch(CICD_COMMITS.SHA)).containsExactly(C);
         assertThat(in("운영")).containsExactly(B);   // C came in with 2 and left with 3, in that order
         var last = db.select(CICD_DEPLOYMENTS.ID).from(CICD_DEPLOYMENTS).where(CICD_DEPLOYMENTS.REPOSITORY_ID.eq(repo), CICD_DEPLOYMENTS.EXTERNAL_ID.eq("3")).fetchOne().value1();
+        assertThat(inclusion(last)).isEqualTo("compared");
         assertThat(head("운영")).isEqualTo(last);
     }
 
@@ -231,6 +259,66 @@ class CicdDeploymentsIT {
         run();
         assertThat(inclusion(d)).isNull();
         assertThat(db.fetchCount(CICD_ENVIRONMENT_HEADS, CICD_ENVIRONMENT_HEADS.REPOSITORY_ID.eq(repo))).isZero();
+    }
+
+    @Test void aDeploymentThatKeepsFailingBacksOffThenGivesWay() {
+        deploy("1", "dev", B, "success", T0.plusHours(1));
+        var c = db.select(CICD_COMMITS.ID).from(CICD_COMMITS).where(CICD_COMMITS.REPOSITORY_ID.eq(repo), CICD_COMMITS.SHA.eq(C)).fetchOne().value1();
+        // the database refuses C in an environment: applying deployment 2 throws every time
+        String trigger = "cicd_test_refuse_" + ext;
+        db.execute("create or replace function " + trigger + "() returns trigger language plpgsql as $$ begin raise exception 'refused for the test'; end $$");
+        db.execute("create trigger " + trigger + " before insert on cicd_environment_commits for each row when (new.commit_id = '" + c
+                + "'::uuid) execute function " + trigger + "()");
+        try {
+            var d = deploy("2", "dev", C, "success", T0.plusHours(2));
+            assertThat(db.select(CICD_DEPLOYMENTS.ATTEMPTS, CICD_DEPLOYMENTS.INCLUSION).from(CICD_DEPLOYMENTS).where(CICD_DEPLOYMENTS.ID.eq(d)).fetchOne())
+                    .satisfies(r -> { assertThat(r.value1()).isEqualTo(1); assertThat(r.value2()).isEqualTo("checking"); });
+            run();   // 15 seconds later: waiting for the 1-minute retry, not tried again
+            assertThat(db.select(CICD_DEPLOYMENTS.ATTEMPTS).from(CICD_DEPLOYMENTS).where(CICD_DEPLOYMENTS.ID.eq(d)).fetchOne().value1()).isEqualTo(1);
+            for (int i = 0; i < 6; i++) { clock = clock.plus(java.time.Duration.ofMinutes(9)); run(); }
+            assertThat(db.select(CICD_DEPLOYMENTS.ATTEMPTS, CICD_DEPLOYMENTS.INCLUSION, CICD_DEPLOYMENTS.CHECK_ERROR).from(CICD_DEPLOYMENTS)
+                    .where(CICD_DEPLOYMENTS.ID.eq(d)).fetchOne())
+                    .satisfies(r -> { assertThat(r.value1()).isEqualTo(5); assertThat(r.value2()).isEqualTo("failed"); assertThat(r.value3()).isEqualTo("error"); });
+            assertThat(head("개발")).isEqualTo(d);
+            var next = deploy("3", "dev", H, "success", T0.plusHours(3));   // compared against 2: B and C go out, H comes in
+            assertThat(inclusion(next)).isEqualTo("compared");
+            assertThat(head("개발")).isEqualTo(next);
+            assertThat(in("개발")).containsExactly(H);
+        } finally {
+            db.execute("drop trigger if exists " + trigger + " on cicd_environment_commits");
+            db.execute("drop function if exists " + trigger + "()");
+        }
+    }
+
+    @Test void deploymentToAnEnvironmentHiddenSinceIsOnlyRecorded() throws Exception {
+        var dev = db.select(CICD_ENVIRONMENTS.ID).from(CICD_ENVIRONMENTS)
+                .where(CICD_ENVIRONMENTS.PROJECT_ID.eq(UUID.fromString(f.projectId(admin, project))), CICD_ENVIRONMENTS.NAME.eq("개발")).fetchOne().value1();
+        var d = UUID.randomUUID();
+        db.insertInto(CICD_DEPLOYMENTS).set(CICD_DEPLOYMENTS.ID, d).set(CICD_DEPLOYMENTS.REPOSITORY_ID, repo).set(CICD_DEPLOYMENTS.ENVIRONMENT_ID, dev)
+                .set(CICD_DEPLOYMENTS.ENVIRONMENT_NAME, "dev").set(CICD_DEPLOYMENTS.EXTERNAL_ID, "9").set(CICD_DEPLOYMENTS.SHA, B)
+                .set(CICD_DEPLOYMENTS.STATUS, "success").set(CICD_DEPLOYMENTS.DEPLOYED_AT, T0.plusHours(1)).set(CICD_DEPLOYMENTS.SOURCE, "gitlab")
+                .set(CICD_DEPLOYMENTS.INCLUSION, "checking").execute();
+        db.update(CICD_ENVIRONMENTS).set(CICD_ENVIRONMENTS.HIDDEN, true).where(CICD_ENVIRONMENTS.ID.eq(dev)).execute();
+        run();
+        assertThat(inclusion(d)).isNull();
+        assertThat(db.fetchCount(CICD_ENVIRONMENT_HEADS, CICD_ENVIRONMENT_HEADS.REPOSITORY_ID.eq(repo))).isZero();
+    }
+
+    @Test void aLinkLeftOnTheOldProjectIsNoCandidate() throws Exception {
+        // B is linked to a work package of the old project; after the move only links inside the new project's tree count
+        var other = f.newProject(admin, "work_packages", "cicd");
+        db.update(CICD_REPOSITORIES).set(CICD_REPOSITORIES.PROJECT_ID, UUID.fromString(f.projectId(admin, other))).where(CICD_REPOSITORIES.ID.eq(repo)).execute();
+        var d = deploy("1", "dev", C, "success", T0.plusHours(1));
+        assertThat(inclusion(d)).isEqualTo("first");
+        assertThat(db.fetchCount(CICD_FIRST_DEPLOY_CHECKS, CICD_FIRST_DEPLOY_CHECKS.DEPLOYMENT_ID.eq(d))).isZero();
+        assertThat(in("개발")).containsExactly(C);
+    }
+
+    @Test void aLinkedCommitIsACandidateOfAFirstDeployment() {
+        var d = deploy("1", "dev", C, "success", T0.plusHours(1));   // B is linked here and is not the deployed commit
+        assertThat(inclusion(d)).isEqualTo("checking");   // Task 11 checks B
+        assertThat(db.fetchCount(CICD_FIRST_DEPLOY_CHECKS, CICD_FIRST_DEPLOY_CHECKS.DEPLOYMENT_ID.eq(d))).isEqualTo(1);
+        assertThat(head("개발")).isEqualTo(d);
     }
 
     @Test void errorCodesAndRetryDelays() {

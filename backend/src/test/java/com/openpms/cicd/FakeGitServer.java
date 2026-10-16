@@ -28,6 +28,7 @@ public final class FakeGitServer implements AutoCloseable {
 
     private final java.util.Map<String, java.util.function.Function<Recorded, Reply>> handlers = new ConcurrentHashMap<>();
     private final HttpServer server;
+    private final java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
     private final Map<String, Answer> answers = new ConcurrentHashMap<>();
     private final List<Recorded> requests = new CopyOnWriteArrayList<>();
 
@@ -38,6 +39,8 @@ public final class FakeGitServer implements AutoCloseable {
             throw new UncheckedIOException(e);
         }
         server.createContext("/", this::handle);
+        // a thread per request, so a handler that waits (a test holding two callers inside one call) does not stop the others
+        server.setExecutor(executor);
         server.start();
     }
 
@@ -75,6 +78,7 @@ public final class FakeGitServer implements AutoCloseable {
 
     @Override public void close() {
         server.stop(0);
+        executor.shutdownNow();
     }
 
     private void handle(HttpExchange ex) throws IOException {

@@ -56,13 +56,20 @@ public class CicdDeployments {
                                   and (e.deployed_at, e.id) < (d.deployed_at, d.id))
              order by d.deployed_at, d.id limit ?""";
 
-    /** A first deployment's candidates: this repository's commits with a link not dismissed, and merge commits of linked merged MRs. */
+    /**
+     * A first deployment's candidates: this repository's commits with a link not dismissed, and merge commits of linked merged
+     * MRs, counting only links to work packages in the repository's current project and its sub-projects (CicdLinker's tree).
+     */
     private static final String CANDIDATES = """
+            with recursive tree as (select id from projects where id = ?::uuid
+                                    union select p.id from projects p join tree t on p.parent_id = t.id),
+                 linked as (select l.commit_id, l.merge_request_id from work_package_cicd_links l
+                              join work_packages w on w.id = l.work_package_id
+                             where l.dismissed_at is null and w.project_id in (select id from tree))
             select c.id, c.committed_at from cicd_commits c
-             where c.repository_id = ? and c.id is distinct from ?::uuid
-               and (exists (select 1 from work_package_cicd_links l where l.commit_id = c.id and l.dismissed_at is null)
-                    or exists (select 1 from cicd_merge_requests m
-                                 join work_package_cicd_links l on l.merge_request_id = m.id and l.dismissed_at is null
+             where c.repository_id = ?::uuid and c.id is distinct from ?::uuid
+               and (exists (select 1 from linked l where l.commit_id = c.id)
+                    or exists (select 1 from cicd_merge_requests m join linked l on l.merge_request_id = m.id
                                 where m.repository_id = c.repository_id and m.state = 'merged'
                                   and left(c.sha, length(m.merge_commit_sha)) = m.merge_commit_sha))
              order by c.committed_at desc, c.id limit ?""";
@@ -84,7 +91,7 @@ public class CicdDeployments {
     /** One waiting deployment with what planning needs. */
     private record Waiting(UUID id, UUID repositoryId, UUID environmentId, String sha, OffsetDateTime deployedAt, int attempts,
             UUID projectId, UUID environmentProjectId, String webUrl, String externalId, UUID connectionId, String kind,
-            String baseUrl, boolean active, String tokenEnc) {}
+            String baseUrl, boolean active, String tokenEnc, boolean hidden) {}
 
     private record Head(String sha, UUID deploymentId, OffsetDateTime deployedAt) {}
 
@@ -96,8 +103,13 @@ public class CicdDeployments {
             try {
                 if (one(id, now)) changed++;
             } catch (RuntimeException e) {
-                // a database error on one deployment leaves it waiting for the next pass; the others go on
-                log.warn("cicd deployment {} not applied: {}", id, e.getClass().getSimpleName());
+                // an error while applying (a constraint, the linker): it waits like a failed compare, so it cannot hold its line for good
+                log.warn("cicd deployment {} not applied: {}: {}", id, e.getClass().getSimpleName(), firstLine(e.getMessage()));
+                try {
+                    if (broken(id, now)) changed++;
+                } catch (RuntimeException again) {
+                    log.warn("cicd deployment {} could not be put back: {}", id, again.getClass().getSimpleName());
+                }
             }
         }
         return changed;
@@ -108,6 +120,7 @@ public class CicdDeployments {
         if (d == null) return false;   // done by another run meanwhile
         // the repository moved to another project since: the deployment belongs to the old project's environment, only recorded
         if (d.environmentProjectId() == null || !d.environmentProjectId().equals(d.projectId()) || d.sha() == null) return recordOnly(id);
+        if (d.hidden()) return recordOnly(id);   // hidden since it was stored: like a success on a hidden environment (only recorded)
         var head = head(d.repositoryId(), d.environmentId());
         if (head == null) return startFirst(d);
         if (head.deploymentId().equals(d.id())) return false;
@@ -131,7 +144,7 @@ public class CicdDeployments {
         var r = db.select(CICD_DEPLOYMENTS.ID, CICD_DEPLOYMENTS.REPOSITORY_ID, CICD_DEPLOYMENTS.ENVIRONMENT_ID, CICD_DEPLOYMENTS.SHA,
                         CICD_DEPLOYMENTS.DEPLOYED_AT, CICD_DEPLOYMENTS.ATTEMPTS, CICD_REPOSITORIES.PROJECT_ID, CICD_ENVIRONMENTS.PROJECT_ID,
                         CICD_REPOSITORIES.WEB_URL, CICD_REPOSITORIES.EXTERNAL_ID, CICD_CONNECTIONS.ID, CICD_CONNECTIONS.KIND,
-                        CICD_CONNECTIONS.BASE_URL, CICD_CONNECTIONS.ACTIVE, CICD_CONNECTIONS.API_TOKEN_ENC)
+                        CICD_CONNECTIONS.BASE_URL, CICD_CONNECTIONS.ACTIVE, CICD_CONNECTIONS.API_TOKEN_ENC, CICD_ENVIRONMENTS.HIDDEN)
                 .from(CICD_DEPLOYMENTS)
                 .join(CICD_REPOSITORIES).on(CICD_REPOSITORIES.ID.eq(CICD_DEPLOYMENTS.REPOSITORY_ID))
                 .join(CICD_CONNECTIONS).on(CICD_CONNECTIONS.ID.eq(CICD_REPOSITORIES.CONNECTION_ID))
@@ -139,7 +152,7 @@ public class CicdDeployments {
                 .where(CICD_DEPLOYMENTS.ID.eq(id), CICD_DEPLOYMENTS.INCLUSION.eq("checking")).fetchOne();
         if (r == null) return null;
         return new Waiting(r.value1(), r.value2(), r.value3(), r.value4(), r.value5(), r.value6(), r.value7(), r.value8(), r.value9(),
-                r.value10(), r.value11(), r.value12(), r.value13(), Boolean.TRUE.equals(r.value14()), r.value15());
+                r.value10(), r.value11(), r.value12(), r.value13(), Boolean.TRUE.equals(r.value14()), r.value15(), Boolean.TRUE.equals(r.value16()));
     }
 
     private Head head(UUID repositoryId, UUID environmentId) {
@@ -174,6 +187,12 @@ public class CicdDeployments {
      */
     private boolean startFirst(Waiting d) {
         return Boolean.TRUE.equals(tx.execute(st -> {
+            // the repository may have moved since planning: the share lock waits for a move, then reads its new project
+            var project = db.select(CICD_REPOSITORIES.PROJECT_ID).from(CICD_REPOSITORIES).where(CICD_REPOSITORIES.ID.eq(d.repositoryId()))
+                    .forShare().fetchOne(CICD_REPOSITORIES.PROJECT_ID);
+            if (project == null || !db.fetchExists(CICD_ENVIRONMENTS, CICD_ENVIRONMENTS.ID.eq(d.environmentId()),
+                    CICD_ENVIRONMENTS.PROJECT_ID.eq(project), CICD_ENVIRONMENTS.HIDDEN.isFalse()))
+                return recordOnly(d.id());
             int made = db.insertInto(CICD_ENVIRONMENT_HEADS)
                     .set(CICD_ENVIRONMENT_HEADS.REPOSITORY_ID, d.repositoryId()).set(CICD_ENVIRONMENT_HEADS.ENVIRONMENT_ID, d.environmentId())
                     .set(CICD_ENVIRONMENT_HEADS.SHA, d.sha()).set(CICD_ENVIRONMENT_HEADS.DEPLOYMENT_ID, d.id())
@@ -186,7 +205,7 @@ public class CicdDeployments {
             }
             var self = commitId(d.repositoryId(), d.sha());
             if (self != null) bringIn(d, self);
-            var candidates = db.fetch(CANDIDATES, d.repositoryId(), self, FIRST_CANDIDATES);
+            var candidates = db.fetch(CANDIDATES, project, d.repositoryId(), self, FIRST_CANDIDATES);
             OffsetDateTime cutoff = null;
             for (var c : candidates) {
                 db.insertInto(CICD_FIRST_DEPLOY_CHECKS).set(CICD_FIRST_DEPLOY_CHECKS.DEPLOYMENT_ID, d.id())
@@ -239,6 +258,52 @@ public class CicdDeployments {
                 .set(CICD_DEPLOYMENTS.CHECK_ERROR, code)
                 .where(CICD_DEPLOYMENTS.ID.eq(d.id()), CICD_DEPLOYMENTS.INCLUSION.eq("checking")).execute();
         return false;
+    }
+
+    /**
+     * A deployment whose handling threw: one more attempt, retried 1, 2, 4, 8 minutes later; the fifth gives up with "error"
+     * and, like any "failed", moves the head on (or makes it the head) so the next deployment of the environment can go.
+     */
+    private boolean broken(UUID id, Instant now) {
+        return Boolean.TRUE.equals(tx.execute(st -> {
+            var d = db.select(CICD_DEPLOYMENTS.REPOSITORY_ID, CICD_DEPLOYMENTS.ENVIRONMENT_ID, CICD_DEPLOYMENTS.ATTEMPTS)
+                    .from(CICD_DEPLOYMENTS).where(CICD_DEPLOYMENTS.ID.eq(id), CICD_DEPLOYMENTS.INCLUSION.eq("checking")).fetchOne();
+            if (d == null) return false;
+            // the same lock order as everywhere else: the head row, then the deployment row
+            var head = db.select(CICD_ENVIRONMENT_HEADS.DEPLOYED_AT).from(CICD_ENVIRONMENT_HEADS)
+                    .where(CICD_ENVIRONMENT_HEADS.REPOSITORY_ID.eq(d.value1()), CICD_ENVIRONMENT_HEADS.ENVIRONMENT_ID.eq(d.value2()))
+                    .forUpdate().fetchOne();
+            var row = db.selectFrom(CICD_DEPLOYMENTS).where(CICD_DEPLOYMENTS.ID.eq(id), CICD_DEPLOYMENTS.INCLUSION.eq("checking"))
+                    .forUpdate().fetchOne();
+            if (row == null) return false;
+            int attempts = row.getAttempts() + 1;
+            if (attempts < MAX_ATTEMPTS) {
+                db.update(CICD_DEPLOYMENTS).set(CICD_DEPLOYMENTS.ATTEMPTS, attempts)
+                        .set(CICD_DEPLOYMENTS.NEXT_ATTEMPT_AT, now.plus(retryDelay(attempts)).atOffset(ZoneOffset.UTC))
+                        .set(CICD_DEPLOYMENTS.CHECK_ERROR, "error").where(CICD_DEPLOYMENTS.ID.eq(id)).execute();
+                return false;
+            }
+            if (row.getSha() != null && row.getEnvironmentId() != null && (head == null || !row.getDeployedAt().isBefore(head.value1()))) {
+                db.insertInto(CICD_ENVIRONMENT_HEADS)
+                        .set(CICD_ENVIRONMENT_HEADS.REPOSITORY_ID, row.getRepositoryId()).set(CICD_ENVIRONMENT_HEADS.ENVIRONMENT_ID, row.getEnvironmentId())
+                        .set(CICD_ENVIRONMENT_HEADS.SHA, row.getSha()).set(CICD_ENVIRONMENT_HEADS.DEPLOYMENT_ID, id)
+                        .set(CICD_ENVIRONMENT_HEADS.DEPLOYED_AT, row.getDeployedAt())
+                        .onConflict(CICD_ENVIRONMENT_HEADS.REPOSITORY_ID, CICD_ENVIRONMENT_HEADS.ENVIRONMENT_ID).doUpdate()
+                        .set(CICD_ENVIRONMENT_HEADS.SHA, row.getSha()).set(CICD_ENVIRONMENT_HEADS.DEPLOYMENT_ID, id)
+                        .set(CICD_ENVIRONMENT_HEADS.DEPLOYED_AT, row.getDeployedAt()).execute();
+            }
+            db.update(CICD_DEPLOYMENTS).set(CICD_DEPLOYMENTS.INCLUSION, "failed").set(CICD_DEPLOYMENTS.ATTEMPTS, attempts)
+                    .setNull(CICD_DEPLOYMENTS.NEXT_ATTEMPT_AT).set(CICD_DEPLOYMENTS.CHECK_ERROR, "error").where(CICD_DEPLOYMENTS.ID.eq(id)).execute();
+            log.warn("cicd deployment {} repository {}: gave up after {} errors", id, row.getRepositoryId(), attempts);
+            return true;
+        }));
+    }
+
+    /** The first line of a message, at most 200 characters (database messages; the adapters' messages are fixed text). */
+    private static String firstLine(String m) {
+        if (m == null) return "";
+        var line = m.lines().findFirst().orElse("");
+        return line.length() > 200 ? line.substring(0, 200) : line;
     }
 
     /** "failed": the environment keeps its commits, but the head moves on so that the next deployment compares against this one. */
