@@ -122,6 +122,7 @@
     <span class="chip">날짜 2026-10-15</span>
     <span class="chip">상태: 설계 합의(구현 계획 전)</span>
     <span class="chip">고침 2026-10-16: ITSM 제거로 5단계 보류</span>
+    <span class="chip">고침 2026-10-16: 연동마다 허용 프로젝트(V27·V1011), 2–4단계 번호 하나씩 미룸</span>
     <span class="chip">요구사항 REQ-CICD-001 ~</span>
     <span class="chip">원문 2026-10-15-cicd-design.md</span>
   </div>
@@ -187,22 +188,22 @@
   <h2><span class="no">2</span>로드맵</h2>
   <div class="roadmap" style="grid-template-columns:repeat(5,1fr)">
     <div class="step now"><b>1단계 · V26</b><span>연동 기반 + 추적성</span></div>
-    <div class="step"><b>2단계 · V27</b><span>빌드·배포 상태</span></div>
-    <div class="step"><b>3단계 · V28</b><span>릴리스 관리</span></div>
-    <div class="step"><b>4단계 · V29</b><span>자동화 규칙</span></div>
+    <div class="step"><b>2단계 · V28</b><span>빌드·배포 상태</span></div>
+    <div class="step"><b>3단계 · V29</b><span>릴리스 관리</span></div>
+    <div class="step"><b>4단계 · V30</b><span>자동화 규칙</span></div>
     <div class="step"><b>5단계 · 보류</b><span>변경 관리 연결</span></div>
   </div>
   <table>
     <thead><tr><th style="width:16%">단계</th><th>범위</th><th style="width:16%">기반</th><th style="width:12%">마이그레이션</th></tr></thead>
     <tbody>
-      <tr class="current"><td>1 연동 기반 + 추적성</td><td>도구 연동 등록, 들어오는 웹훅, 보완 폴링, 이벤트 정규화, <code>#123</code> 참조로 작업 연결, 작업 "개발" 탭. GitLab·GitHub 어댑터</td><td>새 모듈 <code>cicd</code></td><td>V26, V1010</td></tr>
-      <tr><td>2 빌드·배포 상태</td><td>파이프라인·배포 이벤트, Jenkins·Argo CD·범용 API 어댑터, 환경(개발·스테이징·운영) 정의, 작업별 "어느 환경까지 갔나"</td><td>1</td><td>V27, V1011</td></tr>
-      <tr><td>3 릴리스 관리</td><td>기존 <code>versions</code>를 릴리스로 넓힘: 포함 작업·MR·배포 이력, 환경별 현황 화면, 릴리스 노트 내보내기</td><td>1·2</td><td>V28, V1012</td></tr>
-      <tr><td>4 자동화 규칙</td><td>프로젝트별 규칙(기본 꺼짐): 이벤트 → 상태 전환(워크플로 준수)·알림, <code>closes #123</code> 같은 명령. 연동 이름으로 <code>journals.cause</code>에 기록</td><td>1·2</td><td>V29, V1013</td></tr>
+      <tr class="current"><td>1 연동 기반 + 추적성</td><td>도구 연동 등록, 들어오는 웹훅, 보완 폴링, 이벤트 정규화, <code>#123</code> 참조로 작업 연결, 작업 "개발" 탭. GitLab·GitHub 어댑터</td><td>새 모듈 <code>cicd</code></td><td>V26, V1010 (허용 프로젝트 V27, V1011)</td></tr>
+      <tr><td>2 빌드·배포 상태</td><td>파이프라인·배포 이벤트, Jenkins·Argo CD·범용 API 어댑터, 환경(개발·스테이징·운영) 정의, 작업별 "어느 환경까지 갔나"</td><td>1</td><td>V28, V1012</td></tr>
+      <tr><td>3 릴리스 관리</td><td>기존 <code>versions</code>를 릴리스로 넓힘: 포함 작업·MR·배포 이력, 환경별 현황 화면, 릴리스 노트 내보내기</td><td>1·2</td><td>V29, V1013</td></tr>
+      <tr><td>4 자동화 규칙</td><td>프로젝트별 규칙(기본 꺼짐): 이벤트 → 상태 전환(워크플로 준수)·알림, <code>closes #123</code> 같은 명령. 연동 이름으로 <code>journals.cause</code>에 기록</td><td>1·2</td><td>V30, V1014</td></tr>
       <tr><td>5 변경 관리 연결</td><td><b>보류 — ITSM 제거(2026-10-16)로 기반 없음, 다시 정함</b>. 처음 구상: 운영 배포 ↔ ITSM 변경 요청, 승인 없는 운영 배포 감지·경고, 실행 계획서에 빌드·배포 증거 자동 첨부</td><td><span class="tag warn">보류</span></td><td>–</td></tr>
     </tbody>
   </table>
-  <p>1단계는 V26·V1010을 쓴다. 그 앞의 V20–V25·V1004–V1009는 비워 둔다: Flyway는 빈 번호를 문제 삼지 않고, 한때 ITSM 마이그레이션(V20·V21)을 돌린 DB와 같은 번호로 검사합이 부딪치지 않는다. 단계마다 시작할 때 번호가 비어 있는지 확인한다.</p>
+  <p>1단계는 V26·V1010을 쓰고, 뒤에 더한 허용 프로젝트가 V27·V1011을 쓴다(2026-10-16). 그 앞의 V20–V25·V1004–V1009는 비워 둔다: Flyway는 빈 번호를 문제 삼지 않고, 한때 ITSM 마이그레이션(V20·V21)을 돌린 DB와 같은 번호로 검사합이 부딪치지 않는다. 단계마다 시작할 때 번호가 비어 있는지 확인한다.</p>
 
   <h3>단계 사이에 오가는 것</h3>
   <table class="handoff">
@@ -228,6 +229,7 @@
       <tr><td><code>cicd_commits</code></td><td>repository_id, sha, title, author_name, author_email, user_id, committed_at, web_url</td><td><code>(repository_id, sha)</code> 유일</td></tr>
       <tr><td><code>cicd_merge_requests</code></td><td>repository_id, iid, title, state(<code>open</code>·<code>draft</code>·<code>merged</code>·<code>closed</code>), source_branch, target_branch, author_name, user_id, merged_at, updated_at, web_url</td><td><code>(repository_id, iid)</code> 유일</td></tr>
       <tr><td><code>work_package_cicd_links</code></td><td>work_package_id, commit_id 또는 merge_request_id(둘 중 하나), source(<code>message</code>·<code>branch</code>·<code>title</code>·<code>manual</code>), created_by, dismissed_by, dismissed_at</td><td>끊은 연결은 행을 남기고 표시만 함(다시 생기지 않게)</td></tr>
+      <tr><td><code>cicd_connection_projects</code> (V27)</td><td>connection_id, project_id(둘 다 PK이자 CASCADE FK), project_id 색인</td><td>연동마다 허용 프로젝트. 시스템 관리자만 고침. 목록에 없는 프로젝트에는 연동이 없는 것과 같은 404. 새 연동은 빈 목록, V27은 이미 붙은 저장소의 프로젝트로 채움(새 개발 DB에서는 V1011이 채움)</td></tr>
     </tbody>
   </table>
   <ul>
@@ -299,6 +301,7 @@
 
   <h3>프로젝트 경계</h3>
   <p><code>#123</code>은 그 저장소가 붙은 프로젝트(와 하위 프로젝트)의 작업일 때만 연결한다. 다른 프로젝트의 작업 번호를 커밋에 적어도 연결되지 않고, 그 작업이 있는지도 드러나지 않는다. 손으로 연결할 때도 같은 검사를 한다.</p>
+  <p>저장소를 붙이는 쪽도 경계가 있다(2026-10-16, REQ-CICD-010): 연동마다 허용 프로젝트 목록이 있고, 그 프로젝트에서만 그 연동으로 저장소를 찾고 붙인다. 목록에 없으면 연동 고르기에 없고 찾기·붙이기는 꺼진 연동과 같은 404다. 목록은 시스템 관리자만 바꾸고(위임받은 연동 관리자는 볼 수 있는 프로젝트의 이름과 나머지 개수만 봄), 이 연동의 저장소가 붙은 프로젝트는 뺄 수 없다(409).</p>
 
   <h3>자격 증명</h3>
   <ul>
