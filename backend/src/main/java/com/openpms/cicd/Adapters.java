@@ -8,8 +8,8 @@ import org.springframework.stereotype.Component;
 public class Adapters {
     private final List<CicdAdapter> all;
 
-    public Adapters(GitLabAdapter gitlab, GitHubAdapter github) {
-        this.all = List.of(gitlab, github);
+    public Adapters(GitLabAdapter gitlab, GitHubAdapter github, JenkinsAdapter jenkins, ArgoCdAdapter argocd) {
+        this.all = List.of(gitlab, github, jenkins, argocd);
     }
 
     /** @throws IllegalArgumentException for a kind we do not know */

@@ -1,0 +1,1 @@
+{"type":"deployment","repository":"Web/Portal","id":"web-portal-42","image":"registry.local/web/portal:1a2b3c4d","environment":"production","status":"success","url":"https://jenkins.local/job/portal/42/","at":"2026-10-15T09:00:00+09:00"}
