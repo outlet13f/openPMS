@@ -50,8 +50,12 @@ public class IdempotencyFilter extends OncePerRequestFilter {
         this.json = json;
     }
 
-    /** Answers that carry a temporary password are never kept (they would sit in idempotency_keys for a day). */
-    private static final Pattern NOT_KEPT = Pattern.compile("^/api/v1/admin/users(/[^/]+/temporary-password)?$");
+    /**
+     * Answers that carry a temporary password or a CI/CD webhook secret are never kept (they would sit in idempotency_keys,
+     * and in every backup of it, for a day).
+     */
+    private static final Pattern NOT_KEPT = Pattern.compile("^/api/v1/admin/users(/[^/]+/temporary-password)?$"
+            + "|^/api/v1/admin/cicd/connections(/[^/]+/secret)?$");
     private static final UrlPathHelper PATHS = new UrlPathHelper();
 
     @Override

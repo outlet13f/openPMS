@@ -2,7 +2,11 @@ package com.openpms.cicd;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static com.openpms.db.Tables.API_TOKENS;
 import static com.openpms.db.Tables.CICD_CONNECTIONS;
+import static com.openpms.db.Tables.IDEMPOTENCY_KEYS;
+import static com.openpms.db.Tables.SETTINGS;
 import static com.openpms.db.Tables.CICD_REPOSITORIES;
 import static com.openpms.db.Tables.PROJECTS;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -13,6 +17,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.net.URI;
 import java.util.UUID;
 import org.jooq.DSLContext;
 import org.junit.jupiter.api.AfterEach;
@@ -20,6 +25,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -138,6 +144,49 @@ class CicdConnectionsIT {
                 .set(CICD_REPOSITORIES.FULL_PATH, "g/r").set(CICD_REPOSITORIES.WEB_URL, "https://g.local/g/r").set(CICD_REPOSITORIES.PROJECT_ID, projectId).execute();
         f.send(admin, delete("/api/v1/admin/cicd/connections/" + busy), "").andExpect(status().isConflict())
                 .andExpect(jsonPath("$.title").value("저장소가 붙어 있는 연동은 지울 수 없습니다. 먼저 저장소를 떼세요."));
+    }
+
+    @Test void answersWithTheWebhookSecretAreNotKeptForIdempotencyRetries() throws Exception {
+        var createKey = UUID.randomUUID().toString();
+        var created = f.body(f.mvc.perform(post("/api/v1/admin/cicd/connections").session(admin).with(csrf()).header("Idempotency-Key", createKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"kind\":\"github\",\"name\":\"멱등 " + UUID.randomUUID() + "\",\"baseUrl\":\"" + git.baseUrl() + "\"}"))
+                .andExpect(status().isCreated()).andReturn());
+        assertThat(created.get("webhookSecret").asString()).hasSizeGreaterThan(30);
+        assertThat(db.fetchCount(IDEMPOTENCY_KEYS, IDEMPOTENCY_KEYS.KEY.eq(createKey))).isZero();
+        var rotateKey = UUID.randomUUID().toString();
+        var id = created.at("/connection/id").asString();
+        var rotated = f.body(f.mvc.perform(post("/api/v1/admin/cicd/connections/" + id + "/secret").session(admin).with(csrf())
+                        .header("Idempotency-Key", rotateKey)).andExpect(status().isOk()).andReturn());
+        assertThat(rotated.get("webhookSecret").asString()).hasSizeGreaterThan(30).isNotEqualTo(created.get("webhookSecret").asString());
+        assertThat(db.fetchCount(IDEMPOTENCY_KEYS, IDEMPOTENCY_KEYS.KEY.eq(rotateKey))).isZero();
+    }
+
+    @Test void anApiTokenCannotReachTheConnectionSettings() throws Exception {
+        db.deleteFrom(SETTINGS).where(SETTINGS.KEY.eq("api.tokens_enabled")).execute(); // tokens on (the default)
+        var id = f.newConnection(admin, "github", git.baseUrl(), null)[0];
+        var project = f.newProject(admin, "work_packages", "cicd");
+        var secret = f.body(f.send(admin, post("/api/v1/me/api-tokens"), "{\"name\":\"CI/CD 토큰 시험\",\"scope\":\"write\",\"expiresInDays\":30}")
+                .andExpect(status().isCreated()).andReturn()).get("secret").asString();
+        var refused = "API 토큰으로는 로그인·비밀번호·토큰·연동 설정을 다룰 수 없습니다.";
+        try {
+            f.mvc.perform(get("/api/v1/admin/cicd/connections").header("Authorization", "Bearer " + secret))
+                    .andExpect(status().isForbidden()).andExpect(jsonPath("$.title").value(refused));
+            f.mvc.perform(post("/api/v1/admin/cicd/connections").header("Authorization", "Bearer " + secret).contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"kind\":\"github\",\"name\":\"토큰 " + UUID.randomUUID() + "\",\"baseUrl\":\"" + git.baseUrl() + "\"}"))
+                    .andExpect(status().isForbidden()).andExpect(jsonPath("$.title").value(refused));
+            f.mvc.perform(post("/api/v1/admin/cicd/connections/" + id + "/secret").header("Authorization", "Bearer " + secret))
+                    .andExpect(status().isForbidden()).andExpect(jsonPath("$.title").value(refused));
+            // percent-encoded: the same route for Spring
+            f.mvc.perform(get(new URI("/api/v1/admin/%63icd/connections")).header("Authorization", "Bearer " + secret))
+                    .andExpect(status().isForbidden());
+            // the project side stays open to tokens
+            f.mvc.perform(get("/api/v1/projects/" + project + "/cicd/repositories").header("Authorization", "Bearer " + secret))
+                    .andExpect(status().isOk());
+        } finally {
+            // ApiTokensIT counts every token in force: leave none behind
+            db.deleteFrom(API_TOKENS).where(API_TOKENS.NAME.eq("CI/CD 토큰 시험")).execute();
+        }
     }
 
     @Test void namesWithControlCharactersAreRefused() throws Exception {

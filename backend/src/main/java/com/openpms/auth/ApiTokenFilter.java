@@ -16,14 +16,14 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Requests with "Authorization: Bearer opms_…" act as the token's owner for that request only (no session, no cookie, so
  * no CSRF token either). A read token may only read; no token reaches sign-in, password or token management, nor the
- * integration settings (token switch, webhooks); each token gets 300 requests a minute.
+ * integration settings (token switch, webhooks, CI/CD connections); each token gets 300 requests a minute.
  */
 public class ApiTokenFilter extends OncePerRequestFilter {
     public static final String ATTRIBUTE = "openpms.apiToken";
     private static final Set<String> READ = Set.of("GET", "HEAD", "OPTIONS");
-    /** Sign-in, passwords, tokens, and the integration settings themselves (token switch, webhooks) stay with a signed-in person. */
+    /** Sign-in, passwords, tokens, and the integration settings themselves (token switch, webhooks, CI/CD) stay with a signed-in person. */
     private static final List<String> CLOSED = List.of("/api/v1/auth/", "/api/v1/me/password", "/api/v1/me/api-tokens", "/api/v1/admin/api-tokens",
-            "/api/v1/admin/settings/api", "/api/v1/admin/webhooks", "/api/v1/admin/webhook-deliveries");
+            "/api/v1/admin/settings/api", "/api/v1/admin/webhooks", "/api/v1/admin/webhook-deliveries", "/api/v1/admin/cicd/");
     private static final UrlPathHelper PATHS = new UrlPathHelper();
 
     private final ApiTokens tokens;
