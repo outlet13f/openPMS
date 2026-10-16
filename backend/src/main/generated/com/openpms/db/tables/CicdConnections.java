@@ -7,8 +7,10 @@ package com.openpms.db.tables;
 import com.openpms.db.Indexes;
 import com.openpms.db.Keys;
 import com.openpms.db.Public;
+import com.openpms.db.tables.CicdConnectionProjects.CicdConnectionProjectsPath;
 import com.openpms.db.tables.CicdEvents.CicdEventsPath;
 import com.openpms.db.tables.CicdRepositories.CicdRepositoriesPath;
+import com.openpms.db.tables.Projects.ProjectsPath;
 import com.openpms.db.tables.Users.UsersPath;
 import com.openpms.db.tables.records.CicdConnectionsRecord;
 
@@ -228,6 +230,19 @@ public class CicdConnections extends TableImpl<CicdConnectionsRecord> {
         return _users;
     }
 
+    private transient CicdConnectionProjectsPath _cicdConnectionProjects;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_connection_projects</code> table
+     */
+    public CicdConnectionProjectsPath cicdConnectionProjects() {
+        if (_cicdConnectionProjects == null)
+            _cicdConnectionProjects = new CicdConnectionProjectsPath(this, null, Keys.CICD_CONNECTION_PROJECTS__CICD_CONNECTION_PROJECTS_CONNECTION_ID_FKEY.getInverseKey());
+
+        return _cicdConnectionProjects;
+    }
+
     private transient CicdEventsPath _cicdEvents;
 
     /**
@@ -252,6 +267,14 @@ public class CicdConnections extends TableImpl<CicdConnectionsRecord> {
             _cicdRepositories = new CicdRepositoriesPath(this, null, Keys.CICD_REPOSITORIES__CICD_REPOSITORIES_CONNECTION_ID_FKEY.getInverseKey());
 
         return _cicdRepositories;
+    }
+
+    /**
+     * Get the implicit many-to-many join path to the
+     * <code>public.projects</code> table
+     */
+    public ProjectsPath projects() {
+        return cicdConnectionProjects().projects();
     }
 
     @Override

@@ -11,6 +11,7 @@ import com.openpms.db.tables.BoardColumns;
 import com.openpms.db.tables.Boards;
 import com.openpms.db.tables.Categories;
 import com.openpms.db.tables.CicdCommits;
+import com.openpms.db.tables.CicdConnectionProjects;
 import com.openpms.db.tables.CicdConnections;
 import com.openpms.db.tables.CicdEvents;
 import com.openpms.db.tables.CicdMergeRequests;
@@ -115,6 +116,11 @@ public class Public extends SchemaImpl {
      * The table <code>public.cicd_commits</code>.
      */
     public final CicdCommits CICD_COMMITS = CicdCommits.CICD_COMMITS;
+
+    /**
+     * The table <code>public.cicd_connection_projects</code>.
+     */
+    public final CicdConnectionProjects CICD_CONNECTION_PROJECTS = CicdConnectionProjects.CICD_CONNECTION_PROJECTS;
 
     /**
      * The table <code>public.cicd_connections</code>.
@@ -376,6 +382,7 @@ public class Public extends SchemaImpl {
             Boards.BOARDS,
             Categories.CATEGORIES,
             CicdCommits.CICD_COMMITS,
+            CicdConnectionProjects.CICD_CONNECTION_PROJECTS,
             CicdConnections.CICD_CONNECTIONS,
             CicdEvents.CICD_EVENTS,
             CicdMergeRequests.CICD_MERGE_REQUESTS,

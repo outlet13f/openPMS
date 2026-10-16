@@ -1,7 +1,9 @@
 package com.openpms.cicd;
 
 import static com.openpms.db.Tables.CICD_CONNECTIONS;
+import static com.openpms.db.Tables.CICD_CONNECTION_PROJECTS;
 import static com.openpms.db.Tables.CICD_REPOSITORIES;
+import static com.openpms.db.Tables.PROJECTS;
 
 import com.openpms.common.ApiException;
 import com.openpms.common.In;
@@ -9,11 +11,16 @@ import com.openpms.core.Ctx;
 import java.net.URI;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.impl.DSL;
 import org.slf4j.Logger;
@@ -29,9 +36,18 @@ public class CicdConnections {
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Set<String> KINDS = Set.of("gitlab", "github");
 
-    /** Never holds a secret. */
+    /**
+     * Never holds a secret. projects: the allowed projects the caller may see (by name); hiddenProjectCount: the others on the
+     * list, counted only (a delegated CI/CD 연동 관리자 does not learn the names of projects they cannot see).
+     */
     public record ConnectionDto(UUID id, String kind, String name, String baseUrl, String webhookUrl, String tokenHint, String secretHint,
-                                boolean active, int repositoryCount, OffsetDateTime createdAt) {}
+                                boolean active, int repositoryCount, OffsetDateTime createdAt, List<ProjectRef> projects, int hiddenProjectCount) {}
+
+    public record ProjectRef(UUID id, String name) {}
+
+    private record Allowed(List<ProjectRef> projects, int hidden) {
+        static final Allowed NONE = new Allowed(List.of(), 0);
+    }
 
     /** The webhook secret is shown once, here. */
     public record CreatedConnection(ConnectionDto connection, String webhookSecret) {
@@ -66,9 +82,13 @@ public class CicdConnections {
             throw ApiException.forbidden("CI/CD 연동을 관리할 권한이 없습니다.");
     }
 
-    public List<ConnectionDto> list() {
+    public List<ConnectionDto> list(Ctx ctx) {
+        var allowed = allowed(ctx, DSL.trueCondition());
         return db.select(CICD_CONNECTIONS.fields()).select(repoCount()).from(CICD_CONNECTIONS)
-                .orderBy(CICD_CONNECTIONS.NAME).fetch(r -> dto(r.into(CICD_CONNECTIONS), r.get("repo_count", Integer.class)));
+                .orderBy(CICD_CONNECTIONS.NAME).fetch(r -> {
+                    var c = r.into(CICD_CONNECTIONS);
+                    return dto(c, r.get("repo_count", Integer.class), allowed.getOrDefault(c.getId(), Allowed.NONE));
+                });
     }
 
     @Transactional
@@ -96,7 +116,7 @@ public class CicdConnections {
         r.setCreatedBy(ctx.userId());
         r.insert();
         AUDIT.info("cicd.connection.created by={} id={} name={}", ctx.userId(), r.getId(), name);
-        return new CreatedConnection(dto(r, 0), secret);
+        return new CreatedConnection(dto(r, 0, Allowed.NONE), secret);
     }
 
     @Transactional
@@ -137,7 +157,40 @@ public class CicdConnections {
         r.update();
         if (tokenCleared && r.getApiTokenEnc() != null) tokenCleared = false; // replaced in the same request
         AUDIT.info("cicd.connection.updated by={} id={} name={} tokenCleared={}", ctx.userId(), id, r.getName(), tokenCleared);
-        return dto(r, count(id));
+        return dto(r, count(id), allowedOf(ctx, id));
+    }
+
+    /**
+     * Replaces the connection's allowed projects (system administrators only). A project that still has a repository of this
+     * connection cannot leave the list. The rows go first, so an attach in flight either finishes before (and we see its
+     * repository) or waits and then finds the project gone (CicdRepositories.attach locks the row it relies on).
+     */
+    @Transactional
+    public ConnectionDto setProjects(Ctx ctx, UUID id, Map<String, Object> in) {
+        if (!ctx.isAdmin()) throw ApiException.forbidden("허용 프로젝트는 시스템 관리자만 바꿀 수 있습니다.");
+        var r = find(id);
+        if (in == null || !(in.get("projectIds") instanceof List<?> raw)) throw ApiException.field("projectIds", "허용 프로젝트 목록이 올바르지 않습니다.");
+        if (raw.size() > 1000) throw ApiException.field("projectIds", "허용 프로젝트가 너무 많습니다.");
+        var wanted = new LinkedHashSet<>(In.uuids(in, "projectIds", "projectIds"));
+        if (!wanted.isEmpty() && db.fetchCount(PROJECTS, PROJECTS.ID.in(wanted)) != wanted.size())
+            throw ApiException.field("projectIds", "없는 프로젝트가 있습니다.");
+        var current = db.select(CICD_CONNECTION_PROJECTS.PROJECT_ID).from(CICD_CONNECTION_PROJECTS)
+                .where(CICD_CONNECTION_PROJECTS.CONNECTION_ID.eq(id)).fetchSet(CICD_CONNECTION_PROJECTS.PROJECT_ID);
+        var removed = new HashSet<>(current);
+        removed.removeAll(wanted);
+        var added = new LinkedHashSet<>(wanted);
+        added.removeAll(current);
+        if (!removed.isEmpty()) {
+            db.deleteFrom(CICD_CONNECTION_PROJECTS).where(CICD_CONNECTION_PROJECTS.CONNECTION_ID.eq(id))
+                    .and(CICD_CONNECTION_PROJECTS.PROJECT_ID.in(removed)).execute();
+            if (db.fetchExists(CICD_REPOSITORIES, CICD_REPOSITORIES.CONNECTION_ID.eq(id).and(CICD_REPOSITORIES.PROJECT_ID.in(removed))))
+                throw new ApiException(409, "이 연동의 저장소가 붙어 있는 프로젝트는 뺄 수 없습니다. 먼저 저장소를 떼세요.");
+        }
+        for (var projectId : added)
+            db.insertInto(CICD_CONNECTION_PROJECTS).set(CICD_CONNECTION_PROJECTS.CONNECTION_ID, id).set(CICD_CONNECTION_PROJECTS.PROJECT_ID, projectId)
+                    .onConflictDoNothing().execute();
+        AUDIT.info("cicd.connection.projects_changed by={} id={} name={} added={} removed={}", ctx.userId(), id, r.getName(), added.size(), removed.size());
+        return dto(r, count(id), allowedOf(ctx, id));
     }
 
     @Transactional
@@ -186,9 +239,34 @@ public class CicdConnections {
         return DSL.field(DSL.select(DSL.count()).from(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(CICD_CONNECTIONS.ID))).cast(Integer.class).as("repo_count");
     }
 
-    private ConnectionDto dto(com.openpms.db.tables.records.CicdConnectionsRecord r, int repos) {
+    private Allowed allowedOf(Ctx ctx, UUID id) {
+        return allowed(ctx, CICD_CONNECTION_PROJECTS.CONNECTION_ID.eq(id)).getOrDefault(id, Allowed.NONE);
+    }
+
+    /** One query for every connection matching the condition; visibility comes from the request's snapshot (no further queries). */
+    private Map<UUID, Allowed> allowed(Ctx ctx, Condition where) {
+        var names = new HashMap<UUID, List<ProjectRef>>();
+        var hidden = new HashMap<UUID, Integer>();
+        var admin = ctx.isAdmin();
+        db.select(CICD_CONNECTION_PROJECTS.CONNECTION_ID, PROJECTS.ID, PROJECTS.NAME).from(CICD_CONNECTION_PROJECTS)
+                .join(PROJECTS).on(PROJECTS.ID.eq(CICD_CONNECTION_PROJECTS.PROJECT_ID)).where(where).orderBy(PROJECTS.NAME, PROJECTS.ID)
+                .forEach(row -> {
+                    var connection = row.get(CICD_CONNECTION_PROJECTS.CONNECTION_ID);
+                    var p = ctx.s().projects().get(row.get(PROJECTS.ID));
+                    if (admin || (p != null && ctx.can(p, "project.view")))
+                        names.computeIfAbsent(connection, k -> new ArrayList<>()).add(new ProjectRef(row.get(PROJECTS.ID), row.get(PROJECTS.NAME)));
+                    else hidden.merge(connection, 1, Integer::sum);
+                });
+        var out = new HashMap<UUID, Allowed>();
+        names.forEach((k, v) -> out.put(k, new Allowed(List.copyOf(v), hidden.getOrDefault(k, 0))));
+        hidden.forEach((k, v) -> out.putIfAbsent(k, new Allowed(List.of(), v)));
+        return out;
+    }
+
+    private ConnectionDto dto(com.openpms.db.tables.records.CicdConnectionsRecord r, int repos, Allowed allowed) {
         return new ConnectionDto(r.getId(), r.getKind(), r.getName(), r.getBaseUrl(), publicBase + "/api/v1/hooks/cicd/" + r.getHookKey(),
-                r.getApiTokenHint(), r.getWebhookSecretHint(), Boolean.TRUE.equals(r.getActive()), repos, r.getCreatedAt());
+                r.getApiTokenHint(), r.getWebhookSecretHint(), Boolean.TRUE.equals(r.getActive()), repos, r.getCreatedAt(),
+                allowed.projects(), allowed.hidden());
     }
 
     private static ApiException duplicate() {

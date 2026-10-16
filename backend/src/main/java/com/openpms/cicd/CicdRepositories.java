@@ -1,6 +1,7 @@
 package com.openpms.cicd;
 
 import static com.openpms.db.Tables.CICD_CONNECTIONS;
+import static com.openpms.db.Tables.CICD_CONNECTION_PROJECTS;
 import static com.openpms.db.Tables.CICD_REPOSITORIES;
 
 import com.openpms.common.ApiException;
@@ -14,14 +15,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.jooq.DSLContext;
+import org.jooq.impl.DSL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Repositories on a project: search the tool, attach, detach. Remote calls never run inside a transaction: each
  * statement here is its own short one, so no DB connection is held while we wait for the code host.
+ * A project sees only the connections whose allowed list holds it (V27); for any other the answer is the same 404 as for a
+ * connection that is off or missing.
  */
 @Service
 public class CicdRepositories {
@@ -35,11 +40,13 @@ public class CicdRepositories {
     private final DSLContext db;
     private final SecretBox box;
     private final Adapters adapters;
+    private final TransactionTemplate tx;
 
-    public CicdRepositories(DSLContext db, SecretBox box, Adapters adapters) {
+    public CicdRepositories(DSLContext db, SecretBox box, Adapters adapters, TransactionTemplate tx) {
         this.db = db;
         this.box = box;
         this.adapters = adapters;
+        this.tx = tx;
     }
 
     /** Project visible with the module on and cicd.view, else 404 (a non-member must not learn it exists). */
@@ -55,9 +62,15 @@ public class CicdRepositories {
         return p;
     }
 
-    public List<ConnectionChoice> connections() {
-        return db.selectFrom(CICD_CONNECTIONS).where(CICD_CONNECTIONS.ACTIVE.isTrue()).orderBy(CICD_CONNECTIONS.NAME)
-                .fetch(r -> new ConnectionChoice(r.getId(), r.getKind(), r.getName()));
+    /** The active connections that allow this project. */
+    public List<ConnectionChoice> connections(ProjectRow p) {
+        return db.selectFrom(CICD_CONNECTIONS).where(CICD_CONNECTIONS.ACTIVE.isTrue()).and(allows(CICD_CONNECTIONS.ID, p.id()))
+                .orderBy(CICD_CONNECTIONS.NAME).fetch(r -> new ConnectionChoice(r.getId(), r.getKind(), r.getName()));
+    }
+
+    private static org.jooq.Condition allows(org.jooq.Field<UUID> connectionId, UUID projectId) {
+        return DSL.exists(DSL.selectOne().from(CICD_CONNECTION_PROJECTS).where(CICD_CONNECTION_PROJECTS.CONNECTION_ID.eq(connectionId))
+                .and(CICD_CONNECTION_PROJECTS.PROJECT_ID.eq(projectId)));
     }
 
     public List<RepositoryDto> list(ProjectRow p) {
@@ -70,9 +83,9 @@ public class CicdRepositories {
     }
 
     /** attachedProject appears (true) only for repositories already attached somewhere; never which project. */
-    public List<Map<String, Object>> search(UUID connectionId, String query) {
+    public List<Map<String, Object>> search(ProjectRow p, UUID connectionId, String query) {
         if (query != null && query.length() > 100) throw ApiException.field("q", "검색어가 너무 깁니다.");
-        var c = activeConnection(connectionId);
+        var c = activeConnection(connectionId, p);
         var found = remote(c, query);
         var out = new java.util.ArrayList<Map<String, Object>>();
         for (var r : found) {
@@ -91,7 +104,7 @@ public class CicdRepositories {
         var connectionId = uuid(In.str(in, "connectionId"));
         var externalId = In.str(in, "externalId");
         if (externalId == null || externalId.isBlank() || externalId.length() > 200) throw ApiException.field("externalId", "저장소를 고르세요.");
-        var c = activeConnection(connectionId);
+        var c = activeConnection(connectionId, p);
         var existing = db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(c.getId()))
                 .and(CICD_REPOSITORIES.EXTERNAL_ID.eq(externalId)).fetchOne();
         if (existing != null) throw taken(existing.getProjectId(), p);
@@ -106,7 +119,14 @@ public class CicdRepositories {
         r.setProjectId(p.id());
         r.setPollCursor(OffsetDateTime.now().minusDays(7));
         try {
-            r.insert();
+            // the list may have changed while we asked the host: check again, holding the row so that taking the project off
+            // the list (CicdConnections.setProjects) waits for this insert and then refuses with 409, or wins and we answer 404
+            tx.executeWithoutResult(s -> {
+                var held = db.selectOne().from(CICD_CONNECTION_PROJECTS).where(CICD_CONNECTION_PROJECTS.CONNECTION_ID.eq(c.getId()))
+                        .and(CICD_CONNECTION_PROJECTS.PROJECT_ID.eq(p.id())).forShare().fetchOne();
+                if (held == null) throw ApiException.notFound("연동을 찾을 수 없습니다.");
+                r.insert();
+            });
         } catch (DataIntegrityViolationException e) {
             var owner = db.selectFrom(CICD_REPOSITORIES).where(CICD_REPOSITORIES.CONNECTION_ID.eq(c.getId()))
                     .and(CICD_REPOSITORIES.EXTERNAL_ID.eq(repo.externalId())).fetchOne();
@@ -127,8 +147,8 @@ public class CicdRepositories {
         return new ApiException(409, owner.equals(p.id()) ? "이미 이 프로젝트에 붙은 저장소입니다." : "이미 다른 프로젝트에 붙은 저장소입니다.");
     }
 
-    private com.openpms.db.tables.records.CicdConnectionsRecord activeConnection(UUID id) {
-        var c = id == null ? null : db.selectFrom(CICD_CONNECTIONS).where(CICD_CONNECTIONS.ID.eq(id)).fetchOne();
+    private com.openpms.db.tables.records.CicdConnectionsRecord activeConnection(UUID id, ProjectRow p) {
+        var c = id == null ? null : db.selectFrom(CICD_CONNECTIONS).where(CICD_CONNECTIONS.ID.eq(id)).and(allows(CICD_CONNECTIONS.ID, p.id())).fetchOne();
         if (c == null || !Boolean.TRUE.equals(c.getActive())) throw ApiException.notFound("연동을 찾을 수 없습니다.");
         if (c.getApiTokenEnc() == null) throw ApiException.unprocessable("이 연동에는 API 토큰이 없어 저장소를 찾을 수 없습니다.", null);
         return c;

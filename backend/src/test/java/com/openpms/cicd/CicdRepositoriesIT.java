@@ -68,7 +68,8 @@ class CicdRepositoriesIT {
     @Test void leaderSearchesAndAttaches() throws Exception {
         var project = leaderProject("cicd");
         var c = f.newConnection(admin, "gitlab", git.baseUrl(), "glpat-token-1234");
-        var found = f.body(f.send(junho, get("/api/v1/projects/" + project + "/cicd/connections/" + c[0] + "/search?q=web"), "")
+        f.allow(admin, c[0], project);
+        var found =f.body(f.send(junho, get("/api/v1/projects/" + project + "/cicd/connections/" + c[0] + "/search?q=web"), "")
                 .andExpect(status().isOk()).andReturn());
         assertThat(found.get(0).get("fullPath").asString()).isEqualTo("openpms-test/web");
         assertThat(found.get(0).has("attachedProject")).isFalse();
@@ -113,6 +114,7 @@ class CicdRepositoriesIT {
         var first = leaderProject("cicd");
         var second = leaderProject("cicd");
         var c = f.newConnection(admin, "gitlab", git.baseUrl(), "glpat-token-1234");
+        f.allow(admin, c[0], first, second);
         attach(junho, first, c[0], "4201");
         var res = f.send(junho, post("/api/v1/projects/" + second + "/cicd/repositories"),
                 "{\"connectionId\":\"" + c[0] + "\",\"externalId\":\"4201\"}").andExpect(status().isConflict()).andReturn().getResponse().getContentAsString();
@@ -136,7 +138,8 @@ class CicdRepositoriesIT {
     @Test void searchNeedsAToken() throws Exception {
         var project = leaderProject("cicd");
         var c = f.newConnection(admin, "gitlab", git.baseUrl(), null);
-        var res = f.send(junho, get("/api/v1/projects/" + project + "/cicd/connections/" + c[0] + "/search?q=web"), "")
+        f.allow(admin, c[0], project);
+        var res =f.send(junho, get("/api/v1/projects/" + project + "/cicd/connections/" + c[0] + "/search?q=web"), "")
                 .andExpect(status().isUnprocessableEntity()).andReturn().getResponse().getContentAsString();
         assertThat(res).contains("이 연동에는 API 토큰이 없어 저장소를 찾을 수 없습니다.");
         assertThat(git.requests()).isEmpty();
@@ -145,6 +148,7 @@ class CicdRepositoriesIT {
     @Test void attachedPathComesFromTheRemoteNotTheClient() throws Exception {
         var project = leaderProject("cicd");
         var c = f.newConnection(admin, "gitlab", git.baseUrl(), "glpat-token-1234");
+        f.allow(admin, c[0], project);
         f.send(junho, post("/api/v1/projects/" + project + "/cicd/repositories"),
                 "{\"connectionId\":\"" + c[0] + "\",\"externalId\":\"4201\",\"fullPath\":\"evil/other\",\"webUrl\":\"https://evil.example\"}")
                 .andExpect(status().isCreated());
@@ -167,6 +171,7 @@ class CicdRepositoriesIT {
     @Test void aRepositoryOutsideTheSearchListAttachesById() throws Exception {
         var project = leaderProject("cicd");
         var c = f.newConnection(admin, "gitlab", git.baseUrl(), "glpat-token-1234");
+        f.allow(admin, c[0], project);
         // 4333 is not among the search results, only the single-repository endpoint knows it
         git.respond("/api/v4/projects/4333", 200, "cicd/gitlab-project.json");
         f.send(junho, post("/api/v1/projects/" + project + "/cicd/repositories"), "{\"connectionId\":\"" + c[0] + "\",\"externalId\":\"4333\"}")
@@ -179,6 +184,7 @@ class CicdRepositoriesIT {
     @Test void githubAttachesByIdToo() throws Exception {
         var project = leaderProject("cicd");
         var c = f.newConnection(admin, "github", git.baseUrl(), "ghp-token-1234");
+        f.allow(admin, c[0], project);
         git.respond("/api/v3/repositories/9333", 200, "cicd/github-repo.json");
         f.send(junho, post("/api/v1/projects/" + project + "/cicd/repositories"), "{\"connectionId\":\"" + c[0] + "\",\"externalId\":\"9333\"}")
                 .andExpect(status().isCreated());
@@ -237,7 +243,8 @@ class CicdRepositoriesIT {
         var a = leaderProject("cicd");
         var b = leaderProject("cicd");
         var c = f.newConnection(admin, "gitlab", git.baseUrl(), "glpat-token-1234");
-        var repoB = attach(junho, b, c[0], "4201");
+        f.allow(admin, c[0], a, b);
+        var repoB =attach(junho, b, c[0], "4201");
         f.send(junho, delete("/api/v1/projects/" + a + "/cicd/repositories/" + repoB), "").andExpect(status().isNotFound());
         assertThat(db.fetchExists(CICD_REPOSITORIES, CICD_REPOSITORIES.ID.eq(UUID.fromString(repoB)))).isTrue();
     }

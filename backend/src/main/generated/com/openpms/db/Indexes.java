@@ -11,6 +11,7 @@ import com.openpms.db.tables.BoardColumns;
 import com.openpms.db.tables.Boards;
 import com.openpms.db.tables.Categories;
 import com.openpms.db.tables.CicdCommits;
+import com.openpms.db.tables.CicdConnectionProjects;
 import com.openpms.db.tables.CicdConnections;
 import com.openpms.db.tables.CicdEvents;
 import com.openpms.db.tables.CicdMergeRequests;
@@ -83,6 +84,7 @@ public class Indexes {
     public static final Index BOARDS_PROJECT_IDX = Internal.createIndex(DSL.name("boards_project_idx"), Boards.BOARDS, new OrderField[] { Boards.BOARDS.PROJECT_ID }, false);
     public static final Index CATEGORIES_DEFAULT_ASSIGNEE_IDX = Internal.createIndex(DSL.name("categories_default_assignee_idx"), Categories.CATEGORIES, new OrderField[] { Categories.CATEGORIES.DEFAULT_ASSIGNEE_ID }, false);
     public static final Index CICD_COMMITS_USER_IDX = Internal.createIndex(DSL.name("cicd_commits_user_idx"), CicdCommits.CICD_COMMITS, new OrderField[] { CicdCommits.CICD_COMMITS.USER_ID }, false);
+    public static final Index CICD_CONNECTION_PROJECTS_PROJECT = Internal.createIndex(DSL.name("cicd_connection_projects_project"), CicdConnectionProjects.CICD_CONNECTION_PROJECTS, new OrderField[] { CicdConnectionProjects.CICD_CONNECTION_PROJECTS.PROJECT_ID }, false);
     public static final Index CICD_CONNECTIONS_CREATED_BY_IDX = Internal.createIndex(DSL.name("cicd_connections_created_by_idx"), CicdConnections.CICD_CONNECTIONS, new OrderField[] { CicdConnections.CICD_CONNECTIONS.CREATED_BY }, false);
     public static final Index CICD_EVENTS_PENDING_IDX = Internal.createIndex(DSL.name("cicd_events_pending_idx"), CicdEvents.CICD_EVENTS, new OrderField[] { CicdEvents.CICD_EVENTS.RECEIVED_AT }, false);
     public static final Index CICD_EVENTS_REPOSITORY_IDX = Internal.createIndex(DSL.name("cicd_events_repository_idx"), CicdEvents.CICD_EVENTS, new OrderField[] { CicdEvents.CICD_EVENTS.REPOSITORY_ID }, false);

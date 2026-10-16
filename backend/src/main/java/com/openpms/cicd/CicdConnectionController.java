@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,8 +30,7 @@ public class CicdConnectionController {
 
     @GetMapping
     public List<CicdConnections.ConnectionDto> list() {
-        manager();
-        return connections.list();
+        return connections.list(manager());
     }
 
     @PostMapping
@@ -42,6 +42,12 @@ public class CicdConnectionController {
     @PatchMapping("/{id}")
     public CicdConnections.ConnectionDto update(@PathVariable UUID id, @RequestBody Map<String, Object> in) {
         return connections.update(manager(), id, in);
+    }
+
+    /** System administrators only (a delegated CI/CD 연동 관리자 gets 403). */
+    @PutMapping("/{id}/projects")
+    public CicdConnections.ConnectionDto setProjects(@PathVariable UUID id, @RequestBody Map<String, Object> in) {
+        return connections.setProjects(manager(), id, in);
     }
 
     @PostMapping("/{id}/secret")

@@ -11,6 +11,7 @@ import com.openpms.db.tables.BoardColumns;
 import com.openpms.db.tables.Boards;
 import com.openpms.db.tables.Categories;
 import com.openpms.db.tables.CicdCommits;
+import com.openpms.db.tables.CicdConnectionProjects;
 import com.openpms.db.tables.CicdConnections;
 import com.openpms.db.tables.CicdEvents;
 import com.openpms.db.tables.CicdMergeRequests;
@@ -99,6 +100,11 @@ public class Tables {
      * The table <code>public.cicd_commits</code>.
      */
     public static final CicdCommits CICD_COMMITS = CicdCommits.CICD_COMMITS;
+
+    /**
+     * The table <code>public.cicd_connection_projects</code>.
+     */
+    public static final CicdConnectionProjects CICD_CONNECTION_PROJECTS = CicdConnectionProjects.CICD_CONNECTION_PROJECTS;
 
     /**
      * The table <code>public.cicd_connections</code>.

@@ -29,15 +29,13 @@ public class CicdRepositoryController {
 
     @GetMapping("/connections")
     public List<CicdRepositories.ConnectionChoice> connections(@PathVariable String project) {
-        repos.manageable(current.ctx(), project);
-        return repos.connections();
+        return repos.connections(repos.manageable(current.ctx(), project));
     }
 
     @GetMapping("/connections/{connectionId}/search")
     public List<Map<String, Object>> search(@PathVariable String project, @PathVariable UUID connectionId,
                                             @RequestParam(required = false) String q) {
-        repos.manageable(current.ctx(), project);
-        return repos.search(connectionId, q);
+        return repos.search(repos.manageable(current.ctx(), project), connectionId, q);
     }
 
     @GetMapping("/repositories")

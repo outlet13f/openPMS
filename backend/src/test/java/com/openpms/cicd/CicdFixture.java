@@ -85,6 +85,25 @@ public final class CicdFixture {
                 webhookUrl.substring(webhookUrl.lastIndexOf('/') + 1)};
     }
 
+    /** The project's id, by its identifier (or id). */
+    public String projectId(MockHttpSession admin, String project) throws Exception {
+        return body(send(admin, org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/projects/" + project), "")
+                .andExpect(status().isOk()).andReturn()).get("id").asString();
+    }
+
+    /** Sets the connection's allowed projects (identifiers or ids) as a whole, as a system administrator. */
+    public JsonNode allow(MockHttpSession admin, String connectionId, String... projects) throws Exception {
+        var ids = new StringBuilder();
+        for (var p : projects) ids.append(ids.length() == 0 ? "" : ",").append('"').append(projectId(admin, p)).append('"');
+        return body(send(admin, put("/api/v1/admin/cicd/connections/" + connectionId + "/projects"), "{\"projectIds\":[" + ids + "]}")
+                .andExpect(status().isOk()).andReturn());
+    }
+
+    /** Takes all global roles away from the user. */
+    public void grantGlobalNone(MockHttpSession admin, UUID userId) throws Exception {
+        send(admin, put("/api/v1/admin/users/" + userId + "/global-roles"), "{\"roleIds\":[]}").andExpect(status().isOk());
+    }
+
     /** Replaces the user's global roles with this one (the admin API sets them as a whole). */
     public void grantGlobal(MockHttpSession admin, UUID userId, UUID roleId) throws Exception {
         send(admin, put("/api/v1/admin/users/" + userId + "/global-roles"), "{\"roleIds\":[\"" + roleId + "\"]}").andExpect(status().isOk());
