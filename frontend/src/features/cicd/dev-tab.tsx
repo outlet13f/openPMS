@@ -137,6 +137,12 @@ function EnvironmentRow({ environments }: { environments: CicdEnvironmentStatus[
                   <span className="font-medium text-fg">{e.name}</span>
                 )}
                 <EnvState env={e} />
+                {e.state === "in" && e.checking && (
+                  <span className="text-fg-muted">
+                    <span aria-hidden="true">· </span>
+                    {t("cicd.env.checking")}
+                  </span>
+                )}
                 {e.partialCheck && <span className="text-fg-muted">· {t("cicd.env.partialCheck")}</span>}
               </li>
             ))}

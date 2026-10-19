@@ -205,6 +205,29 @@ class DevTabBuildsIT {
         assertThat(environment(tab(), "스테이징").get("state").asString()).isEqualTo("failed");
     }
 
+    @Test void aNewerCheckingDeploymentDoesNotHideThatEveryCommitIsIn() throws Exception {
+        var shas = new String[] {sha(), sha()};
+        var ids = new UUID[2];
+        for (int i = 0; i < 2; i++) ids[i] = commit(shas[i], T0.plusMinutes(i));
+        var d = deployment("운영", shas[1], "success", "compared", T0.plusHours(1));
+        into("운영", ids[0], d);
+        into("운영", ids[1], d);
+        var prod = environment(tab(), "운영");
+        assertThat(prod.get("state").asString()).isEqualTo("in");
+        assertThat(prod.get("checking").asBoolean()).isFalse();
+        deployment("운영", sha(), "success", "checking", T0.plusHours(2));
+        prod = environment(tab(), "운영");
+        assertThat(prod.get("state").asString()).isEqualTo("in");
+        assertThat(prod.get("checking").asBoolean()).isTrue();
+        assertThat(OffsetDateTime.parse(prod.get("deployedAt").asString()).toInstant()).isEqualTo(T0.plusHours(1).toInstant());
+        // only part in: the newer deployment may bring the rest, so the row still says it is checking
+        db.execute("delete from cicd_environment_commits where commit_id = ?", ids[1]);
+        prod = environment(tab(), "운영");
+        assertThat(prod.get("state").asString()).isEqualTo("checking");
+        assertThat(prod.get("checking").asBoolean()).isTrue();
+        assertThat(environment(tab(), "개발").get("checking").asBoolean()).isFalse();
+    }
+
     @Test void commitsOlderThanTheFirstCheckedDeploymentAreBeforeIt() throws Exception {
         var b = sha();
         commit(b, T0);

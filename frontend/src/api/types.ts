@@ -1394,6 +1394,8 @@ export interface CicdEnvironmentStatus {
   total: number;
   /** some of the included commits were added by a check that saw only part of the history */
   partialCheck: boolean;
+  /** a newer deployment of this environment is still being compared (state stays "in" when every linked commit is already there) */
+  checking: boolean;
   deployedAt: IsoDateTime | null;
   /** "" when nothing has been deployed there */
   webUrl: string;

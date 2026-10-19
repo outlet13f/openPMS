@@ -73,10 +73,11 @@ public class DevTabController {
 
     /**
      * How far the work went in one environment. state: in, partial, checking, failed, before_first, none. included of total linked
-     * commits are in; partialCheck: some of those were added by a check that saw only part of the history.
+     * commits are in; partialCheck: some of those were added by a check that saw only part of the history; checking: a newer
+     * deployment of the environment is still being compared (state is in when every linked commit is already there, else checking).
      */
     public record EnvironmentStatus(UUID id, String name, boolean production, String state, int included, int total, boolean partialCheck,
-                                    OffsetDateTime deployedAt, String webUrl, String project) {}
+                                    boolean checking, OffsetDateTime deployedAt, String webUrl, String project) {}
 
     public record DevInfo(List<MrDto> mergeRequests, List<CommitDto> commits, boolean canLink, List<EnvironmentStatus> environments) {
         public DevInfo(List<MrDto> mergeRequests, List<CommitDto> commits, boolean canLink) {
@@ -323,15 +324,17 @@ public class DevTabController {
                 int included = (int) commits.stream().filter(c -> in.contains(c.commitId())).count();
                 var mine = waiting.stream().filter(w -> env.id().equals(w.get(CICD_DEPLOYMENTS.ENVIRONMENT_ID))
                         && repositories.contains(w.get(CICD_DEPLOYMENTS.REPOSITORY_ID))).toList();
+                // what is known stays shown: every linked commit already in is in (the UI adds a note while a newer deployment is compared)
+                boolean checking = mine.stream().anyMatch(w -> "checking".equals(w.get(CICD_DEPLOYMENTS.INCLUSION)));
                 String state;
-                if (mine.stream().anyMatch(w -> "checking".equals(w.get(CICD_DEPLOYMENTS.INCLUSION)))) state = "checking";
-                else if (included == total) state = "in";
+                if (included == total) state = "in";
+                else if (checking) state = "checking";
                 else if (included > 0) state = "partial";
                 else if (mine.stream().anyMatch(w -> "failed".equals(w.get(CICD_DEPLOYMENTS.INCLUSION)))) state = "failed";
                 else if (beforeFirst(commits, mine)) state = "before_first";
                 else state = "none";
                 var last = latest.get(env.id());
-                out.add(new EnvironmentStatus(env.id(), env.name(), env.production(), state, included, total, partialCheck.contains(env.id()),
+                out.add(new EnvironmentStatus(env.id(), env.name(), env.production(), state, included, total, partialCheck.contains(env.id()), checking,
                         last == null ? null : last.get(CICD_DEPLOYMENTS.DEPLOYED_AT), last == null ? "" : last.get(CICD_DEPLOYMENTS.WEB_URL),
                         projects.size() > 1 ? project.getValue() : null));
             }

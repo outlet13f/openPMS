@@ -460,16 +460,18 @@ function environmentRow(user: DbUser, wpId: Id, project: DbProject, shown: Id[])
       const total = commits.length;
       const included = commits.filter((l) => inSet.has(l.commit.id)).length;
       const mine = waiting.filter((d) => d.environmentId === env.id && repos.has(d.repositoryId));
+      // what is known stays shown: every linked commit already in is in (with a note while a newer deployment is compared)
+      const checking = mine.some((d) => d.inclusion === "checking");
       let state: CicdEnvState;
-      if (mine.some((d) => d.inclusion === "checking")) state = "checking";
-      else if (included === total) state = "in";
+      if (included === total) state = "in";
+      else if (checking) state = "checking";
       else if (included > 0) state = "partial";
       else if (mine.some((d) => d.inclusion === "failed")) state = "failed";
       else if (beforeFirst(commits, mine)) state = "before_first";
       else state = "none";
       const last = latest.get(env.id);
       out.push({
-        id: env.id, name: env.name, production: env.production, state, included, total, partialCheck: partialCheck.has(env.id),
+        id: env.id, name: env.name, production: env.production, state, included, total, partialCheck: partialCheck.has(env.id), checking,
         deployedAt: last?.deployedAt ?? null, webUrl: last?.webUrl ?? "", project: projectNames.size > 1 ? projectName : null,
       });
     }
