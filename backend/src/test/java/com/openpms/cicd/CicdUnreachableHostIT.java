@@ -39,6 +39,7 @@ class CicdUnreachableHostIT {
     @Autowired DSLContext db;
     @Autowired CicdEvents events;
     @Autowired CicdProcessor processor;
+    @Autowired CicdDeployments deployments;
     CicdFixture f;
     MockHttpSession admin;
     Side down, up;
@@ -55,6 +56,7 @@ class CicdUnreachableHostIT {
     }
 
     @AfterEach void tearDown() {
+        deployments.batch = CicdDeployments.BATCH;
         down.git().close();
         up.git().close();
     }
@@ -133,6 +135,26 @@ class CicdUnreachableHostIT {
         // the one that hit the host backs off; the other two were left as they were
         assertThat(waiting.stream().filter(r -> r.value2() == 1 && r.value3() != null)).hasSize(1);
         assertThat(waiting.stream().filter(r -> r.value2() == 0 && r.value3() == null)).hasSize(2);
+    }
+
+    @Test void aDeadHostWithMoreThanABatchDoesNotStarveOtherConnections() {
+        deployments.batch = 2;   // the dead host's due deployments fill more than one batch
+        up.graph().commit(R, "시작").commit(X, "다음", R);
+        var envs = List.of("dev", "stg", "prod");
+        for (int i = 0; i < envs.size(); i++) storeDeployment(down, "1-" + envs.get(i), envs.get(i), down.graph().sha(i + 1), T0);
+        storeDeployment(up, "1", "dev", R, T0.plusMinutes(5));
+        run();
+        assertThat(down.git().requests()).isEmpty();
+        assertThat(inclusion(deployment(up, "1"))).isEqualTo("first");
+        // three due deployments of the dead host, ahead of the healthy one: more than one batch
+        for (var env : envs) storeDeployment(down, "2-" + env, env, X, T0.plusHours(1));
+        storeDeployment(up, "2", "dev", X, T0.plusHours(2));
+        run();
+        assertThat(calls(down)).isEqualTo(1);
+        assertThat(inclusion(deployment(up, "2"))).isEqualTo("compared");
+        var waiting = db.select(CICD_DEPLOYMENTS.ATTEMPTS).from(CICD_DEPLOYMENTS)
+                .where(CICD_DEPLOYMENTS.REPOSITORY_ID.eq(down.repo()), CICD_DEPLOYMENTS.EXTERNAL_ID.startsWith("2-")).fetch(CICD_DEPLOYMENTS.ATTEMPTS);
+        assertThat(waiting).containsExactlyInAnyOrder(1, 0, 0);
     }
 
     @Test void aDeadHostIsAskedOnceWhileFirstDeploymentsAreChecked() throws Exception {

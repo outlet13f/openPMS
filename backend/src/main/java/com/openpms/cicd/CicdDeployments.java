@@ -48,16 +48,19 @@ public class CicdDeployments {
     static final int FIRST_CANDIDATES = 200;
     /** Deployments taken per pass. */
     static final int BATCH = 100;
+    /** BATCH, smaller in a test only (package-private, no setting). */
+    int batch = BATCH;
     private static final Pattern SHA = Pattern.compile("[0-9a-f]{7,64}");
 
     /**
      * The front of each line: checking, not a head (a checking head is a first deployment being checked), nothing earlier waiting.
-     * A detached repository's deployments wait untouched (no call to its host) and go on if it is attached again.
+     * A detached repository's deployments wait untouched (no call to its host) and go on if it is attached again. The connections
+     * whose host did not answer in this run are left out, so their deployments cannot fill the batch ahead of other connections'.
      */
     private static final String QUEUE = """
             select d.id from cicd_deployments d join cicd_repositories r on r.id = d.repository_id
              where d.inclusion = 'checking' and (d.next_attempt_at is null or d.next_attempt_at <= ?::timestamptz)
-               and r.detached_at is null
+               and r.detached_at is null and r.connection_id <> all (?::uuid[])
                and not exists (select 1 from cicd_environment_heads h where h.deployment_id = d.id)
                and not exists (select 1 from cicd_deployments e
                                 where e.repository_id = d.repository_id and e.environment_id = d.environment_id and e.inclusion = 'checking'
@@ -114,7 +117,18 @@ public class CicdDeployments {
      * @return the number of deployments whose state changed
      */
     public int advance(Instant now, Set<UUID> unreachable) {
-        var ids = db.fetch(QUEUE, now.atOffset(ZoneOffset.UTC), BATCH).getValues(0, UUID.class);
+        int changed = 0;
+        // a host found dead in this pass: take the batch again without its connection, so the deployments of other connections
+        // behind a full batch of the dead one are reached in this run (ends: each new batch needs one more dead connection)
+        for (int known = -1; known != unreachable.size(); ) {
+            known = unreachable.size();
+            changed += pass(db.fetch(QUEUE, now.atOffset(ZoneOffset.UTC), unreachable.toArray(UUID[]::new), batch).getValues(0, UUID.class),
+                    now, unreachable);
+        }
+        return changed;
+    }
+
+    private int pass(List<UUID> ids, Instant now, Set<UUID> unreachable) {
         int changed = 0;
         for (var id : ids) {
             try {
