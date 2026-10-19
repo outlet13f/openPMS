@@ -412,7 +412,7 @@ function environmentRow(user: DbUser, wpId: Id, project: DbProject, shown: Id[])
     if (l.commitId) ids.add(l.commitId);
     const m = l.mergeRequestId ? db.cicdMergeRequests.find((x) => x.id === l.mergeRequestId) : undefined;
     if (m && m.state === "merged" && m.mergeCommitSha)
-      for (const c of db.cicdCommits) if (c.repositoryId === m.repositoryId && c.sha.startsWith(m.mergeCommitSha)) ids.add(c.id);
+      for (const c of db.cicdCommits) if (c.repositoryId === m.repositoryId && c.sha === m.mergeCommitSha) ids.add(c.id);
   }
   const linked = [...ids].flatMap((id) => {
     const commit = db.cicdCommits.find((c) => c.id === id);

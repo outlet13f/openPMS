@@ -101,7 +101,7 @@ public class DevTabController {
                     where l.work_package_id = ?::uuid and l.dismissed_at is null and l.commit_id is not null
                    union
                    select c.id from work_package_cicd_links l join cicd_merge_requests m on m.id = l.merge_request_id
-                     join cicd_commits c on c.repository_id = m.repository_id and left(c.sha, length(m.merge_commit_sha)) = m.merge_commit_sha
+                     join cicd_commits c on c.repository_id = m.repository_id and c.sha = m.merge_commit_sha
                     where l.work_package_id = ?::uuid and l.dismissed_at is null and m.state = 'merged' and m.merge_commit_sha is not null)
             select c.id, c.repository_id, c.committed_at, r.project_id, p.name
               from k join cicd_commits c on c.id = k.id join cicd_repositories r on r.id = c.repository_id

@@ -239,7 +239,7 @@ class DevTabBuildsIT {
     @Test void mergeRequestOnlyLinkStillHasEnvironments() throws Exception {
         var merge = sha();
         var c = plainCommit(merge, T0);
-        mr("feature/" + wp + "-y", "merged", merge.substring(0, 12));
+        mr("feature/" + wp + "-y", "merged", merge);   // stored in full (CicdProcessor.mergeCommit), joined by equality
         mr("feature/z", "open", merge);   // not merged: its merge sha does not count
         into("개발", c, deployment("개발", merge, "success", "compared", T0.plusHours(1)));
         var dev = environment(tab(), "개발");

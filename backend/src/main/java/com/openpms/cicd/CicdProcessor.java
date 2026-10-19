@@ -40,6 +40,7 @@ public class CicdProcessor {
     /** The tools whose links are checked against the connection's tool address instead of the repository's. */
     private static final Set<String> NOTICE_TOOLS = Set.of("jenkins", "argocd");
     private static final Pattern SHA = Pattern.compile("[0-9a-f]{7,64}");
+    private static final Pattern FULL_SHA = Pattern.compile("[0-9a-f]{40}|[0-9a-f]{64}");
     /** A standard notice's time must lie in this range (a far-future time would win every later comparison). */
     private static final OffsetDateTime EARLIEST = OffsetDateTime.parse("2000-01-01T00:00:00Z");
 
@@ -242,11 +243,15 @@ public class CicdProcessor {
         return same.isEmpty() ? fallback : same;
     }
 
-    /** A merged MR's merge (or squash) commit: lower-case hex, or null when missing or malformed. */
+    /**
+     * A merged MR's merge (or squash) commit: lower-case full hex (40, or 64 for SHA-256), or null when missing, short or
+     * malformed. GitLab and GitHub always send the full number; the development tab and the first-deployment candidates join it
+     * to the commits by equality, so (repository_id, sha) can use the commits' unique index.
+     */
     static String mergeCommit(String sha) {
         if (sha == null) return null;
         var s = sha.strip().toLowerCase(java.util.Locale.ROOT);
-        return SHA.matcher(s).matches() ? s : null;
+        return FULL_SHA.matcher(s).matches() ? s : null;
     }
 
     private static String mrState(String s) {

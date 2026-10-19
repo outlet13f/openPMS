@@ -82,7 +82,7 @@ public class CicdDeployments {
                and (exists (select 1 from linked l where l.commit_id = c.id)
                     or exists (select 1 from cicd_merge_requests m join linked l on l.merge_request_id = m.id
                                 where m.repository_id = c.repository_id and m.state = 'merged'
-                                  and left(c.sha, length(m.merge_commit_sha)) = m.merge_commit_sha))
+                                  and c.sha = m.merge_commit_sha))
              order by c.committed_at desc, c.id limit ?""";
 
     private final DSLContext db;
