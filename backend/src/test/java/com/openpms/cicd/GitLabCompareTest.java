@@ -113,9 +113,10 @@ class GitLabCompareTest {
         assertThat(gitlab.contains(remote, "90", "ffffffffffffffffffffffffffffffffffffffff", "bcbb5ec4")).isFalse();
     }
 
-    @Test void anUnknownCommitIsNotContained() throws Exception {
-        // a commit deleted since (a force push): one stale commit must not fail the whole first deployment
-        assertThat(gitlab.contains(remote, "77", "c000000", "9999999")).isFalse();
+    @Test void anUnknownCommitIsNotFound() {
+        // a commit deleted since (a force push), or a project the token lost: the same 404, told apart by CicdFirstDeploy
+        assertThatThrownBy(() -> gitlab.contains(remote, "77", "c000000", "9999999"))
+                .isInstanceOf(NotFound.class).hasMessage("unexpected status 404");
     }
 
     @Test void otherFailuresOfContainsAreIoExceptions() {

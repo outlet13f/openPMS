@@ -122,11 +122,13 @@ class GitHubCompareTest {
         assertThat(r.query()).isEqualTo("per_page=1");
     }
 
-    @Test void anUnknownCommitIsNotContained() throws Exception {
-        // a commit deleted since (a force push): one stale commit must not fail the whole first deployment
-        assertThat(github.contains(remote, "9001", "c000000", "9999999")).isFalse();
+    @Test void anUnknownCommitIsNotFound() {
+        // a commit deleted since (a force push), or a repository the token lost: told apart by CicdFirstDeploy
+        assertThatThrownBy(() -> github.contains(remote, "9001", "c000000", "9999999"))
+                .isInstanceOf(NotFound.class).hasMessage("unexpected status 404");
         git.respond("/api/v3/repositories/9005/compare/", 422, "{\"message\":\"No common ancestor\"}");
-        assertThat(github.contains(remote, "9005", "c000000", "b000000")).isFalse();
+        assertThatThrownBy(() -> github.contains(remote, "9005", "c000000", "b000000"))
+                .isInstanceOf(NotFound.class).hasMessage("unexpected status 422");
     }
 
     @Test void otherFailuresOfContainsAreIoExceptions() {

@@ -30,6 +30,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * A first deployment already being checked keeps being checked even if its environment is hidden meanwhile (it is already the
  * environment's head; stopping would hold the environment's later deployments). A detached repository's questions wait
  * untouched, and a code host that does not answer at all is asked once per run (its other questions wait for the next run).
+ * A 404 (GitHub also 422) means the commit is gone or the token lost the repository: the repository is asked for once per
+ * repository per run, and only if it answers is the commit "out"; otherwise the question failed.
  */
 @Service
 public class CicdFirstDeploy {
@@ -102,6 +104,7 @@ public class CicdFirstDeploy {
                 Boolean.TRUE.equals(r.get(10, Boolean.class)), r.get(11, String.class), r.get(12, UUID.class)));
         var calls = new HashMap<UUID, Integer>();   // per repository, this run only: a local map, no lock
         var noToken = new HashSet<UUID>();
+        var visible = new HashMap<UUID, Boolean>();   // per repository, this run only: can the token still read it (asked once)
         int decided = 0;
         for (var q : questions) {
             try {
@@ -116,7 +119,14 @@ public class CicdFirstDeploy {
                 Answer answer;
                 try {
                     var remote = new CicdAdapter.Remote(q.baseUrl(), box.open(q.tokenEnc()));
-                    answer = adapters.of(q.kind()).contains(remote, q.externalId(), q.deployedSha(), q.commitSha()) ? Answer.IN : Answer.OUT;
+                    var adapter = adapters.of(q.kind());
+                    try {
+                        answer = adapter.contains(remote, q.externalId(), q.deployedSha(), q.commitSha()) ? Answer.IN : Answer.OUT;
+                    } catch (NotFound gone) {
+                        // the commit is gone, or the token lost the repository (the same 404): "out" only if the repository answers
+                        if (!visible(visible, q, adapter, remote)) throw gone;
+                        answer = Answer.OUT;
+                    }
                 } catch (IOException | RuntimeException e) {
                     log.warn("cicd first deployment {} repository {}: check failed ({})", q.deploymentId(), q.repositoryId(),
                             CicdDeployments.errorCode(e));
@@ -137,6 +147,21 @@ public class CicdFirstDeploy {
             }
         }
         return decided;
+    }
+
+    /**
+     * Can the token still read the question's repository? Asked of the host once per repository per run (outside any
+     * transaction); a probe that fails or is not answered counts as not visible for the rest of the run and its exception goes
+     * to the caller, so the question fails like any other (back-off, the fifth failure is "error").
+     */
+    private static boolean visible(java.util.Map<UUID, Boolean> known, Question q, CicdAdapter adapter, CicdAdapter.Remote remote)
+            throws IOException {
+        var seen = known.get(q.repositoryId());
+        if (seen != null) return seen;
+        known.put(q.repositoryId(), false);
+        boolean found = adapter.repository(remote, q.externalId()) != null;
+        known.put(q.repositoryId(), found);
+        return found;
     }
 
     /** Locks the head row, then the deployment row; true when this deployment is still the head and still being checked. */

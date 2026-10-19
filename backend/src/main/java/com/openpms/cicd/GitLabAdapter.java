@@ -316,11 +316,14 @@ public class GitLabAdapter implements CicdAdapter {
         return new Comparison(List.copyOf(found), truncated);
     }
 
-    /** A 404 (the commit is gone, e.g. after a force push, or there is no merge base) answers "not contained". */
+    /**
+     * A 404 is NotFound: the commit is gone (e.g. after a force push) or there is no merge base, but GitLab answers the same
+     * for a project the token can no longer read, so the caller asks for the project before it counts as "not contained".
+     */
     @Override public boolean contains(Remote remote, String repoExternalId, String head, String commit) throws IOException {
         var res = http.get(api(remote) + "/projects/" + enc(repoExternalId) + "/repository/merge_base?refs%5B%5D=" + enc(commit)
                 + "&refs%5B%5D=" + enc(head), auth(remote));
-        if (res.status() == 404) return false;
+        if (res.status() == 404) throw new NotFound(404);
         if (res.status() / 100 != 2) throw new UnexpectedStatus(res.status());
         var base = text(readTree(res.body()).path("id")).toLowerCase(Locale.ROOT);
         var c = commit.toLowerCase(Locale.ROOT);

@@ -329,11 +329,15 @@ public class GitHubAdapter implements CicdAdapter {
         return new Comparison(List.copyOf(sorted), total > keep);
     }
 
-    /** A 404 (the commit is gone, e.g. after a force push) or 422 (no common ancestor, unknown commit) answers "not contained". */
+    /**
+     * A 404 (the commit is gone, e.g. after a force push) or 422 (no common ancestor, unknown commit) is NotFound: GitHub also
+     * answers 404 for a repository the token can no longer read, so the caller asks for the repository before it counts as
+     * "not contained".
+     */
     @Override public boolean contains(Remote remote, String repoExternalId, String head, String commit) throws IOException {
         var res = http.get(api(remote) + "/repositories/" + enc(repoExternalId) + "/compare/" + compareSpec(commit, head) + "?per_page=1",
                 auth(remote), CicdHttp.MAX_COMPARE_BODY);
-        if (res.status() == 404 || res.status() == 422) return false;
+        if (res.status() == 404 || res.status() == 422) throw new NotFound(res.status());
         var status = text(readOk(res).path("status"));
         return switch (status) {
             case "ahead", "identical" -> true;

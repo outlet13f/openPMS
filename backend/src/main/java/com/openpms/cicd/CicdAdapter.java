@@ -36,7 +36,10 @@ public interface CicdAdapter {
         throw new UnsupportedOperationException("no code host API");
     }
 
-    /** Is commit the same as head or one of its ancestors? */
+    /**
+     * Is commit the same as head or one of its ancestors? NotFound when the host says the commit (or the repository) is not
+     * there: the caller decides by asking for the repository (repository()).
+     */
     default boolean contains(Remote remote, String repoExternalId, String head, String commit) throws IOException {
         throw new UnsupportedOperationException("no code host API");
     }
