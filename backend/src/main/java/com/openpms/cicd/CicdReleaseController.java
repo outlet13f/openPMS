@@ -49,12 +49,22 @@ public class CicdReleaseController {
                         List<Card> cards, List<Missing> missing, int interloperCount, int unlinkedCount, List<UnlinkedCommit> unlinked,
                         List<Excluded> excluded, List<Notice> notices, boolean canVerify) {}
 
+    public record ReleaseRow(UUID id, OffsetDateTime deployedAt, EnvironmentRef environment, String sourceEnvironment, String repository,
+                             String deploymentUrl, boolean partial, boolean contentFailed, int itemCount, int warningCount, int hiddenCount) {}
+
+    public record ReleaseItem(UUID workPackageId, long number, String subject, VerificationDto verification, String warning) {}
+
+    public record ReleaseDetail(ReleaseRow release, List<ReleaseItem> items) {}
+
     private final Current current;
     private final CicdRepositories repositories;
     private final CicdReleaseBoard board;
     private final CicdVerifications verifications;
+    private final CicdReleases releases;
 
-    public CicdReleaseController(Current current, CicdRepositories repositories, CicdReleaseBoard board, CicdVerifications verifications) {
+    public CicdReleaseController(Current current, CicdRepositories repositories, CicdReleaseBoard board, CicdVerifications verifications,
+                                 CicdReleases releases) {
+        this.releases = releases;
         this.current = current;
         this.repositories = repositories;
         this.board = board;
@@ -93,5 +103,21 @@ public class CicdReleaseController {
         var ctx = current.ctx();
         verifications.restore(ctx, repositories.viewable(ctx, project), workPackageId, environmentId, targetEnvironmentId);
         return ResponseEntity.noContent().build();
+    }
+
+    /** The release records (read-only history), newest first. */
+    @GetMapping("/records")
+    @Transactional(readOnly = true)
+    public Dto.Page<ReleaseRow> records(@PathVariable String project, @RequestParam(defaultValue = "1") int page,
+                                        @RequestParam(defaultValue = "20") int pageSize) {
+        var ctx = current.ctx();
+        return releases.list(ctx, repositories.viewable(ctx, project), page, pageSize);
+    }
+
+    @GetMapping("/records/{id}")
+    @Transactional(readOnly = true)
+    public ReleaseDetail record(@PathVariable String project, @PathVariable UUID id) {
+        var ctx = current.ctx();
+        return releases.detail(ctx, repositories.viewable(ctx, project), id);
     }
 }

@@ -166,6 +166,34 @@ public final class ReleaseFixture {
                 + "values ((select id from work_packages where number = ?), ?, ?, ?, ?::timestamptz)", wp, env(source), env(target), CicdFixture.DOYOON, addedBefore);
     }
 
+    /** A release record of the project's environment for the deployment (the processing that writes it is tested in CicdReleasesIT). */
+    UUID release(String envName, UUID deploymentId, OffsetDateTime deployedAt, boolean partial, boolean contentFailed, String sourceEnvName) {
+        var id = UUID.randomUUID();
+        db.execute("insert into cicd_releases (id, project_id, environment_id, source_environment_id, deployment_id, repository_id, deployed_at, partial, content_failed) "
+                + "select ?, ?, ?, ?, d.id, d.repository_id, ?::timestamptz, ?, ? from cicd_deployments d where d.id = ?",
+                id, projectId, env(envName), sourceEnvName == null ? null : env(sourceEnvName), deployedAt, partial, contentFailed, deploymentId);
+        return id;
+    }
+
+    /** An item of a release record: the number and subject are copied from the work package. */
+    void releaseItem(UUID releaseId, long wp, UUID verificationId, String warning) {
+        db.execute("insert into cicd_release_items (release_id, work_package_id, number, subject, verification_id, warning) "
+                + "select ?, w.id, w.number, w.subject, ?, ? from work_packages w where w.number = ?", releaseId, verificationId, warning, wp);
+    }
+
+    ResultActions recordsRequest(String email, String query) throws Exception {
+        return recordsRequest(project, email, query);
+    }
+
+    ResultActions recordsRequest(String ofProject, String email, String query) throws Exception {
+        return f.mvc.perform(get("/api/v1/projects/" + ofProject + "/releases/records" + (query == null || query.isEmpty() ? "" : "?" + query))
+                .session(f.login(email)));
+    }
+
+    ResultActions recordRequest(String ofProject, String email, UUID releaseId) throws Exception {
+        return f.mvc.perform(get("/api/v1/projects/" + ofProject + "/releases/records/" + releaseId).session(f.login(email)));
+    }
+
     ResultActions boardRequest(String email, String query) throws Exception {
         return f.mvc.perform(get("/api/v1/projects/" + project + "/releases/board" + (query == null || query.isEmpty() ? "" : "?" + query))
                 .session(f.login(email)));
