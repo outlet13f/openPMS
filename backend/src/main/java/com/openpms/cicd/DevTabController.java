@@ -78,9 +78,22 @@ public class DevTabController {
     public record EnvironmentStatus(UUID id, String name, boolean production, String state, int included, int total, boolean partialCheck,
                                     boolean checking, OffsetDateTime deployedAt, String webUrl, String project) {}
 
-    public record DevInfo(List<MrDto> mergeRequests, List<CommitDto> commits, boolean canLink, List<EnvironmentStatus> environments) {
+    /**
+     * The work package's current verification on the default source of a project's release board: result passed or failed, stale when
+     * a commit came into that environment after it (the board shows it as "재검증 필요"). project: the identifier of the project
+     * that has the board; targetEnvironmentId: the board's target (the default production environment).
+     */
+    public record VerificationLine(UUID environmentId, String environment, String result, Dto.UserRef by, OffsetDateTime at, boolean stale,
+                                   String project, UUID targetEnvironmentId) {}
+
+    public record DevInfo(List<MrDto> mergeRequests, List<CommitDto> commits, boolean canLink, List<EnvironmentStatus> environments,
+                          List<VerificationLine> verifications) {
+        public DevInfo(List<MrDto> mergeRequests, List<CommitDto> commits, boolean canLink, List<EnvironmentStatus> environments) {
+            this(mergeRequests, commits, canLink, environments, List.of());
+        }
+
         public DevInfo(List<MrDto> mergeRequests, List<CommitDto> commits, boolean canLink) {
-            this(mergeRequests, commits, canLink, List.of());
+            this(mergeRequests, commits, canLink, List.of(), List.of());
         }
     }
 
@@ -91,6 +104,7 @@ public class DevTabController {
     private final CicdLinker linker;
     private final DSLContext db;
     private final CicdEnvironmentSignals signals;
+    private final CicdVerificationStates verificationStates;
 
     /**
      * The commits this work package has: commit links and the merge commit of linked merged merge requests, only in repositories
@@ -117,12 +131,13 @@ public class DevTabController {
              order by repository_id, %1$s, name, updated_at desc""";
 
     public DevTabController(Current current, WorkPackageService workPackages, CicdLinker linker, DSLContext db,
-                            CicdEnvironmentSignals signals) {
+                            CicdEnvironmentSignals signals, CicdVerificationStates verificationStates) {
         this.current = current;
         this.workPackages = workPackages;
         this.linker = linker;
         this.db = db;
         this.signals = signals;
+        this.verificationStates = verificationStates;
     }
 
     private WorkPackageService.Found viewable(long number) {
@@ -164,7 +179,8 @@ public class DevTabController {
                 r.get(CICD_COMMITS.WEB_URL), r.get(WORK_PACKAGE_CICD_LINKS.SOURCE),
                 commitBuilds.get(key(r.get(CICD_REPOSITORIES.ID), r.get(CICD_COMMITS.SHA))),
                 row.commitEnvironments().getOrDefault(r.get(CICD_COMMITS.ID), List.of()), r.get(CICD_REPOSITORIES.DETACHED_AT) != null)).toList();
-        return new DevInfo(mrs, commits, current.ctx().can(found.project(), "cicd.link"), row.environments());
+        return new DevInfo(mrs, commits, current.ctx().can(found.project(), "cicd.link"), row.environments(),
+                verifications(row, wpId));
     }
 
     @PostMapping("/links")
@@ -260,7 +276,11 @@ public class DevTabController {
         return out;
     }
 
-    private record Row(List<EnvironmentStatus> environments, Map<UUID, List<String>> commitEnvironments) {}
+    private record Row(List<EnvironmentStatus> environments, Map<UUID, List<String>> commitEnvironments, List<EnvInfo> visibleEnvironments) {
+        Row(List<EnvironmentStatus> environments, Map<UUID, List<String>> commitEnvironments) {
+            this(environments, commitEnvironments, List.of());
+        }
+    }
 
     private record Linked(UUID commitId, UUID repositoryId, OffsetDateTime committedAt, UUID projectId, String projectName) {}
 
@@ -340,7 +360,32 @@ public class DevTabController {
             if (list == null) continue;
             names.put(id, list.stream().sorted(Comparator.comparingInt(EnvInfo::position).reversed()).map(EnvInfo::name).toList());
         }
-        return new Row(out, names);
+        return new Row(out, names, envs);
+    }
+
+    /**
+     * The verification line of each project of the environment row (보완 13): the work package's newest result on the project's default
+     * source for its default target, when there is one. Two queries per project (the environments were read for the row already).
+     */
+    private List<VerificationLine> verifications(Row row, UUID workPackage) {
+        var out = new ArrayList<VerificationLine>();
+        var byProject = new HashMap<UUID, List<EnvInfo>>();
+        row.visibleEnvironments().forEach(e -> byProject.computeIfAbsent(e.projectId(), x -> new ArrayList<>()).add(e));
+        var one = List.of(workPackage);
+        for (var entry : byProject.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
+            var rows = entry.getValue().stream().map(e -> new CicdVerificationStates.EnvironmentRow(e.id(), e.position(), e.production(), false)).toList();
+            var target = CicdVerificationStates.defaultTarget(rows);
+            var source = target == null ? null : CicdVerificationStates.defaultSource(rows, target);
+            if (source == null) continue;
+            var c = verificationStates.current(source, one).get(workPackage);
+            if (c == null) continue;
+            var stale = "reverify".equals(CicdVerificationStates.column(c, verificationStates.latestIn(source, one).get(workPackage)));
+            var name = entry.getValue().stream().filter(e -> e.id().equals(source)).findFirst().orElseThrow().name();
+            var by = c.verifiedBy() == null ? null : users(List.of(c.verifiedBy())).get(c.verifiedBy());
+            out.add(new VerificationLine(source, name, c.result(), by, c.verifiedAt(), stale,
+                    current.ctx().s().projects().get(entry.getKey()).identifier(), target));
+        }
+        return out;
     }
 
     /** Every linked commit is older than the cutoff of its repository's first deployment (the check could not look further back). */
