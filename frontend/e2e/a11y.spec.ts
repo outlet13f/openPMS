@@ -29,6 +29,8 @@ const SCREENS: [string, string, RegExp | string][] = [
   ["프로젝트 설정 저장소", "/projects/web-platform/settings/repositories", "web/portal"],
   ["프로젝트 설정 환경", "/projects/web-platform/settings/environments", "개발"],
   ["개발 탭", "/projects/web-platform/work-packages/details/4/dev", "결제 API 클라이언트 추가 (#4)"],
+  ["X18 릴리스 검증 보드", "/projects/web-platform/releases", "검증 대기"],
+  ["X19 릴리스 기록", "/projects/web-platform/releases/records", "릴리스 기록"],
 ];
 
 test.describe("axe on every screen", () => {
@@ -72,6 +74,8 @@ test.describe("axe in the dark theme", () => {
     ["개발 탭 (dark)", "/projects/web-platform/work-packages/details/4/dev"],
     ["관리 CI/CD 연동 (dark)", "/admin/cicd"],
     ["프로젝트 설정 환경 (dark)", "/projects/web-platform/settings/environments"],
+    ["X18 릴리스 검증 보드 (dark)", "/projects/web-platform/releases"],
+    ["X19 릴리스 기록 (dark)", "/projects/web-platform/releases/records"],
   ] as const) {
     test(`a11y ${name}`, async ({ page }) => {
       await page.goto(url);

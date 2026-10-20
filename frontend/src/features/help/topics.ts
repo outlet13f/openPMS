@@ -21,6 +21,8 @@ const TOPICS: [RegExp, ManualId, string][] = [
   [new RegExp(`${P}/calendar`), "user", "7.3"],
   [new RegExp(`${P}/team-planner`), "user", "7.4"],
   [new RegExp(`${P}/time`), "user", "15.3"],
+  [new RegExp(`${P}/releases/records`), "user", "16.9"],
+  [new RegExp(`${P}/releases`), "user", "16.8"],
   [new RegExp(`${P}/members`), "user", "11.2"],
   [new RegExp(`${P}/settings/modules`), "user", "11.4"],
   [new RegExp(`${P}/settings/work-packages`), "user", "11.6"],

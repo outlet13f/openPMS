@@ -163,13 +163,15 @@ test.describe("F22 CI/CD 연동", () => {
     const commits = p.getByRole("region", { name: /^커밋/ });
     await expect(commits.getByRole("link", { name: new RegExp(TITLE.replace(/[()#]/g, "\\$&")) })).toBeVisible();
     await expect(commits.getByText(SHA.slice(0, 7), { exact: true })).toBeVisible();
-    await expect(commits.getByText("커밋 메시지에서 찾음", { exact: false })).toBeVisible();
-    await expect(commits.getByRole("listitem")).toContainText(/openpms-e2e\/web.*박준호/); // the author's email is a user's: shown as that user (with an avatar)
+    // V1013 links another commit to #3 (web/portal): look at ours only
+    const ours = commits.getByRole("listitem").filter({ hasText: SHA.slice(0, 7) });
+    await expect(ours.getByText("커밋 메시지에서 찾음", { exact: false })).toBeVisible();
+    await expect(ours).toContainText(/openpms-e2e\/web.*박준호/); // the author's email is a user's: shown as that user (with an avatar)
 
     await commits.getByRole("button", { name: `연결 끊기: ${SHA.slice(0, 7)} ${TITLE}` }).click();
     await expect(page.getByText("연결을 끊었습니다", { exact: true })).toBeVisible();
     await expect(p.getByText(TITLE)).toHaveCount(0);
-    await expect(p.getByText(/아직 연결된 개발 내역이 없습니다/)).toBeVisible();
+    await expect(ours).toHaveCount(0);
   });
 
   test("F22-2 참관자는 개발 탭을 보기만 하고, 모듈을 끄면 탭이 없다", async ({ page }) => {

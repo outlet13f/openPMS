@@ -1,4 +1,4 @@
-// Test-only code host for f22-cicd.spec.ts (GitHub Enterprise mode) and f23-cicd-builds.spec.ts (GitLab mode). Never for
+// Test-only code host for f22-cicd.spec.ts (GitHub Enterprise mode), f23-cicd-builds.spec.ts and f24-cicd-release.spec.ts (GitLab mode). Never for
 // real use: any token is accepted. GitHub mode answers {address}/api/v3/... with a Bearer token (GitHubAdapter), GitLab mode
 // answers {address}/api/v4/... with a PRIVATE-TOKEN header (GitLabAdapter); a request without its tool's credential is 401.
 // Every JSON body here is written by hand from the tools' public API documentation.
@@ -11,7 +11,8 @@
 // -p 127.0.0.1:18095:18090, and run the specs with FAKE_GIT_URL=http://127.0.0.1:18095. Stop: podman stop openpms-cicd-git
 //
 // Compare and ancestor questions are answered from fixed commit graphs (one straight line each, oldest first). F23's graph
-// is E1 ← E2 ← E3 on main; the same shas are in f23-cicd-builds.spec.ts. A sha may be given in full or as a unique prefix
+// is E1 ← E2 ← E3 on main; the same shas are in f23-cicd-builds.spec.ts. F24's graph (rel) is R1 ← R2 ← R3 ← R4, the same
+// shas as in f24-cicd-release.spec.ts. A sha may be given in full or as a unique prefix
 // (7+ characters, the way an image tag carries it); a commit not in the graph is 404, as on the real hosts.
 import http from "node:http";
 
@@ -27,13 +28,22 @@ const GITHUB_GRAPHS = {
   9101: [{ sha: "e2e0c1d2e3f405162738495a6b7c8d9e0f1a2b3c", message: "로그인 화면 설계 반영 (#3)", at: "2026-10-15T01:00:00Z" }],
 };
 
-// GitLab mode (F23)
-const GITLAB_PROJECT = { id: 9201, path_with_namespace: "openpms-e2e/svc", web_url: `${BASE}/openpms-e2e/svc` };
+// GitLab mode (F23 uses svc, F24 uses rel)
+const GITLAB_PROJECTS = [
+  { id: 9201, path_with_namespace: "openpms-e2e/svc", web_url: `${BASE}/openpms-e2e/svc` },
+  { id: 9301, path_with_namespace: "openpms-e2e/rel", web_url: `${BASE}/openpms-e2e/rel` },
+];
 const GITLAB_GRAPHS = {
   9201: [
     { sha: "e1a23f0c5b7d9e1f2a3b4c5d6e7f8091a2b3c4d5", message: "서비스 뼈대", at: "2026-10-14T01:00:00Z" },
     { sha: "e2b34a1d6c8e0f2a3b4c5d6e7f8091a2b3c4d5e6", message: "주문 API 추가", at: "2026-10-14T02:00:00Z" },
     { sha: "e3c45b2e7d9f1a3b4c5d6e7f8091a2b3c4d5e6f7", message: "설정 정리", at: "2026-10-14T03:00:00Z" },
+  ],
+  9301: [
+    { sha: "fec04df330da8b26b870f0aa0122945960636fa9", message: "릴리스 뼈대", at: "2026-10-19T01:00:00Z" },
+    { sha: "038af310365bc1bda5aff9d5bf0523df9339332b", message: "주문 화면", at: "2026-10-19T02:00:00Z" },
+    { sha: "8592afdb7f9a54644060117028b8aa2155697050", message: "결제 화면", at: "2026-10-19T03:00:00Z" },
+    { sha: "ddeab3d8e20eac21a0e76d27d3ed5fc779389376", message: "주문 화면 고침", at: "2026-10-19T04:00:00Z" },
   ],
 };
 const AUTHOR = { name: "박준호", email: "junho.park@openpms.local" };
@@ -75,14 +85,15 @@ function gitlab(req, res, url) {
   if (path === "/user") return json(res, 200, { id: 1, username: "openpms-e2e" });
   if (path === "/projects") {
     const q = (url.searchParams.get("search") ?? "").toLowerCase();
-    return json(res, 200, GITLAB_PROJECT.path_with_namespace.includes(q) ? [GITLAB_PROJECT] : []);
+    return json(res, 200, GITLAB_PROJECTS.filter((p) => p.path_with_namespace.includes(q)));
   }
   const m = path.match(/^\/projects\/(\d+)(\/.*)?$/);
-  if (!m || m[1] !== String(GITLAB_PROJECT.id)) return json(res, 404, { message: "404 Project Not Found" });
-  const graph = GITLAB_GRAPHS[m[1]];
+  const project = m && GITLAB_PROJECTS.find((p) => String(p.id) === m[1]);
+  if (!project) return json(res, 404, { message: "404 Project Not Found" });
+  const graph = GITLAB_GRAPHS[m[1]] ?? [];
   switch (m[2] ?? "") {
     case "":
-      return json(res, 200, GITLAB_PROJECT);
+      return json(res, 200, project);
     // polling (every 5 minutes) finds nothing new: the spec delivers by webhook
     case "/repository/commits":
     case "/merge_requests":
@@ -93,12 +104,12 @@ function gitlab(req, res, url) {
       const from = find(graph, url.searchParams.get("from"));
       const to = find(graph, url.searchParams.get("to"));
       if (from < 0 || to < 0) return json(res, 404, { message: "404 Commit Not Found" });
-      return json(res, 200, { commits: between(graph, from, to).map((c) => gitlabCommit(GITLAB_PROJECT, c)), diffs: [] });
+      return json(res, 200, { commits: between(graph, from, to).map((c) => gitlabCommit(project, c)), diffs: [] });
     }
     case "/repository/merge_base": {
       const refs = url.searchParams.getAll("refs[]").map((r) => find(graph, r));
       if (refs.length !== 2 || refs.some((i) => i < 0)) return json(res, 404, { message: "404 Commit Not Found" });
-      return json(res, 200, gitlabCommit(GITLAB_PROJECT, graph[Math.min(...refs)]));
+      return json(res, 200, gitlabCommit(project, graph[Math.min(...refs)]));
     }
     default:
       return json(res, 404, { message: "404 Not Found" });
