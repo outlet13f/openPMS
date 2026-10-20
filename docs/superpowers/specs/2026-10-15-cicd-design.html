@@ -190,7 +190,7 @@
   <div class="roadmap" style="grid-template-columns:repeat(5,1fr)">
     <div class="step now"><b>1단계 · V26</b><span>연동 기반 + 추적성</span></div>
     <div class="step now"><b>2단계 · V28 · 구현 끝</b><span>빌드·배포 상태</span></div>
-    <div class="step"><b>3단계 · V29</b><span>릴리스 관리</span></div>
+    <div class="step now"><b>3단계 · V29 · 구현 끝</b><span>릴리스 관리</span></div>
     <div class="step"><b>4단계 · V30</b><span>자동화 규칙</span></div>
     <div class="step"><b>5단계 · 보류</b><span>변경 관리 연결</span></div>
   </div>
@@ -199,7 +199,7 @@
     <tbody>
       <tr class="current"><td>1 연동 기반 + 추적성</td><td>도구 연동 등록, 들어오는 웹훅, 보완 폴링, 이벤트 정규화, <code>#123</code> 참조로 작업 연결, 작업 "개발" 탭. GitLab·GitHub 어댑터</td><td>새 모듈 <code>cicd</code></td><td>V26, V1010 (허용 프로젝트 V27, V1011)</td></tr>
       <tr class="current"><td>2 빌드·배포 상태</td><td><span class="tag">구현 끝(2.9, 2026-10-16)</span> 파이프라인·배포 이벤트, Jenkins·Argo CD·범용 API 어댑터(표준 알림), 환경(개발·스테이징·운영) 정의, 작업별 "어느 환경까지 갔나". 설계 <code>2026-10-16-cicd-phase2-design.md</code></td><td>1</td><td>V28, V1012</td></tr>
-      <tr><td>3 릴리스 관리</td><td>기존 <code>versions</code>를 릴리스로 넓힘: 포함 작업·MR·배포 이력, 환경별 현황 화면, 릴리스 노트 내보내기</td><td>1·2</td><td>V29, V1013</td></tr>
+      <tr class="current"><td>3 릴리스 관리</td><td><span class="tag">구현 끝(3.0, 2026-10-20) — QA 검증 보드와 릴리스 기록, PM 점검·릴리스 노트는 다음</span> 처음 구상: 기존 <code>versions</code>를 릴리스로 넓힘: 포함 작업·MR·배포 이력, 환경별 현황 화면, 릴리스 노트 내보내기. 설계 <code>2026-10-20-cicd-phase3-release-design.md</code>(버전은 계획으로 겹쳐 보고 <code>versions</code>를 넓히지 않음)</td><td>1·2</td><td>V29, V1013</td></tr>
       <tr><td>4 자동화 규칙</td><td>프로젝트별 규칙(기본 꺼짐): 이벤트 → 상태 전환(워크플로 준수)·알림, <code>closes #123</code> 같은 명령. 연동 이름으로 <code>journals.cause</code>에 기록</td><td>1·2</td><td>V30, V1014</td></tr>
       <tr><td>5 변경 관리 연결</td><td><b>보류 — ITSM 제거(2026-10-16)로 기반 없음, 다시 정함</b>. 처음 구상: 운영 배포 ↔ ITSM 변경 요청, 승인 없는 운영 배포 감지·경고, 실행 계획서에 빌드·배포 증거 자동 첨부</td><td><span class="tag warn">보류</span></td><td>–</td></tr>
     </tbody>

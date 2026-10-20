@@ -118,11 +118,13 @@ test.describe("F11 관리", () => {
     await expect(page.getByRole("heading", { name: "시스템 정보", level: 1 })).toBeVisible();
     const db = page.getByRole("region", { name: "데이터베이스" });
     await expect(db.getByText(/^17/)).toBeVisible();
-    // the newest schema migration in the repository is listed (the list shows the latest eight, dev data V1000번대 included)
+    // the newest migration in the repository is listed (the list shows the latest eight). The dev data V1000번대 run after
+    // the schema ones on a new database, and with eight of them (V1000–V1003, V1010–V1013) the newest is a dev data one
     const newest = Math.max(
-      ...readdirSync("../backend/src/main/resources/db/migration")
+      ...["migration", "dev"]
+        .flatMap((dir) => readdirSync(`../backend/src/main/resources/db/${dir}`))
         .map((f) => Number(/^V(\d+)__.*\.sql$/.exec(f)?.[1] ?? NaN))
-        .filter((n) => n < 1000),
+        .filter((n) => !Number.isNaN(n)),
     );
     expect(newest).toBeGreaterThan(0);
     await expect(page.getByRole("region", { name: "최근 적용" }).getByRole("cell", { name: `v${newest}`, exact: true })).toBeVisible();
