@@ -213,6 +213,28 @@ class CicdReleasesIT {
         assertThat(db.fetchCount(CICD_RELEASES, CICD_RELEASES.DEPLOYMENT_ID.eq(restart))).isZero();
     }
 
+    @Test void aRestartOfTheSameCommitThatKeepsBreakingWritesNoRecord() {   // final review 1: broken on a same-commit restart
+        deploy("p1", "prod", A, T0.plusHours(1));
+        var first = deploy("p2", "prod", C, T0.plusHours(2));
+        // the database refuses to mark the restart applied: handling it throws every time, so it gives up through broken
+        String trigger = "cicd_test_release_restart_" + ext;
+        db.execute("create or replace function " + trigger + "() returns trigger language plpgsql as $$ begin raise exception 'refused for the test'; end $$");
+        db.execute("create trigger " + trigger + " before update on cicd_deployments for each row when (new.repository_id = '" + repo
+                + "'::uuid and new.external_id = 'p3' and new.inclusion = 'compared') execute function " + trigger + "()");
+        try {
+            var restart = deploy("p3", "prod", C, T0.plusHours(3));   // the head's commit again
+            for (int i = 0; i < 6; i++) { clock = clock.plus(Duration.ofMinutes(9)); run(); }
+            assertThat(inclusion(restart)).isEqualTo("failed");
+            assertThat(db.select(CICD_DEPLOYMENTS.CHECK_ERROR).from(CICD_DEPLOYMENTS).where(CICD_DEPLOYMENTS.ID.eq(restart)).fetchOne().value1())
+                    .isEqualTo("error");
+            assertThat(releases()).extracting(Release::deploymentId).containsExactly(first);
+            assertThat(db.fetchCount(CICD_RELEASES, CICD_RELEASES.DEPLOYMENT_ID.eq(restart))).isZero();
+        } finally {
+            db.execute("drop trigger if exists " + trigger + " on cicd_deployments");
+            db.execute("drop function if exists " + trigger + "()");
+        }
+    }
+
     @Test void otherEnvironmentsWriteNoRecord() {
         deploy("s1", "stg", A, T0.plusHours(1));
         deploy("s2", "stg", C, T0.plusHours(2));

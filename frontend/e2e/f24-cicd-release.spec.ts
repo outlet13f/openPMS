@@ -177,6 +177,8 @@ test.describe("F24 CI/CD 릴리스 검증", () => {
     await expect(page.getByText("통과로 남겼습니다.", { exact: true })).toBeVisible();
     await expect(column(page, "통과").getByRole("heading", { level: 2 })).toHaveText(/통과\s*1$/);
     await expect(column(page, "통과").getByRole("article", { name: new RegExp(`^#${a} `) })).toBeVisible();
+    // the card left its column: the focus goes to the card now in its place
+    await expect(card(page, b).getByRole("link").first()).toBeFocused();
 
     await page.getByRole("button", { name: `#${b} 실패…` }).click();
     const dlg = page.getByRole("dialog", { name: `#${b} 실패로 남기기` });
@@ -190,6 +192,8 @@ test.describe("F24 CI/CD 릴리스 검증", () => {
     await expect(page.getByText("실패로 남겼습니다. 담당자에게 알렸습니다.", { exact: true })).toBeVisible();
     await expect(column(page, "실패").getByRole("heading", { level: 2 })).toHaveText(/실패\s*1$/);
     await expect(column(page, "실패").getByRole("article", { name: new RegExp(`^#${b} `) })).toContainText("결제 버튼이 눌리지 않음");
+    // its column is empty now: the focus goes to the column's heading
+    await expect(column(page, "검증 대기").getByRole("heading", { level: 2 })).toBeFocused();
     await logout(page);
 
     // the assignee is told
@@ -216,10 +220,13 @@ test.describe("F24 CI/CD 릴리스 검증", () => {
     await page.getByRole("button", { name: `#${b} 이미 운영에 있음` }).click();
     await expect(page.getByText("보드에서 뺐습니다. '뺀 작업'에서 되돌릴 수 있습니다.", { exact: true })).toBeVisible();
     await expect(card(page, b)).toHaveCount(0);
+    await expect(column(page, "실패").getByRole("heading", { level: 2 })).toBeFocused();
     await page.getByRole("button", { name: "뺀 작업 1" }).click();
     await page.getByRole("button", { name: `#${b} 되돌리기` }).click();
     await expect(page.getByText("보드로 되돌렸습니다.", { exact: true })).toBeVisible();
     await expect(column(page, "실패").getByRole("article", { name: new RegExp(`^#${b} `) })).toBeVisible();
+    // the restored card takes the focus
+    await expect(card(page, b).getByRole("link").first()).toBeFocused();
   });
 
   test("F24-3 운영 배포가 릴리스 기록이 된다", async ({ page, request }) => {

@@ -133,6 +133,23 @@ class CicdReleaseBoardIT {
         assertThat(qa.at("/unlinked/0/shortSha").asString()).isEqualTo(plain.substring(0, 7));
     }
 
+    @Test void aCommitLinkedOnlyOutsideTheProjectTreeIsNeitherACardNorUnlinked() throws Exception {   // Ruling F12, the out-of-tree half
+        // a sibling project's work package (e.g. linked before the repository moved here): the admin can see it, but it is not in P's tree
+        var sibling = r.f.newProject(r.admin, "work_packages", "cicd");
+        long outside = r.wp(sibling);
+        long inside = r.wp();
+        r.deploy("스테이징", r.commit(r.sha(), T0, outside), T0.plusHours(1));
+        r.deploy("스테이징", r.commit(r.sha(), T0, inside), T0.plusHours(1));
+        var plain = r.sha();
+        r.deploy("스테이징", r.plainCommit(plain, T0), T0.plusHours(1));
+        for (var who : List.of(ADMIN, QA)) {
+            var board = r.board(who, "");
+            assertThat(numbers(board)).containsExactly(inside);
+            assertThat(board.get("unlinkedCount").asInt()).isEqualTo(1);   // only the plain commit
+            assertThat(board.at("/unlinked/0/shortSha").asString()).isEqualTo(plain.substring(0, 7));
+        }
+    }
+
     @Test void mergeCommitOfAMergedMrLinksTheWorkPackage() throws Exception {
         long wp8 = r.wp();
         var m = r.sha();

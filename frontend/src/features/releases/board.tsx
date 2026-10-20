@@ -2,8 +2,10 @@
 // columns (검증 대기 / 재검증 필요 / 실패 / 통과). Above: the version, source and target pickers (kept in the address, a
 // default is left out), the summary row (빠짐 · 끼어듦 · 연결 없는 커밋 · 뺀 작업, each opens its list) and a warning when
 // the list may be short. People with release.verify get 통과 · 실패… · 이미 운영에 있음 on each card (buttons only, no
-// dragging) and 되돌리기 on an excluded one. The columns stack on a narrow screen.
-import { useId, useRef, useState, type ReactNode } from "react";
+// dragging) and 되돌리기 on an excluded one. The columns stack on a narrow screen. Each card's buttons are busy on their own
+// until the board has been fetched again; when a card leaves its column, the focus goes to the card now in its place (or
+// the column's heading), and a restored card takes the focus (or the 뺀 작업 toggle when it is not on the board).
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { Check, EyeOff, Rocket, Undo2, X } from "lucide-react";
@@ -113,12 +115,12 @@ type Panel = "missing" | "interlopers" | "unlinked" | "excluded";
 function Summary({
   board,
   project,
-  pendingRestore,
+  restoring,
   onRestore,
 }: {
   board: ReleaseBoard;
   project: string;
-  pendingRestore: Id | null;
+  restoring: (workPackageId: Id) => boolean;
   onRestore: (workPackageId: Id) => void;
 }) {
   const { t } = useTranslation();
@@ -168,6 +170,7 @@ function Summary({
               className={cn("border", open === x.key ? "border-accent" : "border-border")}
               aria-expanded={open === x.key}
               aria-controls={`${baseId}-${x.key}`}
+              data-summary-toggle={x.key}
               onClick={() => setOpen(open === x.key ? null : x.key)}
             >
               {x.label}
@@ -235,7 +238,7 @@ function Summary({
                       <Button
                         size="sm"
                         icon={<Undo2 />}
-                        loading={pendingRestore === e.workPackageId}
+                        loading={restoring(e.workPackageId)}
                         aria-label={t("releases.summary.restoreLabel", { number: e.number })}
                         onClick={() => onRestore(e.workPackageId)}
                       >
@@ -255,6 +258,7 @@ function Summary({
 /* ---------- a card ---------- */
 
 type Action = "pass" | "fail" | "exclude";
+type Pending = Action | "restore";
 
 function Card({
   card,
@@ -358,16 +362,42 @@ function Column({ column, cards, children }: { column: ReleaseColumn; cards: Rel
   const { t } = useTranslation();
   const titleId = useId();
   return (
-    <section aria-labelledby={titleId} className="flex min-w-0 flex-col gap-2 rounded-md bg-surface-sunken p-2">
-      <h2 id={titleId} className="flex items-center gap-2 px-1 text-sm font-semibold text-fg">
+    <section aria-labelledby={titleId} data-column={column} className="flex min-w-0 flex-col gap-2 rounded-md bg-surface-sunken p-2">
+      <h2 id={titleId} tabIndex={-1} className="flex items-center gap-2 rounded-sm px-1 text-sm font-semibold text-fg focus-visible:outline-2 focus-visible:outline-focus-ring">
         {t(`releases.columns.${column}`)} <Counter tone={column === "failed" && cards.length ? "danger" : "neutral"}>{cards.length}</Counter>
       </h2>
-      {cards.length === 0 ? <p className="px-1 pb-1 text-sm text-fg-muted">{t("releases.columns.empty")}</p> : cards.map((c) => <div key={c.workPackageId}>{children(c)}</div>)}
+      {cards.length === 0 ? <p className="px-1 pb-1 text-sm text-fg-muted">{t("releases.columns.empty")}</p> : cards.map((c) => <div key={c.workPackageId} data-wp={c.workPackageId}>{children(c)}</div>)}
     </section>
   );
 }
 
 /* ---------- the board ---------- */
+
+/** The card acted on: its column and place there before the action (column null: it was in the 뺀 작업 list). */
+type FocusAfter = { id: Id; column: ReleaseColumn | null; index: number };
+
+const cardPending = (p: Pending | undefined): Action | null => (p && p !== "restore" ? p : null);
+
+/** The card's heading link (its first focusable). */
+const headingOf = (card: Element | null | undefined) => card?.querySelector<HTMLElement>("h3 a") ?? null;
+
+/**
+ * After an action: a card still in its column keeps the focus where it is. One that left it hands the focus to the card now
+ * in its place (or the last one), else to the column's heading. A restored card (from the 뺀 작업 list) takes the focus
+ * itself, or the 뺀 작업 toggle when it is not on the board.
+ */
+function moveFocus(root: HTMLElement, after: FocusAfter) {
+  const self = root.querySelector(`[data-wp="${CSS.escape(after.id)}"]`);
+  if (after.column === null) {
+    (headingOf(self) ?? root.querySelector<HTMLElement>('[data-summary-toggle="excluded"]'))?.focus();
+    return;
+  }
+  const column = root.querySelector(`[data-column="${after.column}"]`);
+  if (column && self && column.contains(self)) return;
+  const rest = column ? Array.from(column.querySelectorAll("[data-wp]")) : [];
+  const next = rest.length ? headingOf(rest[Math.min(after.index, rest.length - 1)]) : null;
+  (next ?? column?.querySelector<HTMLElement>("h2") ?? root.querySelector<HTMLElement>('[data-summary-toggle="excluded"]'))?.focus();
+}
 
 /** ?version=&source=&target= → the board's params (absent = the server's default) */
 function readParams(sp: URLSearchParams): ReleaseBoardParams {
@@ -395,8 +425,17 @@ export function ReleaseBoardView() {
   // the version the server picked when none was asked: picking it again leaves ?version= out
   const defaultVersion = useRef<string | undefined>(undefined);
   if (q.data && !params.version) defaultVersion.current = q.data.versionId ?? NO_VERSION;
-  const [pending, setPending] = useState<{ id: Id; action: Action | "restore" } | null>(null);
+  // per work package: card A finishing never frees card B's buttons
+  const [pending, setPending] = useState<ReadonlyMap<Id, Pending>>(new Map());
   const [failing, setFailing] = useState<ReleaseCard | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  // set after an action succeeded (the board has been fetched again by then); applied once the new board is on screen
+  const [focusAfter, setFocusAfter] = useState<FocusAfter | null>(null);
+  useEffect(() => {
+    if (!focusAfter || !root.current) return;
+    moveFocus(root.current, focusAfter);
+    setFocusAfter(null);
+  }, [focusAfter]);
 
   const board = q.data ?? (q.isFetching ? shown.current : undefined);
   if (!board) {
@@ -421,15 +460,30 @@ export function ReleaseBoardView() {
 
   const fail = (e: unknown) =>
     toast({ tone: "danger", title: isApiError(e) ? e.title : t("app.errorTitle"), description: isApiError(e) && e.message !== e.title ? e.message : undefined });
-  const run = async (id: Id, action: Action | "restore", work: () => Promise<unknown>, done: string) => {
-    setPending({ id, action });
+  const busy = (id: Id, action: Pending | null) =>
+    setPending((now) => {
+      const next = new Map(now);
+      if (action) next.set(id, action);
+      else next.delete(id);
+      return next;
+    });
+  /** where the card is now, so the focus can go to the one that takes its place */
+  const placeOf = (id: Id): FocusAfter => {
+    const card = board.cards.find((c) => c.workPackageId === id);
+    if (!card) return { id, column: null, index: 0 };
+    return { id, column: card.column, index: board.cards.filter((c) => c.column === card.column).findIndex((c) => c.workPackageId === id) };
+  };
+  const run = async (id: Id, action: Pending, work: () => Promise<unknown>, done: string) => {
+    const place = placeOf(id);
+    busy(id, action);
     try {
       await work();
       toast({ tone: "success", title: done });
+      setFocusAfter(place);
     } catch (e) {
       fail(e);
     } finally {
-      setPending(null);
+      busy(id, null);
     }
   };
   const input = (workPackageId: Id): ReleaseExclusionInput | null => (pair ? { workPackageId, ...pair } : null);
@@ -448,7 +502,7 @@ export function ReleaseBoardView() {
 
   const loading = !q.data && q.isFetching;
   return (
-    <div className={cn("flex flex-col gap-4", loading && "opacity-60")} aria-busy={loading || undefined}>
+    <div ref={root} className={cn("flex flex-col gap-4", loading && "opacity-60")} aria-busy={loading || undefined}>
       <Pickers board={board} params={params} onChange={setParams} />
       {!pair ? (
         <div className="rounded-md border border-border">
@@ -470,7 +524,7 @@ export function ReleaseBoardView() {
           <Summary
             board={board}
             project={project.identifier}
-            pendingRestore={pending?.action === "restore" ? pending.id : null}
+            restoring={(id) => pending.get(id) === "restore"}
             onRestore={restore}
           />
           {board.notices.length > 0 && (
@@ -500,7 +554,7 @@ export function ReleaseBoardView() {
                       project={project.identifier}
                       source={source}
                       canVerify={board.canVerify}
-                      pending={pending?.id === c.workPackageId && pending.action !== "restore" ? pending.action : null}
+                      pending={cardPending(pending.get(c.workPackageId))}
                       onPass={() => pass(c)}
                       onFail={() => setFailing(c)}
                       onExclude={() => exclude(c)}
@@ -515,12 +569,20 @@ export function ReleaseBoardView() {
       {failing && pair && (
         <FailDialog
           card={failing}
-          pending={m.verify.isPending}
+          pending={pending.get(failing.workPackageId) === "fail"}
           onClose={() => setFailing(null)}
           onSubmit={async (reason) => {
-            await m.verify.mutateAsync({ workPackageId: failing.workPackageId, ...pair, result: "failed", reason });
+            const id = failing.workPackageId;
+            const place = placeOf(id);
+            busy(id, "fail");
+            try {
+              await m.verify.mutateAsync({ workPackageId: id, ...pair, result: "failed", reason });
+            } finally {
+              busy(id, null);
+            }
             setFailing(null);
             toast({ tone: "success", title: t("releases.toast.failed") });
+            setFocusAfter(place);
           }}
         />
       )}

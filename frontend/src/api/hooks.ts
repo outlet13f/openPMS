@@ -364,12 +364,14 @@ export const useReleaseBoard = (project: string, params: ReleaseBoardParams = {}
 /** Verify, exclude and restore: each refreshes the boards and records, the development tabs, the inbox and the activity lists (a verification is an activity line). */
 export function useReleaseMutations(project: string) {
   const qc = useQueryClient();
-  const done = () => {
-    qc.invalidateQueries({ queryKey: ["releases", project] });
-    qc.invalidateQueries({ queryKey: ["cicd", "dev"] });
-    qc.invalidateQueries({ queryKey: ["notifications"] });
-    qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "wp" && q.queryKey[2] === "activities" });
-  };
+  // returned, so a mutation stays pending until the board has been fetched again (the card has moved before its buttons come back)
+  const done = () =>
+    Promise.all([
+      qc.invalidateQueries({ queryKey: ["releases", project] }),
+      qc.invalidateQueries({ queryKey: ["cicd", "dev"] }),
+      qc.invalidateQueries({ queryKey: ["notifications"] }),
+      qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "wp" && q.queryKey[2] === "activities" }),
+    ]);
   return {
     verify: useMutation({ mutationFn: (input: ReleaseVerificationInput) => api.releases.verify(project, input), onSuccess: done }),
     exclude: useMutation({ mutationFn: (input: ReleaseExclusionInput) => api.releases.exclude(project, input), onSuccess: done }),

@@ -312,7 +312,7 @@ public class CicdDeployments {
                     .from(CICD_DEPLOYMENTS).where(CICD_DEPLOYMENTS.ID.eq(id), CICD_DEPLOYMENTS.INCLUSION.eq("checking")).fetchOne();
             if (d == null) return false;
             // the same lock order as everywhere else: the head row, then the deployment row
-            var head = db.select(CICD_ENVIRONMENT_HEADS.DEPLOYED_AT).from(CICD_ENVIRONMENT_HEADS)
+            var head = db.select(CICD_ENVIRONMENT_HEADS.DEPLOYED_AT, CICD_ENVIRONMENT_HEADS.SHA).from(CICD_ENVIRONMENT_HEADS)
                     .where(CICD_ENVIRONMENT_HEADS.REPOSITORY_ID.eq(d.value1()), CICD_ENVIRONMENT_HEADS.ENVIRONMENT_ID.eq(d.value2()))
                     .forUpdate().fetchOne();
             var row = db.selectFrom(CICD_DEPLOYMENTS).where(CICD_DEPLOYMENTS.ID.eq(id), CICD_DEPLOYMENTS.INCLUSION.eq("checking"))
@@ -338,7 +338,10 @@ public class CicdDeployments {
             db.update(CICD_DEPLOYMENTS).set(CICD_DEPLOYMENTS.INCLUSION, "failed").set(CICD_DEPLOYMENTS.ATTEMPTS, attempts)
                     .setNull(CICD_DEPLOYMENTS.NEXT_ATTEMPT_AT).set(CICD_DEPLOYMENTS.CHECK_ERROR, "error").where(CICD_DEPLOYMENTS.ID.eq(id)).execute();
             // what came in is unknown: a "content failed" record, but not for the environment's first deployment (no head before)
-            if (moved && head != null) releases.contentFailed(id, row.getEnvironmentId(), row.getRepositoryId(), row.getDeployedAt());
+            // nor for a restart of the head's commit (nothing can have come in; the same test as one())
+            boolean sameCommit = head != null && head.value2() != null && row.getSha() != null
+                    && (head.value2().startsWith(row.getSha()) || row.getSha().startsWith(head.value2()));
+            if (moved && head != null && !sameCommit) releases.contentFailed(id, row.getEnvironmentId(), row.getRepositoryId(), row.getDeployedAt());
             log.warn("cicd deployment {} repository {}: gave up after {} errors", id, row.getRepositoryId(), attempts);
             return true;
         }));
