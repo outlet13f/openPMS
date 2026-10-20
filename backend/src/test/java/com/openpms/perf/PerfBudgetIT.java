@@ -95,6 +95,7 @@ class PerfBudgetIT {
         boardId = db.select(BOARDS.ID).from(BOARDS).where(BOARDS.PROJECT_ID.eq(projectId)).fetchSingle().value1();
         assertThat(db.fetchCount(WORK_PACKAGES, WORK_PACKAGES.PROJECT_ID.eq(projectId))).isEqualTo(1000);
         seedDevTab();
+        seedReleaseBoard();
 
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         admin = new MockHttpSession();
@@ -163,6 +164,41 @@ class PerfBudgetIT {
                 + "and not exists (select 1 from cicd_verifications v where v.work_package_id = w.id)", projectId);
     }
 
+    /** The release verification board (staging to production): a production deployment holding the oldest 10 commits, so 20 of staging's 30 differ. */
+    void seedReleaseBoard() {
+        db.execute("insert into cicd_deployments (repository_id, environment_id, environment_name, external_id, sha, status, web_url, deployed_at, source, inclusion) "
+                + "select r.id, e.id, e.name, 'perf-3', lpad(to_hex(1), 40, '0'), 'success', r.web_url || '/-/jobs/3', now() - interval '1 day', 'gitlab', 'compared' "
+                + "from cicd_repositories r join cicd_environments e on e.project_id = r.project_id and e.name = '운영' where r.external_id = 'perf-1'");
+        db.execute("insert into cicd_environment_commits (environment_id, repository_id, commit_id, deployment_id) "
+                + "select d.environment_id, d.repository_id, c.id, d.id from cicd_deployments d "
+                + "join lateral (select id from cicd_commits where repository_id = d.repository_id order by committed_at limit 10) c on true where d.external_id = 'perf-3' "
+                + "and d.repository_id in (select id from cicd_repositories where external_id = 'perf-1') on conflict do nothing");
+        db.execute("insert into cicd_environment_heads (repository_id, environment_id, sha, deployment_id, deployed_at) "
+                + "select d.repository_id, d.environment_id, d.sha, d.id, d.deployed_at from cicd_deployments d "
+                + "where d.external_id = 'perf-3' and d.repository_id in (select id from cicd_repositories where external_id = 'perf-1') on conflict do nothing");
+        // each commit also on another work package (50 of them), by commit order
+        db.execute("insert into work_package_cicd_links (work_package_id, commit_id, source) "
+                + "select w.id, c.id, 'message' from (select id, row_number() over (order by number) rn from work_packages "
+                + "where project_id = ? and subject <> '상세 화면 측정용 작업' order by number limit 50) w "
+                + "join (select id, row_number() over (order by committed_at desc) rn from cicd_commits "
+                + "where repository_id in (select id from cicd_repositories where external_id = 'perf-1')) c on c.rn = w.rn "
+                + "on conflict do nothing", projectId);
+        db.execute("insert into versions (project_id, name, status, end_date) values (?, 'perf-v', 'open', current_date + 10) on conflict do nothing", projectId);
+        db.execute("update work_packages set version_id = (select id from versions where project_id = ? and name = 'perf-v') "
+                + "where id in (select l.work_package_id from work_package_cicd_links l join cicd_commits c on c.id = l.commit_id "
+                + "join work_packages w on w.id = l.work_package_id where w.project_id = ? and w.subject <> '상세 화면 측정용 작업' "
+                + "order by c.committed_at desc limit 40)", projectId, projectId);
+        // 10 passed and 3 failed among the work packages that differ (staging not in production)
+        db.execute("insert into cicd_verifications (work_package_id, environment_id, result, reason, verified_by, verified_at, basis_at) "
+                + "select x.wp, e.id, case when x.rn <= 10 then 'passed' else 'failed' end, case when x.rn <= 10 then '' else '실패 사유' end, "
+                + "(select id from users where email = 'seoyeon.kim@openpms.local'), now(), now() "
+                + "from (select l.work_package_id wp, row_number() over (order by c.committed_at) rn from work_package_cicd_links l join cicd_commits c on c.id = l.commit_id "
+                + "join work_packages w on w.id = l.work_package_id where w.project_id = ? and w.subject <> '상세 화면 측정용 작업' "
+                + "and c.id in (select commit_id from cicd_environment_commits ec join cicd_environments s on s.id = ec.environment_id and s.name = '스테이징' where s.project_id = ?) "
+                + "and c.id not in (select commit_id from cicd_environment_commits ec join cicd_environments s on s.id = ec.environment_id and s.name = '운영' where s.project_id = ?)) x "
+                + "join cicd_environments e on e.project_id = ? and e.name = '스테이징' where x.rn <= 13", projectId, projectId, projectId, projectId);
+    }
+
     @AfterAll
     void cleanUp() throws Exception {
         if (before != null) db.configuration().set(before);
@@ -219,6 +255,10 @@ class PerfBudgetIT {
     @Test
     void theMainScreensStayWithinTheirBudgetsOnAThousandWorkPackages() throws Exception {
         var n = "/api/v1/work-packages/" + detail;
+        // the seeded board is what the budget line says: 21 cards, 20 differing commits' work packages + the detail one, 40 of 50 in the version
+        var seeded = mvc.perform(get("/api/v1/projects/perf-1000/releases/board").session(admin)).andReturn().getResponse().getContentAsString();
+        assertThat((List<?>) com.jayway.jsonpath.JsonPath.read(seeded, "$.cards")).as("board cards").hasSize(21);
+        assertThat((List<?>) com.jayway.jsonpath.JsonPath.read(seeded, "$.cards[?(@.last != null)]")).as("verified cards").hasSize(14);
         var measured = List.of(
                 measure(new Budget("목록", "모두 열림 · 계층 · 20건", 250, 27, 100), List.of(query(20, OPEN))),
                 measure(new Budget("목록", "모두 열림 · 계층 · 100건", 300, 27, 350), List.of(query(100, OPEN))),
@@ -229,7 +269,9 @@ class PerfBudgetIT {
                 measure(new Budget("보드", "상태 보드 · 카드 1,000장", 600, 29, 3000), List.of(get("/api/v1/boards/" + boardId))),
                 measure(new Budget("작업 상세", "작업 · 이력 40건 · 관계 · 지켜보는 사람", 200, 45, 30),
                         List.of(get(n), get(n + "/activities"), get(n + "/relations"), get(n + "/watchers"))),
-                measure(new Budget("작업 상세", "개발 탭 · MR 20 · 커밋 50 · 환경 3 · 빌드 120 · 검증 1", 150, 20, 56), List.of(get(n + "/cicd"))));
+                measure(new Budget("작업 상세", "개발 탭 · MR 20 · 커밋 50 · 환경 3 · 빌드 120 · 검증 1", 150, 20, 56), List.of(get(n + "/cicd"))),
+                measure(new Budget("릴리스", "검증 보드 · 카드 21 · 차이 커밋 20 · 버전 대조", 200, 18, 27),
+                        List.of(get("/api/v1/projects/perf-1000/releases/board"))));
         var soft = new SoftAssertions();
         for (var m : measured) {
             var b = m.budget();
