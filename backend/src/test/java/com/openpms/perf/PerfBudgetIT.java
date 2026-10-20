@@ -154,6 +154,13 @@ class PerfBudgetIT {
         db.execute("insert into cicd_environment_heads (repository_id, environment_id, sha, deployment_id, deployed_at) "
                 + "select d.repository_id, d.environment_id, d.sha, d.id, d.deployed_at from cicd_deployments d "
                 + "where d.external_id like 'perf-%' and d.repository_id in (select id from cicd_repositories where external_id = 'perf-1') on conflict do nothing");
+        // a verification of the measured work package on 스테이징 (the dev tab's verification line, 3 more queries)
+        db.execute("insert into cicd_verifications (work_package_id, environment_id, result, reason, verified_by, verified_at, basis_at) "
+                + "select w.id, e.id, 'passed', '', (select id from users where email = 'junho.park@openpms.local'), now(), "
+                + "(select max(ec.added_at) from cicd_environment_commits ec where ec.environment_id = e.id) "
+                + "from work_packages w, cicd_environments e where w.project_id = ? and w.subject = '상세 화면 측정용 작업' "
+                + "and e.project_id = w.project_id and e.name = '스테이징' "
+                + "and not exists (select 1 from cicd_verifications v where v.work_package_id = w.id)", projectId);
     }
 
     @AfterAll
@@ -222,7 +229,7 @@ class PerfBudgetIT {
                 measure(new Budget("보드", "상태 보드 · 카드 1,000장", 600, 29, 3000), List.of(get("/api/v1/boards/" + boardId))),
                 measure(new Budget("작업 상세", "작업 · 이력 40건 · 관계 · 지켜보는 사람", 200, 45, 30),
                         List.of(get(n), get(n + "/activities"), get(n + "/relations"), get(n + "/watchers"))),
-                measure(new Budget("작업 상세", "개발 탭 · MR 20 · 커밋 50 · 환경 3 · 빌드 120", 150, 17, 56), List.of(get(n + "/cicd"))));
+                measure(new Budget("작업 상세", "개발 탭 · MR 20 · 커밋 50 · 환경 3 · 빌드 120 · 검증 1", 150, 20, 56), List.of(get(n + "/cicd"))));
         var soft = new SoftAssertions();
         for (var m : measured) {
             var b = m.budget();
