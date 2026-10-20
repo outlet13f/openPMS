@@ -90,13 +90,16 @@ public class CicdDeployments {
     private final Adapters adapters;
     private final SecretBox box;
     private final CicdCommitStore commitStore;
+    private final CicdReleases releases;
 
-    public CicdDeployments(DSLContext db, TransactionTemplate tx, Adapters adapters, SecretBox box, CicdCommitStore commitStore) {
+    public CicdDeployments(DSLContext db, TransactionTemplate tx, Adapters adapters, SecretBox box, CicdCommitStore commitStore,
+            CicdReleases releases) {
         this.db = db;
         this.tx = tx;
         this.adapters = adapters;
         this.box = box;
         this.commitStore = commitStore;
+        this.releases = releases;
     }
 
     /** One waiting deployment with what planning needs. */
@@ -261,9 +264,11 @@ public class CicdDeployments {
         var done = Boolean.TRUE.equals(tx.execute(st -> {
             if (!headUnchanged(d, planned) || !stillChecking(d.id())) return false;   // planned again on the next pass
             var repo = new CicdRepoRef(d.repositoryId(), d.projectId(), d.webUrl());
+            int brought = 0;
             for (var c : added) {
                 if (c.sha() == null || !SHA.matcher(c.sha()).matches() || c.committedAt() == null) continue;   // nothing we could store
                 bringIn(d, commitStore.upsert(repo, c));
+                brought++;
             }
             for (var c : removed) {
                 if (c.sha() == null) continue;
@@ -277,6 +282,8 @@ public class CicdDeployments {
             db.update(CICD_DEPLOYMENTS).set(CICD_DEPLOYMENTS.INCLUSION, truncated ? "partial" : "compared")
                     .set(CICD_DEPLOYMENTS.ATTEMPTS, 0).setNull(CICD_DEPLOYMENTS.NEXT_ATTEMPT_AT).setNull(CICD_DEPLOYMENTS.CHECK_ERROR)
                     .where(CICD_DEPLOYMENTS.ID.eq(d.id())).execute();
+            // a release record only when commits came in: not a restart of the same commit, nor a rollback that only took some out
+            if (brought > 0) releases.record(d.id(), d.environmentId(), d.repositoryId(), d.deployedAt(), truncated);
             return true;
         }));
         if (done && truncated) log.warn("cicd deployment {} partial: more than {} commits one way", d.id(), MAX_PER_DIRECTION);
@@ -318,7 +325,8 @@ public class CicdDeployments {
                         .set(CICD_DEPLOYMENTS.CHECK_ERROR, "error").where(CICD_DEPLOYMENTS.ID.eq(id)).execute();
                 return false;
             }
-            if (row.getSha() != null && row.getEnvironmentId() != null && (head == null || !row.getDeployedAt().isBefore(head.value1()))) {
+            boolean moved = row.getSha() != null && row.getEnvironmentId() != null && (head == null || !row.getDeployedAt().isBefore(head.value1()));
+            if (moved) {
                 db.insertInto(CICD_ENVIRONMENT_HEADS)
                         .set(CICD_ENVIRONMENT_HEADS.REPOSITORY_ID, row.getRepositoryId()).set(CICD_ENVIRONMENT_HEADS.ENVIRONMENT_ID, row.getEnvironmentId())
                         .set(CICD_ENVIRONMENT_HEADS.SHA, row.getSha()).set(CICD_ENVIRONMENT_HEADS.DEPLOYMENT_ID, id)
@@ -329,6 +337,8 @@ public class CicdDeployments {
             }
             db.update(CICD_DEPLOYMENTS).set(CICD_DEPLOYMENTS.INCLUSION, "failed").set(CICD_DEPLOYMENTS.ATTEMPTS, attempts)
                     .setNull(CICD_DEPLOYMENTS.NEXT_ATTEMPT_AT).set(CICD_DEPLOYMENTS.CHECK_ERROR, "error").where(CICD_DEPLOYMENTS.ID.eq(id)).execute();
+            // what came in is unknown: a "content failed" record, but not for the environment's first deployment (no head before)
+            if (moved && head != null) releases.contentFailed(id, row.getEnvironmentId(), row.getRepositoryId(), row.getDeployedAt());
             log.warn("cicd deployment {} repository {}: gave up after {} errors", id, row.getRepositoryId(), attempts);
             return true;
         }));
@@ -349,6 +359,7 @@ public class CicdDeployments {
             db.update(CICD_DEPLOYMENTS).set(CICD_DEPLOYMENTS.INCLUSION, "failed").set(CICD_DEPLOYMENTS.ATTEMPTS, attempts)
                     .setNull(CICD_DEPLOYMENTS.NEXT_ATTEMPT_AT).set(CICD_DEPLOYMENTS.CHECK_ERROR, code)
                     .where(CICD_DEPLOYMENTS.ID.eq(d.id())).execute();
+            releases.contentFailed(d.id(), d.environmentId(), d.repositoryId(), d.deployedAt());   // what came in is unknown
             return true;
         }));
         if (done) log.warn("cicd deployment {} repository {} connection {}: compare failed ({})", d.id(), d.repositoryId(), d.connectionId(), code);

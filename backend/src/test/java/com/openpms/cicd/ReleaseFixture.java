@@ -149,6 +149,11 @@ public final class ReleaseFixture {
     }
 
     UUID verification(long wp, UUID environmentId, String result, String reason, OffsetDateTime verifiedAt, OffsetDateTime basisAt) {
+        return verification(db, wp, environmentId, result, reason, verifiedAt, basisAt);
+    }
+
+    /** The same for ITs with their own setup (no fixture project): the environment by id, never looked up by name. */
+    static UUID verification(DSLContext db, long wp, UUID environmentId, String result, String reason, OffsetDateTime verifiedAt, OffsetDateTime basisAt) {
         var id = UUID.randomUUID();
         db.execute("insert into cicd_verifications (id, work_package_id, environment_id, result, reason, verified_by, verified_at, basis_at) "
                 + "values (?, (select id from work_packages where number = ?), ?, ?, ?, ?, ?::timestamptz, ?::timestamptz)",
