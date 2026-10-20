@@ -183,6 +183,14 @@ class PerfBudgetIT {
                 + "join (select id, row_number() over (order by committed_at desc) rn from cicd_commits "
                 + "where repository_id in (select id from cicd_repositories where external_id = 'perf-1')) c on c.rn = w.rn "
                 + "on conflict do nothing", projectId);
+        // a merged MR on a work package that already has a card, its merge commit one of the differing commits (the merge-commit join runs with data)
+        db.execute("insert into cicd_merge_requests (repository_id, iid, title, state, source_branch, target_branch, author_name, updated_at, web_url, merge_commit_sha) "
+                + "select r.id, 900, 'MR 900', 'merged', 'topic-900', 'main', '박준호', now(), r.web_url || '/-/merge_requests/900', lpad(to_hex(30), 40, '0') "
+                + "from cicd_repositories r where r.external_id = 'perf-1' and r.project_id = ?", projectId);
+        db.execute("insert into work_package_cicd_links (work_package_id, merge_request_id, source) "
+                + "select l.work_package_id, m.id, 'title' from work_package_cicd_links l join cicd_commits c on c.id = l.commit_id and c.sha = lpad(to_hex(31), 40, '0') "
+                + "join cicd_merge_requests m on m.repository_id = c.repository_id and m.iid = 900 "
+                + "join work_packages w on w.id = l.work_package_id where w.subject <> '상세 화면 측정용 작업'");
         db.execute("insert into versions (project_id, name, status, end_date) values (?, 'perf-v', 'open', current_date + 10) on conflict do nothing", projectId);
         db.execute("update work_packages set version_id = (select id from versions where project_id = ? and name = 'perf-v') "
                 + "where id in (select l.work_package_id from work_package_cicd_links l join cicd_commits c on c.id = l.commit_id "
@@ -296,7 +304,8 @@ class PerfBudgetIT {
     void noRequestKeepsItsCarrierThreadWhileWaiting() throws Exception {
         var n = "/api/v1/work-packages/" + detail;
         var requests = List.of(query(20, OPEN), query(100, GROUPED), query(200, GANTT), get("/api/v1/boards/" + boardId),
-                get("/api/v1/work-packages/filters").param("projectId", projectId.toString()), get(n), get(n + "/activities"), get(n + "/relations"));
+                get("/api/v1/work-packages/filters").param("projectId", projectId.toString()), get(n), get(n + "/activities"), get(n + "/relations"),
+                get("/api/v1/projects/perf-1000/releases/board"));
         var pinned = new CopyOnWriteArrayList<RecordedEvent>();
         try (var rs = new RecordingStream()) {
             rs.enable("jdk.VirtualThreadPinned").withThreshold(java.time.Duration.ZERO).withStackTrace();
