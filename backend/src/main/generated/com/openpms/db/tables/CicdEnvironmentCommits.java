@@ -13,6 +13,7 @@ import com.openpms.db.tables.CicdEnvironments.CicdEnvironmentsPath;
 import com.openpms.db.tables.CicdRepositories.CicdRepositoriesPath;
 import com.openpms.db.tables.records.CicdEnvironmentCommitsRecord;
 
+import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -82,6 +83,11 @@ public class CicdEnvironmentCommits extends TableImpl<CicdEnvironmentCommitsReco
      * The column <code>public.cicd_environment_commits.deployment_id</code>.
      */
     public final TableField<CicdEnvironmentCommitsRecord, UUID> DEPLOYMENT_ID = createField(DSL.name("deployment_id"), SQLDataType.UUID.nullable(false), this, "");
+
+    /**
+     * The column <code>public.cicd_environment_commits.added_at</code>.
+     */
+    public final TableField<CicdEnvironmentCommitsRecord, OffsetDateTime> ADDED_AT = createField(DSL.name("added_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
 
     private CicdEnvironmentCommits(Name alias, Table<CicdEnvironmentCommitsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -154,7 +160,7 @@ public class CicdEnvironmentCommits extends TableImpl<CicdEnvironmentCommitsReco
 
     @Override
     public List<Index> getIndexes() {
-        return Arrays.asList(Indexes.CICD_ENVIRONMENT_COMMITS_COMMIT_IDX, Indexes.CICD_ENVIRONMENT_COMMITS_DEPLOYMENT_IDX, Indexes.CICD_ENVIRONMENT_COMMITS_REPOSITORY_IDX);
+        return Arrays.asList(Indexes.CICD_ENVIRONMENT_COMMITS_ADDED_IDX, Indexes.CICD_ENVIRONMENT_COMMITS_COMMIT_IDX, Indexes.CICD_ENVIRONMENT_COMMITS_DEPLOYMENT_IDX, Indexes.CICD_ENVIRONMENT_COMMITS_REPOSITORY_IDX);
     }
 
     @Override

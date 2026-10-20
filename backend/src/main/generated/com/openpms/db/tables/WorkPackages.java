@@ -12,6 +12,10 @@ import com.openpms.db.tables.BoardCards.BoardCardsPath;
 import com.openpms.db.tables.BoardColumns.BoardColumnsPath;
 import com.openpms.db.tables.Boards.BoardsPath;
 import com.openpms.db.tables.Categories.CategoriesPath;
+import com.openpms.db.tables.CicdBoardExclusions.CicdBoardExclusionsPath;
+import com.openpms.db.tables.CicdReleaseItems.CicdReleaseItemsPath;
+import com.openpms.db.tables.CicdReleases.CicdReleasesPath;
+import com.openpms.db.tables.CicdVerifications.CicdVerificationsPath;
 import com.openpms.db.tables.Journals.JournalsPath;
 import com.openpms.db.tables.Notifications.NotificationsPath;
 import com.openpms.db.tables.Priorities.PrioritiesPath;
@@ -489,6 +493,45 @@ public class WorkPackages extends TableImpl<WorkPackagesRecord> {
         return _boardColumns;
     }
 
+    private transient CicdBoardExclusionsPath _cicdBoardExclusions;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_board_exclusions</code> table
+     */
+    public CicdBoardExclusionsPath cicdBoardExclusions() {
+        if (_cicdBoardExclusions == null)
+            _cicdBoardExclusions = new CicdBoardExclusionsPath(this, null, Keys.CICD_BOARD_EXCLUSIONS__CICD_BOARD_EXCLUSIONS_WORK_PACKAGE_ID_FKEY.getInverseKey());
+
+        return _cicdBoardExclusions;
+    }
+
+    private transient CicdReleaseItemsPath _cicdReleaseItems;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_release_items</code> table
+     */
+    public CicdReleaseItemsPath cicdReleaseItems() {
+        if (_cicdReleaseItems == null)
+            _cicdReleaseItems = new CicdReleaseItemsPath(this, null, Keys.CICD_RELEASE_ITEMS__CICD_RELEASE_ITEMS_WORK_PACKAGE_ID_FKEY.getInverseKey());
+
+        return _cicdReleaseItems;
+    }
+
+    private transient CicdVerificationsPath _cicdVerifications;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_verifications</code> table
+     */
+    public CicdVerificationsPath cicdVerifications() {
+        if (_cicdVerifications == null)
+            _cicdVerifications = new CicdVerificationsPath(this, null, Keys.CICD_VERIFICATIONS__CICD_VERIFICATIONS_WORK_PACKAGE_ID_FKEY.getInverseKey());
+
+        return _cicdVerifications;
+    }
+
     private transient JournalsPath _journals;
 
     /**
@@ -612,6 +655,14 @@ public class WorkPackages extends TableImpl<WorkPackagesRecord> {
      */
     public BoardsPath boards() {
         return boardCards().boards();
+    }
+
+    /**
+     * Get the implicit many-to-many join path to the
+     * <code>public.cicd_releases</code> table
+     */
+    public CicdReleasesPath cicdReleases() {
+        return cicdReleaseItems().cicdReleases();
     }
 
     /**

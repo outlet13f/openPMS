@@ -6,6 +6,7 @@ package com.openpms.db.tables.records;
 
 import com.openpms.db.tables.CicdEnvironmentCommits;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import org.jooq.Record2;
@@ -80,6 +81,21 @@ public class CicdEnvironmentCommitsRecord extends UpdatableRecordImpl<CicdEnviro
         return (UUID) get(3);
     }
 
+    /**
+     * Setter for <code>public.cicd_environment_commits.added_at</code>.
+     */
+    public CicdEnvironmentCommitsRecord setAddedAt(OffsetDateTime value) {
+        set(4, value);
+        return this;
+    }
+
+    /**
+     * Getter for <code>public.cicd_environment_commits.added_at</code>.
+     */
+    public OffsetDateTime getAddedAt() {
+        return (OffsetDateTime) get(4);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -103,13 +119,14 @@ public class CicdEnvironmentCommitsRecord extends UpdatableRecordImpl<CicdEnviro
     /**
      * Create a detached, initialised CicdEnvironmentCommitsRecord
      */
-    public CicdEnvironmentCommitsRecord(UUID environmentId, UUID repositoryId, UUID commitId, UUID deploymentId) {
+    public CicdEnvironmentCommitsRecord(UUID environmentId, UUID repositoryId, UUID commitId, UUID deploymentId, OffsetDateTime addedAt) {
         super(CicdEnvironmentCommits.CICD_ENVIRONMENT_COMMITS);
 
         setEnvironmentId(environmentId);
         setRepositoryId(repositoryId);
         setCommitId(commitId);
         setDeploymentId(deploymentId);
+        setAddedAt(addedAt);
         resetTouchedOnNotNull();
     }
 }

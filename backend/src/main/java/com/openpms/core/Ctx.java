@@ -28,7 +28,7 @@ public final class Ctx {
     /** Permissions that need a project module: switched-off modules take them away. */
     private static final Map<String, String> MODULE_OF = Map.ofEntries(Map.entry("board.view", "boards"), Map.entry("board.manage", "boards"),
             Map.entry("time.log", "time_tracking"), Map.entry("time.view", "time_tracking"), Map.entry("time.manage", "time_tracking"),
-            Map.entry("cicd.view", "cicd"), Map.entry("cicd.link", "cicd"), Map.entry("cicd.manage", "cicd"));
+            Map.entry("cicd.view", "cicd"), Map.entry("cicd.link", "cicd"), Map.entry("cicd.manage", "cicd"), Map.entry("release.verify", "cicd"));
 
     private Snapshot snapshot;
     private final java.util.function.Supplier<Snapshot> reload;

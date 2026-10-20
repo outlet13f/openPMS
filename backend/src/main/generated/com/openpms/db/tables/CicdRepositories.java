@@ -16,6 +16,7 @@ import com.openpms.db.tables.CicdEnvironments.CicdEnvironmentsPath;
 import com.openpms.db.tables.CicdEvents.CicdEventsPath;
 import com.openpms.db.tables.CicdMergeRequests.CicdMergeRequestsPath;
 import com.openpms.db.tables.CicdPipelines.CicdPipelinesPath;
+import com.openpms.db.tables.CicdReleases.CicdReleasesPath;
 import com.openpms.db.tables.Projects.ProjectsPath;
 import com.openpms.db.tables.records.CicdRepositoriesRecord;
 
@@ -321,6 +322,19 @@ public class CicdRepositories extends TableImpl<CicdRepositoriesRecord> {
             _cicdPipelines = new CicdPipelinesPath(this, null, Keys.CICD_PIPELINES__CICD_PIPELINES_REPOSITORY_ID_FKEY.getInverseKey());
 
         return _cicdPipelines;
+    }
+
+    private transient CicdReleasesPath _cicdReleases;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_releases</code> table
+     */
+    public CicdReleasesPath cicdReleases() {
+        if (_cicdReleases == null)
+            _cicdReleases = new CicdReleasesPath(this, null, Keys.CICD_RELEASES__CICD_RELEASES_REPOSITORY_ID_FKEY.getInverseKey());
+
+        return _cicdReleases;
     }
 
     /**

@@ -12,9 +12,11 @@ import com.openpms.db.tables.Attachments.AttachmentsPath;
 import com.openpms.db.tables.BoardColumns.BoardColumnsPath;
 import com.openpms.db.tables.Boards.BoardsPath;
 import com.openpms.db.tables.Categories.CategoriesPath;
+import com.openpms.db.tables.CicdBoardExclusions.CicdBoardExclusionsPath;
 import com.openpms.db.tables.CicdCommits.CicdCommitsPath;
 import com.openpms.db.tables.CicdConnections.CicdConnectionsPath;
 import com.openpms.db.tables.CicdMergeRequests.CicdMergeRequestsPath;
+import com.openpms.db.tables.CicdVerifications.CicdVerificationsPath;
 import com.openpms.db.tables.GlobalRoleAssignments.GlobalRoleAssignmentsPath;
 import com.openpms.db.tables.IdempotencyKeys.IdempotencyKeysPath;
 import com.openpms.db.tables.Journals.JournalsPath;
@@ -313,6 +315,19 @@ public class Users extends TableImpl<UsersRecord> {
         return _categories;
     }
 
+    private transient CicdBoardExclusionsPath _cicdBoardExclusions;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_board_exclusions</code> table
+     */
+    public CicdBoardExclusionsPath cicdBoardExclusions() {
+        if (_cicdBoardExclusions == null)
+            _cicdBoardExclusions = new CicdBoardExclusionsPath(this, null, Keys.CICD_BOARD_EXCLUSIONS__CICD_BOARD_EXCLUSIONS_EXCLUDED_BY_FKEY.getInverseKey());
+
+        return _cicdBoardExclusions;
+    }
+
     private transient CicdCommitsPath _cicdCommits;
 
     /**
@@ -350,6 +365,19 @@ public class Users extends TableImpl<UsersRecord> {
             _cicdMergeRequests = new CicdMergeRequestsPath(this, null, Keys.CICD_MERGE_REQUESTS__CICD_MERGE_REQUESTS_USER_ID_FKEY.getInverseKey());
 
         return _cicdMergeRequests;
+    }
+
+    private transient CicdVerificationsPath _cicdVerifications;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_verifications</code> table
+     */
+    public CicdVerificationsPath cicdVerifications() {
+        if (_cicdVerifications == null)
+            _cicdVerifications = new CicdVerificationsPath(this, null, Keys.CICD_VERIFICATIONS__CICD_VERIFICATIONS_VERIFIED_BY_FKEY.getInverseKey());
+
+        return _cicdVerifications;
     }
 
     private transient GlobalRoleAssignmentsPath _globalRoleAssignments;

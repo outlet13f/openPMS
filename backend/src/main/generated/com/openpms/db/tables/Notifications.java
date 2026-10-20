@@ -275,7 +275,7 @@ public class Notifications extends TableImpl<NotificationsRecord> {
     public List<Check<NotificationsRecord>> getChecks() {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("notifications_alert_date_iff_date_alert"), "(((reason ~~ 'date_alert%'::text) = (alert_date IS NOT NULL)))", true),
-            Internal.createCheck(this, DSL.name("notifications_reason_check"), "((reason = ANY (ARRAY['mentioned'::text, 'assigned'::text, 'responsible'::text, 'watched'::text, 'shared'::text, 'created'::text, 'commented'::text, 'status_changed'::text, 'priority_changed'::text, 'dates_changed'::text, 'date_alert_start'::text, 'date_alert_due'::text, 'date_alert_overdue'::text])))", true)
+            Internal.createCheck(this, DSL.name("notifications_reason_check"), "((reason = ANY (ARRAY['mentioned'::text, 'assigned'::text, 'responsible'::text, 'watched'::text, 'shared'::text, 'created'::text, 'commented'::text, 'status_changed'::text, 'priority_changed'::text, 'dates_changed'::text, 'date_alert_start'::text, 'date_alert_due'::text, 'date_alert_overdue'::text, 'verification_failed'::text])))", true)
         );
     }
 

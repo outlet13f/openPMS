@@ -10,6 +10,7 @@ import com.openpms.db.tables.BoardCards;
 import com.openpms.db.tables.BoardColumns;
 import com.openpms.db.tables.Boards;
 import com.openpms.db.tables.Categories;
+import com.openpms.db.tables.CicdBoardExclusions;
 import com.openpms.db.tables.CicdCommits;
 import com.openpms.db.tables.CicdConnectionProjects;
 import com.openpms.db.tables.CicdConnections;
@@ -22,7 +23,10 @@ import com.openpms.db.tables.CicdEvents;
 import com.openpms.db.tables.CicdFirstDeployChecks;
 import com.openpms.db.tables.CicdMergeRequests;
 import com.openpms.db.tables.CicdPipelines;
+import com.openpms.db.tables.CicdReleaseItems;
+import com.openpms.db.tables.CicdReleases;
 import com.openpms.db.tables.CicdRepositories;
+import com.openpms.db.tables.CicdVerifications;
 import com.openpms.db.tables.CustomFieldOptions;
 import com.openpms.db.tables.CustomFieldTypes;
 import com.openpms.db.tables.CustomFields;
@@ -104,6 +108,11 @@ public class Tables {
     public static final Categories CATEGORIES = Categories.CATEGORIES;
 
     /**
+     * The table <code>public.cicd_board_exclusions</code>.
+     */
+    public static final CicdBoardExclusions CICD_BOARD_EXCLUSIONS = CicdBoardExclusions.CICD_BOARD_EXCLUSIONS;
+
+    /**
      * The table <code>public.cicd_commits</code>.
      */
     public static final CicdCommits CICD_COMMITS = CicdCommits.CICD_COMMITS;
@@ -164,9 +173,24 @@ public class Tables {
     public static final CicdPipelines CICD_PIPELINES = CicdPipelines.CICD_PIPELINES;
 
     /**
+     * The table <code>public.cicd_release_items</code>.
+     */
+    public static final CicdReleaseItems CICD_RELEASE_ITEMS = CicdReleaseItems.CICD_RELEASE_ITEMS;
+
+    /**
+     * The table <code>public.cicd_releases</code>.
+     */
+    public static final CicdReleases CICD_RELEASES = CicdReleases.CICD_RELEASES;
+
+    /**
      * The table <code>public.cicd_repositories</code>.
      */
     public static final CicdRepositories CICD_REPOSITORIES = CicdRepositories.CICD_REPOSITORIES;
+
+    /**
+     * The table <code>public.cicd_verifications</code>.
+     */
+    public static final CicdVerifications CICD_VERIFICATIONS = CicdVerifications.CICD_VERIFICATIONS;
 
     /**
      * The table <code>public.custom_field_options</code>.

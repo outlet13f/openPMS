@@ -10,6 +10,7 @@ import com.openpms.db.tables.BoardCards;
 import com.openpms.db.tables.BoardColumns;
 import com.openpms.db.tables.Boards;
 import com.openpms.db.tables.Categories;
+import com.openpms.db.tables.CicdBoardExclusions;
 import com.openpms.db.tables.CicdCommits;
 import com.openpms.db.tables.CicdConnectionProjects;
 import com.openpms.db.tables.CicdConnections;
@@ -22,7 +23,10 @@ import com.openpms.db.tables.CicdEvents;
 import com.openpms.db.tables.CicdFirstDeployChecks;
 import com.openpms.db.tables.CicdMergeRequests;
 import com.openpms.db.tables.CicdPipelines;
+import com.openpms.db.tables.CicdReleaseItems;
+import com.openpms.db.tables.CicdReleases;
 import com.openpms.db.tables.CicdRepositories;
+import com.openpms.db.tables.CicdVerifications;
 import com.openpms.db.tables.CustomFieldOptions;
 import com.openpms.db.tables.CustomFieldTypes;
 import com.openpms.db.tables.CustomFields;
@@ -120,6 +124,11 @@ public class Public extends SchemaImpl {
     public final Categories CATEGORIES = Categories.CATEGORIES;
 
     /**
+     * The table <code>public.cicd_board_exclusions</code>.
+     */
+    public final CicdBoardExclusions CICD_BOARD_EXCLUSIONS = CicdBoardExclusions.CICD_BOARD_EXCLUSIONS;
+
+    /**
      * The table <code>public.cicd_commits</code>.
      */
     public final CicdCommits CICD_COMMITS = CicdCommits.CICD_COMMITS;
@@ -180,9 +189,24 @@ public class Public extends SchemaImpl {
     public final CicdPipelines CICD_PIPELINES = CicdPipelines.CICD_PIPELINES;
 
     /**
+     * The table <code>public.cicd_release_items</code>.
+     */
+    public final CicdReleaseItems CICD_RELEASE_ITEMS = CicdReleaseItems.CICD_RELEASE_ITEMS;
+
+    /**
+     * The table <code>public.cicd_releases</code>.
+     */
+    public final CicdReleases CICD_RELEASES = CicdReleases.CICD_RELEASES;
+
+    /**
      * The table <code>public.cicd_repositories</code>.
      */
     public final CicdRepositories CICD_REPOSITORIES = CicdRepositories.CICD_REPOSITORIES;
+
+    /**
+     * The table <code>public.cicd_verifications</code>.
+     */
+    public final CicdVerifications CICD_VERIFICATIONS = CicdVerifications.CICD_VERIFICATIONS;
 
     /**
      * The table <code>public.custom_field_options</code>.
@@ -423,6 +447,7 @@ public class Public extends SchemaImpl {
             BoardColumns.BOARD_COLUMNS,
             Boards.BOARDS,
             Categories.CATEGORIES,
+            CicdBoardExclusions.CICD_BOARD_EXCLUSIONS,
             CicdCommits.CICD_COMMITS,
             CicdConnectionProjects.CICD_CONNECTION_PROJECTS,
             CicdConnections.CICD_CONNECTIONS,
@@ -435,7 +460,10 @@ public class Public extends SchemaImpl {
             CicdFirstDeployChecks.CICD_FIRST_DEPLOY_CHECKS,
             CicdMergeRequests.CICD_MERGE_REQUESTS,
             CicdPipelines.CICD_PIPELINES,
+            CicdReleaseItems.CICD_RELEASE_ITEMS,
+            CicdReleases.CICD_RELEASES,
             CicdRepositories.CICD_REPOSITORIES,
+            CicdVerifications.CICD_VERIFICATIONS,
             CustomFieldOptions.CUSTOM_FIELD_OPTIONS,
             CustomFieldTypes.CUSTOM_FIELD_TYPES,
             CustomFields.CUSTOM_FIELDS,

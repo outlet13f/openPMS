@@ -122,7 +122,7 @@ public class AdminController {
         for (var k : List.of("query.save", "query.manage_public")) PERMISSIONS.add(new Permission(k, "project", "query"));
         for (var k : List.of("board.view", "board.manage")) PERMISSIONS.add(new Permission(k, "project", "board"));
         for (var k : List.of("time.log", "time.view", "time.manage")) PERMISSIONS.add(new Permission(k, "project", "time"));
-        for (var k : List.of("cicd.view", "cicd.link", "cicd.manage")) PERMISSIONS.add(new Permission(k, "project", "cicd"));
+        for (var k : List.of("cicd.view", "cicd.link", "cicd.manage", "release.verify")) PERMISSIONS.add(new Permission(k, "project", "cicd"));
         for (var k : List.of("global.create_projects", "global.manage_users", "global.manage_cicd")) PERMISSIONS.add(new Permission(k, "global", "global"));
     }
 

@@ -6,11 +6,14 @@ package com.openpms.db.tables;
 
 import com.openpms.db.Keys;
 import com.openpms.db.Public;
+import com.openpms.db.tables.CicdBoardExclusions.CicdBoardExclusionsPath;
 import com.openpms.db.tables.CicdCommits.CicdCommitsPath;
 import com.openpms.db.tables.CicdDeployments.CicdDeploymentsPath;
 import com.openpms.db.tables.CicdEnvironmentCommits.CicdEnvironmentCommitsPath;
 import com.openpms.db.tables.CicdEnvironmentHeads.CicdEnvironmentHeadsPath;
+import com.openpms.db.tables.CicdReleases.CicdReleasesPath;
 import com.openpms.db.tables.CicdRepositories.CicdRepositoriesPath;
+import com.openpms.db.tables.CicdVerifications.CicdVerificationsPath;
 import com.openpms.db.tables.Projects.ProjectsPath;
 import com.openpms.db.tables.records.CicdEnvironmentsRecord;
 
@@ -199,6 +202,34 @@ public class CicdEnvironments extends TableImpl<CicdEnvironmentsRecord> {
         return _projects;
     }
 
+    private transient CicdBoardExclusionsPath _cicdBoardExclusionsEnvironmentIdFkey;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_board_exclusions</code> table, via the
+     * <code>cicd_board_exclusions_environment_id_fkey</code> key
+     */
+    public CicdBoardExclusionsPath cicdBoardExclusionsEnvironmentIdFkey() {
+        if (_cicdBoardExclusionsEnvironmentIdFkey == null)
+            _cicdBoardExclusionsEnvironmentIdFkey = new CicdBoardExclusionsPath(this, null, Keys.CICD_BOARD_EXCLUSIONS__CICD_BOARD_EXCLUSIONS_ENVIRONMENT_ID_FKEY.getInverseKey());
+
+        return _cicdBoardExclusionsEnvironmentIdFkey;
+    }
+
+    private transient CicdBoardExclusionsPath _cicdBoardExclusionsTargetEnvironmentIdFkey;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_board_exclusions</code> table, via the
+     * <code>cicd_board_exclusions_target_environment_id_fkey</code> key
+     */
+    public CicdBoardExclusionsPath cicdBoardExclusionsTargetEnvironmentIdFkey() {
+        if (_cicdBoardExclusionsTargetEnvironmentIdFkey == null)
+            _cicdBoardExclusionsTargetEnvironmentIdFkey = new CicdBoardExclusionsPath(this, null, Keys.CICD_BOARD_EXCLUSIONS__CICD_BOARD_EXCLUSIONS_TARGET_ENVIRONMENT_ID_FKEY.getInverseKey());
+
+        return _cicdBoardExclusionsTargetEnvironmentIdFkey;
+    }
+
     private transient CicdDeploymentsPath _cicdDeployments;
 
     /**
@@ -236,6 +267,47 @@ public class CicdEnvironments extends TableImpl<CicdEnvironmentsRecord> {
             _cicdEnvironmentHeads = new CicdEnvironmentHeadsPath(this, null, Keys.CICD_ENVIRONMENT_HEADS__CICD_ENVIRONMENT_HEADS_ENVIRONMENT_ID_FKEY.getInverseKey());
 
         return _cicdEnvironmentHeads;
+    }
+
+    private transient CicdReleasesPath _cicdReleasesEnvironmentIdFkey;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_releases</code> table, via the
+     * <code>cicd_releases_environment_id_fkey</code> key
+     */
+    public CicdReleasesPath cicdReleasesEnvironmentIdFkey() {
+        if (_cicdReleasesEnvironmentIdFkey == null)
+            _cicdReleasesEnvironmentIdFkey = new CicdReleasesPath(this, null, Keys.CICD_RELEASES__CICD_RELEASES_ENVIRONMENT_ID_FKEY.getInverseKey());
+
+        return _cicdReleasesEnvironmentIdFkey;
+    }
+
+    private transient CicdReleasesPath _cicdReleasesSourceEnvironmentIdFkey;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_releases</code> table, via the
+     * <code>cicd_releases_source_environment_id_fkey</code> key
+     */
+    public CicdReleasesPath cicdReleasesSourceEnvironmentIdFkey() {
+        if (_cicdReleasesSourceEnvironmentIdFkey == null)
+            _cicdReleasesSourceEnvironmentIdFkey = new CicdReleasesPath(this, null, Keys.CICD_RELEASES__CICD_RELEASES_SOURCE_ENVIRONMENT_ID_FKEY.getInverseKey());
+
+        return _cicdReleasesSourceEnvironmentIdFkey;
+    }
+
+    private transient CicdVerificationsPath _cicdVerifications;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.cicd_verifications</code> table
+     */
+    public CicdVerificationsPath cicdVerifications() {
+        if (_cicdVerifications == null)
+            _cicdVerifications = new CicdVerificationsPath(this, null, Keys.CICD_VERIFICATIONS__CICD_VERIFICATIONS_ENVIRONMENT_ID_FKEY.getInverseKey());
+
+        return _cicdVerifications;
     }
 
     /**
