@@ -43,6 +43,11 @@ public class NotificationTexts {
             default -> { }
         }
         var actor = n.getActorId() == null ? "누군가" : Refs.user(ctx.s(), n.getActorId()).name();
+        if ("verification_failed".equals(n.getReason())) {   // the journal's cause names the environment (never the reason: the line goes to mails too)
+            var cause = j == null ? null : journals.causeOf(j);
+            var environment = cause == null || cause.get("environment") == null ? null : String.valueOf(cause.get("environment"));
+            return environment == null ? actor + "님이 검증을 실패로 남겼습니다" : actor + "님이 " + environment + " 검증을 실패로 남겼습니다";
+        }
         if (j != null && "assigned".equals(n.getReason())) {
             var change = journals.changesOf(j).get("assigneeId");
             if (change != null && change.size() > 1 && ctx.userId().toString().equals(String.valueOf(change.get(1)))) return actor + "님이 나를 담당자로 지정했습니다";

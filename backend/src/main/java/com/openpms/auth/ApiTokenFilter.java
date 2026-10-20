@@ -24,8 +24,9 @@ public class ApiTokenFilter extends OncePerRequestFilter {
     /** Sign-in, passwords, tokens, and the integration settings themselves (token switch, webhooks, CI/CD) stay with a signed-in person. */
     private static final List<String> CLOSED = List.of("/api/v1/auth/", "/api/v1/me/password", "/api/v1/me/api-tokens", "/api/v1/admin/api-tokens",
             "/api/v1/admin/settings/api", "/api/v1/admin/webhooks", "/api/v1/admin/webhook-deliveries", "/api/v1/admin/cicd/");
-    /** A project's CI/CD environments and build history cleanup are settings too. */
-    private static final java.util.regex.Pattern CLOSED_PROJECT = java.util.regex.Pattern.compile("^/api/v1/projects/[^/]+/cicd/(environments|pipelines)(/.*)?$");
+    /** A project's CI/CD environments and build history cleanup are settings too; the release board and records stay with a signed-in person. */
+    private static final java.util.regex.Pattern CLOSED_PROJECT =
+            java.util.regex.Pattern.compile("^/api/v1/projects/[^/]+/(cicd/(environments|pipelines)|releases)(/.*)?$");
     private static final UrlPathHelper PATHS = new UrlPathHelper();
 
     private final ApiTokens tokens;

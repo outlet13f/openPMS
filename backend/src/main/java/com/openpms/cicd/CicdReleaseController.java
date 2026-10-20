@@ -5,10 +5,16 @@ import com.openpms.core.Current;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -46,11 +52,13 @@ public class CicdReleaseController {
     private final Current current;
     private final CicdRepositories repositories;
     private final CicdReleaseBoard board;
+    private final CicdVerifications verifications;
 
-    public CicdReleaseController(Current current, CicdRepositories repositories, CicdReleaseBoard board) {
+    public CicdReleaseController(Current current, CicdRepositories repositories, CicdReleaseBoard board, CicdVerifications verifications) {
         this.current = current;
         this.repositories = repositories;
         this.board = board;
+        this.verifications = verifications;
     }
 
     /** source, target: environments of the project (default: the first production one and the one before it). version: an id, "none", or the default. */
@@ -60,5 +68,30 @@ public class CicdReleaseController {
                        @RequestParam(required = false) String version) {
         var ctx = current.ctx();
         return board.board(ctx, repositories.viewable(ctx, project), source, target, version);
+    }
+
+    /** {workPackageId, environmentId, targetEnvironmentId, result: passed | failed, reason}: a verification of a card of that board. */
+    @PostMapping("/verifications")
+    @Transactional
+    public ResponseEntity<VerificationDto> verify(@PathVariable String project, @RequestBody Map<String, Object> body) {
+        var ctx = current.ctx();
+        return ResponseEntity.status(HttpStatus.CREATED).body(verifications.verify(ctx, repositories.viewable(ctx, project), body));
+    }
+
+    /** {workPackageId, environmentId, targetEnvironmentId}: "이미 운영에 있음", off the board until a newer commit comes into the source. */
+    @PostMapping("/exclusions")
+    @Transactional
+    public ResponseEntity<Excluded> exclude(@PathVariable String project, @RequestBody Map<String, Object> body) {
+        var ctx = current.ctx();
+        return ResponseEntity.status(HttpStatus.CREATED).body(verifications.exclude(ctx, repositories.viewable(ctx, project), body));
+    }
+
+    @DeleteMapping("/exclusions")
+    @Transactional
+    public ResponseEntity<Void> restore(@PathVariable String project, @RequestParam UUID workPackageId, @RequestParam UUID environmentId,
+                                        @RequestParam UUID targetEnvironmentId) {
+        var ctx = current.ctx();
+        verifications.restore(ctx, repositories.viewable(ctx, project), workPackageId, environmentId, targetEnvironmentId);
+        return ResponseEntity.noContent().build();
     }
 }

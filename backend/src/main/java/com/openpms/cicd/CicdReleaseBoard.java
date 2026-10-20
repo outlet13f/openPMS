@@ -143,12 +143,24 @@ public class CicdReleaseBoard {
 
     /** The work packages on the board (visible, not excluded) and when their commits last came into S. Empty without a pair. */
     public Map<UUID, OffsetDateTime> listed(Ctx ctx, ProjectRow p, UUID source, UUID target) {
+        return onBoard(ctx, p, source, target, true);
+    }
+
+    /**
+     * The work packages on the board before exclusions (visible, in the difference, after the baseline) and when their
+     * commits last came into S. Excluding is gated on this, so excluding an excluded work package again is fine. Empty without a pair.
+     */
+    public Map<UUID, OffsetDateTime> listedBeforeExclusions(Ctx ctx, ProjectRow p, UUID source, UUID target) {
+        return onBoard(ctx, p, source, target, false);
+    }
+
+    private Map<UUID, OffsetDateTime> onBoard(Ctx ctx, ProjectRow p, UUID source, UUID target, boolean withoutExcluded) {
         var setup = setup(p);
         var pair = pair(setup.environments(), source, target);
         if (pair.source() == null) return new HashMap<>();
         var candidates = difference(ctx, p, pair).candidates().keySet();
         var latest = states.latestIn(pair.source(), candidates);
-        var excluded = validExclusions(pair, latest);
+        var excluded = withoutExcluded ? validExclusions(pair, latest) : Map.<UUID, Exclusion>of();
         var out = new HashMap<UUID, OffsetDateTime>();
         for (var id : candidates) if (!excluded.containsKey(id)) out.put(id, latest.get(id));
         return out;
