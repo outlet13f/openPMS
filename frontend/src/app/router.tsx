@@ -27,6 +27,7 @@ import { SearchPage } from "@/pages/search";
 import { MyPage } from "@/pages/my-page";
 import { TimesheetPage } from "@/pages/timesheet";
 import { ProjectTimeReportPage } from "@/pages/projects/time-report";
+import { ProjectReleasesPage } from "@/pages/projects/releases";
 import { AdminCustomFieldsPage } from "@/pages/admin/custom-fields";
 import { AdminProgressPage } from "@/pages/admin/progress";
 import { AdminTypeFormPage } from "@/pages/admin/type-form";
@@ -158,6 +159,9 @@ export const router = createBrowserRouter([
             ],
           },
           { path: "time", element: <RequireModule module="time_tracking"><ProjectTimeReportPage /></RequireModule> },
+          { path: "releases", element: <RequireModule module="cicd"><ProjectReleasesPage tab="board" /></RequireModule> },
+          { path: "releases/records", element: <RequireModule module="cicd"><ProjectReleasesPage tab="records" /></RequireModule> },
+          { path: "releases/records/:releaseId", element: <RequireModule module="cicd"><ProjectReleasesPage tab="records" /></RequireModule> },
           { path: "team-planner", element: <RequireModule module="team_planner"><PlanningListPage kind="team_planner" /></RequireModule> },
           {
             path: "team-planner/:id",

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useMatch, useNavigate, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { applyTheme } from "@/lib/theme";
-import { ArrowLeft, Bell, BookOpen, CalendarDays, CalendarRange, ChevronDown, Clock, Code2, FolderKanban, GanttChart, GitMerge, Home, KanbanSquare, Keyboard, LayoutDashboard, ListTodo, Palette, PanelLeftOpen, Settings, Shield, Star, UserRound, Users } from "lucide-react";
+import { ArrowLeft, Bell, BookOpen, CalendarDays, CalendarRange, ChevronDown, Clock, Code2, FolderKanban, GanttChart, GitMerge, Home, KanbanSquare, Keyboard, LayoutDashboard, ListTodo, Palette, PanelLeftOpen, Rocket, Settings, Shield, Star, UserRound, Users } from "lucide-react";
 import type { Me, Project } from "@/api";
 import { API_MODE } from "@/api";
 import { resetFakeDb } from "@/api/fake";
@@ -128,6 +128,7 @@ function ProjectSidebar({ identifier, onNavigate, onCollapse }: { identifier: st
     mod("calendar") && { label: t("nav.calendar"), to: `${base}/calendar`, icon: <CalendarDays /> },
     mod("team_planner") && { label: t("nav.teamPlanner"), to: `${base}/team-planner`, icon: <CalendarRange /> },
     mod("time_tracking") && can(p, "time.view") && { label: t("nav.timeReport"), to: `${base}/time`, icon: <Clock /> },
+    mod("cicd") && can(p, "cicd.view") && { label: t("nav.releases"), to: `${base}/releases`, icon: <Rocket /> },
     can(p, "project.view_members") && { label: t("nav.members"), to: `${base}/members`, icon: <Users /> },
     can(p, "project.edit") ? { label: t("nav.settings"), to: `${base}/settings/general`, icon: <Settings /> }
     // people who may see the attached repositories (참관자 included) reach 저장소
