@@ -93,6 +93,23 @@ class CicdMigrationIT {
         assertThat(db.fetchOne("select scope from roles where id = ?::uuid", QA).get(0, String.class)).isEqualTo("project");
     }
 
+    @Test void devDataShowsTheReleaseBoard() {   // V1013
+        var web = "935daeb0-d1aa-57f4-88e1-0050b30413ac";
+        assertThat(db.fetchOne("select count(*) from members m join member_roles mr on mr.member_id = m.id join users u on u.id = m.user_id "
+                + "where u.email = 'seoa.yoon@openpms.local' and m.project_id = ?::uuid and mr.role_id = '55ecb595-b468-52b0-bfbd-52f40d6333a4'", web)
+                .get(0, Long.class)).isEqualTo(1L);
+        assertThat(db.fetchOne("select count(*) from cicd_verifications v join cicd_environments e on e.id = v.environment_id "
+                + "where e.project_id = ?::uuid and e.name = '스테이징'", web).get(0, Long.class)).isEqualTo(5L);
+        assertThat(db.fetchOne("select count(*) from cicd_releases where project_id = ?::uuid", web).get(0, Long.class)).isEqualTo(2L);
+        assertThat(db.fetchOne("select count(*) from cicd_release_items where warning = 'unverified'").get(0, Long.class)).isEqualTo(1L);
+        assertThat(db.fetchOne("select h.deployment_id from cicd_environment_heads h join cicd_environments e on e.id = h.environment_id "
+                + "where e.project_id = ?::uuid and e.name = '스테이징'", web).get(0, UUID.class))
+                .isEqualTo(UUID.fromString("0e1f2a3b-0012-4e00-8000-000000006012"));
+        // the failed verification notified both the assignee and the co-assignee (ruling F10)
+        assertThat(db.fetchOne("select count(*) from notifications where reason = 'verification_failed' and journal_id = '0f4c5d6e-0004-4f00-8000-000000009004'")
+                .get(0, Long.class)).isEqualTo(2L);
+    }
+
     @Test void environmentCommitsWithoutAddedAtTakeTheDeploymentTime() {   // Review Focus 2
         var at = OffsetDateTime.parse("2026-10-15T03:00:00Z");
         var ids = scratchDeployment(at);   // [environment, repository, commit, deployment]
