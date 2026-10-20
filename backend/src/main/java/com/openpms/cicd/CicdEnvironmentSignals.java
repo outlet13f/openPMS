@@ -33,6 +33,10 @@ public class CicdEnvironmentSignals {
         this.db = db;
     }
 
+    /**
+     * The signal rows of these environments, looking only at the given repositories. Detached repositories are not filtered
+     * here: callers must pass only attached ones (detached_at is null) whose current project is the environments' project.
+     */
     public List<Signal> rows(Collection<UUID> environments, Collection<UUID> repositories) {
         return db.select(CICD_DEPLOYMENTS.ENVIRONMENT_ID, CICD_DEPLOYMENTS.REPOSITORY_ID, CICD_DEPLOYMENTS.INCLUSION, CICD_DEPLOYMENTS.FIRST_CUTOFF_AT)
                 .from(CICD_DEPLOYMENTS).where(CICD_DEPLOYMENTS.ENVIRONMENT_ID.in(environments), CICD_DEPLOYMENTS.REPOSITORY_ID.in(repositories),
@@ -59,7 +63,10 @@ public class CicdEnvironmentSignals {
         return new Signals(checking, failed, cutoffs);
     }
 
-    /** The environments (of the given ones) that hold a commit brought in by a check that saw only part of the history. */
+    /**
+     * The environments (of the given ones) that hold a commit brought in by a check that saw only part of the history. As with
+     * {@link #rows}, callers must pass only attached repositories (detached_at is null) of the environments' current project.
+     */
     public Set<UUID> partial(Collection<UUID> environments, Collection<UUID> repositories) {
         return Set.copyOf(db.fetch("select distinct ec.environment_id from cicd_environment_commits ec join cicd_deployments d on d.id = ec.deployment_id "
                 + "where ec.environment_id = any(?::uuid[]) and ec.repository_id = any(?::uuid[]) and d.inclusion = 'partial'",

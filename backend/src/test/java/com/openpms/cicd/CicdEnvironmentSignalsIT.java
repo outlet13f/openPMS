@@ -106,6 +106,16 @@ class CicdEnvironmentSignalsIT {
                 commit, repo, String.format("%040x", ++seq), T0, HOST + "/c/" + seq);
         var d = deployment(repo, "스테이징", "success", "partial", T0, null);
         db.execute("insert into cicd_environment_commits (environment_id, repository_id, commit_id, deployment_id) values (?, ?, ?, ?)", env("스테이징"), repo, commit, d);
-        assertThat(signals.partial(List.of(env("스테이징"), env("운영")), List.of(repo))).containsExactly(env("스테이징"));
+        // not partial: a fully compared deployment's commit, and another repository's commit from a partial deployment
+        var compared = deployment(repo, "운영", "success", "compared", T0, null);
+        db.execute("insert into cicd_environment_commits (environment_id, repository_id, commit_id, deployment_id) values (?, ?, ?, ?)", env("운영"), repo, commit, compared);
+        var repoB = attach();
+        var other = UUID.randomUUID();
+        db.execute("insert into cicd_commits (id, repository_id, sha, title, author_name, committed_at, web_url) values (?, ?, ?, '커밋', '박준호', ?::timestamptz, ?)",
+                other, repoB, String.format("%040x", ++seq), T0, HOST + "/c/" + seq);
+        var partialB = deployment(repoB, "개발", "success", "partial", T0, null);
+        db.execute("insert into cicd_environment_commits (environment_id, repository_id, commit_id, deployment_id) values (?, ?, ?, ?)", env("개발"), repoB, other, partialB);
+        assertThat(signals.partial(List.of(env("개발"), env("스테이징"), env("운영")), List.of(repo))).containsExactly(env("스테이징"));
+        assertThat(signals.partial(List.of(env("개발"), env("스테이징"), env("운영")), List.of(repoB))).containsExactly(env("개발"));
     }
 }
