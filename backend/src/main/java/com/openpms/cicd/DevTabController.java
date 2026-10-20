@@ -4,7 +4,6 @@ import static com.openpms.db.Tables.CICD_COMMITS;
 import static com.openpms.db.Tables.CICD_DEPLOYMENTS;
 import static com.openpms.db.Tables.CICD_ENVIRONMENTS;
 import static com.openpms.db.Tables.CICD_ENVIRONMENT_COMMITS;
-import static com.openpms.db.Tables.CICD_ENVIRONMENT_HEADS;
 import static com.openpms.db.Tables.CICD_MERGE_REQUESTS;
 import static com.openpms.db.Tables.CICD_REPOSITORIES;
 import static com.openpms.db.Tables.USERS;
@@ -91,6 +90,7 @@ public class DevTabController {
     private final WorkPackageService workPackages;
     private final CicdLinker linker;
     private final DSLContext db;
+    private final CicdEnvironmentSignals signals;
 
     /**
      * The commits this work package has: commit links and the merge commit of linked merged merge requests, only in repositories
@@ -116,11 +116,13 @@ public class DevTabController {
              where (repository_id, %1$s) in (select * from unnest(?::uuid[], ?::text[]))
              order by repository_id, %1$s, name, updated_at desc""";
 
-    public DevTabController(Current current, WorkPackageService workPackages, CicdLinker linker, DSLContext db) {
+    public DevTabController(Current current, WorkPackageService workPackages, CicdLinker linker, DSLContext db,
+                            CicdEnvironmentSignals signals) {
         this.current = current;
         this.workPackages = workPackages;
         this.linker = linker;
         this.db = db;
+        this.signals = signals;
     }
 
     private WorkPackageService.Found viewable(long number) {
@@ -285,13 +287,7 @@ public class DevTabController {
                         CICD_DEPLOYMENTS.WEB_URL, CICD_DEPLOYMENTS.INCLUSION)
                 .from(CICD_ENVIRONMENT_COMMITS).join(CICD_DEPLOYMENTS).on(CICD_DEPLOYMENTS.ID.eq(CICD_ENVIRONMENT_COMMITS.DEPLOYMENT_ID))
                 .where(CICD_ENVIRONMENT_COMMITS.COMMIT_ID.in(commitIds), CICD_ENVIRONMENT_COMMITS.ENVIRONMENT_ID.in(envIds)).fetch();
-        var waiting = db.select(CICD_DEPLOYMENTS.ENVIRONMENT_ID, CICD_DEPLOYMENTS.REPOSITORY_ID, CICD_DEPLOYMENTS.INCLUSION, CICD_DEPLOYMENTS.FIRST_CUTOFF_AT)
-                .from(CICD_DEPLOYMENTS).where(CICD_DEPLOYMENTS.ENVIRONMENT_ID.in(envIds), CICD_DEPLOYMENTS.REPOSITORY_ID.in(repositoryIds),
-                        CICD_DEPLOYMENTS.INCLUSION.eq("checking")
-                                .or(CICD_DEPLOYMENTS.INCLUSION.eq("first").and(CICD_DEPLOYMENTS.FIRST_CUTOFF_AT.isNotNull()))
-                                .or(CICD_DEPLOYMENTS.INCLUSION.eq("failed").and(DSL.exists(DSL.selectOne().from(CICD_ENVIRONMENT_HEADS)
-                                        .where(CICD_ENVIRONMENT_HEADS.DEPLOYMENT_ID.eq(CICD_DEPLOYMENTS.ID))))))
-                .fetch().stream().map(r -> (Record) r).toList();
+        var waiting = signals.rows(envIds, repositoryIds);
         var commitInfo = new HashMap<UUID, Linked>();
         linked.forEach(l -> commitInfo.put(l.commitId(), l));
         var envById = new HashMap<UUID, EnvInfo>();
@@ -322,16 +318,15 @@ public class DevTabController {
                 var in = includedIn.getOrDefault(env.id(), Set.of());
                 int total = commits.size();
                 int included = (int) commits.stream().filter(c -> in.contains(c.commitId())).count();
-                var mine = waiting.stream().filter(w -> env.id().equals(w.get(CICD_DEPLOYMENTS.ENVIRONMENT_ID))
-                        && repositories.contains(w.get(CICD_DEPLOYMENTS.REPOSITORY_ID))).toList();
+                var signal = CicdEnvironmentSignals.summarize(waiting, env.id(), repositories);
                 // what is known stays shown: every linked commit already in is in (the UI adds a note while a newer deployment is compared)
-                boolean checking = mine.stream().anyMatch(w -> "checking".equals(w.get(CICD_DEPLOYMENTS.INCLUSION)));
+                boolean checking = signal.checking();
                 String state;
                 if (included == total) state = "in";
                 else if (checking) state = "checking";
                 else if (included > 0) state = "partial";
-                else if (mine.stream().anyMatch(w -> "failed".equals(w.get(CICD_DEPLOYMENTS.INCLUSION)))) state = "failed";
-                else if (beforeFirst(commits, mine)) state = "before_first";
+                else if (signal.failed()) state = "failed";
+                else if (beforeFirst(commits, signal.firstCutoffs())) state = "before_first";
                 else state = "none";
                 var last = latest.get(env.id());
                 out.add(new EnvironmentStatus(env.id(), env.name(), env.production(), state, included, total, partialCheck.contains(env.id()), checking,
@@ -349,12 +344,7 @@ public class DevTabController {
     }
 
     /** Every linked commit is older than the cutoff of its repository's first deployment (the check could not look further back). */
-    private static boolean beforeFirst(List<Linked> commits, List<Record> deployments) {
-        var cutoffs = new HashMap<UUID, OffsetDateTime>();
-        for (var d : deployments) {
-            if (!"first".equals(d.get(CICD_DEPLOYMENTS.INCLUSION))) continue;
-            cutoffs.merge(d.get(CICD_DEPLOYMENTS.REPOSITORY_ID), d.get(CICD_DEPLOYMENTS.FIRST_CUTOFF_AT), (a, b) -> a.isBefore(b) ? a : b);
-        }
+    private static boolean beforeFirst(List<Linked> commits, Map<UUID, OffsetDateTime> cutoffs) {
         return !commits.isEmpty() && commits.stream().allMatch(c -> {
             var cutoff = cutoffs.get(c.repositoryId());
             return cutoff != null && c.committedAt().isBefore(cutoff);
