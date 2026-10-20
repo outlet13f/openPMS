@@ -65,7 +65,7 @@ function Entry({ j, wpNumber, people }: { j: Journal; wpNumber: number; people: 
             />
           )}
         </p>
-        {j.cause && <p className="mt-0.5 text-xs text-fg-muted">{t(`activity.becauseOf.${j.cause.kind}`, { number: j.cause.workPackageNumber })}</p>}
+        {j.cause && <p className="mt-0.5 text-xs text-fg-muted">{t(`activity.becauseOf.${j.cause.kind}`, { number: j.cause.workPackageNumber, environment: j.cause.environment, reason: j.cause.reason })}</p>}
         {j.details.some((d) => d.field === "_created") && <p className="mt-0.5 text-sm text-fg-muted">{t("activity.created")}</p>}
         {changes.length > 0 && (
           <ul className="mt-1 flex flex-col gap-0.5 text-sm text-fg-muted">

@@ -6,7 +6,7 @@
 import { useId, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
-import { Check, ExternalLink, EyeOff, Rocket, Undo2, X } from "lucide-react";
+import { Check, EyeOff, Rocket, Undo2, X } from "lucide-react";
 import {
   isApiError,
   type Id,
@@ -26,7 +26,8 @@ import { Skeleton } from "@/components/ui/spinner";
 import { ErrorState } from "@/app/page";
 import { can, useCurrentProject } from "@/app/project";
 import { cn } from "@/lib/cn";
-import { DEFAULT_TZ, formatDateTime, formatTime } from "@/lib/dates";
+import { formatDateTime } from "@/lib/dates";
+import { External, monthDay, shortWhen } from "@/features/cicd/links";
 import { FailDialog } from "./fail-dialog";
 
 const COLUMNS: ReleaseColumn[] = ["waiting", "reverify", "failed", "passed"];
@@ -42,31 +43,6 @@ function defaultSource(envs: ReleaseEnvironmentRef[], target: Id | null): Id | n
   const t = envs.find((e) => e.id === target);
   if (!t) return null;
   return envs.filter((e) => !e.hidden && e.id !== t.id && e.position < t.position).sort((a, b) => b.position - a.position)[0]?.id ?? null;
-}
-
-function seoulParts(at: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: DEFAULT_TZ, month: "2-digit", day: "2-digit" }).formatToParts(new Date(at));
-  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
-  return { month: part("month"), day: part("day") };
-}
-/** "10-17" (Asia/Seoul) */
-function monthDay(at: string) {
-  const { month, day } = seoulParts(at);
-  return `${month}-${day}`;
-}
-/** "10-18 03:00" (Asia/Seoul) */
-const shortWhen = (at: string) => `${monthDay(at)} ${formatTime(at)}`;
-
-/** A link to the tool, in a new window, saying so to screen readers. */
-function External({ href, children, className }: { href: string; children: ReactNode; className?: string }) {
-  const { t } = useTranslation();
-  return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className={className ?? "text-accent hover:underline"}>
-      {children}
-      <ExternalLink className="ml-1 inline size-3 align-[-1px]" aria-hidden="true" />
-      <span className="sr-only"> ({t("cicd.opensInNew")})</span>
-    </a>
-  );
 }
 
 const wpHref = (project: string, number: number) => `/projects/${project}/work-packages/${number}/activity`;

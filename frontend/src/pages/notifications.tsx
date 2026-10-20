@@ -27,7 +27,7 @@ const REASON_FILTERS: Record<ReasonFilter, NotificationReason[]> = {
   watched: ["watched"],
   shared: ["shared"],
   date_alert: ["date_alert_start", "date_alert_due", "date_alert_overdue"],
-  other: ["created", "commented", "status_changed", "priority_changed", "dates_changed"],
+  other: ["created", "commented", "status_changed", "priority_changed", "dates_changed", "verification_failed"],
 };
 const ALL = "all";
 

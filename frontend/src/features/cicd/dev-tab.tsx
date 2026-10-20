@@ -2,12 +2,14 @@
 // commit message, branch name or MR title, or by hand. People with cicd.link can link an MR/PR by its address and cut a
 // wrong link (no confirmation: linking the address again brings an MR back). The caller shows the tab only with the
 // module on and cicd.view (the API answers 404 otherwise). On top, how far the work went per environment (hidden when
-// there is no environment or no linked commit); each MR and commit carries its build badge, the environments it is in
-// and "뗀 저장소" when its repository was detached.
+// there is no environment or no linked commit), and under it the work package's current verification on each project's
+// release board (only where there is a result; the verifying happens on the board); each MR and commit carries its build
+// badge, the environments it is in and "뗀 저장소" when its repository was detached.
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ExternalLink, Flag, GitCommitHorizontal, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Link2, Unlink } from "lucide-react";
-import { isApiError, type CicdCommit, type CicdEnvironmentStatus, type CicdMergeRequest, type WorkPackage } from "@/api";
+import { Link } from "react-router";
+import { Flag, GitCommitHorizontal, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Link2, Unlink } from "lucide-react";
+import { isApiError, type CicdCommit, type CicdEnvironmentStatus, type CicdMergeRequest, type DevVerificationLine, type WorkPackage } from "@/api";
 import { useDevInfo, useDevLinkMutations } from "@/api/hooks";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badges";
@@ -17,8 +19,9 @@ import { Field, Input } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/spinner";
 import { ErrorState } from "@/app/page";
 import { useRunWithToast } from "@/features/admin/common";
-import { DEFAULT_TZ, formatDateTime, formatTime, relativeTime } from "@/lib/dates";
+import { formatDateTime, relativeTime } from "@/lib/dates";
 import { BuildBadge } from "./build-badge";
+import { External, monthDay, shortWhen } from "./links";
 
 /** state → badge tone and icon; the badge always carries the state in words too */
 const STATE: Record<CicdMergeRequest["state"], { tone: "accent" | "neutral" | "success" | "danger"; icon: ReactNode }> = {
@@ -27,18 +30,6 @@ const STATE: Record<CicdMergeRequest["state"], { tone: "accent" | "neutral" | "s
   merged: { tone: "success", icon: <GitMerge /> },
   closed: { tone: "danger", icon: <GitPullRequestClosed /> },
 };
-
-/** A link to the code host, in a new window, saying so to screen readers. */
-function External({ href, children, className }: { href: string; children: ReactNode; className?: string }) {
-  const { t } = useTranslation();
-  return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className={className ?? "font-medium text-accent hover:underline"}>
-      {children}
-      <ExternalLink className="ml-1 inline size-3 align-[-1px]" aria-hidden="true" />
-      <span className="sr-only"> ({t("cicd.opensInNew")})</span>
-    </a>
-  );
-}
 
 function Who({ name, user }: { name: string; user: CicdCommit["user"] }) {
   return user ? (
@@ -57,13 +48,6 @@ function When({ at }: { at: string }) {
       {relativeTime(at)}
     </time>
   );
-}
-
-/** "10-14 15:20" (Asia/Seoul): the deployment time in the environment row */
-function shortWhen(at: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: DEFAULT_TZ, month: "2-digit", day: "2-digit" }).formatToParts(new Date(at));
-  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
-  return `${part("month")}-${part("day")} ${formatTime(at)}`;
 }
 
 /** How far the work went in one environment, in words (the ✓ and – are for the eye; screen readers hear the words). */
@@ -132,7 +116,9 @@ function EnvironmentRow({ environments }: { environments: CicdEnvironmentStatus[
                   </>
                 )}
                 {e.webUrl ? (
-                  <External href={e.webUrl}>{e.name}</External>
+                  <External href={e.webUrl} className="font-medium text-accent hover:underline">
+                    {e.name}
+                  </External>
                 ) : (
                   <span className="font-medium text-fg">{e.name}</span>
                 )}
@@ -150,6 +136,36 @@ function EnvironmentRow({ environments }: { environments: CicdEnvironmentStatus[
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * Under the environment row: "스테이징 검증: 통과(윤서아, 10-17)" per project board where the work package has a result, with
+ * " · 재검증 필요" when a commit came into the source after it, and a link to that board (source → target). No verify buttons here.
+ */
+function VerificationLines({ lines }: { lines: DevVerificationLine[] }) {
+  const { t } = useTranslation();
+  return (
+    <ul aria-label={t("cicd.dev.verification.label")} className="flex flex-col gap-1 text-sm">
+      {lines.map((v) => (
+        <li key={`${v.project}:${v.environmentId}`} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className={v.result === "failed" ? "text-danger" : "text-fg"}>
+            {t(v.result === "failed" ? "cicd.dev.verification.failed" : "cicd.dev.verification.passed", {
+              environment: v.environment,
+              by: v.by?.name ?? t("releases.card.deletedUser"),
+              date: monthDay(v.at),
+            })}
+            {v.stale && <span className="text-fg-muted">{t("cicd.dev.verification.stale")}</span>}
+          </span>
+          <Link
+            to={`/projects/${v.project}/releases?source=${encodeURIComponent(v.environmentId)}&target=${encodeURIComponent(v.targetEnvironmentId)}`}
+            className="text-accent hover:underline"
+          >
+            {t("cicd.dev.verification.board")}
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -221,7 +237,7 @@ export function DevTab({ wp }: { wp: WorkPackage }) {
       </div>
     );
   if (q.isError) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
-  const { mergeRequests, commits, canLink, environments } = q.data;
+  const { mergeRequests, commits, canLink, environments, verifications } = q.data;
   const cut = (linkId: string) => {
     setCutting(linkId);
     void runToast(unlink.mutateAsync(linkId), t("cicd.dev.unlinked")).finally(() => setCutting(null));
@@ -230,7 +246,12 @@ export function DevTab({ wp }: { wp: WorkPackage }) {
 
   return (
     <div className="flex flex-col gap-6 py-4">
-      {environments.length > 0 && <EnvironmentRow environments={environments} />}
+      {(environments.length > 0 || verifications.length > 0) && (
+        <div className="flex flex-col gap-2">
+          {environments.length > 0 && <EnvironmentRow environments={environments} />}
+          {verifications.length > 0 && <VerificationLines lines={verifications} />}
+        </div>
+      )}
       {canLink && <LinkForm number={wp.number} />}
       {mergeRequests.length === 0 && commits.length === 0 ? (
         <div className="rounded-md border border-border">
