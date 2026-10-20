@@ -262,6 +262,17 @@ export const httpApi: Api = {
     linkByUrl: (number, url) => post(`/work-packages/${number}/cicd/links`, { url }),
     unlink: (number, linkId) => del(`/work-packages/${number}/cicd/links/${linkId}`),
   },
+  releases: {
+    // call() leaves out empty values: an empty version= is a 404 on the server
+    board: (project, params) =>
+      get(`/projects/${encodeURIComponent(project)}/releases/board`, { source: params?.source, target: params?.target, version: params?.version }),
+    verify: (project, input) => create(`/projects/${encodeURIComponent(project)}/releases/verifications`, input),
+    exclude: (project, input) => create(`/projects/${encodeURIComponent(project)}/releases/exclusions`, input),
+    restore: (project, { workPackageId, environmentId, targetEnvironmentId }) =>
+      del(`/projects/${encodeURIComponent(project)}/releases/exclusions`, { workPackageId, environmentId, targetEnvironmentId }),
+    records: (project, page, pageSize) => get(`/projects/${encodeURIComponent(project)}/releases/records`, { page, pageSize }),
+    record: (project, id) => get(`/projects/${encodeURIComponent(project)}/releases/records/${id}`),
+  },
   search: {
     suggest: (q) => get("/search/suggest", { q }),
     results: (q, scope, page) => get("/search", { q, scope, page: String(page) }),

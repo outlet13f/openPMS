@@ -12,6 +12,7 @@ const MODULE_OF: Record<string, DbProject["enabledModules"][number]> = {
   "cicd.view": "cicd",
   "cicd.link": "cicd",
   "cicd.manage": "cicd",
+  "release.verify": "cicd",
 };
 
 const ALL_PROJECT_PERMS = Array.from(new Set(db.roles.filter((r) => r.scope === "project").flatMap((r) => r.permissions)));

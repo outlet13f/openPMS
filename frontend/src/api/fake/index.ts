@@ -53,6 +53,7 @@ import { adminApi, categoriesApi, projectExtras, versionsApi } from "./admin";
 import { followMove, timeApi } from "./time";
 import { beyondMain, journalTeam, readTeam, sameTeam, swap, teamOf, withMain, type TeamEntry } from "./assignees";
 import { cicdApi, ensureCicdEnvironments } from "./cicd";
+import { releasesApi } from "./releases";
 
 /* ---------- plumbing ---------- */
 
@@ -664,6 +665,11 @@ const REASON_TEXT: Record<string, (actor: string) => string> = {
 function notificationSummary(n: (typeof db.notifications)[number], user: DbUser): string {
   const actor = userRef(n.actorId)?.name ?? "누군가";
   const j = n.journalId ? db.journals.find((x) => x.id === n.journalId) : null;
+  // the journal's cause names the environment (never the reason: the line goes to mails too)
+  if (n.reason === "verification_failed") {
+    const environment = j?.cause?.environment;
+    return environment ? `${actor}님이 ${environment} 검증을 실패로 남겼습니다` : `${actor}님이 검증을 실패로 남겼습니다`;
+  }
   if (n.reason === "assigned" && j?.changes.assigneeId?.[1] === user.id) return `${actor}님이 나를 담당자로 지정했습니다`;
   const listed = (v: unknown) => Array.isArray(v) && v.some((e: { userId?: string }) => e.userId === user.id);
   if (n.reason === "assigned" && j?.changes.assignees && listed(j.changes.assignees[1]) && !listed(j.changes.assignees[0])) return `${actor}님이 나를 공동 담당자로 지정했습니다`;
@@ -1817,6 +1823,7 @@ export const fakeApi: Api = {
 
   time: timeApi,
   cicd: cicdApi,
+  releases: releasesApi,
   search: {
     suggest: (q) =>
       run(() => {

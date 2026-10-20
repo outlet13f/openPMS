@@ -95,6 +95,14 @@ import type {
   CicdEnvironmentsView,
   CicdTemplates,
   DevInfo,
+  ReleaseBoard,
+  ReleaseBoardParams,
+  ReleaseDetail,
+  ReleaseExcluded,
+  ReleaseExclusionInput,
+  ReleaseRow,
+  ReleaseVerification,
+  ReleaseVerificationInput,
 } from "./types";
 
 /**
@@ -475,6 +483,34 @@ export interface Api {
     linkByUrl(number: number, url: string): Promise<CicdMergeRequest>;
     /** DELETE /work-packages/{n}/cicd/links/{linkId} (cicd.link) — 403 "개발 연결을 고칠 권한이 없습니다.", 404 "연결을 찾을 수 없습니다." */
     unlink(number: number, linkId: Id): Promise<void>;
+  };
+
+  /**
+   * 프로젝트 › 릴리스 (CI/CD 3단계): the release verification board (source S → target T) and the release records. Viewing needs the
+   * cicd module and cicd.view (else 404 "프로젝트를 찾을 수 없습니다."); verifying, excluding and restoring need release.verify (403
+   * "릴리스를 검증할 권한이 없습니다."). Cards, counts and record items are filtered per work package by wp.view.
+   */
+  releases: {
+    /**
+     * GET /projects/{p}/releases/board?source=&target=&version= — absent = the default (target: the first production environment that is
+     * not hidden; source: the one right before it; version: the open version ending soonest from today, else …). version=none = no
+     * version. 404 "환경을 찾을 수 없습니다." (not this project's), 404 "버전을 찾을 수 없습니다.", 422 "비교 원본과 대상은 다른 환경이어야 합니다."
+     */
+    board(project: string, params?: ReleaseBoardParams): Promise<ReleaseBoard>;
+    /**
+     * POST /projects/{p}/releases/verifications (release.verify) — 201. 422 result "결과는 통과(passed)나 실패(failed)여야 합니다.",
+     * reason "실패 사유를 적으세요." / "실패 사유는 2,000자까지 적을 수 있습니다.", 404 "작업을 찾을 수 없습니다.", 422 "이 보드에 없는
+     * 작업입니다. 이미 대상 환경에 들어갔거나 연결이 바뀌었습니다." A failure notifies the assignees who may see the work package (not the verifier).
+     */
+    verify(project: string, input: ReleaseVerificationInput): Promise<ReleaseVerification>;
+    /** POST /projects/{p}/releases/exclusions (release.verify) — 201, "이미 운영에 있음"; the same 404/422 as verify */
+    exclude(project: string, input: ReleaseExclusionInput): Promise<ReleaseExcluded>;
+    /** DELETE /projects/{p}/releases/exclusions?workPackageId=&environmentId=&targetEnvironmentId= (release.verify) — 204; 404 "뺀 작업을 찾을 수 없습니다." */
+    restore(project: string, input: ReleaseExclusionInput): Promise<void>;
+    /** GET /projects/{p}/releases/records?page=&pageSize= — newest first (pageSize at most 100) */
+    records(project: string, page?: number, pageSize?: number): Promise<Page<ReleaseRow>>;
+    /** GET /projects/{p}/releases/records/{id} — 404 "릴리스 기록을 찾을 수 없습니다." */
+    record(project: string, id: Id): Promise<ReleaseDetail>;
   };
 
   search: {

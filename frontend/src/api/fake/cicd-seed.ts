@@ -126,6 +126,8 @@ export interface DbCicdEnvironmentCommit {
   repositoryId: Id;
   commitId: Id;
   deploymentId: Id;
+  /** when it came in: the deployedAt of the deployment that took it in (V29's added_at; the board's baseline and re-verify compare these) */
+  addedAt: IsoDateTime;
 }
 
 export const CICD = {
@@ -134,6 +136,9 @@ export const CICD = {
   repoMobile: "cicd-repo-api",
   devLeadRole: "r-devlead",
   cicdAdminRole: "r-cicd-admin",
+  /** V29's QA role and V1013's QA 윤서아 (web-platform) */
+  qaRole: "r-qa",
+  qaUser: "u-seoa",
 } as const;
 
 const GITLAB = "https://gitlab.example.invalid";
@@ -232,7 +237,7 @@ export function seedCicd() {
     deployment(5, null, "qa-env", 4, "2026-10-14T04:00:00Z", null),
   ];
   const inEnv = (d: DbCicdDeployment, commitN: number): DbCicdEnvironmentCommit => ({
-    environmentId: d.environmentId!, repositoryId: CICD.repoWeb, commitId: `cicd-commit-${commitN}`, deploymentId: d.id,
+    environmentId: d.environmentId!, repositoryId: CICD.repoWeb, commitId: `cicd-commit-${commitN}`, deploymentId: d.id, addedAt: d.deployedAt,
   });
   const environmentCommits: DbCicdEnvironmentCommit[] = [
     inEnv(deployments[0], 1), inEnv(deployments[0], 2), inEnv(deployments[1], 4), inEnv(deployments[2], 1), inEnv(deployments[2], 2),

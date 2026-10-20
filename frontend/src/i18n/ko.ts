@@ -402,6 +402,8 @@ const ko = {
       predecessor_moved: "선행 작업 #{{number}}의 일정이 바뀌어 자동으로 조정됨",
       child_moved: "하위 작업 #{{number}}의 일정이 바뀌어 자동으로 조정됨",
       calendar_changed: "근무일 설정이 바뀌어 자동으로 조정됨",
+      verification_passed: "{{environment}} 검증: 통과",
+      verification_failed: "{{environment}} 검증: 실패 — {{reason}}",
     },
     changed: "{{label}}: {{from}} → {{to}}",
     set: "{{label}}: {{to}}",
@@ -636,6 +638,7 @@ const ko = {
     reasons: {
       mentioned: "언급", assigned: "담당", responsible: "책임", watched: "주시", shared: "공유", created: "새 작업", commented: "코멘트",
       status_changed: "상태", priority_changed: "우선순위", dates_changed: "날짜", date_alert_start: "시작일 알림", date_alert_due: "완료일 알림", date_alert_overdue: "기한 지남",
+      verification_failed: "검증 실패",
     },
     selectPrompt: "왼쪽에서 알림을 고르면 작업 내용이 여기에 열립니다.",
     byReason: "이유로 거르기",

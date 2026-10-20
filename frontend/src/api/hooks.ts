@@ -2,7 +2,7 @@
 // rules live in one place.
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./index";
-import type { TimeFilter, TimeGroupBy, TimeWeekCell, ApiTokenInput, QueryFilter, BoardKind, Id, NotificationFilter, NotificationSetting, Preferences, ProfileInput, QuerySpec, RelationType, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch } from "./types";
+import type { TimeFilter, TimeGroupBy, TimeWeekCell, ApiTokenInput, QueryFilter, BoardKind, Id, NotificationFilter, NotificationSetting, Preferences, ProfileInput, QuerySpec, RelationType, ReleaseBoardParams, ReleaseExclusionInput, ReleaseVerificationInput, ShareRole, WorkPackage, WorkPackageInput, WorkPackagePatch } from "./types";
 
 export const qk = {
   me: ["me"] as const,
@@ -354,3 +354,31 @@ export function useDevLinkMutations(number: number) {
     unlink: useMutation({ mutationFn: (linkId: Id) => api.cicd.unlink(number, linkId), onSuccess: done }),
   };
 }
+
+/* ---------- 릴리스 (CI/CD 3단계) ---------- */
+
+/** The release verification board; absent params are the server's defaults. */
+export const useReleaseBoard = (project: string, params: ReleaseBoardParams = {}) =>
+  useQuery({ queryKey: ["releases", project, "board", params], queryFn: () => api.releases.board(project, params), enabled: !!project });
+
+/** Verify, exclude and restore: each refreshes the boards and records, the development tabs, the inbox and the activity lists (a verification is an activity line). */
+export function useReleaseMutations(project: string) {
+  const qc = useQueryClient();
+  const done = () => {
+    qc.invalidateQueries({ queryKey: ["releases", project] });
+    qc.invalidateQueries({ queryKey: ["cicd", "dev"] });
+    qc.invalidateQueries({ queryKey: ["notifications"] });
+    qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "wp" && q.queryKey[2] === "activities" });
+  };
+  return {
+    verify: useMutation({ mutationFn: (input: ReleaseVerificationInput) => api.releases.verify(project, input), onSuccess: done }),
+    exclude: useMutation({ mutationFn: (input: ReleaseExclusionInput) => api.releases.exclude(project, input), onSuccess: done }),
+    restore: useMutation({ mutationFn: (input: ReleaseExclusionInput) => api.releases.restore(project, input), onSuccess: done }),
+  };
+}
+
+export const useReleaseRecords = (project: string, page = 1) =>
+  useQuery({ queryKey: ["releases", project, "records", page], queryFn: () => api.releases.records(project, page), enabled: !!project, placeholderData: keepPreviousData });
+
+export const useReleaseRecord = (project: string, id: Id | null | undefined) =>
+  useQuery({ queryKey: ["releases", project, "records", "detail", id], queryFn: () => api.releases.record(project, id!), enabled: !!project && !!id });

@@ -118,7 +118,7 @@ const PERMISSIONS: { key: string; scope: "project" | "global"; group: string }[]
   ...["query.save", "query.manage_public"].map((key) => ({ key, scope: "project" as const, group: "query" })),
   ...["board.view", "board.manage"].map((key) => ({ key, scope: "project" as const, group: "board" })),
   ...["time.log", "time.view", "time.manage"].map((key) => ({ key, scope: "project" as const, group: "time" })),
-  ...["cicd.view", "cicd.link", "cicd.manage"].map((key) => ({ key, scope: "project" as const, group: "cicd" })),
+  ...["cicd.view", "cicd.link", "cicd.manage", "release.verify"].map((key) => ({ key, scope: "project" as const, group: "cicd" })),
   ...["global.create_projects", "global.manage_users", "global.manage_cicd"].map((key) => ({ key, scope: "global" as const, group: "global" })),
 ];
 

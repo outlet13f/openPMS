@@ -529,7 +529,13 @@ export interface Journal {
   notesHtml: string;
   isInternal: boolean;
   details: JournalDetail[];
-  cause: { kind: "predecessor_moved" | "child_moved" | "calendar_changed"; workPackageNumber?: number } | null;
+  /** verification_*: environment = the source environment's name, reason = the failure reason (failed only) */
+  cause: {
+    kind: "predecessor_moved" | "child_moved" | "calendar_changed" | "verification_passed" | "verification_failed";
+    workPackageNumber?: number;
+    environment?: string;
+    reason?: string;
+  } | null;
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
   canEdit: boolean;
@@ -927,7 +933,8 @@ export type NotificationReason =
   | "dates_changed"
   | "date_alert_start"
   | "date_alert_due"
-  | "date_alert_overdue";
+  | "date_alert_overdue"
+  | "verification_failed";
 
 export interface NotificationItem {
   id: Id;
@@ -1408,6 +1415,22 @@ export interface DevInfo {
   commits: CicdCommit[];
   canLink: boolean;
   environments: CicdEnvironmentStatus[];
+  /** the current verification on each project's release board (default source), only where there is a result */
+  verifications: DevVerificationLine[];
+}
+/**
+ * The work package's newest result on the default source environment of a project's release board; stale = a commit came into that
+ * environment after it (the board shows "재검증 필요"). project: the identifier of the project that has the board.
+ */
+export interface DevVerificationLine {
+  environmentId: Id;
+  environment: string;
+  result: "passed" | "failed";
+  by: UserRef | null;
+  at: IsoDateTime;
+  stale: boolean;
+  project: string;
+  targetEnvironmentId: Id;
 }
 /** 프로젝트 › CI/CD › 환경; hidden = it has deployment history, so it was hidden instead of deleted */
 export interface CicdEnvironment {
@@ -1446,4 +1469,136 @@ export interface CicdTemplates {
   kind: CicdKind;
   jenkinsfile: string | null;
   argocd: string | null;
+}
+
+/* ---------- releases (프로젝트 › 릴리스: the verification board and the release records) ---------- */
+
+/** waiting = no result yet, reverify = a commit came into the source after the result, failed, passed */
+export type ReleaseColumn = "waiting" | "reverify" | "failed" | "passed";
+/** a release record item's warning, in the order of the columns; null = passed */
+export type ReleaseWarning = "unverified" | "stale" | "failed";
+export type ReleaseNoticeKind = "checking" | "failed" | "first_cutoff" | "partial";
+export interface ReleaseEnvironmentRef {
+  id: Id;
+  name: string;
+  position: number;
+  production: boolean;
+  hidden: boolean;
+}
+export interface ReleaseVersionRef {
+  id: Id;
+  name: string;
+  status: "open" | "locked" | "closed";
+  endDate: IsoDate | null;
+}
+/** environment = the source environment's name; reason = "" when passed */
+export interface ReleaseVerification {
+  id: Id;
+  result: "passed" | "failed";
+  reason: string;
+  by: UserRef | null;
+  at: IsoDateTime;
+  environment: string;
+}
+/** a work package whose commits are in the source but not yet in the target; interloper = not of the chosen version */
+export interface ReleaseCard {
+  workPackageId: Id;
+  number: number;
+  subject: string;
+  status: StatusRef;
+  assignees: UserRef[];
+  project: ProjectRef;
+  column: ReleaseColumn;
+  cameInAt: IsoDateTime;
+  deploymentUrl: string;
+  last: ReleaseVerification | null;
+  interloper: boolean;
+}
+/** a planned work package of the version that is not on the board: developing = it has links, no_code = none */
+export interface ReleaseMissing {
+  workPackageId: Id;
+  number: number;
+  subject: string;
+  status: StatusRef;
+  group: "developing" | "no_code";
+}
+export interface ReleaseUnlinkedCommit {
+  repository: string;
+  shortSha: string;
+  title: string;
+  webUrl: string;
+  cameInAt: IsoDateTime;
+}
+/** "이미 운영에 있음": off the board until a newer commit of it comes into the source */
+export interface ReleaseExcluded {
+  workPackageId: Id;
+  number: number;
+  subject: string;
+  by: UserRef | null;
+  at: IsoDateTime;
+}
+export interface ReleaseNotice {
+  environmentId: Id;
+  environment: string;
+  kind: ReleaseNoticeKind;
+}
+/** sourceId·targetId null = no pair (no production environment, or none before it); versionId null = "버전 없음"; canVerify = release.verify */
+export interface ReleaseBoard {
+  environments: ReleaseEnvironmentRef[];
+  sourceId: Id | null;
+  targetId: Id | null;
+  versions: ReleaseVersionRef[];
+  versionId: Id | null;
+  cards: ReleaseCard[];
+  missing: ReleaseMissing[];
+  interloperCount: number;
+  unlinkedCount: number;
+  unlinked: ReleaseUnlinkedCommit[];
+  excluded: ReleaseExcluded[];
+  notices: ReleaseNotice[];
+  canVerify: boolean;
+}
+/** absent = the default; version "none" = no version */
+export interface ReleaseBoardParams {
+  source?: Id;
+  target?: Id;
+  version?: Id | "none";
+}
+export interface ReleaseVerificationInput {
+  workPackageId: Id;
+  environmentId: Id;
+  targetEnvironmentId: Id;
+  result: "passed" | "failed";
+  reason?: string;
+}
+export interface ReleaseExclusionInput {
+  workPackageId: Id;
+  environmentId: Id;
+  targetEnvironmentId: Id;
+}
+/** a release record; itemCount and warningCount count what the viewer may see, hiddenCount the rest */
+export interface ReleaseRow {
+  id: Id;
+  deployedAt: IsoDateTime;
+  environment: ReleaseEnvironmentRef;
+  sourceEnvironment: string | null;
+  repository: string;
+  deploymentUrl: string;
+  partial: boolean;
+  contentFailed: boolean;
+  itemCount: number;
+  warningCount: number;
+  hiddenCount: number;
+}
+/** a copy made when the release was recorded (later changes do not touch it) */
+export interface ReleaseItem {
+  workPackageId: Id | null;
+  number: number;
+  subject: string;
+  verification: ReleaseVerification | null;
+  warning: ReleaseWarning | null;
+}
+export interface ReleaseDetail {
+  release: ReleaseRow;
+  items: ReleaseItem[];
 }

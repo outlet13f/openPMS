@@ -7,6 +7,7 @@ import type {
   DbCicdCommit, DbCicdConnection, DbCicdConnectionProject, DbCicdDeployment, DbCicdEnvironment, DbCicdEnvironmentCommit, DbCicdLink, DbCicdMergeRequest, DbCicdPipeline,
   DbCicdRepository,
 } from "./cicd-seed";
+import type { DbCicdBoardExclusion, DbCicdRelease, DbCicdReleaseItem, DbCicdVerification } from "./release-seed";
 import type {
   TimeActivity,
   OverviewWidget,
@@ -100,7 +101,13 @@ export interface DbJournal {
   notesHtml: string;
   isInternal: boolean;
   changes: Record<string, [unknown, unknown]>;
-  cause: { kind: "predecessor_moved" | "child_moved" | "calendar_changed"; workPackageNumber?: number } | null;
+  /** verification_*: environment = the source environment's name, reason = the failure reason (failed only) */
+  cause: {
+    kind: "predecessor_moved" | "child_moved" | "calendar_changed" | "verification_passed" | "verification_failed";
+    workPackageNumber?: number;
+    environment?: string;
+    reason?: string;
+  } | null;
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
 }
@@ -179,6 +186,11 @@ export interface Db {
   cicdPipelines: DbCicdPipeline[];
   cicdDeployments: DbCicdDeployment[];
   cicdEnvironmentCommits: DbCicdEnvironmentCommit[];
+  /** phase 3: verifications on a source environment, board exclusions and the release records (from the seed only: no deployment processing here) */
+  cicdVerifications: DbCicdVerification[];
+  cicdBoardExclusions: DbCicdBoardExclusion[];
+  cicdReleases: DbCicdRelease[];
+  cicdReleaseItems: DbCicdReleaseItem[];
   queries: DbQuery[];
   queryFavorites: { userId: Id; queryId: Id }[];
   boards: DbBoard[];
@@ -203,8 +215,9 @@ export interface Db {
 }
 
 const KEY = "openpms.fakedb";
-// 19: re-seed browsers that still hold the removed ITSM seed (schema 15-17); 20: the CI/CD seed; 21: allowed projects per connection; 22: CI/CD phase 2 (builds, deployments, environments, detached repositories)
-const SCHEMA = 22;
+// 19: re-seed browsers that still hold the removed ITSM seed (schema 15-17); 20: the CI/CD seed; 21: allowed projects per connection; 22: CI/CD phase 2 (builds, deployments, environments, detached repositories);
+// 23: CI/CD phase 3 (verifications, board exclusions, release records, the QA role and 윤서아, addedAt on environment commits)
+const SCHEMA = 23;
 
 function load(): Db {
   try {

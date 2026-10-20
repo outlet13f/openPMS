@@ -4,6 +4,7 @@
 import type { Db, DbJournal, DbWp } from "./db";
 import { seedTime } from "./time-seed";
 import { CICD, seedCicd } from "./cicd-seed";
+import { seedReleases } from "./release-seed";
 import type { CustomField, MyPageWidget, QuerySpec } from "../types";
 
 const P_MANAGER = [
@@ -15,7 +16,7 @@ const P_MANAGER = [
   "wp.edit_comments", "wp.view_internal_comments", "wp.add_internal_comments", "wp.manage_relations",
   "wp.manage_subtasks", "wp.assign_versions", "wp.view_watchers", "wp.add_watchers", "wp.delete_watchers", "wp.export",
   "query.save", "query.manage_public", "board.view", "board.manage", "time.log", "time.view", "time.manage",
-  "cicd.view", "cicd.link", "cicd.manage",
+  "cicd.view", "cicd.link", "cicd.manage", "release.verify",
 ];
 const P_MEMBER = [
   "project.view", "project.view_members",
@@ -26,6 +27,8 @@ const P_MEMBER = [
 ];
 const P_VIEWER = ["project.view", "project.view_members", "wp.view", "wp.comment", "wp.edit_own_comments", "wp.view_watchers", "wp.export", "query.save", "board.view", "cicd.view"];
 const P_NON_MEMBER = ["project.view", "wp.view", "board.view"];
+// V29: QA = 보고 코멘트하고 릴리스를 검증한다
+const P_QA = ["project.view", "wp.view", "wp.comment", "wp.edit_own_comments", "cicd.view", "release.verify"];
 
 export const DEFAULT_COLUMNS: QuerySpec["columns"] = ["number", "subject", "type", "status", "assignee", "priority", "dueDate"];
 
@@ -43,6 +46,8 @@ export function buildSeed(schema: number): Db {
     { id: "u-doyoon", email: "doyoon.han@openpms.local", name: "한도윤", isAdmin: false },
     { id: "u-alex", email: "alex.kim@openpms.local", name: "Alex Kim", isAdmin: false },
     { id: "u-locked", email: "former.staff@openpms.local", name: "전 직원", isAdmin: false, status: "locked" as const },
+    // V1013: QA 윤서아 (웹 플랫폼 QA)
+    { id: CICD.qaUser, email: "seoa.yoon@openpms.local", name: "윤서아", isAdmin: false },
   ].map((u) => ({ password: "openpms!", status: "active" as const, locale: "ko" as const, timeZone: "Asia/Seoul", prefs: { ...prefs, digestTimes: [...prefs.digestTimes], myPageWidgets: [...prefs.myPageWidgets] }, createdAt: t0, lastLoginAt: null as string | null, ...u }));
 
   const roles = [
@@ -51,7 +56,8 @@ export function buildSeed(schema: number): Db {
     { id: "r-viewer", name: "참관자", scope: "project" as const, builtin: null, permissions: P_VIEWER },
     { id: "r-nonmember", name: "비멤버", scope: "project" as const, builtin: "non_member" as const, permissions: P_NON_MEMBER },
     // V26: 개발 리더 = 멤버 + cicd.manage; CI/CD 연동 관리자는 관리 › CI/CD 연동만
-    { id: CICD.devLeadRole, name: "개발 리더", scope: "project" as const, builtin: null, permissions: [...P_MEMBER, "cicd.manage"] },
+    { id: CICD.devLeadRole, name: "개발 리더", scope: "project" as const, builtin: null, permissions: [...P_MEMBER, "cicd.manage", "release.verify"] },
+    { id: CICD.qaRole, name: "QA", scope: "project" as const, builtin: null, permissions: P_QA },
     { id: CICD.cicdAdminRole, name: "CI/CD 연동 관리자", scope: "global" as const, builtin: null, permissions: ["global.manage_cicd"] },
     { id: "r-creator", name: "프로젝트 생성자", scope: "global" as const, builtin: null, permissions: ["global.create_projects"] },
   ];
@@ -136,6 +142,8 @@ export function buildSeed(schema: number): Db {
 
   // V1010: 박준호는 웹 플랫폼에서 개발 리더 역할을 하나 더 가진다
   members.find((x) => x.projectId === "p-web" && x.userId === "u-junho")!.roleIds.push(CICD.devLeadRole);
+  // V1013: 윤서아는 웹 플랫폼의 QA
+  members.push(m("p-web", CICD.qaUser, CICD.qaRole));
 
   const versions = [
     { id: "v-q3", projectId: "p-web", name: "2026 3분기", description: "고객 포털 1차 출시", status: "open" as const, startDate: "2026-07-01", endDate: "2026-10-30" },
@@ -245,7 +253,27 @@ export function buildSeed(schema: number): Db {
   addJ(8, "u-alex", "2026-10-08T14:02:00+09:00", {}, "<p>대비를 4.5:1 이상으로 올렸습니다. 확인 부탁드립니다.</p>");
   addJ(11, "u-minji", "2026-10-07T17:30:00+09:00", { priorityId: ["pr-high", "pr-urgent"] }, "<p>고객 문의가 계속 들어와서 긴급으로 올립니다.</p>");
 
+  // V1013: a journal per verification (changes = {}, cause = {kind, environment, reason?}), and the failure's notifications to the
+  // assignees of #4 who are active and may see it (박준호 and the co-assignee 이하늘), not 윤서아 herself
+  const rel = seedReleases();
+  const verificationJournals = rel.verifications.map((v) => {
+    const version = journals.filter((j) => j.wpId === v.wpId).length + 1;
+    const cause: DbJournal["cause"] = v.result === "failed"
+      ? { kind: "verification_failed", environment: "스테이징", reason: v.reason }
+      : { kind: "verification_passed", environment: "스테이징" };
+    const j: DbJournal = { id: `j-${++jid}`, wpId: v.wpId, version, userId: v.verifiedBy!, notesHtml: "", isInternal: false, changes: {}, cause, createdAt: v.verifiedAt, updatedAt: v.verifiedAt };
+    journals.push(j);
+    return { v, j };
+  });
+  const failed = verificationJournals.find((x) => x.v.result === "failed")!;
+  const failedWp = workPackages.find((w) => w.id === failed.v.wpId)!;
+  const failureRecipients = (failedWp.team?.map((t) => t.userId) ?? [failedWp.assigneeId]).filter((u): u is string => !!u && u !== failed.v.verifiedBy);
+
   const notifications = [
+    ...failureRecipients.map((recipientId, i) => ({
+      id: `n-${4 + i}`, recipientId, wpId: failedWp.id, journalId: failed.j.id, actorId: failed.v.verifiedBy, reason: "verification_failed" as const, readAt: null,
+      createdAt: failed.v.verifiedAt,
+    })),
     { id: "n-1", recipientId: "u-seoyeon", wpId: "wp-3", journalId: mention.id, actorId: "u-haneul", reason: "mentioned" as const, readAt: null, createdAt: mention.createdAt },
     { id: "n-2", recipientId: "u-seoyeon", wpId: "wp-5", journalId: assigned.id, actorId: "u-junho", reason: "assigned" as const, readAt: null, createdAt: assigned.createdAt },
     { id: "n-3", recipientId: "u-seoyeon", wpId: "wp-8", journalId: reviewed.id, actorId: "u-alex", reason: "watched" as const, readAt: iso("2026-10-08T15:00:00+09:00"), createdAt: reviewed.createdAt },
@@ -288,8 +316,11 @@ export function buildSeed(schema: number): Db {
     journals,
     ...(() => {
       const c = seedCicd();
-      return { cicdConnections: c.connections, cicdConnectionProjects: c.connectionProjects, cicdRepositories: c.repositories, cicdCommits: c.commits, cicdMergeRequests: c.mergeRequests, cicdLinks: c.links,
-        cicdEnvironments: c.environments, cicdPipelines: c.pipelines, cicdDeployments: c.deployments, cicdEnvironmentCommits: c.environmentCommits };
+      return { cicdConnections: c.connections, cicdConnectionProjects: c.connectionProjects, cicdRepositories: c.repositories,
+        cicdCommits: [...c.commits, ...rel.commits], cicdMergeRequests: c.mergeRequests, cicdLinks: [...c.links, ...rel.links],
+        cicdEnvironments: c.environments, cicdPipelines: c.pipelines, cicdDeployments: [...c.deployments, ...rel.deployments],
+        cicdEnvironmentCommits: [...c.environmentCommits, ...rel.environmentCommits],
+        cicdVerifications: rel.verifications, cicdBoardExclusions: rel.exclusions, cicdReleases: rel.releases, cicdReleaseItems: rel.releaseItems };
     })(),
     watchers: [
       { wpId: "wp-8", userId: "u-seoyeon" },

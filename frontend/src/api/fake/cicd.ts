@@ -7,7 +7,7 @@
 import type { Api } from "../api";
 import type {
   CicdBuild, CicdBuildStatus, CicdCommit, CicdConnection, CicdEnvironment, CicdEnvironmentStatus, CicdEnvState, CicdMergeRequest, CicdRepository, CicdTemplates,
-  DevInfo, Id,
+  DevInfo, DevVerificationLine, Id,
 } from "../types";
 import { ApiError } from "../errors";
 import { nowIso, todayIso } from "@/lib/dates";
@@ -16,6 +16,7 @@ import { can, findProject, findWp, globalPermissions, requirePerm, sessionUser }
 import { clone, userRef } from "./dto";
 import type { DbCicdEnvironment, DbCicdMergeRequest, DbCicdPipeline } from "./cicd-seed";
 import { fieldError, run } from "./util";
+import { columnOf, currentVerifications, defaultSource, defaultTarget, latestIn } from "./releases";
 
 const COMMIT_LIMIT = 50;
 const KINDS = ["gitlab", "github", "jenkins", "argocd"];
@@ -304,7 +305,7 @@ function reassign(p: DbProject, environmentId: Id, names: string[]) {
     d.inclusion = d.status === "success" ? (d.sha ? "compared" : "unknown_commit") : null;
     const commit = d.status === "success" && d.sha ? db.cicdCommits.find((c) => c.repositoryId === d.repositoryId && c.sha === d.sha) : undefined;
     if (commit && !db.cicdEnvironmentCommits.some((x) => x.environmentId === environmentId && x.commitId === commit.id))
-      db.cicdEnvironmentCommits.push({ environmentId, repositoryId: d.repositoryId, commitId: commit.id, deploymentId: d.id });
+      db.cicdEnvironmentCommits.push({ environmentId, repositoryId: d.repositoryId, commitId: commit.id, deploymentId: d.id, addedAt: d.deployedAt });
   }
 }
 
@@ -420,10 +421,10 @@ function environmentRow(user: DbUser, wpId: Id, project: DbProject, shown: Id[])
     return commit && repo && visible.has(repo.projectId) ? [{ commit, repo }] : [];
   });
   const names = new Map<Id, string[]>();
-  if (!linked.length) return { environments: [] as CicdEnvironmentStatus[], names };
+  if (!linked.length) return { environments: [] as CicdEnvironmentStatus[], names, envs: [] as DbCicdEnvironment[] };
   const projectIds = new Set(linked.map((l) => l.repo.projectId));
   const envs = db.cicdEnvironments.filter((e) => projectIds.has(e.projectId) && !e.hidden);
-  if (!envs.length) return { environments: [] as CicdEnvironmentStatus[], names };
+  if (!envs.length) return { environments: [] as CicdEnvironmentStatus[], names, envs };
   const envById = new Map(envs.map((e) => [e.id, e]));
   const commitOf = new Map(linked.map((l) => [l.commit.id, l]));
   // what is in each environment (only environments of the commit's own current project)
@@ -480,7 +481,29 @@ function environmentRow(user: DbUser, wpId: Id, project: DbProject, shown: Id[])
     const list = commitEnvs.get(id);
     if (list) names.set(id, [...list].sort((a, b) => b.position - a.position).map((e) => e.name));
   }
-  return { environments: out, names };
+  return { environments: out, names, envs };
+}
+
+/**
+ * The verification line of each project of the environment row (보완 13): the work package's newest result on the project's default source
+ * for its default target, when there is one (server: DevTabController.verifications, projects in id order).
+ */
+function verificationLines(wpId: Id, envs: DbCicdEnvironment[]): DevVerificationLine[] {
+  const out: DevVerificationLine[] = [];
+  for (const projectId of [...new Set(envs.map((e) => e.projectId))].sort()) {
+    const rows = envs.filter((e) => e.projectId === projectId);
+    const target = defaultTarget(rows);
+    const source = target ? defaultSource(rows, target) : null;
+    if (!target || !source) continue;
+    const c = currentVerifications(source, [wpId]).get(wpId);
+    if (!c) continue;
+    out.push({
+      environmentId: source, environment: rows.find((e) => e.id === source)!.name, result: c.result, by: userRef(c.verifiedBy), at: c.verifiedAt,
+      stale: columnOf(c, latestIn(source, [wpId]).get(wpId)) === "reverify", project: db.projects.find((p) => p.id === projectId)?.identifier ?? "",
+      targetEnvironmentId: target,
+    });
+  }
+  return out;
 }
 
 /** every linked commit is older than the cutoff of its repository's first deployment (the check could not look further back) */
@@ -806,7 +829,7 @@ export const cicdApi: Api["cicd"] = {
           detached: !isAttached(repo),
         };
       });
-      return clone({ mergeRequests, commits, canLink: can(user, project, "cicd.link"), environments: row.environments });
+      return clone({ mergeRequests, commits, canLink: can(user, project, "cicd.link"), environments: row.environments, verifications: verificationLines(wp.id, row.envs) });
     }),
   linkByUrl: (number, url) =>
     run(() => {
